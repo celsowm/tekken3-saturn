@@ -100,6 +100,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(t3.compact(both, True, False)[0], hit)
         self.assertEqual(t3.compact(both, False, True)[0], anim)
 
+    def test_private_frame_event_section4_opt_in(self):
+        # Exactly two u16 frame/command pairs and one terminator.
+        source=fake_bank()
+        events=struct.pack("<6H",2,0x0B09,5,0x0C1A,0,0)
+        body=bytearray(source+events)
+        old=len(source)
+        for section in range(5,15):
+            struct.pack_into("<I",body,4+section*4,len(body))
+        assert struct.unpack_from("<I",body,4+4*4)[0]==old
+        default,manifest=t3.compact(bytes(body))
+        self.assertFalse(manifest["move_frame_events_included"])
+        assert manifest["event_bytes"]==0
+        private,with_events=t3.compact(bytes(body),with_events=True)
+        directory=t3.sections_of(private)[1]
+        self.assertEqual(directory[5]-directory[4],len(events))
+        self.assertEqual(private[directory[4]:directory[5]],events)
+        self.assertEqual(with_events["event_bytes"],len(events))
+        self.assertTrue(with_events["move_frame_events_included"])
+        self.assertEqual(t3.compact(private,with_events=True)[0],private)
+        self.assertEqual(t3.compact(private)[0],default)
+
     def test_reject_malformed(self):
         source=bytearray(fake_bank())
         source[0]=7

@@ -49,6 +49,7 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     if (!bank || !out || !bank->data || index >= bank->move_count) return 0;
     p = bank->data + bank->sections[1] + index*T3_DIVMOT_MOVE_BYTES;
     out->animation_offset = le32(p);
+    out->event_index = le32(p+32);
     out->state_word = le32(p+4);
     out->attack_word = le16(p+8);
     out->branch_index = le32(p+12);

@@ -187,3 +187,10 @@ copyrighted assets and must not be distributed without permission.
 - [x] Compute original Q16 health with explicitly wrapped 32-bit MIPS arithmetic; never mutate playable fallback HP.
 - [ ] Validate all inputs/state transitions against original USA PS1 real-game HitApply oracle captures.
 - [ ] Replace temporary prototype health/guard/throw logic only when original cooldown, events, state transitions and round flow are reproducible.
+
+### Original per-frame MoveEvents
+- [x] Import original section 4 into private compact DIVMOT banks with explicit opt-in.
+- [x] Parse u16 frame/command event lists and evaluate original crossed-frame windows.
+- [x] Decode move event 11/12/13 extraKind and extraDamage for read-only HitExtraDamage.
+- [ ] Wire verified event state and hit cooldown/reactions into an original-combat replay oracle.
+- [ ] Port hand, audio, camera, sparks and animation event side effects after source visual parity.

@@ -26,6 +26,7 @@ typedef struct {
     uint32_t state_word;
     uint32_t flags;
     uint32_t animation_offset;
+    uint32_t event_index; /* row +0x20: 4-byte records in section 4, -1 absent */
     uint32_t attack_descriptor; /* +0x28: built-in id or section9-relative offset+4 */
     uint32_t branch_index;
     uint16_t attack_word;

@@ -990,3 +990,46 @@ heal from negative events, original 16.16 clamping and fail-closed
 invalid inputs. Actual PS1 HitApply oracle comparisons, move-event
 selection, forced hits, Tekken Force/Ball rules and hit lifecycle
 state mutation remain future work.
+
+## Original DIVMOT section-4 per-frame extra-damage events
+
+The portable `src/game/psx_move_events.[ch]` decodes the original
+bank's **section 4**, a sequence of little-endian
+`(u16 event_frame, u16 command)` pairs terminated by an event frame
+of zero. Move-row byte `+0x20` contains a section-relative index
+of four-byte records; `0xFFFFFFFF` explicitly denotes no list.
+
+The decoder evaluates exactly `previous_pose_frame < event_frame <=
+current_pose_frame`, matching `MoveEvents` rather than running all
+events on every tick. For high command bytes 11, 12 and 13 it outputs
+`extra_kind=1,2,3` and the original low-byte damage. The last
+fired extra-damage event within the crossed window wins, exactly as
+the original per-frame state assignment. Other frame events (camera,
+effects, hands, sounds) are counted but **do not invoke hardware or
+gameplay side effects**. A reverse frame interval fires nothing.
+
+The private compact-bank converter now accepts
+`--with-events` **independently** of `--with-motion` and
+`--with-hitboxes`:
+
+```sh
+python3 scripts/divmot_to_logic.py \
+  --bank /private/original_divmot.bin \
+  --output assets/imported/tekken3-usa \
+  --with-events --with-motion --with-hitboxes
+```
+
+Original 32-bit move-row pointers remain SECTION-relative, so the
+compact image preserves event section index 4 while removing
+unselected sections. Both the event bytes and source bank are private:
+no commercial records are embedded into Git or public CI artifacts.
+
+The decoder returns **0 when the optional authored section was
+stripped** and **-1 for corrupt/unterminated inputs**, leaving outputs
+unchanged. A genuine missing event pointer (`0xFFFFFFFF`) returns
+success with `extra_kind=0`. This distinction is essential before
+the `HitExtraDamage` accumulator can be used in an authoritative
+fight simulation. Standalone C and private compactor tests exercise
+event crossings, multiple events, no-event pointers, unsupported
+data and truncation. The live Saturn prototype does **not yet**
+apply these event damages to health.

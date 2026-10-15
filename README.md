@@ -336,3 +336,13 @@ move-event extra damage (including throw victims), two-slot arbitration,
 Q16 health, KO/chip conversion and reaction selection when original
 tables are present. The provisional playable match is untouched.
 See [HitApply scope](docs/DIVMOT_LOGIC.md).
+
+### Original DIVMOT move events
+
+`psx_move_events` decodes frame commands 11–13 (throw and
+damage-exchange events) from **private** DIVMOT section 4 while
+enforcing the original previous/current pose-frame window.
+`scripts/divmot_to_logic.py --with-events` preserves that section
+without requiring motion or hitbox data. No original data is
+distributed and the prototype's health is not altered.
+See [move-event format and tests](docs/DIVMOT_LOGIC.md).

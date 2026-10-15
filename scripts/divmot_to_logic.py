@@ -3,8 +3,8 @@
 
 Keeps sections 0 (branches), 1 (moves), 2 (move slots). Optional
 --with-motion preserves raw animation section 6 (including tags);
---with-hitboxes preserves baked hitbox section 9. Other copyrighted
-streams are dropped. All output stays local, not in Git or CI.
+--with-hitboxes preserves baked hitbox section 9. --with-events preserves section 4 original u16 frame/command lists.
+Other copyrighted streams are dropped. All output stays local, not in Git or CI.
 """
 import argparse
 import hashlib
@@ -36,19 +36,25 @@ def sections_of(data):
         raise FormatError("character bank must have exactly 4023 move slots")
     return moves,offsets
 
-def compact(data, with_hitboxes=False, with_motion=False):
+def compact(data, with_hitboxes=False, with_motion=False, with_events=False):
     count,s=sections_of(data)
     kept=data[s[0]:s[3]]
     # Sections 6 and 9 use section-relative offsets inside move rows, so
     # the original bytes can be preserved independently. Do not relocate
     # internal stream offsets or non-selected asset streams.
+    events=data[s[4]:s[5]] if with_events else b""
     motion=data[s[6]:s[7]] if with_motion else b""
     attacks=data[s[9]:s[10]] if with_hitboxes else b""
-    end=64+len(kept)
-    end_motion=end+len(motion)
-    offsets=[64,64+s[1]-s[0],64+s[2]-s[0]] + [end]*4 + \
-            [end_motion]*3 + [end_motion+len(attacks)]*5
-    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+motion+attacks)
+    # The original move-row pointers are SECTION-relative; retain them
+    # unchanged and preserve the original section index (4, 6, 9).
+    pos=64+len(kept)
+    offsets=[64,64+s[1]-s[0],64+s[2]-s[0]]
+    for section in range(3,15):
+        offsets.append(pos)
+        if section==4:pos+=len(events)
+        elif section==6:pos+=len(motion)
+        elif section==9:pos+=len(attacks)
+    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+events+motion+attacks)
     assert len(result)==offsets[-1]
     sections_of(result)
     return bytes(result),{
@@ -62,9 +68,12 @@ def compact(data, with_hitboxes=False, with_motion=False):
         "logic_bytes":len(result),
         "hitbox_bytes":len(attacks),
         "motion_bytes":len(motion),
+        "event_bytes":len(events),
+        "move_frame_events_included":bool(with_events),
         "motion_streams_included":bool(with_motion),
         "attack_geometry_included":bool(with_hitboxes),
-        "omitted":"textures, camera, audio, events"
+        "omitted":"textures, camera, audio"
+                  + ("" if with_events else ", events")
                   + ("" if with_motion else ", animations")
                   + ("" if with_hitboxes else ", attack points"),
         "valid_for":"move VM and optional raw pose/attack decoding; full combat pending"
@@ -78,10 +87,12 @@ def main():
                    help="preserve original animation section 6 (private research)")
     p.add_argument("--with-hitboxes",action="store_true",
                    help="preserve local copyrighted baked attack descriptors (section 9)")
+    p.add_argument("--with-events",action="store_true",
+                   help="preserve PRIVATE original frame events in section 4")
     a=p.parse_args()
     try:
         data=a.bank.read_bytes()
-        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes,with_motion=a.with_motion)
+        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes,with_motion=a.with_motion,with_events=a.with_events)
         a.output.mkdir(parents=True,exist_ok=True)
         (a.output/f"bank_{manifest['bank_type']}.t3logic").write_bytes(logic)
         (a.output/f"bank_{manifest['bank_type']}.json").write_text(
