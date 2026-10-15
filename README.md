@@ -373,3 +373,16 @@ MoveVM or live Saturn combat. Missing original reaction records, phase timing,
 recovery destinations or combo rules fail closed; **this is not PS1 frame parity**.
 Synthetic host tests exercise trades, reaction expiry and absent data.
 
+## Original MoveVM projection and PS1 combat trace comparison
+
+The [MoveVM post-hit bridge](docs/PSX_STATE_TRANSITIONS.md)
+resolves reaction move slots against original local and shared DIVMOT
+banks. Each fighter's next animation pose frame must come from an
+external observation; a stun timer is not an animation timer.
+Two-player projections are atomic and do not alter gameplay.
+
+A [strict JSONL comparator](scripts/compare_psx_combat_traces.py)
+is available for frame-by-frame PS1-versus-Saturn source oracle
+validation, with a synthetic regression suite in host CI. Real
+PlayStation capture/parity remains pending.
+
