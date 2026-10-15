@@ -30,6 +30,12 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_sequences.py' -v
       - name: Validate private PS1 IK lookup exporter against synthetic EXE
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_ik_tables.py' -v
+      - name: Validate independent USA PS1 RAM oracle snapshots
+        run: python3 -m unittest discover -s tests -p 'test_psx_ram_oracle.py' -v
+      - name: Compile-check PCSX-Redux LuaJIT capture script
+        run: |
+          command -v luajit || (sudo apt-get update -qq && sudo apt-get install -y -qq luajit)
+          luajit -b scripts/pcsx_redux_capture_usa.lua /tmp/t3-psx-capture.luac
       - name: Validate frame-by-frame PS1 combat oracle comparator
         run: python3 -m unittest discover -s tests -p 'test_compare_psx_combat_traces.py' -v
       - name: Validate PS1 pose trace binary/JSONL oracle comparator
