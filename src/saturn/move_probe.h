@@ -15,4 +15,9 @@ uint16_t t3_move_probe_attack_word(unsigned fighter);
 uint32_t t3_move_probe_transitions(unsigned fighter);
 uint8_t t3_move_probe_segments(unsigned fighter);
 uint32_t t3_move_probe_decode_errors(unsigned fighter);
+/* 0 no stream; 1 full pose; 2 XYZ root only;
+ * 3 missing PS1 spline tables; 4 malformed/unsupported stream. */
+uint8_t t3_move_probe_pose_status(unsigned fighter);
+uint8_t t3_move_probe_pose_frames(unsigned fighter);
+int16_t t3_move_probe_root_pose(unsigned fighter,unsigned axis);
 #endif

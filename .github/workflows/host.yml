@@ -98,10 +98,15 @@ jobs:
           (root/'sequences.json').write_text(json.dumps(
               extract(seq_fixture.make_exe(),expected_sha=None)))
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          Path("build/asset-divmot/spline.bin").write_bytes(bytes(0x660))
+          PY
           python3 scripts/build_local_divmot_assets.py \
               --bank build/asset-divmot/character.t3logic \
               --common build/asset-divmot/common.t3logic \
               --sequences build/asset-divmot/sequences.json \
+              --spline-tables build/asset-divmot/spline.bin \
               --output build/asset-divmot/generated
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \

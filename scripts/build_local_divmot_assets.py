@@ -30,7 +30,7 @@ def load_sequences(path):
         cleaned.append((command,window,steps))
     return cleaned
 
-def generate(bank_path,common_path,out,sequences_path=None):
+def generate(bank_path,common_path,out,sequences_path=None,spline_path=None):
     bank=bank_path.read_bytes()
     _,section=sections_of(bank)
     if bank[1]==99:raise ValueError("main bank must be character bank, not type 99")
@@ -41,12 +41,17 @@ def generate(bank_path,common_path,out,sequences_path=None):
     if len(bank)+len(common)>450000:
         raise ValueError("logic banks exceed 450-kilobyte experimental budget")
     sequences=load_sequences(sequences_path)
+    spline=spline_path.read_bytes() if spline_path else b""
+    if spline and len(spline)!=0x660:
+        raise ValueError("PS1 spline lookup blob must be exactly 0x660 bytes")
     out.mkdir(parents=True,exist_ok=True)
     header=f"""#ifndef T3_LOCAL_DIVMOT_H
 #define T3_LOCAL_DIVMOT_H
 #include <stdint.h>
 #include "input_history.h"
 #define T3_LOCAL_SEQUENCE_COUNT {len(sequences)}u
+#define T3_LOCAL_SPLINE_BYTES {len(spline)}u
+extern const uint8_t t3_local_spline_blob[{max(1,len(spline))}];
 extern const t3_command_sequence_t t3_local_sequences[{max(1,len(sequences))}];
 #define T3_LOCAL_DIVMOT_BANK_BYTES {len(bank)}u
 #define T3_LOCAL_DIVMOT_COMMON_BYTES {len(common)}u
@@ -61,7 +66,8 @@ extern const uint8_t t3_local_common[{max(1,len(common))}];
                 ("    0,\n" if not data else "")+"};\n")
     impl=('#include "t3_local_divmot.h"\n'
           '/* PRIVATE local PS1 move data. Never publish derived objects/ISO. */\n'
-          +emit("t3_local_bank",bank)+emit("t3_local_common",common))
+          +emit("t3_local_bank",bank)+emit("t3_local_common",common)
+          +emit("t3_local_spline_blob",spline))
     impl += "const t3_command_sequence_t t3_local_sequences["+str(max(1,len(sequences)))+"] = {\\n"
     if not sequences:
         impl += "    {0},\\n"
@@ -79,7 +85,9 @@ def main():
     p.add_argument("--common",type=Path)
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--sequences",type=Path,help="private 104-entry input sequence JSON")
+    p.add_argument("--spline-tables",type=Path,
+                   help="optional PRIVATE 0x660-byte normalized PS1 spline lookup region")
     a=p.parse_args()
-    try:generate(a.bank,a.common,a.output,a.sequences)
+    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables)
     except (OSError,ValueError) as e:p.exit(1,f"private DIVMOT embed failed: {e}\n")
 if __name__=="__main__":main()

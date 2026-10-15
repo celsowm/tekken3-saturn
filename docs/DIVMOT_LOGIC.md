@@ -212,6 +212,31 @@ LibSaturn skeleton transforms as if they were PS1 joints would create
 false contacts. We must first finish DIVMOT animation import, precise
 PS1 root/heading calibration and per-frame joint evaluation.
 
+## Saturn runtime motion diagnostic (private)
+
+The optional local-bank Saturn executable now runs `t3_motion_open` and
+`t3_motion_sample` at the current DIVMOT move/frame. Its externally
+discoverable `g_t3_diagnostics` record **version 4** exposes, for each
+fighter, the authored stream's frame count, decoded PS1 root XYZ and
+a conservative status:
+
+- `0`: no section-6 stream available; `1`: all 49 channels sampled;
+- `2`: root XYZ sampled but other channels require unavailable tables;
+- `3`: original spline coefficients are missing;
+- `4`: invalid/unsupported source animation.
+
+An additional **private, normalized 0x660-byte spline lookup table file**
+may be supplied with `-DT3_LOCAL_PSX_SPLINE_TABLES=/private/tables.bin`.
+The build rejects other sizes. This table is *not* included in Git or CI:
+CI creates only a synthetic zero-filled test blob.
+Do not assume the Java/PS1 executable in another region shares the
+Japan Rev.1 virtual addresses. The authenticated USA location must be
+determined separately before extraction; this change does **not**
+supply or download retail coefficient data.
+
+The diagnostic does not modify gameplay or animate the original model.
+No PS1 FK/IK matrices are reconstructed yet.
+
 ## Original 49-channel animation streams (section 6)
 
 The new independent `src/game/psx_motion.[ch]` decoder opens a raw

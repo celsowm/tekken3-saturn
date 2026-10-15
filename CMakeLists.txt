@@ -82,6 +82,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_LOCAL_PSX_SEQUENCES AND NOT T3_LOCAL_DIVMOT)
         message(FATAL_ERROR "T3_LOCAL_PSX_SEQUENCES requires T3_LOCAL_DIVMOT")
     endif()
+    set(T3_LOCAL_PSX_SPLINE_TABLES "" CACHE FILEPATH
+        "Private 0x660-byte normalized original PlayStation spline lookup tables")
+    if(T3_LOCAL_PSX_SPLINE_TABLES AND NOT T3_LOCAL_DIVMOT)
+        message(FATAL_ERROR "T3_LOCAL_PSX_SPLINE_TABLES requires T3_LOCAL_DIVMOT")
+    endif()
     if(T3_LOCAL_DIVMOT)
         get_filename_component(T3_LOCAL_DIVMOT "${T3_LOCAL_DIVMOT}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_DIVMOT}")
@@ -109,6 +114,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             list(APPEND _t3_sequence_args
                 --sequences "${T3_LOCAL_PSX_SEQUENCES}")
         endif()
+        set(_t3_spline_args "")
+        if(T3_LOCAL_PSX_SPLINE_TABLES)
+            get_filename_component(T3_LOCAL_PSX_SPLINE_TABLES
+                "${T3_LOCAL_PSX_SPLINE_TABLES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_SPLINE_TABLES}")
+                message(FATAL_ERROR "Private PS1 spline lookup blob not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_SPLINE_TABLES}")
+            list(APPEND _t3_spline_args
+                --spline-tables "${T3_LOCAL_PSX_SPLINE_TABLES}")
+        endif()
         set(_t3_logic_gen "${CMAKE_BINARY_DIR}/generated/private_logic")
         add_custom_command(
             OUTPUT "${_t3_logic_gen}/t3_local_divmot.c"
@@ -118,6 +134,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 --bank "${T3_LOCAL_DIVMOT}"
                 ${_t3_private_common_args}
                 ${_t3_sequence_args}
+                ${_t3_spline_args}
                 --output "${_t3_logic_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_divmot_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"

@@ -4,6 +4,7 @@
 #include "divmot.h"
 #include "move_vm.h"
 #include "attack_records.h"
+#include "psx_motion.h"
 
 static t3_divmot_t g_bank, g_common;
 static t3_move_vm_t g_vms[2];
@@ -11,6 +12,8 @@ static uint8_t g_active, g_round;
 static unsigned g_start_slot;
 static uint8_t g_segments[2];
 static uint32_t g_decode_errors[2];
+static uint8_t g_pose_status[2],g_pose_frames[2];
+static int16_t g_root_pose[2][3];
 
 sat_result_t t3_move_probe_init(void) {
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
@@ -41,6 +44,9 @@ void t3_move_probe_reset(unsigned round) {
     for (i=0;i<2u;++i) {
         g_segments[i]=0u;
         g_decode_errors[i]=0u;
+        g_pose_status[i]=0u;
+        g_pose_frames[i]=0u;
+        g_root_pose[i][0]=g_root_pose[i][1]=g_root_pose[i][2]=0;
         if (!t3_move_vm_start(&g_vms[i],&g_bank,
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
                    &g_common,
@@ -66,6 +72,53 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                  g_vms[i].frame,0,&sampled);
         g_segments[i]=decoded==1?sampled.segment_count:0u;
         if(decoded<0) ++g_decode_errors[i];
+        {
+            t3_motion_stream_t motion;
+            int opened=t3_motion_open(g_vms[i].active_bank,
+#if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
+                &g_common,
+#else
+                NULL,
+#endif
+                g_vms[i].move.animation_offset,&motion);
+            g_pose_status[i]=0u;
+            g_pose_frames[i]=0u;
+            if(opened==1) {
+                int16_t pose[T3_PSX_POSE_CHANNELS];
+                int16_t root[3];
+                int full, simple;
+#if T3_LOCAL_SPLINE_BYTES > 0
+                const t3_motion_tables_t tables={
+                    t3_local_spline_blob,T3_LOCAL_SPLINE_BYTES};
+                const t3_motion_tables_t* weights=&tables;
+#else
+                const t3_motion_tables_t* weights=NULL;
+#endif
+                g_pose_frames[i]=motion.frames;
+                full=t3_motion_sample(&motion,g_vms[i].frame,weights,pose);
+                if(full==1) {
+                    g_pose_status[i]=1u; /* all 49 channels available */
+                    g_root_pose[i][0]=pose[0];
+                    g_root_pose[i][1]=pose[1];
+                    g_root_pose[i][2]=pose[2];
+                } else {
+                    simple=t3_motion_sample_root(&motion,g_vms[i].frame,
+                                                  weights,root);
+                    if(simple==1) {
+                        g_pose_status[i]=2u; /* only scalar XYZ root available */
+                        g_root_pose[i][0]=root[0];
+                        g_root_pose[i][1]=root[1];
+                        g_root_pose[i][2]=root[2];
+                    } else {
+                        g_pose_status[i]=(full<0 || simple<0)?4u:3u;
+                        /* 3 = missing original interpolation tables,
+                         * 4 = corrupt or unsupported authored stream. */
+                    }
+                }
+            } else if(opened<0) {
+                g_pose_status[i]=4u;
+            }
+        }
     }
 }
 
@@ -76,6 +129,11 @@ uint16_t t3_move_probe_attack_word(unsigned i) {return i<2u && g_active?g_vms[i]
 uint32_t t3_move_probe_transitions(unsigned i) {return i<2u && g_active?g_vms[i].transitions:0;}
 uint8_t t3_move_probe_segments(unsigned i) {return i<2u && g_active?g_segments[i]:0u;}
 uint32_t t3_move_probe_decode_errors(unsigned i) {return i<2u && g_active?g_decode_errors[i]:0u;}
+uint8_t t3_move_probe_pose_status(unsigned i) {return i<2u && g_active?g_pose_status[i]:0u;}
+uint8_t t3_move_probe_pose_frames(unsigned i) {return i<2u && g_active?g_pose_frames[i]:0u;}
+int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {
+    return i<2u && axis<3u && g_active?g_root_pose[i][axis]:0;
+}
 
 #else
 sat_result_t t3_move_probe_init(void) {return SAT_OK;}
@@ -88,4 +146,8 @@ uint16_t t3_move_probe_attack_word(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_transitions(unsigned i) {(void)i;return 0u;}
 uint8_t t3_move_probe_segments(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_decode_errors(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_pose_status(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_pose_frames(unsigned i) {(void)i;return 0u;}
+int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {(void)i;(void)axis;return 0;}
+
 #endif

@@ -211,6 +211,16 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_attack_segments[1] = t3_move_probe_segments(1);
     g_t3_diagnostics.psx_attack_decode_errors[0] = t3_move_probe_decode_errors(0);
     g_t3_diagnostics.psx_attack_decode_errors[1] = t3_move_probe_decode_errors(1);
+    g_t3_diagnostics.psx_pose_status[0] = t3_move_probe_pose_status(0);
+    g_t3_diagnostics.psx_pose_status[1] = t3_move_probe_pose_status(1);
+    g_t3_diagnostics.psx_pose_frames[0] = t3_move_probe_pose_frames(0);
+    g_t3_diagnostics.psx_pose_frames[1] = t3_move_probe_pose_frames(1);
+    g_t3_diagnostics.psx_motion_root[0][0] = t3_move_probe_root_pose(0,0);
+    g_t3_diagnostics.psx_motion_root[0][1] = t3_move_probe_root_pose(0,1);
+    g_t3_diagnostics.psx_motion_root[0][2] = t3_move_probe_root_pose(0,2);
+    g_t3_diagnostics.psx_motion_root[1][0] = t3_move_probe_root_pose(1,0);
+    g_t3_diagnostics.psx_motion_root[1][1] = t3_move_probe_root_pose(1,1);
+    g_t3_diagnostics.psx_motion_root[1][2] = t3_move_probe_root_pose(1,2);
     ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
 }
 
