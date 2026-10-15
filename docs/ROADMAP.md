@@ -200,3 +200,13 @@ copyrighted assets and must not be distributed without permission.
 - [x] Compose original HitTest -> HitClassify -> HitDamage -> read-only 16.16 HitApply and optional reaction selection for simultaneous two-fighter trades.
 - [x] Fail closed when original HitSlot occupancy or attacker move state disagrees with the supplied PS1 facts.
 - [ ] Verify original replay hit slots, damage, KO and reaction transitions against matched PS1 emulator frames before replacing fallback Saturn damage.
+
+### MoveVM original reaction projection and differential harness
+- [x] Project simultaneous original reaction states onto independent, copied MoveVM snapshots.
+- [x] Resolve reaction moves from character DIVMOT and shared divmot99 bank; reject missing target slots.
+- [x] Require next pose frame as an explicit external PS1 observation, separate from stun duration.
+- [x] Add paired-tick PS1/Saturn combat JSONL comparator for move slots, frames, 16.16 HP and optional reaction flags.
+- [x] Run local/common synthetic reaction bridge tests and comparator regressions in host CI.
+- [ ] Capture authentic synchronized PlayStation combat traces and verify real reaction timing and pose frames.
+- [ ] Reconstruct airborne reaction, KO victim move, combo reset, get-up options and move branches from measured PS1 facts.
+- [ ] Activate in-game MoveVM transitions only after replay/HP/move/pose parity; no speculative direct state writes.
