@@ -64,7 +64,7 @@ int t3_divmot_slot_resolve(const t3_divmot_t* bank,
 struct t3_branch_context;
 int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
                              const t3_input_history_t* input, unsigned frame,
-                             const struct t3_branch_context* facts,
+                             uint8_t own_bank, const struct t3_branch_context* facts,
                              const t3_command_sequence_t* sequences,
                              size_t sequence_count,
                              t3_branch_record_t* picked);

@@ -26,7 +26,7 @@ int t3_move_vm_tick_ex(t3_move_vm_t* vm, const t3_input_history_t* input,
     const t3_divmot_t* active = NULL;
     if (!vm || !vm->bank || !input) return -1;
     if (t3_divmot_branch_pick_ex(vm->active_bank,vm->move,input,vm->frame,
-                                  facts,sequences,sequence_count,&branch) &&
+                                  vm->bank->bank_type,facts,sequences,sequence_count,&branch) &&
         t3_divmot_slot_resolve(vm->bank,vm->common,branch.target_slot,&next,&active)==1) {
         vm->move=next;
         vm->active_bank=active;

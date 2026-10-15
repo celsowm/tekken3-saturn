@@ -114,7 +114,7 @@ int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
 
 int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
                              const t3_input_history_t* input, unsigned frame,
-                             const t3_branch_context_t* facts,
+                             uint8_t own_bank, const t3_branch_context_t* facts,
                              const t3_command_sequence_t* sequences,
                              size_t sequence_count,
                              t3_branch_record_t* picked) {
@@ -128,21 +128,22 @@ int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
             if (frame >= current.length) {*picked=row;return 1;}
             return 0;
         }
-        if (row.flags==0x2Cu) {
-            /* PS1 skip-to-terminator control row, never a direct match. */
-            while (++i<bank->branch_count) {
-                if (!t3_divmot_branch(bank,i,&row)) return 0;
-                if (row.command==0xC000u) break;
-            }
-            if (i>=bank->branch_count) return 0;
-            if (frame>=current.length) {*picked=row;return 1;}
-            return 0;
-        }
         if (frame<row.first_frame || frame>row.last_frame ||
-            !t3_branch_restriction_matches(row.restriction,bank->bank_type,facts) ||
+            !t3_branch_restriction_matches(row.restriction,own_bank,facts) ||
             !t3_branch_condition_matches(row.condition,row.parameter,facts))
             continue;
         if (t3_command_matches_table(row.command,input,sequences,sequence_count)) {
+            if (row.flags==0x2Cu) {
+                /* An eligible skip-to-terminator branch discards the remaining
+                 * alternatives. An ineligible one must NOT skip them. */
+                while (++i<bank->branch_count) {
+                    if (!t3_divmot_branch(bank,i,&row)) return 0;
+                    if (row.command==0xC000u) break;
+                }
+                if (i>=bank->branch_count) return 0;
+                if (frame>=current.length) {*picked=row;return 1;}
+                return 0;
+            }
             *picked=row;return 1;
         }
     }
@@ -152,5 +153,5 @@ int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
 int t3_divmot_branch_pick(const t3_divmot_t* bank, t3_move_record_t current,
                           const t3_input_history_t* input, unsigned frame,
                           t3_branch_record_t* picked) {
-    return t3_divmot_branch_pick_ex(bank,current,input,frame,NULL,NULL,0u,picked);
+    return t3_divmot_branch_pick_ex(bank,current,input,frame,bank ? bank->bank_type : 0u,NULL,NULL,0u,picked);
 }

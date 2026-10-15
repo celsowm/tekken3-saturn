@@ -76,6 +76,29 @@ must **never be published**. Public CI uses only synthetic test banks.
 Clear `T3_LOCAL_DIVMOT` and `T3_LOCAL_COMMON_DIVMOT` and rebuild before
 creating any public artifact.
 
+## PS1 branch predicates and input sequence registry
+
+The separate \`branch_rules.[ch]\` evaluator now accepts original DIVMOT
+character/bank restrictions and documented condition types. Its input is a
+**fact record with explicit availability bits**, since the prototype's Q8
+positions and hitboxes are not the original game's calibrated data. An
+unknown fact returns false, not a guessed positive match.
+
+Implemented with explicit facts: contact / hit / guard / whiff, adjusted
+throw situations, distance ranges, opponent attacking/posture/state,
+facing quadrants, heading deltas, side flag, guarded body contact,
+recovery counters, button tap latches, health/launch and power timer.
+Full 0x45+ reversal conditions and the original-EXE-only common rows
+are **not yet implemented**. Basic command words and double taps work;
+external command sequence tables can now be passed to the VM for
+0xC00E–0xC04C / 0xC7FF–0xC827.
+
+The normal diagnostic VM provides no unsupported character-state facts,
+so these predicates cannot accidentally invent successful branches.
+Production parity requires reconstructing those facts from the original
+PS1 combat engine state, importing the full original motion sequences,
+and implementing buffering/look-ahead, transitions and frame events.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

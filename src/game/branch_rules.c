@@ -37,7 +37,7 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
     case 0x1C: return HAS(f,T3_FACT_CONTACT) && f->whiffed;
     case 0x1D: return HAS(f,T3_FACT_OPPONENT) && f->opponent_transition!=0x21u;
     case 0x1E: return HAS(f,T3_FACT_OPPONENT) && f->opponent_damage!=0;
-    case 0x1F: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack!=0 &&
+    case 0x1F: return HAS(f,T3_FACT_OPPONENT) && f->opponent_damage!=0 &&
                                (f->opponent_state & 7u)==2u;
     case 0x20: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack!=0 &&
                                (f->opponent_state & 7u)==1u;
