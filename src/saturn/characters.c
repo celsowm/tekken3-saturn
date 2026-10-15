@@ -45,12 +45,20 @@ static actor_t g_actors[2];
 static uint8_t g_initialized;
 
 static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
+#if T3_CLIP_COUNT == 1
+    /* Real KMD geometry has only the static bind pose until DIVMOT import.
+     * Never fabricate original character moves by relabeling other clips. */
+    (void)fighter;
+    (void)moving;
+    return T3_CLIP_IDLE;
+#else
     if (!fighter->health) return T3_CLIP_KNOCKDOWN;
     if (fighter->stun) return T3_CLIP_HIT;
     if (fighter->attack)
         return fighter->attack <= 2u ? T3_CLIP_PUNCH : T3_CLIP_KICK;
     if (fighter->guarding) return T3_CLIP_GUARD;
     return moving ? T3_CLIP_WALK : T3_CLIP_IDLE;
+#endif
 }
 
 static sat_result_t select_clip(actor_t* actor, uint8_t next) {
@@ -108,7 +116,12 @@ sat_result_t t3_characters_init(void) {
         a->instance.material_count = T3_TEXTURE_COUNT;
         a->instance.face_materials = a->face_materials;
         a->instance.world = &a->world;
+        /* Research bind-pose preview: KMD winding has not been calibrated. */
+#if T3_CLIP_COUNT == 1
+        a->instance.cull_backfaces = 0u;
+#else
         a->instance.cull_backfaces = 1u;
+#endif
     }
     g_initialized = 1u;
     return SAT_OK;

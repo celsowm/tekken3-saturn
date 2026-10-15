@@ -28,18 +28,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(_t3_gen "${CMAKE_BINARY_DIR}/generated/characters")
     file(GLOB _t3_pipeline CONFIGURE_DEPENDS
         "${LIBSATURN_SOURCE_DIR}/tools/model_pipeline/*.py")
-    add_custom_command(
-        OUTPUT "${_t3_gen}/t3_generated_character.c"
-            "${_t3_gen}/t3_generated_character.h"
-            "${_t3_gen}/manifest.json"
-        COMMAND "${Python3_EXECUTABLE}"
-            "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
-            --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --output "${_t3_gen}"
-        DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
-            "${LIBSATURN_SOURCE_DIR}/tools/generate_character_examples.py"
-            ${_t3_pipeline}
-        VERBATIM COMMENT "Generate original low-poly 24-joint SKA1 fighter"
-    )
+    # Explicit opt-in, private author-owned local data only. Neither normal
+    # builds nor CI extract a game image or include Namco model bytes.
+    set(T3_LOCAL_KMD "" CACHE FILEPATH
+        "Optional absolute path to a locally extracted Tekken 3 KMD (private bind-pose preview)")
+    if(T3_LOCAL_KMD)
+        get_filename_component(T3_LOCAL_KMD "${T3_LOCAL_KMD}" ABSOLUTE)
+        if(NOT EXISTS "${T3_LOCAL_KMD}")
+            message(FATAL_ERROR "T3_LOCAL_KMD file not found: ${T3_LOCAL_KMD}")
+        endif()
+        add_custom_command(
+            OUTPUT "${_t3_gen}/t3_generated_character.c"
+                "${_t3_gen}/t3_generated_character.h"
+                "${_t3_gen}/manifest.json"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
+                --kmd "${T3_LOCAL_KMD}"
+                --libsaturn-source "${LIBSATURN_SOURCE_DIR}"
+                --output "${_t3_gen}"
+            DEPENDS "${T3_LOCAL_KMD}"
+                "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
+                "${CMAKE_SOURCE_DIR}/scripts/kmd_to_ska.py"
+                ${_t3_pipeline}
+            VERBATIM COMMENT "Compile local Tekken 3 KMD into PRIVATE LibSaturn bind-pose archive"
+        )
+    else()
+        add_custom_command(
+            OUTPUT "${_t3_gen}/t3_generated_character.c"
+                "${_t3_gen}/t3_generated_character.h"
+                "${_t3_gen}/manifest.json"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
+                --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --output "${_t3_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
+                "${LIBSATURN_SOURCE_DIR}/tools/generate_character_examples.py"
+                ${_t3_pipeline}
+            VERBATIM COMMENT "Generate original low-poly 24-joint SKA1 fighter"
+        )
+    endif()
     add_executable(tekken3_saturn src/saturn/main.c
         src/saturn/characters.c "${_t3_gen}/t3_generated_character.c")
     target_include_directories(tekken3_saturn PRIVATE

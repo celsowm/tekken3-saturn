@@ -1,6 +1,8 @@
 /*
- * Tekken 3 Saturn - animated original humanoids / first fighting prototype.
- * Uses only installed LibSaturn public APIs. Does not load Tekken 3 assets.
+ * Tekken 3 Saturn - experimental fighting prototype.
+ * Uses only installed LibSaturn public APIs. By default the characters are
+ * original procedural assets; T3_LOCAL_KMD explicitly opts into a private
+ * user-supplied static KMD preview, never used for public CI.
  */
 #include <stdint.h>
 

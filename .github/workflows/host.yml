@@ -54,6 +54,27 @@ jobs:
         env:
           LIBSATURN_SOURCE_DIR: .external/libsaturn
         run: python3 -m unittest discover -s tests -p 'test_kmd_to_ska.py' -v
+      - name: Compile-check private KMD alternate character ABI with synthetic fixture
+        env:
+          LIBSATURN_SOURCE_DIR: .external/libsaturn
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "tests")
+          import test_kmd_to_ska as fixture
+          Path("build/asset-kmd").mkdir(parents=True,exist_ok=True)
+          Path("build/asset-kmd/fixture.kmd").write_bytes(fixture.synthetic_kmd())
+          PY
+          python3 scripts/build_local_kmd_assets.py \
+            --kmd build/asset-kmd/fixture.kmd \
+            --libsaturn-source .external/libsaturn \
+            --output build/asset-kmd/generated
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+            -I .external/libsaturn/include \
+            -I src/game -I src/saturn -I build/asset-kmd/generated \
+            src/saturn/main.c src/saturn/characters.c \
+            build/asset-kmd/generated/t3_generated_character.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

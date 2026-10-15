@@ -40,9 +40,10 @@ the EXE enable table is decoded. The 41 possible hand/jaw variants are
 counted but not exported. Flat/Gouraud colors and TIM/ARC textures remain
 placeholders, and DIVMOT motion clips have not been converted. The
 source's scale-percent field is reported; runtime physical scale and
-orientation are not yet calibrated. The generated archive is **not
-yet wired to the normal Saturn build**; the existing original-asset
-fighters remain the default, so CI never embeds copyrighted game data.
+orientation are not yet calibrated. A separate, explicit `-DT3_LOCAL_KMD=...` option can now embed the
+local archive into the Saturn game for a **private static visual test**.
+The original-asset fighters remain the default, and CI never reads
+commercial game data. The preview is not motion-accurate.
 
 The independent [n0madic format research](https://github.com/n0madic/Tekken3Remake/blob/master/docs/research/formats/3dmk-models.md)
 is the source for the documented PS1 record offsets, not copied code.

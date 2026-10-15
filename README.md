@@ -41,6 +41,27 @@ python3 scripts/psx_disc_import.py \
 
 The `--stage-ids 56` option creates a first **untextured stage panorama OBJ** as a geometry research preview. It does not yet convert TIM materials, fighter skins, or motion into playable Saturn assets. Outputs live under the gitignored `assets/imported/` directory. Run the importer **locally**, not in CI. See [PSX disc importer instructions](docs/PSX_DISC_IMPORT.md).
 
+## Testing a local KMD inside the Saturn game (experimental)
+
+After extracting your own `raw/071.bin`, the separate Saturn build can display
+the original KMD geometry instead of the procedural stand-ins. **Only a static
+bind pose and generated neutral/red debug textures are present**. The gameplay
+remains the independently written prototype, with no original Tekken 3 moves.
+
+```sh
+export LIBSATURN_PREFIX=/path/to/libsaturn-install
+cmake --preset saturn \
+  -DLIBSATURN_SOURCE_DIR=/path/to/libsaturn \
+  -DT3_LOCAL_KMD="$PWD/assets/imported/tekken3-usa/raw/071.bin"
+cmake --build --preset saturn
+```
+
+Use a **separate build directory or clean CMake cache** when switching between
+the original procedural asset and a local KMD. The generated C file and BIN/ISO
+contain copyrighted Namco model geometry, so keep them private; **never upload
+those artifacts to GitHub, CI, releases or public file-sharing services**.
+Default automated builds do not set `T3_LOCAL_KMD`.
+
 ## Extracting a real KMD into LibSaturn's SKA1 format
 
 ```sh
