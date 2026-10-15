@@ -4,7 +4,7 @@ static int valid_bit(unsigned x) {return x<=1u;}
 int t3_psx_hit_test_gate(const t3_psx_hit_test_facts_t* f,
                          t3_psx_hit_test_gate_t* out) {
     t3_psx_hit_test_gate_t value={0};
-    unsigned jump_interval,forced,posture;
+    unsigned forced,posture;
     if(!f || !out || f->free_slots_mask>3u ||
        f->geometry.status>T3_SHADOW_BAD ||
        !valid_bit(f->attacker_invulnerable) ||

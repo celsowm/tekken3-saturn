@@ -77,7 +77,7 @@ static void blockers(void) {
     f.game_mode=0;
     assert(t3_psx_hit_test_gate(&f,&r) &&
            r.status==T3_HIT_GATE_ACCEPT);
-    f=usual();f.attack_word=0x217u;f.defender_state=1u;
+    f=usual();f.attack_word=0x2u;f.defender_state=1u;
     assert(t3_psx_hit_test_gate(&f,&r) &&
            r.status==T3_HIT_GATE_POSTURE);
     f.defender_step_kind=2u; /* Tekken evade lane adds crouch bit */
