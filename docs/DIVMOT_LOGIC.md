@@ -873,3 +873,44 @@ This is an experimental **world-space geometric overlap** only.
 Correct original fighter root transforms still need external PS1
 state extraction and region-specific calibration. An overlap is not
 proof of a successful PS1 hit, damage value or correct reaction.
+
+## Original HitClassify/HitDamage candidate, without mutating the fight
+
+The new portable `src/game/psx_hit_damage.[ch]` computes a **read-only**
+hit candidate after a collision has already been validated by the
+PS1 shadow observer. It follows the documented original PS1
+`HitClassify` and `HitDamage` calculation for the 14 KMD hurt zones.
+Zone percentages, guard mask tests, chip damage, close-range bonus,
+startup counter bonus, airborne juggle scaling and original HitBestSlot
+severity ordering are represented with deterministic signed integer
+operations (including 16-bit intermediate wrap where documented).
+
+The call requires a full, explicitly supplied `t3_psx_hit_facts_t`:
+current attacker damage (which can differ from the DIVMOT row because
+of move events), defender attack startup and damage, defender posture,
+guard bits and facing angle, global chip flag, fighter power timers,
+juggle count and the actual fighter distance. **Close reactions require
+their private threshold and reaction word to have been loaded** from
+the original EXE. Missing close-table data returns unknown; it
+never silently assumes that a close reaction does not apply.
+
+`t3_psx_hit_candidate_t` stores the original raw reaction reference,
+whether that reference is an indexed record or a throw-victim slot,
+hit classification flags, per-zone signed damage, attack class,
+and HitBestSlot severity. It does **not** apply chip damage to HP,
+start hit-freeze, load a 42-byte reaction record, move the defender,
+deduct 16.16 health, juggle, throw, or trigger a KO. Any special extra
+damage from per-frame move events 11–13 is still outside this pure
+candidate calculation.
+
+The host regression tests the original 14 zone percentages, high/mid
+guard flags, chip damage, close reaction thresholds, startup and
+power counter hits, first/subsequent juggle hits, class field
+separation, signed best-slot tie-breaking and atomic failures.
+
+**Important:** These are researched rules for the upstream reverse
+engineering implementation (its documented addresses are JP Rev.1).
+Real-world 1:1 parity still requires original USA PS1 combat state,
+reaction tables, event playback and a live MIPS/reference trace.
+The Saturn game continues to run its existing independently generated
+fallback damage; this module has no side effects in normal play.

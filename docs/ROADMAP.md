@@ -170,3 +170,9 @@ copyrighted assets and must not be distributed without permission.
 
 - [x] Wire optional read-only two-player contact observer into Saturn private DIVMOT tick with external synchronized root injection.
 - [ ] Capture correctly aligned USA PS1 movement/root samples for non-synthetic shadow contact validation.
+
+### Read-only HitApply preparation
+- [x] Classify verified geometric contacts into guarded/chip/clean/counter/airborne/close hits using explicitly supplied PS1 facts.
+- [x] Compute 14-zone original integer damage values, select raw reaction references, and rank the best hit slot.
+- [ ] Decode private 42-byte reaction tables and move events 11–13, then validate against real PS1 HitApply traces.
+- [ ] Apply to the playable match only after original HP, hit-freeze, guard and reaction parity is demonstrated.

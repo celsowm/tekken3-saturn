@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c)
+add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
@@ -257,6 +257,10 @@ else()
         target_link_libraries(test_psx_shadow_combat PRIVATE tekken3_fight)
         target_compile_options(test_psx_shadow_combat PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_readonly_original_combat_contact COMMAND test_psx_shadow_combat)
+        add_executable(test_psx_hit_damage tests/test_psx_hit_damage.c)
+        target_link_libraries(test_psx_hit_damage PRIVATE tekken3_fight)
+        target_compile_options(test_psx_hit_damage PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_readonly_hit_classification_damage COMMAND test_psx_hit_damage)
         # Independent numerical reference, imported from our existing
         # pinned research submodule. No commercial disc or fixture is used.
         add_executable(t3_motion_export tools/psx_motion_export.c)

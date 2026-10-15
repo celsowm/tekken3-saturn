@@ -308,3 +308,13 @@ exports debugger-controlled world roots and read-only contact
 telemetry (version 10). Missing or unsynchronized roots yield
 an unavailable status, not a guessed hit. Prototype HP/blocks remain
 unchanged. Details: [PS1 shadow debugger inputs](docs/DIVMOT_LOGIC.md).
+
+### PS1 hit classification and damage preview
+
+`src/game/psx_hit_damage.[ch]` now reconstructs original-style
+post-contact hit categories and integer damage calculations for all
+14 defensive body zones, including guard, chip, counter hit,
+close reactions and airborne juggles. It requires genuine runtime
+classification facts and private close-reaction lookup metadata;
+it **does not change gameplay HP** or invent missing PlayStation state.
+See [hit candidate research scope](docs/DIVMOT_LOGIC.md).
