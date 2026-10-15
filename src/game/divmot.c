@@ -60,6 +60,7 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     out->air_end = p[26];
     out->hold_frame = p[27];
     out->flags = le32(p+36);
+    out->attack_descriptor = le32(p+40);
     out->hit_freeze = p[44];
     out->active_first = p[45];
     out->active_last = p[46];

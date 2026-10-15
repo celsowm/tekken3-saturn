@@ -45,6 +45,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(meta["slot_count"],0)
         self.assertEqual(t3.sections_of(out)[0],1)
 
+    def test_keep_section_9_attack_points_without_other_bank_sections(self):
+        source=fake_bank(99)
+        attack=bytes(range(80))
+        # Fake original: the 32-byte section3 is discarded; section9 is
+        # retained only when explicitly opting into authored hitbox data.
+        data=bytearray(source+attack)
+        for i in range(5,10):
+            struct.pack_into("<I",data,4*i+4,len(source))
+        for i in range(10,15):
+            struct.pack_into("<I",data,4*i+4,len(data))
+        default,default_meta=t3.compact(bytes(data))
+        self.assertFalse(default_meta["attack_geometry_included"])
+        with_points,meta=t3.compact(bytes(data),with_hitboxes=True)
+        self.assertEqual(meta["hitbox_bytes"],len(attack))
+        self.assertEqual(t3.sections_of(with_points)[1][9],
+                         t3.sections_of(default)[1][-1])
+        self.assertEqual(with_points[-len(attack):],attack)
+        self.assertEqual(len(with_points)-len(default),len(attack))
+        self.assertEqual(t3.compact(with_points,with_hitboxes=True)[0],with_points)
+        self.assertEqual(t3.compact(with_points)[0],default)
+
     def test_reject_malformed(self):
         source=bytearray(fake_bank())
         source[0]=7
