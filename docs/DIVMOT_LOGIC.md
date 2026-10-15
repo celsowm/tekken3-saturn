@@ -1048,3 +1048,33 @@ applies the resulting damage to either playable fighter.
 every simulation tick when events do not fire. This is a deliberately
 small subset of the full original MoveEvents execution: original
 frame pausing, blend jump semantics, replay and FX are still pending.
+
+## Simultaneous original HitTest-to-HitApply projection
+
+`src/game/psx_combat_pipeline.[ch]` composes the complete read-only
+post-contact pipeline for two opponents:
+
+1. Verified same-tick geometric contact enters the original
+   `t3_psx_hit_test_gate` eligibility check.
+2. Only an accepted contact is recorded in an actually vacant original
+   defender HitSlot (the second empty slot is preferred).
+3. The move record and verified live PS1 defender facts feed the original
+   `HitClassify` and `HitDamage` implementation.
+4. `HitApply` calculates both fighters' original 16.16 health
+   projections, best hit slot, hit-extra events, chip KO, and optional
+   original table-backed victim reaction.
+
+Neither fighter is mutated. Both sides read the **same pre-hit state**
+before either result is published. The pipeline checks original
+HitSlot occupancy against the HitTest free-slot mask and checks that
+the attacking move's attack word agrees with the gating facts.
+Inconsistent or missing source facts cause a failure with **no output
+changes**, never fabricated damage or reaction.
+
+The public host test uses synthetic states for a simultaneous trade,
+crouch posture filtering, a guarded attack, unavailable shadow
+geometry, contradictory HitSlot facts and atomic failure. Real
+Tekken 3 accuracy still requires the PS1 world-root, health, guard,
+power, input, and original reaction tables from aligned emulator
+traces. Nothing in the provisional playable Saturn combat is
+replaced by this observational path.

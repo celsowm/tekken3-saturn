@@ -346,3 +346,19 @@ enforcing the original previous/current pose-frame window.
 without requiring motion or hitbox data. No original data is
 distributed and the prototype's health is not altered.
 See [move-event format and tests](docs/DIVMOT_LOGIC.md).
+
+## Two-fighter PS1 post-contact combat pipeline
+
+`src/game/psx_combat_pipeline.[ch]` now connects the independent
+geometric collision observer, original HitTest eligibility, HitClassify,
+HitDamage, signed 16.16 HitApply health projection, and optional
+reaction selection. Both fighters are processed from the same immutable
+pre-hit snapshot, so simultaneous trades are not dependent on player
+iteration order. Original defender hit-slot occupancy must agree with
+the gate's free-slot mask; missing guard, live damage, pose, or original
+reaction-table facts are never guessed.
+
+This remains **a read-only research pipeline**; normal Saturn combat
+HP, block, KO and animation state are unchanged. Host regression checks
+trades, posture gating, guarded hits, unavailable geometry and atomic
+failure. Details are in `docs/DIVMOT_LOGIC.md`.

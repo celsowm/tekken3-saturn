@@ -194,3 +194,9 @@ copyrighted assets and must not be distributed without permission.
 - [x] Decode move event 11/12/13 extraKind and extraDamage for read-only HitExtraDamage.
 - [ ] Wire verified event state and hit cooldown/reactions into an original-combat replay oracle.
 - [ ] Port hand, audio, camera, sparks and animation event side effects after source visual parity.
+
+### Original post-contact logic integration
+- [x] Evaluate independent HitTest eligibility after KMD/DIVMOT geometric contact, including jump, posture, cooldown and hit-slot rules.
+- [x] Compose original HitTest -> HitClassify -> HitDamage -> read-only 16.16 HitApply and optional reaction selection for simultaneous two-fighter trades.
+- [x] Fail closed when original HitSlot occupancy or attacker move state disagrees with the supplied PS1 facts.
+- [ ] Verify original replay hit slots, damage, KO and reaction transitions against matched PS1 emulator frames before replacing fallback Saturn damage.
