@@ -318,3 +318,12 @@ close reactions and airborne juggles. It requires genuine runtime
 classification facts and private close-reaction lookup metadata;
 it **does not change gameplay HP** or invent missing PlayStation state.
 See [hit candidate research scope](docs/DIVMOT_LOGIC.md).
+
+### Original reaction record selection
+
+The new `psx_reaction` decoder identifies original hit-response
+move slots for directional hits, guarded hits, counter hits, and
+knockdowns using the PS1 42-byte reaction table format. It also
+recognizes throw-victim slot references and respects original
+attack-class gating. Missing air/fixed special tables remain
+**unresolved**, and no prototype gameplay state is altered.

@@ -914,3 +914,38 @@ Real-world 1:1 parity still requires original USA PS1 combat state,
 reaction tables, event playback and a live MIPS/reference trace.
 The Saturn game continues to run its existing independently generated
 fallback damage; this module has no side effects in normal play.
+
+## Original 42-byte reaction selection (private tables only)
+
+`src/game/psx_reaction.[ch]` uses the original **42-byte little-endian
+reaction record** layout from the reverse-engineered PS1 combat
+documentation. Given the candidate from `t3_psx_hit_preview` and
+explicit defender state/facing quadrant, it selects the prescribed
+move slot and original transition code for:
+
+- guard (standing/crouching), front/side/back hits, counter hits,
+  grounded/down hits, and the second down-facing orientation;
+- `0x1xxx` throw-victim references read from the original `s16`
+  private victim-slot table, not guessed from a move number;
+- attack class gating (class 3 never reacts; class 2 reacts only
+  when the defender is grounded and upright).
+
+The returned structure also carries source push angles and source
+push-table indices. **It does not apply** push velocities or
+transitions, deduct health, trigger hit-freeze, or play an animation.
+
+A missing or malformed private record table, unsupported `0x2xxx`
+reaction, fixed forced-hit record, or airborne reaction that needs
+the original `AirReactionKind` table returns "unavailable" and
+preserves the output. The normal reaction table may have up to
+633 records; the caller supplies its length and the throw-victim
+table length in bytes. No commercial bytes are included.
+
+Host tests cover all four facing quadrants, crouching alternatives,
+guard, counter, down, reversed-down, throw-victim references, source
+push values, class suppression and atomic failures.
+
+Next: extract the correct **USA** executable reaction tables privately,
+verify all 633 records and the `AirReactionKind` branches against the
+PS1 oracle, then implement the original hit-freeze and reaction
+application at the correct simulation phase.

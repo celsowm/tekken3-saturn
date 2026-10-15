@@ -176,3 +176,7 @@ copyrighted assets and must not be distributed without permission.
 - [x] Compute 14-zone original integer damage values, select raw reaction references, and rank the best hit slot.
 - [ ] Decode private 42-byte reaction tables and move events 11–13, then validate against real PS1 HitApply traces.
 - [ ] Apply to the playable match only after original HP, hit-freeze, guard and reaction parity is demonstrated.
+
+- [x] Decode 42-byte original reaction record alternatives and private throw-victim references (guard/front/side/back/counter/down).
+- [x] Preserve original transition codes and push-table indices, including attack-class suppression.
+- [ ] Import verified original USA reaction records, AirReactionKind and push tables; run full source-oracle comparisons.
