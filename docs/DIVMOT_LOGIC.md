@@ -851,9 +851,13 @@ symbols exported by the ELF:
   **3** means both fighter roots have been provided; 0 means unavailable
 
 The move loop checks that the even epoch did not change while it read
-both roots and their mask. If the pair is absent or changed, it
-clears swept-endpoint state and reports missing geometry rather than
-asserting a contact. It does **not** force an interpreter move, reset
+both roots and their mask **and that its value differs from the last
+consumed input epoch**. Debugger writers must publish an entirely new
+root pair **for every simulation tick**; repeating an old root epoch,
+missing a tick during catch-up, or changing it mid-read clears the
+swept-endpoint history and reports missing data instead of asserting
+a contact. This prevents a paused debugger or stale external oracle
+from creating fictitious overlapping contact intervals. It does **not** force an interpreter move, reset
 the prototype match's HP, or modify block/throw/KO logic.
 
 \`g_t3_diagnostics\` **version 10** adds

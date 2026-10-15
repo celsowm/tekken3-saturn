@@ -43,6 +43,7 @@ volatile t3_psx_root_t g_t3_shadow_external_roots[2];
 static t3_psx_shadow_state_t g_shadow;
 static t3_psx_shadow_result_t g_shadow_result[2];
 static uint8_t g_shadow_valid;
+static uint32_t g_shadow_last_injected_epoch;
 #endif
 
 sat_result_t t3_move_probe_init(void) {
@@ -101,6 +102,7 @@ void t3_move_probe_reset(unsigned round) {
     t3_psx_shadow_reset(&g_shadow);
     g_shadow_valid=0u;
     g_t3_shadow_root_valid_mask=0u; /* debug writer must supply fresh data */
+    g_shadow_last_injected_epoch=g_t3_shadow_root_epoch;
 #endif
 }
 
@@ -255,7 +257,13 @@ void t3_move_probe_tick(const t3_match_t* match) {
                 roots[fighter].cos_q12=p->cos_q12;
             }
             end=g_t3_shadow_root_epoch;
-            if(begin==end && !(end&1u) && (valid&3u)==3u) {
+            /* Reusing last tick's roots is not permitted: every sim
+             * step requires a newly published, consistent PS1 frame.
+             * This also fails closed if multiple sim ticks occur during
+             * one VBlank without a matching fresh debugger update. */
+            if(begin==end && !(end&1u) && (valid&3u)==3u &&
+               end!=g_shadow_last_injected_epoch) {
+                g_shadow_last_injected_epoch=end;
                 for(fighter=0u;fighter<2u;++fighter) {
                     const t3_move_vm_t* vm=&g_vms[fighter];
                     int decoded=t3_attack_sample(vm->active_bank,&vm->move,
