@@ -19,7 +19,7 @@ sat_result_t t3_move_probe_init(void) {
     /* Slot 3 is the ordinary Tekken standing stance. Fallback is useful for
      * synthetic tests, but must not be mistaken for authentic startup. */
     g_start_slot=3u;
-    if (!t3_divmot_slot(&g_bank,
+    if (t3_divmot_slot(&g_bank,
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
           &g_common,
 #else
