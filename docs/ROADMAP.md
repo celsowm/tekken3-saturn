@@ -155,3 +155,9 @@ copyrighted assets and must not be distributed without permission.
 
 - [x] Export selected private DIVMOT move slots as original signed 49-channel pose samples.
 - [x] Test local/shared banks and strict frame windows before feeding the C/Python differential harness.
+
+### Batch motion-to-FK/IK audits
+- [x] Auto-enumerate sparse DIVMOT move slots and deduplicate identical section-6 streams.
+- [x] Sample representative streams across the bank and compare C vs pinned Python per frame.
+- [x] Record incomplete frames, coverage, invalid slots and unavailable coefficient reasons, fail closed on mismatches.
+- [ ] Run real private USA character banks with verified coefficients and investigate differences.

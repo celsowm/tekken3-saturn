@@ -264,6 +264,12 @@ else()
                     "${CMAKE_SOURCE_DIR}/tests/test_diff_psx_solver.py"
                     --runner "$<TARGET_FILE:t3_pose_eval>"
                     --upstream "${_t3_pose_upstream}")
+            add_test(NAME ps1_divmot_batch_fk_ik_coverage
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_SOURCE_DIR}/tests/test_batch_psx_pose_oracle.py"
+                    --exporter "$<TARGET_FILE:t3_motion_export>"
+                    --solver "$<TARGET_FILE:t3_pose_eval>"
+                    --upstream "${_t3_pose_upstream}")
         else()
             message(STATUS "PS1 reference comparison unavailable: "
                 "git submodule update --init third_party/Tekken3Remake")

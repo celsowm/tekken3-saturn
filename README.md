@@ -282,3 +282,12 @@ format consumed by the independent C/Python solver differential.
 It supports shared `divmot99` animations and optional private
 spline coefficients, with strict bounds and no bundled game data.
 See [end-to-end private workflow](docs/DIVMOT_LOGIC.md).
+
+### Automated motion coverage
+
+`scripts/batch_psx_pose_oracle.py` selects distinct DIVMOT animations
+across the local character bank, decodes representative frames via the
+C exporter, and tests the portable 18-slot FK/IK solver against the
+pinned upstream research oracle. It reports skipped moves and
+per-slot numerical differences without committing retail data.
+See [batch FK/IK audit](docs/DIVMOT_LOGIC.md).

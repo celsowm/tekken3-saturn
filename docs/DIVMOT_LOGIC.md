@@ -736,3 +736,51 @@ implementation*, not a live PS1 emulator oracle.
 The host CI regression generates a synthetic four-frame animation and
 tests exact sampling, an alternate common-bank move, frame windows,
 corrupt inputs and fail-closed behavior without shipping game data.
+
+
+## Batch private DIVMOT FK/IK coverage audit
+
+Run multiple **real locally extracted** move slots without hand-selecting
+or writing pose samples to persistent storage:
+
+\`\`\`sh
+cmake --preset host
+cmake --build --preset host --target t3_motion_export t3_pose_eval
+git submodule update --init third_party/Tekken3Remake
+python3 scripts/batch_psx_pose_oracle.py \
+  --bank /private/bank_0.t3logic \
+  --common /private/bank_99.t3logic \
+  --spline /private/spline_lookup_660.bin \
+  --trig /private/psx_trig.bin \
+  --ik /private/psx_ik.bin \
+  --max-slots 48 --max-frames 32 \
+  --strict-complete --fail-on-skip \
+  --report /private/divmot_fk_ik_coverage.json
+\`\`\`
+
+The optional \`--slots 0-40,100,230-260\` restricts the search, while
+\`--max-slots\` (1–128) controls how many **unique animation streams**
+are sampled evenly across the candidate range, rather than checking
+only low-numbered moves. A bank's 4,023 slots are checked for valid
+move references and section-6 headers. Multiple slots using the same
+bank/offset are counted but **not retested**. If a slot references a
+shared animation in \`divmot99\`, the exporter resolves it through that
+bank. \`--max-frames\` limits the sampled frames per unique animation.
+The program collects total frames/components, match/mismatch counts,
+invalid/missing stream reasons, first per-slot matrix divergences and
+SHA-256 identifiers of the private source banks.
+
+All intermediate original 49-channel poses are written only to a
+temporary directory and erased afterwards; the JSON report contains
+**comparison metadata**, not motion frames, models or source tables.
+No retail game files, coefficients or reports are uploaded.
+
+Missing/corrupt streams, unrecognized refs, unavailable spline
+coefficients and invalid frame windows are **listed explicitly** rather
+than silently treated as a successful match. The default audit
+passes if there is at least one fully compared component and no
+numerical mismatch; \`--fail-on-skip\` also fails when one of the
+selected animations could not be compared (discovery exclusions
+remain itemized). \`--strict-complete\` fails if any tested frame lacks
+a complete 18-slot solver result. A report for synthetic CI frames
+does **not** establish bit-exact parity with the original MIPS game.
