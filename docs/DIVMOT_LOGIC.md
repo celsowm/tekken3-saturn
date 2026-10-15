@@ -353,6 +353,38 @@ FK/IK pipeline, nor a full 22-part animated fighter. The PS1 sine table,
 actual KMD parent offsets, limb IK, world root heading and oracle
 validation all remain necessary.
 
+## Private PS1 IK lookup export from an original executable
+
+`scripts/extract_psx_ik_tables.py` assembles the normalized PS1
+lookup images from an original **local** `SLUS_004.02` without
+hand-editing binary files. Supply five **verified USA PS-X EXE file
+offsets** (not virtual addresses), obtained from the actual USA
+executable's disassembly. The tool deliberately has no automatic
+Japanese-to-USA address assumption. It checks the supported USA
+executable SHA-256, bounds, region overlap, Q12 sine zero-point,
+positive SquareRoot0 mantissas, basis and offset magnitude.
+
+```sh
+python3 scripts/extract_psx_ik_tables.py \
+    --exe assets/imported/tekken3-usa/SLUS_004.02 \
+    --sine-offset 0xYOUR_VERIFIED_USA_SINE_OFFSET \
+    --sqrt-offset 0xYOUR_VERIFIED_USA_SQRT_OFFSET \
+    --basis-offset 0xYOUR_VERIFIED_USA_BASIS_OFFSET \
+    --skeleton-offset 0xYOUR_VERIFIED_USA_SKELETON_OFFSET \
+    --limb-offset 0xYOUR_VERIFIED_USA_LIMB_OFFSET \
+    --output assets/imported/tekken3-usa/ik
+```
+
+The arguments above are placeholders, not known offsets: the
+extractor will not run until the correct file offsets are supplied.
+It writes private `psx_trig.bin` (0x2800 bytes),
+`psx_ik.bin` (0x1F2 bytes), and a SHA-256 manifest.
+Configure the local build with
+`-DT3_LOCAL_PSX_TRIG_TABLE=/private/psx_trig.bin` and
+`-DT3_LOCAL_PSX_IK_TABLES=/private/psx_ik.bin`.
+These outputs **must remain gitignored and must not enter public CI
+artifacts or releases**.
+
 ## Four-limb original integer IK (18 rotation slots)
 
 `src/game/psx_ik.[ch]` ports the original PS1

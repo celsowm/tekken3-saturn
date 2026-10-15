@@ -37,6 +37,15 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## Local PS1 IK table exporter
+
+The new `scripts/extract_psx_ik_tables.py` tool converts five
+explicitly verified offsets from the **user's own USA executable**
+into private `psx_trig.bin` and `psx_ik.bin` for the Saturn IK
+diagnostic. It validates bounds, source SHA-256 and basic fixed-point
+coefficients without publishing original data. See the
+[private lookup export instructions](docs/DIVMOT_LOGIC.md).
+
 ## Original PS1 four-limb inverse kinematics
 
 `src/game/psx_ik.[ch]` now calculates the **eight missing arm/leg

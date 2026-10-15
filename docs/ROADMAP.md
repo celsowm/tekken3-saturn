@@ -126,3 +126,6 @@ copyrighted assets and must not be distributed without permission.
 - [x] Wire optional normalized private IK constants into Saturn move diagnostics.
 - [ ] Verify USA sine/sqrt/basis/limb constant offsets and compare joint-by-joint against the PS1 oracle.
 - [ ] Apply the original 18-slot pose matrices to the LibSaturn skin and resolve per-frame contacts.
+
+- [x] Add a strict private USA PS-X EXE FK/IK table extractor with five verified offsets and SHA-256 manifest.
+- [ ] Determine and independently validate the five actual USA PS1 lookup offsets.
