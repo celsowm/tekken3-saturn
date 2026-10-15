@@ -87,9 +87,10 @@ static void invalid_pose_and_history_fail_closed(void) {
     poses[1][17].origin.x=0;
     strike.layout_kind=1u;
     strike.segments[0].previous_start=1u;
-    /* Pose history was not yet seeded; first swept frame is unavailable. */
+    /* First active frame may validly use the root from the previous
+     * inactive frame, since the previous world root is already known. */
     assert(t3_psx_shadow_step(&state,a,result));
-    assert(result[0].status==T3_SHADOW_MISSING);
+    assert(result[0].status==T3_SHADOW_CONTACT);
     a[0].attack=NULL;
     assert(t3_psx_shadow_step(&state,a,result));
     assert(result[0].status==T3_SHADOW_INACTIVE);
