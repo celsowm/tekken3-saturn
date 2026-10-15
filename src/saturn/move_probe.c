@@ -6,6 +6,7 @@
 #include "attack_records.h"
 #include "psx_motion.h"
 #include "psx_pose.h"
+#include "psx_ik.h"
 #include "t3_generated_character.h"
 
 static t3_divmot_t g_bank, g_common;
@@ -16,7 +17,7 @@ static uint8_t g_segments[2];
 static uint32_t g_decode_errors[2];
 static uint8_t g_pose_status[2],g_pose_frames[2];
 static int16_t g_root_pose[2][3];
-static uint32_t g_fk_mask[2],g_fk_parts[2];
+static uint32_t g_fk_mask[2],g_fk_parts[2],g_ik_mask[2];
 static int16_t g_fk_root_xx[2];
 
 sat_result_t t3_move_probe_init(void) {
@@ -52,6 +53,7 @@ void t3_move_probe_reset(unsigned round) {
         g_pose_frames[i]=0u;
         g_fk_mask[i]=0u;
         g_fk_parts[i]=0u;
+        g_ik_mask[i]=0u;
         g_fk_root_xx[i]=0;
         g_root_pose[i][0]=g_root_pose[i][1]=g_root_pose[i][2]=0;
         if (!t3_move_vm_start(&g_vms[i],&g_bank,
@@ -92,6 +94,7 @@ void t3_move_probe_tick(const t3_match_t* match) {
             g_pose_frames[i]=0u;
             g_fk_mask[i]=0u;
             g_fk_parts[i]=0u;
+        g_ik_mask[i]=0u;
             g_fk_root_xx[i]=0;
             if(opened==1) {
                 int16_t pose[T3_PSX_POSE_CHANNELS];
@@ -120,6 +123,23 @@ void t3_move_probe_tick(const t3_match_t* match) {
                         if(t3_psx_pose_fk(pose,&trig,slots,&valid)) {
                             g_fk_mask[i]=valid;
                             g_fk_root_xx[i]=slots[0].m[0][0];
+#if T3_LOCAL_IK_BYTES > 0
+                            {
+                                const t3_psx_ik_tables_t ik_tables={
+                                    {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},
+                                    t3_local_ik_blob,T3_LOCAL_IK_BYTES};
+                                t3_psx_matrix_t complete[T3_PSX_ROTATION_SLOTS];
+                                uint32_t complete_mask=0u;
+                                if(t3_psx_pose_ik(pose,&ik_tables,slots,valid,
+                                                  complete,&complete_mask)==1) {
+                                    unsigned k;
+                                    for(k=0u;k<T3_PSX_ROTATION_SLOTS;++k)
+                                        slots[k]=complete[k];
+                                    g_ik_mask[i]=complete_mask & ~valid;
+                                    valid=complete_mask;
+                                }
+                            }
+#endif
 #if defined(T3_LOCAL_KMD_BIND)
                             {
                                 t3_psx_joint_t world[T3_PSX_DRAW_PARTS];
@@ -173,6 +193,7 @@ int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {
 }
 uint32_t t3_move_probe_fk_mask(unsigned i) {return i<2u && g_active?g_fk_mask[i]:0u;}
 uint32_t t3_move_probe_fk_parts(unsigned i) {return i<2u && g_active?g_fk_parts[i]:0u;}
+uint32_t t3_move_probe_ik_mask(unsigned i) {return i<2u && g_active?g_ik_mask[i]:0u;}
 int16_t t3_move_probe_fk_root_xx(unsigned i) {return i<2u && g_active?g_fk_root_xx[i]:0;}
 
 #else
@@ -191,6 +212,7 @@ uint8_t t3_move_probe_pose_frames(unsigned i) {(void)i;return 0u;}
 int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {(void)i;(void)axis;return 0;}
 uint32_t t3_move_probe_fk_mask(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_fk_parts(unsigned i) {(void)i;return 0u;}
+uint32_t t3_move_probe_ik_mask(unsigned i) {(void)i;return 0u;}
 int16_t t3_move_probe_fk_root_xx(unsigned i) {(void)i;return 0;}
 
 #endif

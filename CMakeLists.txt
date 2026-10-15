@@ -92,6 +92,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_LOCAL_PSX_TRIG_TABLE AND NOT T3_LOCAL_DIVMOT)
         message(FATAL_ERROR "T3_LOCAL_PSX_TRIG_TABLE requires T3_LOCAL_DIVMOT")
     endif()
+    set(T3_LOCAL_PSX_IK_TABLES "" CACHE FILEPATH
+        "Private original 0x1F2-byte normalized PS1 IK constants")
+    if(T3_LOCAL_PSX_IK_TABLES AND NOT T3_LOCAL_PSX_TRIG_TABLE)
+        message(FATAL_ERROR "T3_LOCAL_PSX_IK_TABLES requires T3_LOCAL_PSX_TRIG_TABLE")
+    endif()
     if(T3_LOCAL_DIVMOT)
         get_filename_component(T3_LOCAL_DIVMOT "${T3_LOCAL_DIVMOT}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_DIVMOT}")
@@ -140,6 +145,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             list(APPEND _t3_private_banks "${T3_LOCAL_PSX_TRIG_TABLE}")
             list(APPEND _t3_trig_args --trig-table "${T3_LOCAL_PSX_TRIG_TABLE}")
         endif()
+        set(_t3_ik_args "")
+        if(T3_LOCAL_PSX_IK_TABLES)
+            get_filename_component(T3_LOCAL_PSX_IK_TABLES
+                "${T3_LOCAL_PSX_IK_TABLES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_IK_TABLES}")
+                message(FATAL_ERROR "Private PS1 IK constants not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_IK_TABLES}")
+            list(APPEND _t3_ik_args --ik-tables "${T3_LOCAL_PSX_IK_TABLES}")
+        endif()
         set(_t3_logic_gen "${CMAKE_BINARY_DIR}/generated/private_logic")
         add_custom_command(
             OUTPUT "${_t3_logic_gen}/t3_local_divmot.c"
@@ -151,6 +166,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 ${_t3_sequence_args}
                 ${_t3_spline_args}
                 ${_t3_trig_args}
+                ${_t3_ik_args}
                 --output "${_t3_logic_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_divmot_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"

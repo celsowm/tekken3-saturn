@@ -102,6 +102,7 @@ jobs:
           from pathlib import Path
           Path("build/asset-divmot/spline.bin").write_bytes(bytes(0x660))
           Path("build/asset-divmot/trig.bin").write_bytes(bytes(0x2800))
+          Path("build/asset-divmot/ik.bin").write_bytes(bytes(0x1F2))
           PY
           python3 scripts/build_local_divmot_assets.py \
               --bank build/asset-divmot/character.t3logic \
@@ -109,6 +110,7 @@ jobs:
               --sequences build/asset-divmot/sequences.json \
               --spline-tables build/asset-divmot/spline.bin \
               --trig-table build/asset-divmot/trig.bin \
+              --ik-tables build/asset-divmot/ik.bin \
               --output build/asset-divmot/generated
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \

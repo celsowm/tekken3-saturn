@@ -22,5 +22,6 @@ uint8_t t3_move_probe_pose_frames(unsigned fighter);
 int16_t t3_move_probe_root_pose(unsigned fighter,unsigned axis);
 uint32_t t3_move_probe_fk_mask(unsigned fighter);
 uint32_t t3_move_probe_fk_parts(unsigned fighter);
+uint32_t t3_move_probe_ik_mask(unsigned fighter);
 int16_t t3_move_probe_fk_root_xx(unsigned fighter);
 #endif

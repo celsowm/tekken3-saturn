@@ -37,6 +37,17 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## Original PS1 four-limb inverse kinematics
+
+`src/game/psx_ik.[ch]` now calculates the **eight missing arm/leg
+rotation matrices** from DIVMOT targets and swivel angles, completing
+the 18-slot pose solver for valid inputs. It uses original fixed-point
+rules and private normalized PS1 lookup coefficients. The private
+Saturn move probe reports IK slot validity; missing or singular limbs
+are marked unavailable, not guessed. **Real 1:1 PS1 oracle parity,
+model skin animation and live hit resolution remain pending**.
+See [IK algorithm and private tables](docs/DIVMOT_LOGIC.md).
+
 ## PS1 Euler FK rotation and model hierarchy
 
 The portable C core now calculates the **ten genuine PS1 Euler matrix

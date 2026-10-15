@@ -353,6 +353,48 @@ FK/IK pipeline, nor a full 22-part animated fighter. The PS1 sine table,
 actual KMD parent offsets, limb IK, world root heading and oracle
 validation all remain necessary.
 
+## Four-limb original integer IK (18 rotation slots)
+
+`src/game/psx_ik.[ch]` ports the original PS1
+`IkLimbTarget`/`IkSolveLimb` path (based on the independently verified
+research implementation in `Tekken3Remake/tools/research/pose.py`).
+It preserves the original numerical model: split-15 GTE target
+conversion, signed 32-bit wrap, fixed-point Euler basis rotation,
+`SquareRoot0` mantissa lookup, swivel angle, arm/leg bend constants
+and the special short/overextended limb cases.
+
+In addition to ten FK Euler slots, all eight IK slots are computed:
+right arm 4/5, left arm 8/9, right leg 12/13 and left leg 15/16.
+A limb with zero length, an unsupported short reach or invalid
+lookup coefficients **remains unavailable**; the output mask never
+creates a fabricated limb.
+
+A normalized **PRIVATE** IK file is exactly `0x1F2` bytes:
+
+- `0x000..0x17F`: 192 signed 16-bit PS1 SquareRoot0 mantissa values;
+- `0x180..0x191`: nine signed Q12 limb-basis entries;
+- `0x192..0x1C1`: four little-endian signed XYZ skeleton-offset triples;
+- `0x1C2..0x1F1`: four little-endian signed XYZ limb-root-offset triples.
+
+These bytes must come from the user's own PlayStation executable,
+with region-specific addresses verified first; Japanese Rev.1
+absolute addresses are *not* used to guess USA offsets.
+For an intentionally local build provide
+`-DT3_LOCAL_PSX_IK_TABLES=/private/psx_ik.bin` as well as
+`T3_LOCAL_PSX_TRIG_TABLE`, `T3_LOCAL_DIVMOT` and optionally
+`T3_LOCAL_PSX_SPLINE_TABLES`. No retail table bytes are checked in.
+`g_t3_diagnostics` **version 7** exposes the additional successfully
+computed IK slots in `psx_ik_valid_slots[2]`, and when a local KMD
+is available, its composed model-parts validity mask now includes
+the IK-supported chains.
+
+The independent C host regression uses **synthetic** square-root
+mantissas and cardinal sine values. It exercises overextension,
+normal bending, short/singular limbs, determinism and malformed
+input. This does **not** establish PS1 bit-exact parity or original
+animation-on-screen. Only real-table/real-pose comparisons against
+an emulator/MIPS oracle can establish that.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

@@ -119,3 +119,10 @@ copyrighted assets and must not be distributed without permission.
 - [x] Compose only valid model-joint chains, propagating missing IK/attachment status.
 - [ ] Reconstruct remaining 8 matrices with original PS1 two-bone limb IK.
 - [ ] Import real KMD bind offsets into diagnostic composition and validate against PS1 traces.
+
+### Original four-limb IK
+- [x] Implement signed-integer PS1 two-bone IK with 32-bit wrap, Q12 bend and SquareRoot0 table.
+- [x] Complete eight IK matrix slots with a fail-closed limb validity mask.
+- [x] Wire optional normalized private IK constants into Saturn move diagnostics.
+- [ ] Verify USA sine/sqrt/basis/limb constant offsets and compare joint-by-joint against the PS1 oracle.
+- [ ] Apply the original 18-slot pose matrices to the LibSaturn skin and resolve per-frame contacts.
