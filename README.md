@@ -362,3 +362,14 @@ This remains **a read-only research pipeline**; normal Saturn combat
 HP, block, KO and animation state are unchanged. Host regression checks
 trades, posture gating, guarded hits, unavailable geometry and atomic
 failure. Details are in `docs/DIVMOT_LOGIC.md`.
+
+## Read-only PS1 hitstun, knockdown and recovery preview
+
+The portable [post-hit transition harness](docs/PSX_STATE_TRANSITIONS.md)
+now consumes the simultaneous HitTest → HitApply preview and an explicitly
+supplied per-defender original-game timing policy. It previews hitstun,
+blockstun, knockdown, recovery, neutral return, combos and KO without changing
+MoveVM or live Saturn combat. Missing original reaction records, phase timing,
+recovery destinations or combo rules fail closed; **this is not PS1 frame parity**.
+Synthetic host tests exercise trades, reaction expiry and absent data.
+
