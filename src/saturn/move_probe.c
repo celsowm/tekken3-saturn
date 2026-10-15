@@ -7,6 +7,7 @@
 #include "psx_motion.h"
 #include "psx_pose.h"
 #include "psx_ik.h"
+#include "psx_contact.h"
 #include "t3_generated_character.h"
 
 static t3_divmot_t g_bank, g_common;
@@ -18,6 +19,8 @@ static uint32_t g_decode_errors[2];
 static uint8_t g_pose_status[2],g_pose_frames[2];
 static int16_t g_root_pose[2][3];
 static uint32_t g_fk_mask[2],g_fk_parts[2],g_ik_mask[2];
+static uint8_t g_hurt_ready[2];
+static int32_t g_hurt_head_y[2];
 #if defined(T3_LOCAL_KMD_BIND)
 static t3_psx_joint_t g_world_pose[2][T3_PSX_DRAW_PARTS];
 #endif
@@ -56,6 +59,8 @@ void t3_move_probe_reset(unsigned round) {
         g_pose_frames[i]=0u;
         g_fk_mask[i]=0u;
         g_fk_parts[i]=0u;
+        g_hurt_ready[i]=0u;
+        g_hurt_head_y[i]=0;
         g_ik_mask[i]=0u;
         g_fk_root_xx[i]=0;
         g_root_pose[i][0]=g_root_pose[i][1]=g_root_pose[i][2]=0;
@@ -97,7 +102,9 @@ void t3_move_probe_tick(const t3_match_t* match) {
             g_pose_frames[i]=0u;
             g_fk_mask[i]=0u;
             g_fk_parts[i]=0u;
-        g_ik_mask[i]=0u;
+            g_hurt_ready[i]=0u;
+            g_hurt_head_y[i]=0;
+            g_ik_mask[i]=0u;
             g_fk_root_xx[i]=0;
             if(opened==1) {
                 int16_t pose[T3_PSX_POSE_CHANNELS];
@@ -156,9 +163,19 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                 if(t3_psx_compose_parts(t3_private_kmd_parts,
                                     slots,valid,&root_frame,world,&partmask)) {
                                     g_fk_parts[i]=partmask;
-                                    if((partmask & 0x3FFFFu)==0x3FFFFu)
+                                    if((partmask & 0x3FFFFu)==0x3FFFFu) {
+                                        t3_hurt_cylinder_t zones[T3_PSX_HURT_ZONES];
                                         __builtin_memcpy(g_world_pose[i],world,
                                                          sizeof(world));
+                                        /* These are MODEL-LOCAL zones only.
+                                         * Do not present overlap between two
+                                         * unplaced fighters as a real PS1 hit. */
+                                        if(t3_psx_hurt_from_parts(world,partmask,
+                                                                  0,zones)) {
+                                            g_hurt_ready[i]=1u;
+                                            g_hurt_head_y[i]=zones[0].center.y;
+                                        }
+                                    }
                                 }
                             }
 #endif
@@ -214,6 +231,12 @@ int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
 #endif
 }
 uint32_t t3_move_probe_ik_mask(unsigned i) {return i<2u && g_active?g_ik_mask[i]:0u;}
+uint8_t t3_move_probe_hurt_ready(unsigned i) {
+    return i<2u && g_active ? g_hurt_ready[i] : 0u;
+}
+int32_t t3_move_probe_hurt_head_y(unsigned i) {
+    return i<2u && g_active ? g_hurt_head_y[i] : 0;
+}
 int16_t t3_move_probe_fk_root_xx(unsigned i) {return i<2u && g_active?g_fk_root_xx[i]:0;}
 
 #else
@@ -237,6 +260,9 @@ int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
     (void)i;(void)out;(void)mask;return 0;
 }
 uint32_t t3_move_probe_ik_mask(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_hurt_ready(unsigned i) {(void)i;return 0u;}
+int32_t t3_move_probe_hurt_head_y(unsigned i) {(void)i;return 0;}
+
 int16_t t3_move_probe_fk_root_xx(unsigned i) {(void)i;return 0;}
 
 #endif

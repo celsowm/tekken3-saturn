@@ -24,6 +24,9 @@ int16_t t3_move_probe_root_pose(unsigned fighter,unsigned axis);
 uint32_t t3_move_probe_fk_mask(unsigned fighter);
 uint32_t t3_move_probe_fk_parts(unsigned fighter);
 uint32_t t3_move_probe_ik_mask(unsigned fighter);
+/* Model-local PS1 defensive geometry only; not authoritative world combat. */
+uint8_t t3_move_probe_hurt_ready(unsigned fighter);
+int32_t t3_move_probe_hurt_head_y(unsigned fighter);
 /* Atomically hand a complete PRIVATE 18-part pose to the skin preview.
  * 0 means no reliable pose; caller keeps its normal renderer. */
 int t3_move_probe_copy_world(unsigned fighter,

@@ -478,6 +478,46 @@ Synthetic CI exercises the Q12-to-Q16 transformation, absent or
 partial joints and atomic failure behavior, plus strict C11
 compilation of the combined KMD+DIVMOT+preview path.
 
+## Animated hurt cylinders and continuous authored attack sweeps
+
+`src/game/psx_contact.[ch]` connects the two previously separate
+original-data geometry layers, entirely in portable C (no memory
+allocation, LibSaturn dependency or floating point).
+
+**Hurt volumes:** the game's 14-body-zone lookup refers exclusively
+to indices `0..17` of the PS1's 24 joint blocks: the first 18 KMD
+draw parts. The six extra blocks are attachments/weapon effect
+storage. Given 18 validated joint translations, the new adapter
+creates the exact index/radius/height-offset layout from
+`t3_hurt_from_psx_joints`; absent partial limbs invalidate the
+entire frame, rather than substituting bogus joint positions.
+
+**Attack continuity:** authored DIVMOT layouts 1,2,4,6,7 use the
+**previous frame's actual world-space segment-0 END**; layouts 2,3,9
+do the same for segment 1. Rotating an old local point is not
+equivalent when the fighter's root or facing changed. The new
+`t3_psx_sweep_sample` records previous endpoints with the move slot
+and frame number. Missing continuity or a switch of move fails
+closed. Frame-zero anchor points still require the caller's known
+previous root.
+
+**Geometric contact:** `t3_psx_contact_probe` returns the first
+intersecting authored segment and defensive zone, or a verified
+miss when the pose and attack occupy the same world reference frame.
+This primitive **does not apply damage, guard, juggle, knockback,
+invulnerability, cooldown or 1-hit-per-move state**. Synthetic
+regressions test hits/misses, missing IK poses, stale move slots,
+missing frame history and first-frame anchoring.
+
+The Saturn research probe now generates each fighter's **model-local**
+hurt volumes when its KMD+DIVMOT pose is complete. External diagnostic
+version **9** adds `psx_hurt_zones_ready[2]` and
+`psx_hurt_head_local_y[2]`. **It does not automatically run live
+contact checks** between the two demo fighters: their fallback Q8
+positions are not yet calibrated as genuine PS1 fighter roots and
+heading angles. Claiming hits by overlaying their local origins
+would be misleading and change gameplay incorrectly.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

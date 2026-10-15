@@ -130,3 +130,9 @@ copyrighted assets and must not be distributed without permission.
 
 - [x] Add a strict private USA PS-X EXE FK/IK table extractor with five verified offsets and SHA-256 manifest.
 - [ ] Determine and independently validate the five actual USA PS1 lookup offsets.
+
+### PS1 defensive collision
+- [x] 14 KMD original body-part hurt cylinders with strict pose validity.
+- [x] Original swept attack history, per-move/per-frame continuity.
+- [x] Optional geometric contact probe separated from fallback combat.
+- [ ] Calibrated PS1 root placement and live damage/classification semantics.

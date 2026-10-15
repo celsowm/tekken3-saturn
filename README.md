@@ -46,6 +46,19 @@ diagnostic. It validates bounds, source SHA-256 and basic fixed-point
 coefficients without publishing original data. See the
 [private lookup export instructions](docs/DIVMOT_LOGIC.md).
 
+## Authored PS1 hit sweeps and animated hurt zones
+
+`src/game/psx_contact.[ch]` constructs the **14 original defensive
+cylinders** directly from complete KMD joint poses (the first 18
+PS1 joint blocks), and preserves exact previous **world-space hit
+segment endpoints** across consecutive DIVMOT attack frames. It
+provides a bounded geometric segment/zone contact query with host
+regressions. The optional private Saturn debug build now reports
+model-local hurt-zone readiness (diagnostics v9). A real damage
+decision remains disabled until both fighters' original world
+roots/headings are calibrated. See
+[PS1 contact implementation](docs/DIVMOT_LOGIC.md).
+
 ## Experimental PRIVATE original-pose rendering
 
 With KMD geometry, original DIVMOT animation data and user-supplied
