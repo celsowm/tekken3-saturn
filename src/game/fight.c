@@ -1,7 +1,6 @@
 #include "fight.h"
 
 #include <stddef.h>
-#include <string.h>
 
 typedef struct {
     uint8_t startup, active, recovery;
@@ -29,7 +28,7 @@ static int attack_from_input(uint16_t pressed) {
 }
 
 static void start_round(t3_match_t* game) {
-    memset(game->fighters, 0, sizeof(game->fighters));
+    __builtin_memset(game->fighters, 0, sizeof(game->fighters));
     game->fighters[0].x = -360;
     game->fighters[1].x = 360;
     game->fighters[0].health = T3_MAX_HEALTH;
@@ -44,7 +43,7 @@ static void start_round(t3_match_t* game) {
 
 void t3_match_reset(t3_match_t* game) {
     if (!game) return;
-    memset(game, 0, sizeof(*game));
+    __builtin_memset(game, 0, sizeof(*game));
     game->round = 1;
     start_round(game);
 }

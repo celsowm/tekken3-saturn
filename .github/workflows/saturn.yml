@@ -1,0 +1,119 @@
+name: Saturn firmware and disc image
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/saturn.yml'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/saturn.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  saturn-disc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout game
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned LibSaturn
+        uses: actions/checkout@v4
+        with:
+          repository: celsowm/libsaturn
+          ref: 54379fd27f7baba087d223c4a822aea60fd0f863
+          path: .external/libsaturn
+          persist-credentials: false
+
+      - name: Install cross-toolchain and disc prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential texinfo bison flex wget xz-utils \
+              ninja-build xorriso python3
+          python3 -m pip install --user --break-system-packages numpy pillow
+
+      - name: Restore cached SH-2 GCC 13.2 toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/saturn-tools
+          key: tekken3-saturn-sh2eb-elf-${{ runner.os }}-${{ hashFiles('.external/libsaturn/scripts/build-toolchain.sh') }}
+
+      - name: Build SH-2 toolchain from LibSaturn (cache miss only)
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        working-directory: .external/libsaturn
+        env:
+          PREFIX: ${{ runner.temp }}/saturn-tools
+          ROOT: ${{ runner.temp }}/saturn-toolchain-src
+        run: JOBS=3 bash scripts/build-toolchain.sh
+
+      - name: Expose verified cross compiler
+        run: |
+          echo "$RUNNER_TEMP/saturn-tools/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/saturn-tools/bin/sh2eb-elf-gcc" --version
+          "$RUNNER_TEMP/saturn-tools/bin/sh2eb-elf-g++" --version
+
+      - name: Configure and install the public LibSaturn package
+        run: |
+          cmake -S .external/libsaturn -B build/libsaturn -G Ninja \
+              -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/.external/libsaturn/cmake/toolchains/sh2eb-elf.cmake" \
+              -DCMAKE_BUILD_TYPE=Release -DLIBSATURN_BUILD_TESTS=OFF
+          cmake --build build/libsaturn --parallel 3
+          cmake --install build/libsaturn --prefix "$GITHUB_WORKSPACE/build/libsaturn-install"
+
+      - name: Configure and build Tekken 3 Saturn ELF + disc
+        env:
+          LIBSATURN_PREFIX: ${{ github.workspace }}/build/libsaturn-install
+        run: |
+          cmake --preset saturn \
+              -DLIBSATURN_SOURCE_DIR="$GITHUB_WORKSPACE/.external/libsaturn"
+          cmake --build --preset saturn --parallel 3
+          test -s build/saturn/tekken3_saturn.elf
+          test -s build/saturn/tekken3_saturn.app.bin
+          test -s build/saturn/disc/tekken3_saturn.iso
+          test -s build/saturn/disc/tekken3_saturn.bin
+          test -s build/saturn/disc/tekken3_saturn.cue
+
+      - name: Verify original boot memory and physical sector mapping
+        run: |
+          python3 .external/libsaturn/tools/check_boot_memory.py \
+              --elf build/saturn/tekken3_saturn.elf \
+              --app build/saturn/tekken3_saturn.app.bin \
+              --out build/saturn/disc/boot-memory.json
+          python3 .external/libsaturn/tools/check_disc_image.py \
+              --iso build/saturn/disc/tekken3_saturn.iso \
+              --bin build/saturn/disc/tekken3_saturn.bin \
+              --cue build/saturn/disc/tekken3_saturn.cue
+          python3 .external/libsaturn/tools/inspect_boot_image.py \
+              build/saturn/disc/tekken3_saturn.iso \
+              --app build/saturn/tekken3_saturn.app.bin \
+              --out build/saturn/disc/boot-report.json
+          sh2eb-elf-size build/saturn/tekken3_saturn.elf
+
+      - name: Upload disc and diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: tekken3-saturn-disc-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/saturn/disc/tekken3_saturn.iso
+            build/saturn/disc/tekken3_saturn.bin
+            build/saturn/disc/tekken3_saturn.cue
+            build/saturn/disc/tekken3_saturn.IP.BIN
+            build/saturn/disc/boot-memory.json
+            build/saturn/disc/boot-report.json
+            build/saturn/generated/characters/manifest.json
+            build/saturn/tekken3_saturn.elf
+            build/saturn/tekken3_saturn.app.bin

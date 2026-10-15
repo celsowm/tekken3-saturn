@@ -5,7 +5,6 @@
  * texture residency, and palette management.
  */
 #include "characters.h"
-#include <string.h>
 
 #include "saturn/character3d.h"
 #include "saturn/math3d.h"
@@ -93,7 +92,7 @@ sat_result_t t3_characters_init(void) {
             return st;
         if ((st = sat_skin_validate_mesh(&g_asset.skin, &a->mesh)) != SAT_OK)
             return st;
-        memcpy(a->face_materials, g_asset.model.face_texture_indices,
+        __builtin_memcpy(a->face_materials, g_asset.model.face_texture_indices,
                sizeof(a->face_materials));
         if ((st = sat_skeleton_instance_init(&a->skeleton,
                 &g_asset.skeleton, a->nodes, T3_JOINT_COUNT,

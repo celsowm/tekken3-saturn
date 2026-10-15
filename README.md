@@ -50,3 +50,11 @@ No copyrighted game assets or proprietary disc images are stored here; future im
 Animations: idle, walk, run, jump, punch, kick, guard, hit and knockdown. Playback follows the deterministic fight tick; bone deformation runs on the current rendering code path. **Saturn boot/real hardware performance are not yet validated.**
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for stages, accuracy gates, and Saturn hardware targets.
+
+## CI-generated Saturn ISO and validation
+
+The [Saturn firmware and disc image](https://github.com/celsowm/tekken3-saturn/actions/workflows/saturn.yml) workflow uses the exact pinned LibSaturn source used for the original skeletal asset generator, GCC 13.2 targeting `sh2eb-elf`, an installed LibSaturn CMake package, and `libsaturn_add_disc(... IP_TEMPLATE_KIND native)`. On success it uploads `tekken3_saturn.iso`, `.bin`, `.cue`, `.elf`, `.app.bin`, resource/boot reports, and the asset manifest.
+
+The native IP generator still uses Sega security/region payload bytes extracted from the LibSaturn-distributed Yaul *template*; no Yaul runtime is linked. Disc validation proves metadata, initial application load bytes, and Mode 1 sector data. It **does not** establish that the console BIOS, SAROO, Satiator, or an optical drive can boot the image.
+
+The playable build has **no external ROM requirement** and must never ship copyrighted Tekken data. The generated humanoids are original LibSaturn content.
