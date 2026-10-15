@@ -24,7 +24,9 @@ but must address fundamentally different 3D fighting-game constraints.
 - [x] Read SLUS-00402 Mode 2 Form 1 track and verify the US executable.
 - [x] Inventory 303 BNS entries, selectively export original file records.
 - [x] Export untextured stage TMD geometry as a research OBJ preview.
-- [ ] Convert original TIM materials, KMD fighter skins, and DIVMOT clips.
+- [x] Parse original KMD 27-row model and PS1 seam exchange into the LibSaturn multi-anchor skin compiler (bind pose only).
+- [ ] Calibrate KMD basis and proportions with the real Paul model, convert TIM materials and hand variants.
+- [ ] Decode DIVMOT motion clips and verify their joint mapping.
 - Build an **offline** asset converter to an explicit versioned Saturn format:
   quantized vertices/bone weights, limited joint counts, LOD, frame sampling,
   materials indexed for VDP1, VDP2 backgrounds, and disc streaming.

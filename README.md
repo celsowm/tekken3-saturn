@@ -41,6 +41,22 @@ python3 scripts/psx_disc_import.py \
 
 The `--stage-ids 56` option creates a first **untextured stage panorama OBJ** as a geometry research preview. It does not yet convert TIM materials, fighter skins, or motion into playable Saturn assets. Outputs live under the gitignored `assets/imported/` directory. Run the importer **locally**, not in CI. See [PSX disc importer instructions](docs/PSX_DISC_IMPORT.md).
 
+## Extracting a real KMD into LibSaturn's SKA1 format
+
+```sh
+python3 scripts/kmd_to_ska.py \
+  --kmd assets/imported/tekken3-usa/raw/071.bin \
+  --libsaturn-source /path/to/libsaturn \
+  --output assets/imported/tekken3-usa/paul
+```
+
+This emits a **static-bind, neutral-texture SKA1 and untextured OBJ preview**.
+It carries the KMD 22-part skeleton and original seam blending as separate
+joint-local skin anchors, but **not** Tekken textures, motions, costume
+variants, or a verified visual pose. See [the KMD conversion limitations](docs/KMD_IMPORT.md).
+The normal Saturn game still uses its freely redistributable procedural
+humanoids; original commercial content never enters CI.
+
 ## Build and test natively
 
 ```sh

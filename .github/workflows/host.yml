@@ -50,6 +50,10 @@ jobs:
           assert data["vertices"] > 50 and data["faces"] > 60
           print(data)
           PY
+      - name: Verify KMD reader and compile synthetic KMD to real LibSaturn SKA1
+        env:
+          LIBSATURN_SOURCE_DIR: .external/libsaturn
+        run: python3 -m unittest discover -s tests -p 'test_kmd_to_ska.py' -v
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

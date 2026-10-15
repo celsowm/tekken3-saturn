@@ -239,7 +239,7 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
             par=row.parent
             if par>=part or par < -1:raise KmdError(f"invalid parent for draw part {part}: {par}")
             dx,dy,dz=row.offset
-            translation=(dx*unit,-dz*unit,dy*unit) # PS1 X/Y/Z -> Saturn X/Y/Z; basis needs visual oracle
+            translation=(dx*unit,dy*unit,-dz*unit) # PS1 basis sign flip; orientation needs oracle
             model.nodes.append(SourceNode(f"part_{part:02d}_matrix_{PART_MATRICES[part]:02d}",translation=translation))
             if par>=0:model.nodes[par].children.append(part)
             pivot=(tuple(global_rest[par][i]+translation[i] for i in range(3))
@@ -262,7 +262,7 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
                     x=[0.,0.,0.]
                     for (bone,row_id,idx),w in anchors.items():
                         vx,vy,vz=kmd.rows[row_id].vert.coords[idx]
-                        local=(vx*unit,-vz*unit,vy*unit)
+                        local=(vx*unit,vy*unit,-vz*unit)
                         weights.append((bone,w,local))
                         for axis in range(3):
                             x[axis]+=w*(global_rest[bone][axis]+local[axis])

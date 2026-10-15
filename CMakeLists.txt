@@ -12,6 +12,9 @@ target_include_directories(tekken3_fight PUBLIC
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+    # A freestanding GCC 13 SH-2 toolchain has no hosted system stdint.h.
+    # Without -ffreestanding, GCC's own stdint.h attempts include_next.
+    target_compile_options(tekken3_fight PRIVATE -m2 -mb -ffreestanding)
     find_package(LibSaturn 0.1 CONFIG REQUIRED)
 
     # LibSaturn is an installed runtime dependency. Its uninstalled source
