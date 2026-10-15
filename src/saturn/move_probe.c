@@ -9,6 +9,7 @@ static uint32_t g_t3_pose_trace_tick;
 #include "divmot.h"
 #include "move_vm.h"
 #include "attack_records.h"
+#include "psx_move_events.h"
 #include "psx_motion.h"
 #include "psx_pose.h"
 #include "psx_ik.h"
@@ -22,6 +23,8 @@ static t3_move_vm_t g_vms[2];
 static uint8_t g_active, g_round;
 static unsigned g_start_slot;
 static uint8_t g_segments[2];
+static uint8_t g_move_event_status[2],g_move_extra_kind[2],g_move_extra_damage[2];
+static uint16_t g_move_event_fired[2];
 static uint32_t g_decode_errors[2];
 static uint8_t g_pose_status[2],g_pose_frames[2];
 static int16_t g_root_pose[2][3];
@@ -74,6 +77,10 @@ void t3_move_probe_reset(unsigned round) {
     g_round=(uint8_t)round;
     for (i=0;i<2u;++i) {
         g_segments[i]=0u;
+        g_move_event_status[i]=0u;
+        g_move_extra_kind[i]=0u;
+        g_move_extra_damage[i]=0u;
+        g_move_event_fired[i]=0u;
         g_decode_errors[i]=0u;
         g_pose_status[i]=0u;
         g_pose_frames[i]=0u;
@@ -114,9 +121,22 @@ void t3_move_probe_tick(const t3_match_t* match) {
     for (i=0;i<2u;++i) {
         t3_attack_sample_t sampled;
         int decoded;
-        (void)t3_move_vm_tick_ex(&g_vms[i],&match->input_histories[i],
-                                NULL,t3_local_sequences,
-                                T3_LOCAL_SEQUENCE_COUNT);
+        {
+            unsigned before=g_vms[i].frame;
+            int transitioned=t3_move_vm_tick_ex(
+                &g_vms[i],&match->input_histories[i],
+                NULL,t3_local_sequences,T3_LOCAL_SEQUENCE_COUNT);
+            t3_psx_move_events_t events;
+            int rc=transitioned<0?-1:
+                t3_psx_move_events_sample(g_vms[i].active_bank,
+                    &g_vms[i].move,transitioned==1?0u:before,
+                    g_vms[i].frame,&events);
+            g_move_event_status[i]=rc==1?1u:(rc==0?2u:3u);
+            g_move_extra_kind[i]=rc==1?events.extra_kind:0u;
+            g_move_extra_damage[i]=rc==1?events.extra_damage:0u;
+            g_move_event_fired[i]=rc==1?events.fired:0u;
+            if(rc<0)++g_decode_errors[i];
+        }
         decoded=t3_attack_sample(g_vms[i].active_bank,&g_vms[i].move,
                                  g_vms[i].frame,0,&sampled);
         g_segments[i]=decoded==1?sampled.segment_count:0u;
@@ -339,6 +359,18 @@ uint16_t t3_move_probe_frame(unsigned i) {return i<2u && g_active?g_vms[i].frame
 uint16_t t3_move_probe_attack_word(unsigned i) {return i<2u && g_active?g_vms[i].move.attack_word:0;}
 uint32_t t3_move_probe_transitions(unsigned i) {return i<2u && g_active?g_vms[i].transitions:0;}
 uint8_t t3_move_probe_segments(unsigned i) {return i<2u && g_active?g_segments[i]:0u;}
+uint8_t t3_move_probe_event_status(unsigned i) {
+    return i<2u && g_active?g_move_event_status[i]:0u;
+}
+uint8_t t3_move_probe_extra_kind(unsigned i) {
+    return i<2u && g_active?g_move_extra_kind[i]:0u;
+}
+uint8_t t3_move_probe_extra_damage(unsigned i) {
+    return i<2u && g_active?g_move_extra_damage[i]:0u;
+}
+uint16_t t3_move_probe_event_fired(unsigned i) {
+    return i<2u && g_active?g_move_event_fired[i]:0u;
+}
 uint32_t t3_move_probe_decode_errors(unsigned i) {return i<2u && g_active?g_decode_errors[i]:0u;}
 uint8_t t3_move_probe_pose_status(unsigned i) {return i<2u && g_active?g_pose_status[i]:0u;}
 uint8_t t3_move_probe_pose_frames(unsigned i) {return i<2u && g_active?g_pose_frames[i]:0u;}
@@ -407,6 +439,10 @@ uint16_t t3_move_probe_frame(unsigned i) {(void)i;return 0u;}
 uint16_t t3_move_probe_attack_word(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_transitions(unsigned i) {(void)i;return 0u;}
 uint8_t t3_move_probe_segments(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_event_status(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_extra_kind(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_extra_damage(unsigned i) {(void)i;return 0u;}
+uint16_t t3_move_probe_event_fired(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_decode_errors(unsigned i) {(void)i;return 0u;}
 uint8_t t3_move_probe_pose_status(unsigned i) {(void)i;return 0u;}
 uint8_t t3_move_probe_pose_frames(unsigned i) {(void)i;return 0u;}

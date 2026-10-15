@@ -1033,3 +1033,18 @@ fight simulation. Standalone C and private compactor tests exercise
 event crossings, multiple events, no-event pointers, unsupported
 data and truncation. The live Saturn prototype does **not yet**
 apply these event damages to health.
+
+### Saturn private frame-event telemetry
+
+The optional private DIVMOT interpreter runs the section-4 event
+decoder **after each VM step**, supplying the previous move frame
+(or zero for a move transition) and the current frame. It never
+applies the resulting damage to either playable fighter.
+
+`g_t3_diagnostics` **version 11** adds, per fighter,
+`psx_event_status` (0 inactive, 1 decoded, 2 event section stripped,
+3 malformed), `psx_extra_kind`, `psx_extra_damage`, and
+`psx_events_fired`. Values are cleared on a round reset and on
+every simulation tick when events do not fire. This is a deliberately
+small subset of the full original MoveEvents execution: original
+frame pausing, blend jump semantics, replay and FX are still pending.
