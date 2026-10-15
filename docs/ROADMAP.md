@@ -95,7 +95,9 @@ copyrighted assets and must not be distributed without permission.
 - [ ] Replace fallback attacks with bank-defined full character moves and reactions.
 - [x] Read original DIVMOT section 9 attack descriptors and per-frame local-space hit segments.
 - [x] Preserve section 9 optionally in private compact banks; expose decoded segment diagnostics.
-- [ ] Transform PS1 segments to fighter world space and test versus hurt/body volumes.
+- [x] Implement independent PS1 world transforms and integer attack-segment ↔ 14-zone hurt-cylinder tests.
+- [ ] Feed real 24-joint PS1 animation poses into hurt cylinders in the Saturn build.
+- [ ] Validate exact PS1 collision arithmetic, body spheres and reaction logic against an oracle.
 - [ ] Per-frame original movement, collision, hit segments, counters and juggles.
 - [ ] Throws, reversals, multiple stances, knockdown/get-ups and posture/evades.
 - [ ] Motion decode, model variants, effects, audio, original camera/round flow.

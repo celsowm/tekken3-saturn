@@ -171,13 +171,46 @@ correct character/common bank. The diagnostics structure (version 3)
 records the number of decoded attack segments and failed/truncated
 records per fighter, without changing the playable fallback's hit
 detection. Segment start points flagged as swept still require the
-previous frame's world transform. No body spheres, hurt-cylinder
-collision or hit/reaction resolution is claimed in this milestone.
+previous frame's world transform. Hurt-cylinder intersection now exists as an independent C primitive, but
+it is **not yet fed original PS1 joint positions**, and gameplay hits,
+body spheres and hit/reaction resolution are still pending.
 
 The compactor still omits original animation, camera, texture, audio,
 and frame-event sections. The resulting `.t3logic` plus attack
 records is an intermediate for research and local builds; **never
 publish it or an ELF/ISO containing it**.
+
+## World transforms and hurt cylinders (portable C)
+
+`src/game/psx_collision.[ch]` provides an integer-only, allocation-free
+world-space collision geometry layer for the original PS1 coordinate
+system:
+
+- Rotates and translates both endpoints of authored baked attack segments
+  with caller-supplied **Q12 heading sin/cos** and PS1 move roots. A swept
+  start point explicitly uses the **previous frame root**; its rotation and
+  translation are not silently substituted with those of the current frame.
+- Implements finite **vertical segment-vs-cylinder intersection**:
+  clips against the cylinder's vertical slab, then checks the horizontal
+  closest point against the radius. Both the geometry and tests use
+  64-bit intermediate arithmetic; only an integer Q16 segment parameter
+  is approximated. This is **not yet claimed bit-exact** to the MIPS original.
+- Builds the standard **14 PS1 hurt cylinders** from the original
+  character's **24 world-joint translations** using the documented joint
+  lookup, normal/large radius profiles, head −120 and waist −60 Y offsets.
+  Some character-specific larger head profiles still require the private
+  original EXE table.
+- Resolves the first hit zone, preserving attack-segment order, and
+  reports invalid/out-of-range coordinates instead of overflowing.
+
+This is a usable collision primitive with synthetic host regressions,
+**not yet the authoritative game hit test**. The Saturn frontend still
+renders separately, and original hit results **do not alter gameplay**.
+The reason is significant: the current static KMD import does not yet
+compose authentic animated 24-joint PS1 world matrices. Passing generic
+LibSaturn skeleton transforms as if they were PS1 joints would create
+false contacts. We must first finish DIVMOT animation import, precise
+PS1 root/heading calibration and per-frame joint evaluation.
 
 ## Next major work, in dependency order
 

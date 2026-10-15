@@ -37,6 +37,17 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## PS1 world-space collision primitives
+
+New `src/game/psx_collision.[ch]` supports integer Q12 world transforms
+of baked attack segments, explicit previous-frame roots for swept punches
+and kicks, and **14 original-layout hurt cylinders** from PS1 joint centres.
+The vertical cylinder test uses bounded 64-bit arithmetic without
+floating point or allocation. Deterministic synthetic tests run in host CI.
+It is **not yet wired into damage or a bit-exact MIPS oracle** because the
+character animation/joint poses still need to be ported. Details:
+[original move logic and collision geometry](docs/DIVMOT_LOGIC.md).
+
 ## PS1 attack geometry: experimental importer
 
 A new `src/game/attack_records.[ch]` decoder reads **authored baked
