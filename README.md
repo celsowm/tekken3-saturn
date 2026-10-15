@@ -295,7 +295,7 @@ See [batch FK/IK audit](docs/DIVMOT_LOGIC.md).
 
 ### Original combat collision observer
 
-The portable \`psx_shadow_combat\` module now checks **both fighters'
+The portable `psx_shadow_combat` module now checks **both fighters'
 original attack segments and KMD body cylinders** against the same
 frame's world transforms. It tracks swept endpoints and contact edges
 without writing to health or the match state; genuine PS1 fighter world
@@ -303,7 +303,7 @@ placement must be supplied explicitly. See [the shadow observer
 scope](docs/DIVMOT_LOGIC.md).
 
 
-For **private emulator testing**, \`-DT3_ENABLE_PSX_SHADOW_CONTACT=ON\`
+For **private emulator testing**, `-DT3_ENABLE_PSX_SHADOW_CONTACT=ON`
 exports debugger-controlled world roots and read-only contact
 telemetry (version 10). Missing or unsynchronized roots yield
 an unavailable status, not a guessed hit. Prototype HP/blocks remain
