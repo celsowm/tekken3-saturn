@@ -29,6 +29,7 @@ typedef struct t3_branch_context {
     uint32_t opponent_attack;
     uint32_t opponent_state;
     uint16_t own_character;
+    uint16_t opponent_damage;
     uint16_t opponent_transition;
     uint16_t own_health;
     uint16_t own_power_timer;
@@ -36,6 +37,7 @@ typedef struct t3_branch_context {
     uint16_t heading_delta;
     uint16_t recover_mash, recover_frames;
     uint16_t opponent_active_last, opponent_frame;
+    uint8_t opponent_air_start, opponent_air_end;
     int32_t distance, adjusted_distance;
     int16_t throw_situation; /* -1 = none */
     uint8_t opponent_bank;

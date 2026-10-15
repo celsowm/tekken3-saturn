@@ -111,3 +111,23 @@ int t3_sequence_matches(const t3_input_history_t* h,
     }
     return 1;
 }
+
+int t3_command_matches_table(uint16_t command, const t3_input_history_t* h,
+                             const t3_command_sequence_t* table, size_t count) {
+    size_t i;
+    if (command < 0xC00Eu) return t3_command_matches(command,h);
+    if (!((command >= 0xC00Eu && command <= 0xC04Cu) ||
+          (command >= 0xC7FFu && command <= 0xC827u)) ||
+        !table || !h) return 0;
+    for (i=0;i<count;++i) {
+        if (table[i].command == command) {
+            unsigned j;
+            for (j=0;j<T3_INPUT_SEQUENCE_MAX+1u &&
+                     table[i].steps[j];++j) {}
+            if (j==0 || j>T3_INPUT_SEQUENCE_MAX ||
+                table[i].steps[j]!=0u) return 0;
+            return t3_sequence_matches(h,table[i].steps,table[i].window);
+        }
+    }
+    return 0;
+}

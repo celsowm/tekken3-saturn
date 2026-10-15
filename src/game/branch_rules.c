@@ -18,7 +18,6 @@ int t3_branch_restriction_matches(uint8_t restriction, uint8_t own_bank,
 
 int t3_branch_condition_matches(uint8_t type, uint16_t p,
                                 const t3_branch_context_t* f) {
-    uint8_t posture;
     if (type == 0) return 1;
     if (type >= 0x45u) return 0; /* separate reversal walker, not this VM */
     if (type >= 2u && type <= 0x17u) {
@@ -37,12 +36,12 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
     case 0x1B: return HAS(f,T3_FACT_CONTACT) && f->guarded;
     case 0x1C: return HAS(f,T3_FACT_CONTACT) && f->whiffed;
     case 0x1D: return HAS(f,T3_FACT_OPPONENT) && f->opponent_transition!=0x21u;
-    case 0x1E: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack!=0;
+    case 0x1E: return HAS(f,T3_FACT_OPPONENT) && f->opponent_damage!=0;
     case 0x1F: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack!=0 &&
                                (f->opponent_state & 7u)==2u;
     case 0x20: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack!=0 &&
                                (f->opponent_state & 7u)==1u;
-    case 0x21: return HAS(f,T3_FACT_OPPONENT) && f->opponent_attack==0;
+    case 0x21: return HAS(f,T3_FACT_OPPONENT) && f->opponent_damage==0;
     case 0x22: return HAS(f,T3_FACT_OPPONENT) && (f->opponent_state&0x407u)==2u;
     case 0x23: return HAS(f,T3_FACT_OPPONENT) && (f->opponent_state&0x407u)==1u;
     case 0x24: return HAS(f,T3_FACT_ORIENTATION) && f->relative_angle>0x4000u;
@@ -72,6 +71,10 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
                       f->body_contact && !(f->opponent_state&0x404u);
     case 0x35: return HAS(f,T3_FACT_OPPONENT) && (f->opponent_state&4u)!=0;
     case 0x36: return HAS(f,T3_FACT_OPPONENT) && (f->opponent_state&4u)==0;
+    case 0x37: return HAS(f,T3_FACT_OPPONENT|T3_FACT_DISTANCE) &&
+                      (f->opponent_state&4u)!=0 &&
+                      !f->opponent_air_start && !f->opponent_air_end &&
+                      f->distance<=(int32_t)p;
     case 0x38: return HAS(f,T3_FACT_OPPONENT|T3_FACT_ORIENTATION) &&
                       (f->opponent_state&4u)!=0 && f->relative_angle>=0x4000u;
     case 0x39: return HAS(f,T3_FACT_CONTACT|T3_FACT_OPPONENT) &&
@@ -94,7 +97,5 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
     }
     /* Conditions needing motion/recovery data not yet available are not
      * guessed; an unsupported type always returns false. */
-    posture=0;
-    (void)posture;
     return 0;
 }

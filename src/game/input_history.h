@@ -2,6 +2,7 @@
 #define T3_INPUT_HISTORY_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "fight.h"
 
 /* Neutral numpad=5, toward rival=6, away=4; high/low=8/2.
@@ -16,6 +17,15 @@ t3_command_frame_t t3_history_at(const t3_input_history_t* h, unsigned age);
  * 0xC00D: condition-only. Other special commands require bank sequence data.
  * Returns 0 for unsupported rather than pretending a move is valid. */
 int t3_command_matches(uint16_t command, const t3_input_history_t* h);
+
+/* User-supplied PS1 command tables: 63 + 41 EXE-defined sequence IDs.
+ * Missing entries return false, never a guessed command. */
+typedef struct {
+    uint16_t command, window;
+    uint16_t steps[T3_INPUT_SEQUENCE_MAX+1u]; /* zero terminated */
+} t3_command_sequence_t;
+int t3_command_matches_table(uint16_t command, const t3_input_history_t* h,
+                             const t3_command_sequence_t* table, size_t count);
 
 /* Sequence words are (buttons << 8) | numpad direction, most recent last.
  * 'steps' is a zero-terminated table of at most T3_INPUT_SEQUENCE_MAX entries.

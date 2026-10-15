@@ -26,4 +26,8 @@ int t3_move_vm_start(t3_move_vm_t* vm, const t3_divmot_t* bank,
 
 /* -1 bad VM, 0 continued current move, 1 branch changed the move. */
 int t3_move_vm_tick(t3_move_vm_t* vm, const t3_input_history_t* input);
+int t3_move_vm_tick_ex(t3_move_vm_t* vm, const t3_input_history_t* input,
+                       const struct t3_branch_context* facts,
+                       const t3_command_sequence_t* sequences,
+                       size_t sequence_count);
 #endif

@@ -17,12 +17,16 @@ int t3_move_vm_start(t3_move_vm_t* vm, const t3_divmot_t* bank,
     return 1;
 }
 
-int t3_move_vm_tick(t3_move_vm_t* vm, const t3_input_history_t* input) {
+int t3_move_vm_tick_ex(t3_move_vm_t* vm, const t3_input_history_t* input,
+                       const struct t3_branch_context* facts,
+                       const t3_command_sequence_t* sequences,
+                       size_t sequence_count) {
     t3_branch_record_t branch;
     t3_move_record_t next;
     const t3_divmot_t* active = NULL;
     if (!vm || !vm->bank || !input) return -1;
-    if (t3_divmot_branch_pick(vm->active_bank,vm->move,input,vm->frame,&branch) &&
+    if (t3_divmot_branch_pick_ex(vm->active_bank,vm->move,input,vm->frame,
+                                  facts,sequences,sequence_count,&branch) &&
         t3_divmot_slot_resolve(vm->bank,vm->common,branch.target_slot,&next,&active)==1) {
         vm->move=next;
         vm->active_bank=active;
@@ -33,4 +37,8 @@ int t3_move_vm_tick(t3_move_vm_t* vm, const t3_input_history_t* input) {
     }
     if (vm->frame < 0xfffeu) ++vm->frame;
     return 0;
+}
+
+int t3_move_vm_tick(t3_move_vm_t* vm, const t3_input_history_t* input) {
+    return t3_move_vm_tick_ex(vm,input,NULL,NULL,0u);
 }
