@@ -386,3 +386,20 @@ is available for frame-by-frame PS1-versus-Saturn source oracle
 validation, with a synthetic regression suite in host CI. Real
 PlayStation capture/parity remains pending.
 
+
+## Original-USA PlayStation combat oracle capture
+
+A **read-only** [PCSX-Redux VSync recorder](scripts/pcsx_redux_capture_usa.lua)
+and an independent [2 MiB RAM dump decoder](scripts/psx_ram_oracle.py)
+now export true original-game *observations* (when run locally on a
+user-owned USA SLUS_004.02 disc) into the strict paired combat JSONL
+format. Both use the explicit USA guest-memory point mapping from the
+pinned upstream research. Invalid fighter data, mixed fights, and
+nonconsecutive frame counters fail closed. LuaJIT syntax and synthetic
+RAM decoding are tested in host CI.
+
+The [event analyzer](scripts/analyze_psx_combat_oracle.py) reports
+observed move-slot/health/KO/pose-stall transitions without inventing
+stun durations or other original PS1 rules. **No original gameplay
+trace has yet been captured, frame-aligned and parity-validated.**
+Follow the complete [private capture guide](docs/PS1_COMBAT_ORACLE_CAPTURE.md).
