@@ -105,7 +105,8 @@ static void test_bank_and_branch(void) {
     t3_history_push(&input_hist,input(0,T3_IN_LP));
     assert(t3_divmot_branch_pick(&bank,neutral,&input_hist,5,&branch));
     assert(branch.target_slot==1 && branch.command==1);
-    assert(!t3_divmot_branch_pick(&bank,neutral,&input_hist,35,&branch));
+    assert(t3_divmot_branch_pick(&bank,neutral,&input_hist,35,&branch));
+    assert(branch.command==0xC000 && branch.target_slot==0);
     t3_history_reset(&input_hist);
     t3_history_push(&input_hist,input(0,0));
     assert(!t3_divmot_branch_pick(&bank,neutral,&input_hist,5,&branch));
