@@ -30,6 +30,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_sequences.py' -v
       - name: Validate private PS1 IK lookup exporter against synthetic EXE
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_ik_tables.py' -v
+      - name: Validate frame-by-frame PS1 combat oracle comparator
+        run: python3 -m unittest discover -s tests -p 'test_compare_psx_combat_traces.py' -v
       - name: Validate PS1 pose trace binary/JSONL oracle comparator
         run: python3 -m unittest discover -s tests -p 'test_compare_psx_pose_traces.py' -v
   skeletal-asset-contract:
