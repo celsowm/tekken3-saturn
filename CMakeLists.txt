@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c)
+add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
@@ -198,5 +198,9 @@ else()
         target_link_libraries(test_psx_pose PRIVATE tekken3_fight)
         target_compile_options(test_psx_pose PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_euler_fk_partial_joints COMMAND test_psx_pose)
+        add_executable(test_psx_ik tests/test_psx_ik.c)
+        target_link_libraries(test_psx_ik PRIVATE tekken3_fight)
+        target_compile_options(test_psx_ik PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_four_limb_ik_completion COMMAND test_psx_ik)
     endif()
 endif()
