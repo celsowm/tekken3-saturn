@@ -152,3 +152,6 @@ copyrighted assets and must not be distributed without permission.
 - [x] Add numerical Python-vs-C differential harness using pinned research submodule.
 - [x] Exercise FK/IK across synthetic bending, singular poses and mixed rotations.
 - [ ] Compare actual USA animation streams with PlayStation emulator traces.
+
+- [x] Export selected private DIVMOT move slots as original signed 49-channel pose samples.
+- [x] Test local/shared banks and strict frame windows before feeding the C/Python differential harness.

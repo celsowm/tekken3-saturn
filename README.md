@@ -273,3 +273,12 @@ uses synthetic data only and reports precise per-slot mismatches.
 See [the offline solver harness](docs/DIVMOT_LOGIC.md).
 A match establishes parity against upstream research—not real-hardware
 MIPS parity or a fully rendered 1:1 game.
+
+### Private DIVMOT-to-pose differential pipeline
+
+`tools/psx_motion_export.c` now lets a host build sample an
+original **local** DIVMOT move slot into the 49-channel binary
+format consumed by the independent C/Python solver differential.
+It supports shared `divmot99` animations and optional private
+spline coefficients, with strict bounds and no bundled game data.
+See [end-to-end private workflow](docs/DIVMOT_LOGIC.md).

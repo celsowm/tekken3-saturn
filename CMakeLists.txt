@@ -244,9 +244,17 @@ else()
         add_test(NAME ps1_pose_oracle_trace_encoding COMMAND test_psx_trace)
         # Independent numerical reference, imported from our existing
         # pinned research submodule. No commercial disc or fixture is used.
+        add_executable(t3_motion_export tools/psx_motion_export.c)
+        target_link_libraries(t3_motion_export PRIVATE tekken3_fight)
+        target_compile_options(t3_motion_export PRIVATE -Wall -Wextra -Werror)
         add_executable(t3_pose_eval tools/psx_pose_eval.c)
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME ps1_private_divmot_pose_export
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_psx_motion_export.py"
+                --runner "$<TARGET_FILE:t3_motion_export>")
         set(_t3_pose_upstream
             "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/pose.py")
         if(EXISTS "${_t3_pose_upstream}")

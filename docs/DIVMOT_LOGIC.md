@@ -690,3 +690,49 @@ reference, **not direct proof of correctness against the executing
 PlayStation game**. Subsequent work must capture genuine USA MIPS
 pose oracles and confirm root placement, animation blending,
 rounding and fighting state.
+
+## Export real private DIVMOT poses into the FK/IK comparator
+
+`tools/psx_motion_export.c` is a **host-only** command-line frontend
+for the existing portable C DIVMOT decoder. It resolves the selected
+character's move slot (including shared `divmot99` motion
+references) and samples the exact requested section-6 frame range
+to the 49×signed-16-bit **little-endian** input format used by
+`t3_pose_eval`. It fails without writing a partial output when
+there is no motion stream, a frame is out of range, a source bank is
+malformed or a required spline table is unavailable.
+
+After privately compacting the original move banks with
+`scripts/divmot_to_logic.py --with-motion --with-hitboxes`,
+compile the native CLI and export a real input batch:
+
+```sh
+cmake --preset host
+cmake --build --preset host --target t3_motion_export t3_pose_eval
+build/host/t3_motion_export \
+  /private/bank_0.t3logic \
+  /private/bank_99.t3logic \
+  /private/spline_lookup_660.bin \
+  3 0 0 /private/pose_samples_le16.bin
+
+python3 scripts/diff_psx_pose_solver.py \
+  --runner build/host/t3_pose_eval \
+  --upstream third_party/Tekken3Remake/tools/research/pose.py \
+  --trig /private/psx_trig.bin \
+  --ik /private/psx_ik.bin \
+  --poses /private/pose_samples_le16.bin \
+  --strict-complete
+```
+
+The command arguments are, in order: private character bank, optional
+common bank or `-`, optional private normalized spline tables or
+`-`, move slot, starting pose frame, number of frames (`0` means
+all remaining), and destination file. Use the correct character bank
+and slot for the chosen fighter. The output and any real test reports
+are **private game-derived material**, excluded from the repository.
+This end-to-end process still compares with the upstream *research
+implementation*, not a live PS1 emulator oracle.
+
+The host CI regression generates a synthetic four-frame animation and
+tests exact sampling, an alternate common-bank move, frame windows,
+corrupt inputs and fail-closed behavior without shipping game data.
