@@ -144,3 +144,26 @@ python3 scripts/compare_psx_combat_traces.py \
 A passing synthetic unit test demonstrates format or arithmetic only,
 not authentic 1:1 parity. Keep all original retail-derived traces and
 executable bytes private and gitignored.
+
+## Report raw frame transitions before assigning original PS1 semantics
+
+Once a **genuine** original-game trace has been captured, run:
+
+```sh
+python3 scripts/analyze_psx_combat_oracle.py \
+  --ps1 /private/tekken3-usa.psx-combat.jsonl \
+  --output /private/tekken3-usa-observations.json
+```
+
+This produces a JSON event timeline for both fighters: exact move-slot
+changes, Q16 health deltas, KO flag edges, directly observed raw
+`got_hit`/`guarded`/`hit_clean`/`counter_hit`/`in_air`/
+`hit_freeze`/`recover_frames` changes, and consecutive intervals where
+the same move slot and pose frame were recorded. A pose-static interval
+**is not automatically hitstun** (it may be intentional holds, guard,
+transition freeze, pause or a sampled blend). The script rejects frame
+gaps, malformed diagnostic data and inconsistent paired snapshots.
+
+Only after the events have been aligned to PS1 `FightFrame` stages
+can frame durations and recovery/knockdown classifications be imported
+as oracle-supplied facts into the Saturn MoveVM bridge.
