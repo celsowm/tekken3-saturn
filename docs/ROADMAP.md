@@ -161,3 +161,9 @@ copyrighted assets and must not be distributed without permission.
 - [x] Sample representative streams across the bank and compare C vs pinned Python per frame.
 - [x] Record incomplete frames, coverage, invalid slots and unavailable coefficient reasons, fail closed on mismatches.
 - [ ] Run real private USA character banks with verified coefficients and investigate differences.
+
+### Shadow original combat observation
+- [x] Simultaneously evaluate original attack segments against 14 KMD hurt cylinders, using explicit world roots.
+- [x] Preserve per-frame swept endpoint history and distinguish contact intervals from health-changing hits.
+- [ ] Integrate calibrated original PS1 world roots into Saturn's live private probe and validate against PS1 collision traces.
+- [ ] Replace provisional hit/apply rules only after PS1 damage, guard, reaction and throw oracle parity.

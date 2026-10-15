@@ -291,3 +291,13 @@ C exporter, and tests the portable 18-slot FK/IK solver against the
 pinned upstream research oracle. It reports skipped moves and
 per-slot numerical differences without committing retail data.
 See [batch FK/IK audit](docs/DIVMOT_LOGIC.md).
+
+
+### Original combat collision observer
+
+The portable \`psx_shadow_combat\` module now checks **both fighters'
+original attack segments and KMD body cylinders** against the same
+frame's world transforms. It tracks swept endpoints and contact edges
+without writing to health or the match state; genuine PS1 fighter world
+placement must be supplied explicitly. See [the shadow observer
+scope](docs/DIVMOT_LOGIC.md).

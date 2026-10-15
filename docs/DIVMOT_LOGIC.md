@@ -785,3 +785,34 @@ selected animations could not be compared (discovery exclusions
 remain itemized). `--strict-complete` fails if any tested frame lacks
 a complete 18-slot solver result. A report for synthetic CI frames
 does **not** establish bit-exact parity with the original MIPS game.
+
+
+## Two-fighter PS1 shadow collision observer (no gameplay mutation)
+
+\`src/game/psx_shadow_combat.[ch]\` now evaluates **both attacking
+fighters in the same simulation tick** using the original authored
+section-9 attack segments, exact previous-world-endpoint continuity
+from \`t3_psx_sweep_sample\`, and all 14 original-layout hurt cylinders
+computed from KMD part positions.
+
+The caller must provide each original model-root translation and Q12
+orientation explicitly. The observer does **not guess a PS1 fighter's
+world transform** from the unrelated Saturn prototype's Q8 gameplay.
+Local joint poses are transformed into the caller's common world
+coordinate system before the narrow-phase test; missing poses or
+previous-frame sweep endpoints return \`MISSING\`, and invalid numeric
+input returns \`BAD\`, never a false confirmed contact.
+
+Both directions are independently evaluated from an immutable frame:
+simultaneous overlaps are preserved, and per-fighter counters distinguish
+frames with geometric overlap from *newly started contact intervals*.
+These counters are not hit counts or original Tekken combo semantics.
+An authored move switch resets the interval latch; inactive frames
+discard stale sweep history. The observer does not change fighter
+health, reaction, throw, guard, pushbox, stun, score, or match state.
+
+Host tests cover trade hits, moving/rotated roots, unavailable joint
+masks, malformed input, continuity of swept segments and contact edges.
+This layer remains **diagnostic-only** until actual USA PS1 world roots,
+hit-apply events and animations have been compared against an emulator
+oracle.
