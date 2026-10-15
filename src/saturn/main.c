@@ -36,7 +36,10 @@ static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
  * frame_serial is written last: it marks a complete snapshot. */
-volatile t3_diagnostics_t g_t3_diagnostics = {T3_DIAGNOSTICS_MAGIC, T3_DIAGNOSTICS_VERSION};
+volatile t3_diagnostics_t g_t3_diagnostics = {
+    .magic = T3_DIAGNOSTICS_MAGIC,
+    .version = T3_DIAGNOSTICS_VERSION
+};
 
 static sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
     sat_vec3_t v = {x, y, z};
