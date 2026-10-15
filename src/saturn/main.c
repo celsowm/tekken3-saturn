@@ -15,6 +15,9 @@
 #include "saturn/scene.h"
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
+#include "saturn/vdp1.h"
+#include "saturn/time.h"
+#include "diagnostics.h"
 
 enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
@@ -28,6 +31,12 @@ static uint16_t g_order[FACE_CAP];
 static sat_ascii_font_t g_font;
 static sat_hud_t g_hud;
 static sat_camera3d_t g_camera;
+static uint8_t g_show_profiler;
+static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
+
+/* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
+ * frame_serial is written last: it marks a complete snapshot. */
+volatile t3_diagnostics_t g_t3_diagnostics = {T3_DIAGNOSTICS_MAGIC, T3_DIAGNOSTICS_VERSION};
 
 static sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
     sat_vec3_t v = {x, y, z};
@@ -135,6 +144,51 @@ static void draw_scene(void) {
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
 }
 
+
+static void draw_profiler(void) {
+    /* Last completed diagnostic snapshot, never partial current-frame data. */
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "LOOP x10 ", g_rate_x10, 4, 66));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "VDP1 CMD ", g_t3_diagnostics.commands_used, 4, 78));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "SCENE FACES ", g_t3_diagnostics.faces_flushed, 4, 90));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME MS ", g_t3_diagnostics.frame_work_ms, 4, 102));
+}
+
+static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
+    sat_scene_stats_t scene = {0};
+    sat_vdp1_command_stats_t commands = {0};
+    sat_vdp1_frame_stats_t pacing = {0};
+    uint32_t now = sat_frame_count();
+    uint32_t span = now - g_rate_sample_vblank;
+    SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
+    SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
+    SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
+
+    ++g_rate_sample_frames;
+    if (span >= sat_video_refresh_hz()) {
+        /* Work-loop throughput, NOT a count of actual presented frames. */
+        g_rate_x10 = (g_rate_sample_frames * sat_video_refresh_hz() * 10u + span/2u) / span;
+        g_rate_sample_vblank = now;
+        g_rate_sample_frames = 0;
+    }
+
+    g_t3_diagnostics.vblanks = now;
+    g_t3_diagnostics.sim_ticks = g_game.total_ticks;
+    g_t3_diagnostics.sim_steps_last_frame = tick_count;
+    g_t3_diagnostics.loop_rate_x10 = g_rate_x10;
+    g_t3_diagnostics.frame_work_ms = sat_time_ms() - work_started_ms;
+    g_t3_diagnostics.faces_submitted = scene.submitted_faces;
+    g_t3_diagnostics.faces_flushed = scene.flushed_faces;
+    g_t3_diagnostics.faces_culled = scene.culled_faces;
+    g_t3_diagnostics.faces_rejected = scene.rejected_faces;
+    g_t3_diagnostics.commands_used = commands.used;
+    g_t3_diagnostics.commands_capacity = commands.capacity;
+    g_t3_diagnostics.late_swaps = pacing.late_swaps;
+    g_t3_diagnostics.draw_waits = pacing.draw_waits;
+    g_t3_diagnostics.draw_timeouts = pacing.draw_timeouts;
+    g_t3_diagnostics.first_error = (int32_t)scene.result;
+    ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
+}
+
 int main(void) {
     sat_video_config_t video = {W, H, SAT_VIDEO_AUTO, 0};
     sat_vec3_t eye = {0, Q(390), -FX(9)};
@@ -151,12 +205,21 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
     prev_frame = sat_frame_count();
+    g_rate_sample_vblank = prev_frame;
     for (;;) {
         sat_pad_state_t pad0 = {0}, pad1 = {0};
-        uint32_t now, elapsed, hz, ticks, i;
-        SAT_PANIC_IF_ERROR(sat_app_frame_begin(
-            SAT_RGB555(2,3,8), SAT_RGB555(2,3,8), &pad0));
-        SAT_PANIC_IF_ERROR(sat_pad_poll_port(1, &pad1));
+        uint32_t now, elapsed, hz, ticks, i, work_started_ms;
+        /* Both pads are sampled by ONE SMPC transaction. Using the generic
+         * app helper followed by a second port poll wasted one transaction. */
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_RGB555(2,3,8)));
+        SAT_PANIC_IF_ERROR(sat_set_clear_color(SAT_RGB555(2,3,8)));
+        SAT_PANIC_IF_ERROR(sat_begin_frame());
+        work_started_ms = sat_time_ms();
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
+        if (pad0.pressed & SAT_PAD_Z) g_show_profiler ^= 1u;
         if (pad0.pressed & SAT_PAD_START) {
             t3_match_reset(&g_game);
             SAT_PANIC_IF_ERROR(t3_characters_reset());
@@ -183,6 +246,8 @@ int main(void) {
         }
         draw_scene();
         draw_hud();
-        SAT_PANIC_IF_ERROR(sat_app_frame_end());
+        if (g_show_profiler) draw_profiler();
+        publish_diagnostics(work_started_ms, ticks);
+        SAT_PANIC_IF_ERROR(sat_end_frame());
     }
 }

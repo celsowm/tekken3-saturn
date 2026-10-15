@@ -58,3 +58,9 @@ The [Saturn firmware and disc image](https://github.com/celsowm/tekken3-saturn/a
 The native IP generator still uses Sega security/region payload bytes extracted from the LibSaturn-distributed Yaul *template*; no Yaul runtime is linked. Disc validation proves metadata, initial application load bytes, and Mode 1 sector data. It **does not** establish that the console BIOS, SAROO, Satiator, or an optical drive can boot the image.
 
 The playable build has **no external ROM requirement** and must never ship copyrighted Tekken data. The generated humanoids are original LibSaturn content.
+
+### Hardware/performance instrumentation
+
+Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x10, scene faces, VDP1 command usage, frame work time). The ELF also exports a fixed-layout `g_t3_diagnostics` record defined in `src/saturn/diagnostics.h` for emulator memory inspection. It includes VBlank count, simulation ticks, VDP1 command count/capacity, culled/rejected faces, late swaps and draw timeouts.
+
+These are instrumented counters only: **no emulator/real-console FPS measurement has been reported**. Rendering frame rate and presentation rate differ when the VDP1 spends longer than one display field drawing.

@@ -1,0 +1,35 @@
+#ifndef T3_SATURN_DIAGNOSTICS_H
+#define T3_SATURN_DIAGNOSTICS_H
+
+#include <stdint.h>
+
+/* Integer-only externally discoverable probe for debug emulators. Fields
+ * snapshot at the end of each work loop, before the next VDP1 submission.
+ * frame_serial is committed LAST, so a debugger can check it before/after
+ * reading the record. Loop rate is NOT necessarily visible screen FPS. */
+#define T3_DIAGNOSTICS_MAGIC 0x54334431u /* T3D1 */
+#define T3_DIAGNOSTICS_VERSION 1u
+
+typedef struct {
+    uint32_t magic, version;
+    uint32_t frame_serial;
+    uint32_t vblanks;
+    uint32_t sim_ticks;
+    uint32_t sim_steps_last_frame;
+    uint32_t loop_rate_x10;
+    uint32_t frame_work_ms;
+    uint32_t faces_submitted;
+    uint32_t faces_flushed;
+    uint32_t faces_culled;
+    uint32_t faces_rejected;
+    uint32_t commands_used;
+    uint32_t commands_capacity;
+    uint32_t late_swaps;
+    uint32_t draw_waits;
+    uint32_t draw_timeouts;
+    int32_t first_error;
+} t3_diagnostics_t;
+
+extern volatile t3_diagnostics_t g_t3_diagnostics;
+
+#endif /* T3_SATURN_DIAGNOSTICS_H */
