@@ -1,0 +1,57 @@
+name: Host combat regression
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portable core
+        run: cmake --preset host
+      - name: Compile tests
+        run: cmake --build --preset host
+      - name: Run deterministic regressions
+        run: ctest --preset host
+  skeletal-asset-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: celsowm/libsaturn
+          ref: 54379fd27f7baba087d223c4a822aea60fd0f863
+          path: .external/libsaturn
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install host generator requirements
+        run: python -m pip install numpy pillow
+      - name: Generate low-poly skeletal asset archive
+        run: |
+          python scripts/build_fighter_assets.py \
+            --libsaturn-source .external/libsaturn \
+            --output build/asset-fixture
+      - name: Validate manifest and asset layout
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("build/asset-fixture/manifest.json").read_text())
+          assert data["format"] == "SKA1"
+          assert data["joints"] == 24
+          assert len(data["clips"]) == 9
+          assert data["archive_bytes"] < 300000
+          assert data["vertices"] > 50 and data["faces"] > 60
+          print(data)
+          PY
+      - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+            -I .external/libsaturn/include \
+            -I src/game -I src/saturn -I build/asset-fixture \
+            src/saturn/main.c src/saturn/characters.c \
+            build/asset-fixture/t3_generated_character.c
