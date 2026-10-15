@@ -12,8 +12,7 @@ implementation of Tekken3Remake.
 - **Tekken3Remake**, by n0madic:
   https://github.com/n0madic/Tekken3Remake . Its current project source is
   licensed under PolyForm Noncommercial 1.0.0 and carries the required notice
-  "Copyright (c) 2026 n0madic". It serves as a publicly documented research
-  reference; **no Tekken3Remake source is copied here**.
+  "Copyright (c) 2026 n0madic". It is pinned under `third_party/Tekken3Remake` as a separate Git submodule, not vendored or built into this MIT-licensed project. The upstream license and notices still apply to everyone using its checkout. **No Tekken3Remake source is copied into this repository's authored files**.
 
 MIT terms on this project's independently written code do not relicense or
 grant permissions for Tekken 3 data, LibSaturn, or Tekken3Remake code.

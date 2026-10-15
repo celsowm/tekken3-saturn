@@ -1,6 +1,20 @@
 # Tekken 3 Saturn
 
-An **unofficial, independently built Sega Saturn fighting-game port experiment**, inspired by the original *Tekken 3*. It consumes [LibSaturn](https://github.com/celsowm/libsaturn) as an **installed package**, like [ikemen-saturn](https://github.com/celsowm/ikemen-saturn). The long-term reference is [Tekken3Remake](https://github.com/n0madic/Tekken3Remake), not a dependency.
+An **unofficial, independently built Sega Saturn fighting-game port experiment**, inspired by the original *Tekken 3*. It consumes [LibSaturn](https://github.com/celsowm/libsaturn) as an **installed package**, like [ikemen-saturn](https://github.com/celsowm/ikemen-saturn). The research reference [Tekken3Remake](https://github.com/n0madic/Tekken3Remake) is pinned as a **Git submodule**, never linked into the Saturn game.
+
+## Upstream research submodule
+
+The blue folder **[`third_party/Tekken3Remake`](third_party/Tekken3Remake)** is a pinned Git submodule, following the same layout idea as [wipeout-recomp](https://github.com/alexbeavs-ps1-ports/wipeout-recomp). It points to [n0madic/Tekken3Remake](https://github.com/n0madic/Tekken3Remake), rather than copying another project's Git history or source into this repository.
+
+```sh
+git clone --recurse-submodules https://github.com/celsowm/tekken3-saturn.git
+# For an existing clone:
+git submodule update --init --recursive
+# Deliberately update to a new upstream revision, review, and commit the pin:
+git submodule update --remote third_party/Tekken3Remake
+```
+
+**License boundary:** the submodule uses **PolyForm Noncommercial 1.0.0** with the upstream project's own required attribution, not this repository's MIT license. It is a separate research reference, not compiled/linked by the Saturn CMake build, and its source must not be silently copied or relicensed. Users must comply with the upstream license for uses of that source. No Tekken 3 retail data is part of the submodule checkout.
 
 ## Milestone 0: executable foundation
 

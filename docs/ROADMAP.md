@@ -20,6 +20,7 @@ but must address fundamentally different 3D fighting-game constraints.
 
 ## Milestone 1: asset pipeline
 
+- [x] Pin the upstream Tekken3Remake research project as a separate licensed Git submodule.
 - Identify documented game file formats and verify legally owned input.
 - Build an **offline** asset converter to an explicit versioned Saturn format:
   quantized vertices/bone weights, limited joint counts, LOD, frame sampling,

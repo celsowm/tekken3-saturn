@@ -1,0 +1,4 @@
+[submodule "third_party/Tekken3Remake"]
+	path = third_party/Tekken3Remake
+	url = https://github.com/n0madic/Tekken3Remake.git
+	branch = master
