@@ -571,3 +571,47 @@ Format references:
 [DIVMOT banks](https://github.com/n0madic/Tekken3Remake/blob/master/docs/research/formats/divmot-banks.md),
 [move lifecycle](https://github.com/n0madic/Tekken3Remake/blob/master/docs/research/code/moves.md),
 [combat](https://github.com/n0madic/Tekken3Remake/blob/master/docs/research/code/combat.md).
+
+## Private PS1/Saturn frame-by-frame pose oracle harness
+
+`src/game/psx_trace.[ch]` provides a deterministic **564-byte LE**
+record for each fighter and simulation tick. It serializes `tick`,
+`fighter`, `move_slot`, `pose_frame`, an 18-bit availability mask,
+and the PS1 KMD draw-part order `0..17`. Each joint holds three signed
+32-bit model-space/world-space integers and nine signed 16-bit Q12
+rotation entries. Unavailable joints are entirely zeroed. This format
+is **identical on x86 and the big-endian SH-2**. The encoder leaves the
+output unchanged if any validated input or output bound fails.
+
+The `scripts/compare_psx_pose_traces.py` comparator accepts
+concatenated 564-byte Saturn records and **independently captured**
+original PS1 JSONL records with this structure:
+
+```json
+{"tick":0,"fighter":0,"slot":3,"frame":0,"mask":1,"parts":[{"origin":[0,0,0],"rotation":[4096,0,0,0,4096,0,0,0,4096]},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]}
+```
+
+The example above intentionally shows only one available joint. In
+strict mode the comparator **requires all 18**, matching ticks,
+fighter, move slot and frame. It reports the first 20 divergences,
+the number of compared joints, missing frames, and mismatched validity
+masks. Differences are in original integer PS1/Q12 units, **not
+floating point**. With `--allow-incomplete`, partially known joints
+can be inspected without claiming overall parity.
+
+```sh
+python3 scripts/compare_psx_pose_traces.py \
+    --saturn /private/saturn_pose_frames.bin \
+    --dump-jsonl > /private/saturn_pose_frames.jsonl
+
+python3 scripts/compare_psx_pose_traces.py \
+    --saturn /private/saturn_pose_frames.bin \
+    --oracle /private/original_ps1_pose_frames.jsonl
+```
+
+Original PS1 oracle records must be captured independently on a local
+emulator; no original game traces or disc assets are included in Git.
+Captures from the Saturn debug symbol require a frame-stepping harness
+to append each sample, rather than repeatedly reading the same final
+memory frame. A failing comparison is a discrepancy to investigate,
+**not proof the original game is wrong**.

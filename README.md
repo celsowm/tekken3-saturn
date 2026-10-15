@@ -46,6 +46,19 @@ diagnostic. It validates bounds, source SHA-256 and basic fixed-point
 coefficients without publishing original data. See the
 [private lookup export instructions](docs/DIVMOT_LOGIC.md).
 
+## Private PS1 animation oracle comparison
+
+A new endian-independent, portable `t3_psx_trace_encode` serializes
+the 18 body joint transforms in PS1-native coordinates (564 bytes per
+fighter/frame). The local `scripts/compare_psx_pose_traces.py` tool
+compares captured Saturn frames against a separately captured original
+PS1 emulator oracle in JSONL, detecting frame, move, per-axis origin
+and 3×3 Q12 rotation differences. Strict matching is the default;
+optional tolerances are for diagnosing numerical divergences. The
+binary format and synthetic tests are documented in
+[the pose-oracle workflow](docs/DIVMOT_LOGIC.md).
+**No original oracle traces have been captured or validated yet.**
+
 ## Authored PS1 root movement and heading
 
 The portable `src/game/psx_root.[ch]` now evaluates original

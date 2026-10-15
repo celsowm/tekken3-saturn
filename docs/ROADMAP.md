@@ -141,3 +141,8 @@ copyrighted assets and must not be distributed without permission.
 - [x] Implement original KMD-scale root displacement with signed s16 wrap, facing rotation and heading basis.
 - [x] Include KMD scale in private generated C, and propagate model-local motion to composed joints.
 - [ ] Calibrate PS1 fighter roots/headings and layer animated world geometry over genuine duel positions.
+
+### Deterministic PS1 oracle harness
+- [x] Define endian-independent 18-joint 564-byte pose-trace serialization.
+- [x] Compare joint translations and rotations against externally captured PS1 oracle frames.
+- [ ] Capture actual original PS1 and Saturn frame traces, align control inputs, and close numerical deviations.
