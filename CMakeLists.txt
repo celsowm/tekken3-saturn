@@ -266,6 +266,9 @@ else()
         add_executable(t3_motion_export tools/psx_motion_export.c)
         target_link_libraries(t3_motion_export PRIVATE tekken3_fight)
         target_compile_options(t3_motion_export PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_hit_eval tools/psx_hit_eval.c)
+        target_link_libraries(t3_hit_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_hit_eval PRIVATE -Wall -Wextra -Werror)
         add_executable(t3_pose_eval tools/psx_pose_eval.c)
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
@@ -276,6 +279,15 @@ else()
                 --runner "$<TARGET_FILE:t3_motion_export>")
         set(_t3_pose_upstream
             "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/pose.py")
+        set(_t3_hit_upstream
+            "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/fight_math.py")
+        if(EXISTS "${_t3_hit_upstream}")
+            add_test(NAME ps1_hit_damage_upstream_differential
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_SOURCE_DIR}/tests/test_diff_psx_hit_damage.py"
+                    --evaluator "$<TARGET_FILE:t3_hit_eval>"
+                    --upstream "${_t3_hit_upstream}")
+        endif()
         if(EXISTS "${_t3_pose_upstream}")
             find_package(Python3 REQUIRED COMPONENTS Interpreter)
             add_test(NAME ps1_fk_ik_upstream_differential
