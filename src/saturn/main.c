@@ -1,10 +1,11 @@
 /*
- * Tekken 3 Saturn - independent visual blockout / first playable slice.
+ * Tekken 3 Saturn - animated original humanoids / first fighting prototype.
  * Uses only installed LibSaturn public APIs. Does not load Tekken 3 assets.
  */
 #include <stdint.h>
 
 #include "fight.h"
+#include "characters.h"
 #include "saturn/app.h"
 #include "saturn/color.h"
 #include "saturn/font.h"
@@ -15,7 +16,7 @@
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
 
-enum { W = 320, H = 224, FACE_CAP = 256, HUD_COMMANDS = 192 };
+enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
 
@@ -79,31 +80,6 @@ static void floor_tiles(void) {
          SAT_RGB555(10,16,20), SAT_RGB555(8,12,15), SAT_RGB555(14,21,23));
 }
 
-/* Placeholder humanoid: torso, pelvis, head, two legs and two arms.
- * Rendering responds to guard, stun and the current attack. Character art
- * and skeletal animation deliberately belong to a subsequent milestone. */
-static void draw_fighter(const t3_fighter_t* f, unsigned player) {
-    sat_fx16_t x = from_q8(f->x), z = from_q8(f->z);
-    sat_fx16_t arm = (f->attack && f->attack_age < 18)
-        ? Q(28) * f->facing : 0;
-    sat_fx16_t guard = f->guarding ? Q(20) : 0;
-    sat_fx16_t lean = f->stun ? Q(10) * (-f->facing) : 0;
-    uint16_t primary = player ? SAT_RGB555(29,9,7) : SAT_RGB555(5,17,29);
-    uint16_t shadow = player ? SAT_RGB555(17,5,5) : SAT_RGB555(3,9,17);
-    uint16_t light = player ? SAT_RGB555(31,18,12) : SAT_RGB555(14,27,31);
-    box3(x + lean, Q(129), z, Q(30), Q(39), Q(19), primary, shadow, light);
-    box3(x + lean, Q(89), z, Q(28), Q(13), Q(18), shadow, shadow, primary);
-    box3(x + lean, Q(185), z, Q(21), Q(23), Q(21),
-         SAT_RGB555(24,20,16), SAT_RGB555(16,12,11),
-         SAT_RGB555(30,25,20));
-    box3(x-Q(16), Q(46), z, Q(12), Q(42), Q(13), shadow, shadow, primary);
-    box3(x+Q(16), Q(46), z, Q(12), Q(42), Q(13), shadow, shadow, primary);
-    box3(x-Q(39)+arm, Q(124)+guard, z, Q(11), Q(30), Q(12),
-         primary, shadow, light);
-    box3(x+Q(39)+arm, Q(124)+guard, z, Q(11), Q(30), Q(12),
-         primary, shadow, light);
-}
-
 static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
     t3_input_t out = {0,0};
     uint16_t mask, pressed;
@@ -155,8 +131,7 @@ static void draw_scene(void) {
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
     floor_tiles();
-    draw_fighter(&g_game.fighters[0], 0);
-    draw_fighter(&g_game.fighters[1], 1);
+    SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
 }
 
@@ -171,7 +146,10 @@ int main(void) {
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
         FX(60), (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
+    SAT_PANIC_IF_ERROR(t3_characters_init());
     t3_match_reset(&g_game);
+    SAT_PANIC_IF_ERROR(t3_characters_reset());
+    SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
     prev_frame = sat_frame_count();
     for (;;) {
         sat_pad_state_t pad0 = {0}, pad1 = {0};
@@ -179,7 +157,10 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_app_frame_begin(
             SAT_RGB555(2,3,8), SAT_RGB555(2,3,8), &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_poll_port(1, &pad1));
-        if (pad0.pressed & SAT_PAD_START) t3_match_reset(&g_game);
+        if (pad0.pressed & SAT_PAD_START) {
+            t3_match_reset(&g_game);
+            SAT_PANIC_IF_ERROR(t3_characters_reset());
+        }
         now = sat_frame_count();
         elapsed = now - prev_frame;
         prev_frame = now;
@@ -198,6 +179,7 @@ int main(void) {
                 if (pad1.connected) p2.pressed = 0;
             }
             t3_match_step(&g_game,p1,p2);
+            SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
         }
         draw_scene();
         draw_hud();

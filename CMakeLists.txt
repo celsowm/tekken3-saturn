@@ -14,7 +14,33 @@ target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
 if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     find_package(LibSaturn 0.1 CONFIG REQUIRED)
 
-    add_executable(tekken3_saturn src/saturn/main.c)
+    # LibSaturn is an installed runtime dependency. Its uninstalled source
+    # tree supplies the offline original-humanoid/SKA1 generator only.
+    set(LIBSATURN_SOURCE_DIR "" CACHE PATH "LibSaturn checkout for host asset tooling")
+    if(NOT EXISTS "${LIBSATURN_SOURCE_DIR}/tools/generate_character_examples.py")
+        message(FATAL_ERROR "Set -DLIBSATURN_SOURCE_DIR=/path/to/libsaturn "
+            "for the original skeletal asset compiler.")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(_t3_gen "${CMAKE_BINARY_DIR}/generated/characters")
+    file(GLOB _t3_pipeline CONFIGURE_DEPENDS
+        "${LIBSATURN_SOURCE_DIR}/tools/model_pipeline/*.py")
+    add_custom_command(
+        OUTPUT "${_t3_gen}/t3_generated_character.c"
+            "${_t3_gen}/t3_generated_character.h"
+            "${_t3_gen}/manifest.json"
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
+            --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --output "${_t3_gen}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_assets.py"
+            "${LIBSATURN_SOURCE_DIR}/tools/generate_character_examples.py"
+            ${_t3_pipeline}
+        VERBATIM COMMENT "Generate original low-poly 24-joint SKA1 fighter"
+    )
+    add_executable(tekken3_saturn src/saturn/main.c
+        src/saturn/characters.c "${_t3_gen}/t3_generated_character.c")
+    target_include_directories(tekken3_saturn PRIVATE
+        "${_t3_gen}" "${CMAKE_SOURCE_DIR}/src/saturn")
     target_link_libraries(tekken3_saturn PRIVATE tekken3_fight LibSaturn::Saturn)
     target_compile_options(tekken3_saturn PRIVATE -Wall -Wextra -O2)
     libsaturn_configure_executable(tekken3_saturn)

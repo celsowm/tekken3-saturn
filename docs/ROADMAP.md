@@ -10,7 +10,10 @@ but must address fundamentally different 3D fighting-game constraints.
 - [x] Implement deterministic fixed-tick simulation with host tests
 - [x] Four separate attack specifications and controls, guard/hit stun
 - [x] Movement, sidestep, physical pushboxes, timer, best-of-three logic
-- [x] Procedural two-fighter 3D blockout with camera, stage, HUD
+- [x] Initial procedural 3D blockout with camera, stage and HUD
+- [x] Original skinned low-poly 24-joint fighters via LibSaturn SKA1 tooling
+- [x] Nine animation clips, independent P1/P2 poses and palettes
+- [ ] Measure renderer command budget and performance on Saturn hardware
 - [x] External LibSaturn package and native IP boot contract
 - [ ] Validate SH-2 build, Saturn disc boot, frame rate and pad inputs on Ymir/Mednafen
 - [ ] Screenshot and telemetry capture on real hardware, SAROO, Satiator
@@ -42,7 +45,7 @@ but must address fundamentally different 3D fighting-game constraints.
 
 ## Milestone 3: Saturn presentation and performance
 
-- Replace blockouts with legally imported animated fighters and stages.
+- Replace original procedural skeletal fighters with legally imported models and stages.
 - Quantize/skinning work distribution across Master/Slave SH-2 when helpful.
 - Scene-wide depth sorting with geometry intersection splitting where necessary.
 - Camera authored per fight, shadows, VDP2 floors/backgrounds and lighting.
@@ -59,8 +62,8 @@ measured performance. Additional modes only after the fight system is credible.
 
 The current simulation is **not** Tekken 3's fighting engine and shares no
 upstream assets; the blockout fighters deliberately do not resemble its cast.
-There is no asset import, bone animation, actual combos, grabs, replay oracle
-or save data yet. Passing host tests is NOT evidence the SH-2 ISO boots.
+There is an original-procedural SKA1 animation pipeline, but no Tekken 3
+asset import, move data, combos, grabs, replay oracle or save data yet. Passing host tests is NOT evidence the SH-2 ISO boots.
 
 ## Sources and licensing boundaries
 
