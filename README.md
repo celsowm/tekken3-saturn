@@ -32,7 +32,7 @@ git submodule update --remote third_party/Tekken3Remake
 The portable C layer now has a validated [DIVMOT interpreter](docs/DIVMOT_LOGIC.md)
 for the original 56-byte move rows, 12-byte branch records, 4,023-slot
 indices, basic input command/history matching and a deterministic move VM.
-These are tested independently of Saturn hardware. The playable fallback is
+These are tested independently of Saturn hardware. An **optional private local-bank build** can run the move VM as a live Saturn diagnostic without replacing gameplay. The playable fallback is
 still a **prototype**, not a one-to-one reimplementation. Raw imported
 move banks never enter Git; the local compactor keeps only move logic.
 

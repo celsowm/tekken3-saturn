@@ -75,8 +75,32 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
             -I .external/libsaturn/include \
             -I src/game -I src/saturn -I build/asset-kmd/generated \
-            src/saturn/main.c src/saturn/characters.c \
+            src/saturn/main.c src/saturn/characters.c src/saturn/move_probe.c \
             build/asset-kmd/generated/t3_generated_character.c
+      - name: Test private DIVMOT embed and optional Saturn probe on synthetic bank
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tests')
+          import test_divmot_to_logic as t
+          from divmot_to_logic import compact
+          root=Path('build/asset-divmot')
+          root.mkdir(parents=True,exist_ok=True)
+          (root/'character.t3logic').write_bytes(compact(t.fake_bank(0))[0])
+          (root/'common.t3logic').write_bytes(compact(t.fake_bank(99))[0])
+          PY
+          python3 scripts/build_local_divmot_assets.py \
+              --bank build/asset-divmot/character.t3logic \
+              --common build/asset-divmot/common.t3logic \
+              --output build/asset-divmot/generated
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn -I build/asset-fixture \
+              -I build/asset-divmot/generated \
+              src/saturn/main.c src/saturn/move_probe.c \
+              build/asset-divmot/generated/t3_local_divmot.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

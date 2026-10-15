@@ -25,7 +25,7 @@ sat_result_t t3_move_probe_init(void) {
 #else
           NULL,
 #endif
-          g_start_slot,&g_vms[0].move)) g_start_slot=0u;
+          g_start_slot,&g_vms[0].move)!=1) g_start_slot=0u;
     g_active=1;
     t3_move_probe_reset(1u);
     return SAT_OK;

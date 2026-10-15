@@ -50,6 +50,32 @@ camera and textures are omitted. The resulting compact file can be opened
 by `t3_divmot_open`, **but is not a standalone game and cannot drive the
 real combat without the missing sections**.
 
+## Optional Saturn move-interpreter diagnostic (private)
+
+The experimental game can embed a compact bank **locally** for interpreting
+input/branch transitions and displaying live slots on the Z profiler:
+
+```sh
+export LIBSATURN_PREFIX=/path/to/libsaturn-install
+cmake --preset saturn \
+  -DLIBSATURN_SOURCE_DIR=/path/to/libsaturn \
+  -DT3_LOCAL_DIVMOT="$PWD/assets/imported/tekken3-usa/moves/bank_0.t3logic" \
+  -DT3_LOCAL_COMMON_DIVMOT="$PWD/assets/imported/tekken3-usa/moves/bank_99.t3logic"
+cmake --build --preset saturn
+```
+
+These paths are examples: replace `bank_0` with the bank type shown by
+your import manifest. Both fighters currently run **the same** reference bank
+in a diagnostic-only VM. The core gameplay still uses its prototype attacks.
+The profiler shows PS1 move slots for investigation; `g_t3_diagnostics`
+(version 2) also records slots, frames, attack words and transition counts.
+The VM starts at original stance slot 3 when defined, otherwise 0.
+
+Because private output embeds original move data, its generated C/ELF/ISO
+must **never be published**. Public CI uses only synthetic test banks.
+Clear `T3_LOCAL_DIVMOT` and `T3_LOCAL_COMMON_DIVMOT` and rebuild before
+creating any public artifact.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

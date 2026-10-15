@@ -20,6 +20,7 @@
 #include "saturn/vdp1.h"
 #include "saturn/time.h"
 #include "diagnostics.h"
+#include "move_probe.h"
 
 enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
@@ -158,6 +159,10 @@ static void draw_profiler(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "VDP1 CMD ", g_t3_diagnostics.commands_used, 4, 78));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "SCENE FACES ", g_t3_diagnostics.faces_flushed, 4, 90));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME MS ", g_t3_diagnostics.frame_work_ms, 4, 102));
+    if (t3_move_probe_active()) {
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 1", t3_move_probe_slot(0), 4, 114));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 2", t3_move_probe_slot(1), 4, 126));
+    }
 }
 
 static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
@@ -193,6 +198,15 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.draw_waits = pacing.draw_waits;
     g_t3_diagnostics.draw_timeouts = pacing.draw_timeouts;
     g_t3_diagnostics.first_error = (int32_t)scene.result;
+    g_t3_diagnostics.psx_logic_active = t3_move_probe_active();
+    g_t3_diagnostics.psx_move_slot[0] = t3_move_probe_slot(0);
+    g_t3_diagnostics.psx_move_slot[1] = t3_move_probe_slot(1);
+    g_t3_diagnostics.psx_move_frame[0] = t3_move_probe_frame(0);
+    g_t3_diagnostics.psx_move_frame[1] = t3_move_probe_frame(1);
+    g_t3_diagnostics.psx_attack_word[0] = t3_move_probe_attack_word(0);
+    g_t3_diagnostics.psx_attack_word[1] = t3_move_probe_attack_word(1);
+    g_t3_diagnostics.psx_transitions[0] = t3_move_probe_transitions(0);
+    g_t3_diagnostics.psx_transitions[1] = t3_move_probe_transitions(1);
     ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
 }
 
@@ -209,6 +223,8 @@ int main(void) {
         FX(60), (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
     SAT_PANIC_IF_ERROR(t3_characters_init());
     t3_match_reset(&g_game);
+    SAT_PANIC_IF_ERROR(t3_move_probe_init());
+    t3_move_probe_reset(g_game.round);
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
     prev_frame = sat_frame_count();
@@ -229,6 +245,7 @@ int main(void) {
         if (pad0.pressed & SAT_PAD_Z) g_show_profiler ^= 1u;
         if (pad0.pressed & SAT_PAD_START) {
             t3_match_reset(&g_game);
+            t3_move_probe_reset(g_game.round);
             SAT_PANIC_IF_ERROR(t3_characters_reset());
         }
         now = sat_frame_count();
@@ -249,6 +266,7 @@ int main(void) {
                 if (pad1.connected) p2.pressed = 0;
             }
             t3_match_step(&g_game,p1,p2);
+            t3_move_probe_tick(&g_game);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
         }
         draw_scene();
