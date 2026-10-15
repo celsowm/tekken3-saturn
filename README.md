@@ -27,6 +27,15 @@ git submodule update --remote third_party/Tekken3Remake
 
 **This is a gameplay/renderer prototype, not a claim of Tekken 3 accuracy.** The models are intentionally original placeholders. Its procedural fighters and animations are original LibSaturn example content, **not** Tekken 3 models or moves; no copyrighted Namco assets or PS1 code are included.
 
+## Original Tekken 3 combat-data foundations
+
+The portable C layer now has a validated [DIVMOT interpreter](docs/DIVMOT_LOGIC.md)
+for the original 56-byte move rows, 12-byte branch records, 4,023-slot
+indices, basic input command/history matching and a deterministic move VM.
+These are tested independently of Saturn hardware. The playable fallback is
+still a **prototype**, not a one-to-one reimplementation. Raw imported
+move banks never enter Git; the local compactor keeps only move logic.
+
 ## Import data from a local Tekken 3 USA disc
 
 The source can be a BIN/ISO/ZIP stored locally or the explicit user-specified archive.org ZIP address. The importer locates the PS1 `SLUS_004.02` executable and the 303-entry `TEKKEN3.BNS` archive; it verifies the executable fingerprint and extracts only explicitly selected records, without modifying the disc.

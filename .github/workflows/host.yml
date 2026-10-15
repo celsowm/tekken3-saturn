@@ -17,6 +17,8 @@ jobs:
         run: ctest --preset host
       - name: Validate synthetic PS1 disc, ZIP, BNS table and stage converter
         run: python3 -m unittest discover -s tests -p 'test_psx_disc_import.py' -v
+      - name: Validate DIVMOT compactor against synthetic raw and common move banks
+        run: python3 -m unittest discover -s tests -p 'test_divmot_to_logic.py' -v
   skeletal-asset-contract:
     runs-on: ubuntu-latest
     steps:

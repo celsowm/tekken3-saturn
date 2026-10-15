@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c)
+add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)

@@ -1,4 +1,5 @@
 #include "divmot.h"
+#include "move_vm.h"
 #include "input_history.h"
 #include "fight.h"
 #ifdef NDEBUG
@@ -119,6 +120,29 @@ static void test_bank_and_branch(void) {
     assert(!t3_divmot_open(&bank,bank_bytes,sizeof(bank_bytes)));
 }
 
+static void test_vm_execution(void) {
+    t3_divmot_t bank={0};
+    t3_input_history_t h;
+    t3_move_vm_t vm={0};
+    unsigned i;
+    make_bank();
+    assert(t3_divmot_open(&bank,bank_bytes,sizeof(bank_bytes)));
+    assert(t3_move_vm_start(&vm,&bank,NULL,0));
+    assert(vm.slot==0 && vm.move.length==30 && vm.frame==0);
+    t3_history_reset(&h);
+    t3_history_push(&h,input(0,T3_IN_LP));
+    assert(t3_move_vm_tick(&vm,&h)==1);
+    assert(vm.slot==1 && vm.frame==0 && vm.move.attack_word==0x412);
+    /* Attack runs for 10 frames, then follows its default continuation. */
+    t3_history_reset(&h);
+    t3_history_push(&h,input(0,0));
+    for (i=0; i<10; ++i) assert(t3_move_vm_tick(&vm,&h)==0);
+    assert(vm.frame==10);
+    assert(t3_move_vm_tick(&vm,&h)==1);
+    assert(vm.slot==0 && vm.transitions==2);
+    assert(!t3_move_vm_start(&vm,&bank,NULL,4)); /* empty move slot */
+}
+
 static void advance(t3_match_t* match, unsigned frames,t3_input_t a,t3_input_t b) {
     unsigned i;
     for(i=0;i<frames;++i)t3_match_step(match,a,b);
@@ -177,6 +201,7 @@ static void test_dash_and_round_history(void) {
 int main(void) {
     test_commands();
     test_bank_and_branch();
+    test_vm_execution();
     test_live_combat_levels();
     test_dash_and_round_history();
     puts("DIVMOT input/branch and combat level regressions passed");

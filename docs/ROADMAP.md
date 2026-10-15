@@ -83,3 +83,18 @@ Any future code reuse must preserve that license and notice in the affected
 files and distributions; independent source is kept separate. Bandai Namco
 retains rights in the original game and data. A derived ISO may contain
 copyrighted assets and must not be distributed without permission.
+
+## Original combat-logic port (incremental and trace-verified)
+
+- [x] Original DIVMOT bank layout, 56-byte move / 12-byte branches / 4,023 global slots.
+- [x] Portable 60-frame input history, double tap, simple motion sequence matching.
+- [x] Deterministic move VM for first-match branch and end-of-move continuation.
+- [x] High/mid/low attacks, crouch/standing guard, jump and dash in fallback combat.
+- [ ] Import/verify all source DIVMOT files and shared bank on a local legitimate disc.
+- [ ] Complete command/condition/restriction semantics and move-slot transitions.
+- [ ] Replace fallback attacks with bank-defined full character moves and reactions.
+- [ ] Per-frame original movement, collision, hit segments, counters and juggles.
+- [ ] Throws, reversals, multiple stances, knockdown/get-ups and posture/evades.
+- [ ] Motion decode, model variants, effects, audio, original camera/round flow.
+- [ ] CPU AI, Tekken Force/Ball, team, practice, replay, character selection and modes.
+- [ ] Real-game oracle harness and frame-by-frame regression parity across characters.
