@@ -287,6 +287,25 @@ reactions or original physics. Source animation bytes and compacted
 banks remain PRIVATE. Actual USA stream lengths and spline weights
 have not been compared with a PS1 oracle in this milestone.
 
+## Saturn FK diagnostic (optional, private)
+
+The private Saturn move probe now feeds fully decoded DIVMOT pose vectors
+into the Euler FK calculator when a 0x2800-byte private PS1 trigonometric
+lookup window is supplied. Pass
+`-DT3_LOCAL_PSX_TRIG_TABLE=/private/ps1_sine_window.bin` alongside
+`-DT3_LOCAL_DIVMOT`, `-DT3_LOCAL_COMMON_DIVMOT`,
+`-DT3_LOCAL_PSX_SPLINE_TABLES`, and optional `T3_LOCAL_PSX_SEQUENCES`.
+
+The externally discoverable `g_t3_diagnostics` **version 5** exposes
+`psx_fk_valid_slots[2]` and the root rotation's Q12 XX component for
+each fighter. With a valid full pose and lookup window the mask contains
+the original ten FK slots; it is zero when missing source data.
+This **does not** pretend to solve IK or animate the rendered mesh.
+The local builder validates the table length but cannot authenticate
+retail bytes; use an original private executable and region-verified
+table offsets, never guessed addresses. Public CI only compiles a
+synthetic zero-filled table.
+
 ## PS1 Euler FK and partial model-joint composition
 
 `src/game/psx_pose.[ch]` now evaluates the **ten PS1 Euler rotations**

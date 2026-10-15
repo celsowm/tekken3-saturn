@@ -30,7 +30,7 @@ def load_sequences(path):
         cleaned.append((command,window,steps))
     return cleaned
 
-def generate(bank_path,common_path,out,sequences_path=None,spline_path=None):
+def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None):
     bank=bank_path.read_bytes()
     _,section=sections_of(bank)
     if bank[1]==99:raise ValueError("main bank must be character bank, not type 99")
@@ -42,6 +42,9 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None):
         raise ValueError("logic banks exceed 450-kilobyte experimental budget")
     sequences=load_sequences(sequences_path)
     spline=spline_path.read_bytes() if spline_path else b""
+    trig=trig_path.read_bytes() if trig_path else b""
+    if trig and len(trig)!=0x2800:
+        raise ValueError("PS1 Q12 sine table window must be exactly 0x2800 bytes")
     if spline and len(spline)!=0x660:
         raise ValueError("PS1 spline lookup blob must be exactly 0x660 bytes")
     out.mkdir(parents=True,exist_ok=True)
@@ -51,6 +54,8 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None):
 #include "input_history.h"
 #define T3_LOCAL_SEQUENCE_COUNT {len(sequences)}u
 #define T3_LOCAL_SPLINE_BYTES {len(spline)}u
+#define T3_LOCAL_TRIG_BYTES {len(trig)}u
+extern const uint8_t t3_local_trig_blob[{max(1,len(trig))}];
 extern const uint8_t t3_local_spline_blob[{max(1,len(spline))}];
 extern const t3_command_sequence_t t3_local_sequences[{max(1,len(sequences))}];
 #define T3_LOCAL_DIVMOT_BANK_BYTES {len(bank)}u
@@ -67,7 +72,8 @@ extern const uint8_t t3_local_common[{max(1,len(common))}];
     impl=('#include "t3_local_divmot.h"\n'
           '/* PRIVATE local PS1 move data. Never publish derived objects/ISO. */\n'
           +emit("t3_local_bank",bank)+emit("t3_local_common",common)
-          +emit("t3_local_spline_blob",spline))
+          +emit("t3_local_spline_blob",spline)
+          +emit("t3_local_trig_blob",trig))
     impl += "const t3_command_sequence_t t3_local_sequences["+str(max(1,len(sequences)))+"] = {\\n"
     if not sequences:
         impl += "    {0},\\n"
@@ -87,7 +93,9 @@ def main():
     p.add_argument("--sequences",type=Path,help="private 104-entry input sequence JSON")
     p.add_argument("--spline-tables",type=Path,
                    help="optional PRIVATE 0x660-byte normalized PS1 spline lookup region")
+    p.add_argument("--trig-table",type=Path,
+                   help="optional PRIVATE 0x2800-byte original PS1 sine/cosine window")
     a=p.parse_args()
-    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables)
+    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table)
     except (OSError,ValueError) as e:p.exit(1,f"private DIVMOT embed failed: {e}\n")
 if __name__=="__main__":main()

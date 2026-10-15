@@ -37,6 +37,16 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## PS1 Euler FK rotation and model hierarchy
+
+The portable C core now calculates the **ten genuine PS1 Euler matrix
+slots** using GTE-style Q12 operations and a private sine lookup window.
+A second routine composes known KMD parent/offset chains and marks limbs
+requiring IK as unavailable. The optional private Saturn build exposes
+the Euler FK validity mask through emulator telemetry version 5.
+This is a tested foundation for the remaining inverse-kinematic solver,
+**not yet full animated joints**. See [FK scope](docs/DIVMOT_LOGIC.md).
+
 ## Original DIVMOT animation stream reader
 
 `src/game/psx_motion.[ch]` now parses section-6 tagged PS1 animation
