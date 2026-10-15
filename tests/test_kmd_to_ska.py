@@ -23,10 +23,9 @@ def synthetic_kmd():
     face_word=(0<<2)|(1<<9)|(2<<16)|(3<<25)
     faces=u32(0)+u32(1)+struct.pack("<II",face_word,0)+u32(0)+u32(0)
     uvs=bytes((0,0,8,0,8,8,0,8))
-    material=(struct.pack("<HHH",4,7,10)+uvs+
-              bytes((0,1,0,0,0,1,2,3,0,0))+b"\0"*3)
-    # Four groups: FT3=0, FT4=1 (material 0 and 4 UV corners), GT3/GT4=0
-    material=struct.pack("<HHH",4,7,10)+uvs+bytes((0,1,0,0,1,2,3,0,0))+b"\0"*3
+    # Groups: FT3 count0; FT4 count1, material0, four UV indices;
+    # GT3 count0; GT4 count0; documented two-byte texmap trailer.
+    material=struct.pack("<HHH",4,7,10)+uvs+bytes((0,1,0,0,1,2,3,0,0,0,0))+b"\0"*3
     # len must be 28: material hdr 4, uv hdr 10, group counts 4,
     # one FT4 record 5, trailer 2, padding 3.
     assert len(material)==28,(len(material),material)
