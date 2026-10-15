@@ -40,6 +40,7 @@ def generate(kmd_path, lib_source, output):
 #define T3_CLIP_COUNT 1u
 #define T3_CLIP_IDLE 0u
 #define T3_LOCAL_KMD_BIND 1u
+#define T3_KMD_SCALE_PERCENT {model.scale_percent}u
 typedef union t3_embedded_archive {{
     uint32_t alignment;
     uint8_t bytes[T3_ARCHIVE_BYTES];

@@ -518,6 +518,31 @@ positions are not yet calibrated as genuine PS1 fighter roots and
 heading angles. Claiming hits by overlaying their local origins
 would be misleading and change gameplay incorrectly.
 
+## Original PS1 root motion, facing and KMD scale
+
+`src/game/psx_root.[ch]` now implements the original
+`FighterSkeleton.root_displacement` and root placement formula:
+the first 3 DIVMOT channels are multiplied by the character's
+`scale_percent * 4096 / 100` in PS1 Q12, rounded downward
+and **wrapped to signed 16-bit**. Facing controls the rotation of the
+root displacement into the arena; heading controls the Q12 model
+root rotation (`heading - 0x8000`). All calculations use integers,
+the caller's *original PS1* lookup window and bounded world positions.
+
+For private KMD builds, the generated character header now embeds
+`T3_KMD_SCALE_PERCENT`, and the move debugger composes its model
+joints with an **authored, scaled root displacement**. The debug
+preview deliberately uses a zero arena anchor and neutral facing
+and heading, so the fallback Saturn fighter's Q8 X/Z cannot be
+confused with the authentic PS1 world origin.
+
+A standalone regression checks 100% and 50% KMD scale, sign and
+16-bit wrap, 90-degree facing and heading, invalid ranges, and
+atomic failure. The emulator will need **actual PS1 world anchor and
+facing/heading**, character-specific scale and a matched opponent
+pose before these model-space world joints can drive live hit
+classification or damage.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

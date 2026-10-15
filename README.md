@@ -46,6 +46,15 @@ diagnostic. It validates bounds, source SHA-256 and basic fixed-point
 coefficients without publishing original data. See the
 [private lookup export instructions](docs/DIVMOT_LOGIC.md).
 
+## Authored PS1 root movement and heading
+
+The portable `src/game/psx_root.[ch]` now evaluates original
+49-channel root displacement with signed 16-bit wrap, KMD scale,
+fighter facing and heading. Private pose previews use this scaled
+root motion with a clearly neutral *model-local* arena anchor;
+production combat still requires calibrated PS1 fighter world
+coordinates. [Geometry and root details](docs/DIVMOT_LOGIC.md).
+
 ## Authored PS1 hit sweeps and animated hurt zones
 
 `src/game/psx_contact.[ch]` constructs the **14 original defensive

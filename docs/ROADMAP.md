@@ -136,3 +136,8 @@ copyrighted assets and must not be distributed without permission.
 - [x] Original swept attack history, per-move/per-frame continuity.
 - [x] Optional geometric contact probe separated from fallback combat.
 - [ ] Calibrated PS1 root placement and live damage/classification semantics.
+
+### Authored PS1 root motion
+- [x] Implement original KMD-scale root displacement with signed s16 wrap, facing rotation and heading basis.
+- [x] Include KMD scale in private generated C, and propagate model-local motion to composed joints.
+- [ ] Calibrate PS1 fighter roots/headings and layer animated world geometry over genuine duel positions.

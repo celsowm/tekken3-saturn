@@ -8,6 +8,7 @@
 #include "psx_pose.h"
 #include "psx_ik.h"
 #include "psx_contact.h"
+#include "psx_root.h"
 #include "t3_generated_character.h"
 
 static t3_divmot_t g_bank, g_common;
@@ -155,12 +156,16 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                 t3_psx_joint_t world[T3_PSX_DRAW_PARTS];
                                 t3_psx_joint_t root_frame={0};
                                 uint32_t partmask=0u;
-                                /* Model-local diagnostic only: unknown PS1
-                                 * fighter heading/root and IK are not guessed. */
-                                root_frame.rotation.m[0][0]=4096;
-                                root_frame.rotation.m[1][1]=4096;
-                                root_frame.rotation.m[2][2]=4096;
-                                if(t3_psx_compose_parts(t3_private_kmd_parts,
+                                /* The original root displacement uses KMD
+                                 * scale and the sampled 49-channel pose.
+                                 * A model-local zero arena anchor with neutral
+                                 * facing is intentional for VISUAL RESEARCH.
+                                 * Never promote it to a real opponent hit. */
+                                const t3_vec3i_t zero={0};
+                                if(t3_psx_pose_world_root(pose,
+                                    T3_KMD_SCALE_PERCENT,zero,
+                                    0x8000u,0x8000u,&trig,&root_frame) &&
+                                   t3_psx_compose_parts(t3_private_kmd_parts,
                                     slots,valid,&root_frame,world,&partmask)) {
                                     g_fk_parts[i]=partmask;
                                     if((partmask & 0x3FFFFu)==0x3FFFFu) {
