@@ -117,6 +117,13 @@ jobs:
               -I build/asset-divmot/generated \
               src/saturn/main.c src/saturn/move_probe.c \
               build/asset-divmot/generated/t3_local_divmot.c
+          # Combined private KMD + DIVMOT path, with synthetic fixture only.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/move_probe.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

@@ -287,6 +287,23 @@ reactions or original physics. Source animation bytes and compacted
 banks remain PRIVATE. Actual USA stream lengths and spline weights
 have not been compared with a PS1 oracle in this milestone.
 
+## Original KMD model parent/offset wiring
+
+For an explicitly enabled local KMD, the private asset builder now emits
+`t3_private_kmd_parts[22]`: each part's original parent draw-part
+index, animation matrix slot and model offset `(x,y,-z)`, taken from
+the user's own KMD row data. When the build **also** has a local
+DIVMOT bank, valid pose and private sine window, the Saturn diagnostic
+composes the partially known skeleton using those real model offsets.
+`g_t3_diagnostics` version **6** adds
+`psx_fk_valid_model_parts[2]` so emulator harnesses can distinguish
+FK-derived joints from unavailable IK-dependent subtrees.
+
+The initial model-space root is identity, **not an approximation of the
+original fighter's world orientation**. These transforms are only
+for research, not yet rendered or used to decide contacts. The
+normal public/procedural build emits no KMD data or joint tables.
+
 ## Saturn FK diagnostic (optional, private)
 
 The private Saturn move probe now feeds fully decoded DIVMOT pose vectors
@@ -296,7 +313,7 @@ lookup window is supplied. Pass
 `-DT3_LOCAL_DIVMOT`, `-DT3_LOCAL_COMMON_DIVMOT`,
 `-DT3_LOCAL_PSX_SPLINE_TABLES`, and optional `T3_LOCAL_PSX_SEQUENCES`.
 
-The externally discoverable `g_t3_diagnostics` **version 5** exposes
+The externally discoverable `g_t3_diagnostics` **version 6** exposes
 `psx_fk_valid_slots[2]` and the root rotation's Q12 XX component for
 each fighter. With a valid full pose and lookup window the mask contains
 the original ten FK slots; it is zero when missing source data.

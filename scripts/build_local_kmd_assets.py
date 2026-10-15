@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import sys
 
-from kmd_to_ska import parse_kmd, compile_ska
+from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES
 
 def generate(kmd_path, lib_source, output):
     raw = kmd_path.read_bytes()
@@ -31,6 +31,7 @@ def generate(kmd_path, lib_source, output):
     header=f"""#ifndef T3_GENERATED_CHARACTER_H
 #define T3_GENERATED_CHARACTER_H
 #include <stdint.h>
+#include "psx_pose.h"
 #define T3_ARCHIVE_BYTES {len(archive)}u
 #define T3_VERTEX_COUNT {vertices}u
 #define T3_FACE_COUNT {faces}u
@@ -45,6 +46,7 @@ typedef union t3_embedded_archive {{
 }} t3_embedded_archive_t;
 extern t3_embedded_archive_t t3_archive;
 extern const uint16_t t3_red_palette[256];
+extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
 #endif
 """
     payload=[
@@ -57,6 +59,17 @@ extern const uint16_t t3_red_palette[256];
     payload.extend(['} };','const uint16_t t3_red_palette[256] = {'])
     for i in range(0,256,16):
         payload.append('    '+','.join(str(v) for v in alt_palette[i:i+16])+',')
+    payload.append('};')
+    # These ORIGINAL draw-part parent indices and model offsets are private,
+    # and must be interpreted in PS1 coordinate space, never guessed from GLB.
+    payload.append('const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS] = {')
+    for part,(row_i,slot) in enumerate(zip(PART_ROWS,PART_MATRICES)):
+        row=model.rows[row_i]
+        parent=row.parent
+        if parent<-1 or parent>=part:
+            raise ValueError(f"bad KMD draw-part parent {part}: {parent}")
+        x,y,z=row.offset
+        payload.append('    {%d,%du,{%d,%d,%d}},' % (parent,slot,x,y,-z))
     payload.append('};')
     (output/"t3_generated_character.c").write_text('\n'.join(payload)+'\n',encoding='utf8')
     (output/"t3_generated_character.h").write_text(header,encoding='utf8')
