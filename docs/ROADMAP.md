@@ -113,3 +113,9 @@ copyrighted assets and must not be distributed without permission.
 - [x] Wire private local input sequence manifest into the Saturn debug build.
 - [ ] Validate all extracted USA commands against a private original SLUS-00402 image.
 - [ ] Implement original conditional input buffering / stance look-ahead.
+
+### FK pose milestone
+- [x] Translate 10 PS1 Euler triples to their original local matrix slots with Q12/GTE-style arithmetic.
+- [x] Compose only valid model-joint chains, propagating missing IK/attachment status.
+- [ ] Reconstruct remaining 8 matrices with original PS1 two-bone limb IK.
+- [ ] Import real KMD bind offsets into diagnostic composition and validate against PS1 traces.

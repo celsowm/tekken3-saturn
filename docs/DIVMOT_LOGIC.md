@@ -287,6 +287,36 @@ reactions or original physics. Source animation bytes and compacted
 banks remain PRIVATE. Actual USA stream lengths and spline weights
 have not been compared with a PS1 oracle in this milestone.
 
+## PS1 Euler FK and partial model-joint composition
+
+`src/game/psx_pose.[ch]` now evaluates the **ten PS1 Euler rotations**
+stored in pose channels 19..48 into their original 18-slot indices
+`[0,1,11,2,3,7,6,10,14,17]`. The implementation follows the GTE
+fixed-point arithmetic: 4.12 sine/cosine values, signed saturation at
+each GPF multiply, 16-bit angular wrap and the documented rotation
+matrix construction. It does not call `sin()`/libm on the SH-2.
+
+The input is an **explicit private 0x2800-byte sine+cosine lookup window**
+from the user's PS1 executable (sin table plus 0x800-byte cosine lookup
+displacement, including wrap coverage). **Never use guessed USA executable
+addresses.** For tests, the window is generated with synthetic cardinal
+angles; original trigonometric data is not shipped.
+
+The independent 22-part model composer accepts original PS1
+parent-part indices, KMD offsets `(x,y,-z)`, and a world-space root
+matrix. It propagates rotation/translation through the parent chain
+and **produces a validity bit per part**. Parts whose rotation depends
+on the missing IK slots 4,5,8,9,12,13,15,16, and the accessory slots
+18..21, are explicitly marked unavailable. This avoids passing invented
+joint positions to hitbox/collision code. The module uses no malloc,
+floating point, hardware GTE or LibSaturn-specific API.
+
+**Current boundary:** these ten FK slots and generic composition are
+tested but do *not* yet constitute the complete original 18-slot
+FK/IK pipeline, nor a full 22-part animated fighter. The PS1 sine table,
+actual KMD parent offsets, limb IK, world root heading and oracle
+validation all remain necessary.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US
