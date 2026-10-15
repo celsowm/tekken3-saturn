@@ -97,7 +97,16 @@ static void counter_and_juggle(void) {
     f.defender_state=0u;
     f.attacker_damage=0;
     assert(t3_psx_hit_preview(&m,4u,&f,&r));
-    assert(r.no_damage && r.damage==0 && r.severity==6u);
+    assert(r.no_damage && r.damage==0 && r.severity==1u &&
+           !r.guarded && !r.chip && !r.close && !r.hit && !r.counter &&
+           !r.airborne);
+    f.defender_guard=0x10u;
+    f.chip_enabled=1u;
+    m.close_reaction=15u;
+    f.close_table_available=0u;
+    assert(t3_psx_hit_preview(&m,4u,&f,&r));
+    assert(r.no_damage && r.damage==0 && r.severity==1u &&
+           !r.guarded && !r.chip && !r.close);
 }
 static void strict_and_best(void) {
     t3_move_record_t m=move(0x217u,100u);

@@ -101,6 +101,20 @@ static void single_and_two_slots(void) {
     assert(r.best_slot==-1 && r.last_attacker==-1 && r.total_damage==0 &&
            r.health_q16==HEALTH(100) && !r.reaction_known);
 }
+static void zero_damage_does_not_invent_chip(void) {
+    t3_psx_hit_apply_frame_t f;
+    t3_psx_hit_apply_result_t r;
+    setup();f=base();
+    fact[0].attacker_damage=0;
+    fact[0].defender_guard=0x10u;
+    fact[0].chip_enabled=1;
+    f.health_q16=HEALTH(1);
+    assert(t3_psx_hit_apply_preview(&f,&r));
+    assert(r.slots[0].no_damage && !r.slots[0].chip &&
+           !r.slots[0].guarded && !r.slots[0].hit &&
+           r.slots[0].severity==1u);
+    assert(r.slot_damage==0 && r.health_q16==HEALTH(1));
+}
 static void guard_chip_ko_and_unknown_reaction(void) {
     t3_psx_hit_apply_frame_t f;
     t3_psx_hit_apply_result_t r;
@@ -173,6 +187,7 @@ int main(void) {
     extra_events();
     single_and_two_slots();
     guard_chip_ko_and_unknown_reaction();
+    zero_damage_does_not_invent_chip();
     negative_extra_heal_and_wrap();
     invalid_inputs_atomic();
     puts("PS1 HitExtraDamage and 16.16 read-only HitApply preview: passed");

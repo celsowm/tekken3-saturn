@@ -63,12 +63,15 @@ def classify(vals):
     (zone,attack,cls,rec,close_idx,base,defd,guard,angle,
      frame,active,state,juggle,distance,threshold,close_word,
      present,power_a,power_d,chip_enabled,in_air)=vals
-    close=int(bool(close_idx) and distance<threshold)
-    guarded=int(bool(guard & attack) and angle<=0x3fff)
-    hit=1-guarded
-    chip=int(bool(guarded and (chip_enabled or power_a)))
-    counter=int(bool(hit and ((defd!=0 and frame<active) or power_a or power_d)))
-    airborne=int(bool(hit and (in_air or (state&0x400))))
+    if base==0:  # HitClassify: early exit with only no_damage set
+        close=guarded=hit=chip=counter=airborne=0
+    else:
+        close=int(bool(close_idx) and distance<threshold)
+        guarded=int(bool(guard & attack) and angle<=0x3fff)
+        hit=1-guarded
+        chip=int(bool(guarded and (chip_enabled or power_a)))
+        counter=int(bool(hit and ((defd!=0 and frame<active) or power_a or power_d)))
+        airborne=int(bool(hit and (in_air or (state&0x400))))
     severity=int(base==0)+2*guarded+3*chip+4*close+5*hit+6*counter+7*airborne
     raw=close_word if close else rec
     kind=0 if raw<0x1000 else (1 if raw<0x2000 else 2)
