@@ -180,3 +180,10 @@ copyrighted assets and must not be distributed without permission.
 - [x] Decode 42-byte original reaction record alternatives and private throw-victim references (guard/front/side/back/counter/down).
 - [x] Preserve original transition codes and push-table indices, including attack-class suppression.
 - [ ] Import verified original USA reaction records, AirReactionKind and push tables; run full source-oracle comparisons.
+
+### Read-only original HitApply accumulator
+- [x] Port HitExtraDamage for move events 11–13, linked throw victim and signed 16-bit wrapping.
+- [x] Compose verified HitTest slots, HitClassify, HitDamage, best-slot ranking, KO/chip flag conversion and optional reaction lookup.
+- [x] Compute original Q16 health with explicitly wrapped 32-bit MIPS arithmetic; never mutate playable fallback HP.
+- [ ] Validate all inputs/state transitions against original USA PS1 real-game HitApply oracle captures.
+- [ ] Replace temporary prototype health/guard/throw logic only when original cooldown, events, state transitions and round flow are reproducible.

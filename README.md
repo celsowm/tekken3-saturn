@@ -327,3 +327,12 @@ knockdowns using the PS1 42-byte reaction table format. It also
 recognizes throw-victim slot references and respects original
 attack-class gating. Missing air/fixed special tables remain
 **unresolved**, and no prototype gameplay state is altered.
+
+### Experimental PS1 HitApply state preview
+
+The portable `psx_hit_apply` module now calculates **read-only**
+original normal-mode HitApply outcomes from verified PS1 hit slots:
+move-event extra damage (including throw victims), two-slot arbitration,
+Q16 health, KO/chip conversion and reaction selection when original
+tables are present. The provisional playable match is untouched.
+See [HitApply scope](docs/DIVMOT_LOGIC.md).

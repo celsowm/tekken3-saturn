@@ -949,3 +949,44 @@ Next: extract the correct **USA** executable reaction tables privately,
 verify all 633 records and the `AirReactionKind` branches against the
 PS1 oracle, then implement the original hit-freeze and reaction
 application at the correct simulation phase.
+
+## PS1 read-only HitApply (signed Q16 health / KO / extra move events)
+
+`src/game/psx_hit_apply.[ch]` composes the original
+`HitExtraDamage`, `HitClassify`, `HitDamage`,
+`HitBestSlot`, and existing 42-byte `HitSelectReaction`
+decoder into **one atomic, read-only** two-hit-slot calculation.
+Inputs must be externally validated from the original game state.
+A geometric overlap from the Saturn shadow observer **is not** a
+legitimate `hit_slot.used` flag, since real `HitTest` additionally
+checks hit cooldown, move posture, throw state and per-move hit
+latches.
+
+The original extra move-event commands (11–13) are represented as
+`extra_kind=1,2,3`: kind 1 contributes damage to the linked throw
+victim, kind 2 contributes the current fighter's event damage, and
+kind 3 subtracts it; a zero event value falls back to current live
+fighter damage. The extra accumulator wraps to signed 16-bit values,
+matching the MIPS operation. The port then classifies up to two
+verified source contacts, computes zone/counter/chip/juggle damage,
+picks the most severe result (damage breaks equal severity),
+and computes the normal-mode `health_old - (extra + slot_damage)*65536`
+using **explicit signed 32-bit wrapping before clamping** to
+`[0,health_max]`. The outcome reports first-time KO, and performs
+the original guarded-to-clean effect flag flip for a KO by chip.
+
+The caller explicitly supplies health suppression for no-damage,
+practice and special game-mode cases. With no such flag, the routine
+does **not** infer mode from the prototype match. The decoded
+reaction move is returned only when private original reaction tables
+and verified facing/posture facts are present. Otherwise
+`reaction_known=0` without a fabricated transition. The function
+does **not** mutate player HP, score, throws, cooldown, hit stop,
+guard, juggles, move slots or the LibSaturn renderer.
+
+Host tests exercise standalone extra event kinds, both hit slots,
+simultaneous competing damage, reaction availability, block chip KO,
+heal from negative events, original 16.16 clamping and fail-closed
+invalid inputs. Actual PS1 HitApply oracle comparisons, move-event
+selection, forced hits, Tekken Force/Ball rules and hit lifecycle
+state mutation remain future work.
