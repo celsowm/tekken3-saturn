@@ -30,6 +30,7 @@ static int get_word(const t3_motion_tables_t* t, uint32_t addr, uint16_t* out) {
     uint8_t lo,hi;
     if (!get_byte(t,addr,&lo) || !get_byte(t,addr+1u,&hi)) return 0;
     *out=(uint16_t)((uint16_t)lo | ((uint16_t)hi<<8u));
+    return 1;
 }
 static int16_t get_key(const t3_motion_stream_t* s,unsigned ch,unsigned k) {
     return signed16(le16(s->data+s->key_offset[ch]+(size_t)k*2u));
