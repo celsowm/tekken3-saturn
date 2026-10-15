@@ -208,6 +208,12 @@ def batch(character_path,shared_path,spline_path,trig_path,ik_path,
                    strict_complete=strict_complete)
     report.update({"format":1,"bank_sha256":c["sha256"],
                   "shared_sha256":shared["sha256"] if shared else None,
+                  "trig_sha256":hashlib.sha256(trig).hexdigest(),
+                  "ik_sha256":hashlib.sha256(ik).hexdigest(),
+                  "spline_sha256":hashlib.sha256(Path(spline_path).read_bytes()).hexdigest()
+                                   if spline_path else None,
+                  "selected_slot_range":slots if slots is not None else "all",
+                  "sampled_max_frames":max_frames,
                   "discovered_unique_animations":len(choices),
                   "discovery_skips":dict(sorted(discovery_reasons.items())),
                   "duplicate_slots":sum(i["duplicate_slots"] for i in choices)})

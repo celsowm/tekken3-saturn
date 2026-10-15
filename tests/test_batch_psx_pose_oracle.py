@@ -95,6 +95,13 @@ class Integration(unittest.TestCase):
             self.assertEqual(result["discovered_unique_animations"],2)
             self.assertEqual(result["duplicate_slots"],1)
             self.assertEqual(result["discovery_skips"],{"empty":1})
+            import hashlib
+            self.assertEqual(result["trig_sha256"],
+                             hashlib.sha256(files["trig"].read_bytes()).hexdigest())
+            self.assertEqual(result["ik_sha256"],
+                             hashlib.sha256(files["ik"].read_bytes()).hexdigest())
+            self.assertIsNone(result["spline_sha256"])
+            self.assertEqual(result["selected_slot_range"],"0-3")
             self.assertEqual(result["tested_animations"],2)
             self.assertEqual(result["mismatched_animations"],0,result["results"])
             self.assertEqual(result["skipped_during_execution"],{})
