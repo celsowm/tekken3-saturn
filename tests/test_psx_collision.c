@@ -49,7 +49,7 @@ static void transform_tests(void) {
     assert(world.segments[0].end.z==500);
     cur.sin_q12=5000;
     assert(!t3_attack_to_world(&local,&cur,NULL,&world));
-    cur.sin_q12=4096;cur.origin.x=1000000;
+    cur.sin_q12=4096;cur.origin.x=T3_PSX_UNIT_LIMIT+1;
     assert(!t3_attack_to_world(&local,&cur,NULL,&world));
     local.segment_count=3;
     assert(!t3_attack_to_world(&local,&cur,NULL,&world));
