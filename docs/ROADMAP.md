@@ -210,3 +210,14 @@ copyrighted assets and must not be distributed without permission.
 - [ ] Capture authentic synchronized PlayStation combat traces and verify real reaction timing and pose frames.
 - [ ] Reconstruct airborne reaction, KO victim move, combo reset, get-up options and move branches from measured PS1 facts.
 - [ ] Activate in-game MoveVM transitions only after replay/HP/move/pose parity; no speculative direct state writes.
+
+### USA original-emulator combat oracle instrumentation
+- [x] Derive USA SLUS_004.02 P1/P2, game-state and global-counter RAM addresses from upstream canonical-to-source point mapping.
+- [x] Read-only PCSX-Redux Lua capture of two fighter states per advancing FightMain frame with source counter and raw diagnostic fields.
+- [x] Independent Python decoder of two-fighter RAM snapshot frames with strict guest-frame continuity and atomic output.
+- [x] Compare only directly observed move-slot, pose-frame, health and KO; preserve raw PS1 state without claiming inferred stun/combos.
+- [x] Produce measured raw move/HP/KO/pose-stall event timeline; synthetic regression tests and CI syntax checks.
+- [ ] Run the original USA game in PCSX-Redux with matched executable fingerprint and record reproducible input/trace clips.
+- [ ] Align VSync sampling with PS1 FightFrame, HitApply and MoveStepAll boundaries; verify source-frame skew explicitly.
+- [ ] Inject original measured reaction durations and valid transition destinations into the read-only MoveVM bridge.
+- [ ] Capture equivalent Saturn simulation observations and close exact frame-by-frame parity before touching live match state.
