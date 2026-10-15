@@ -235,6 +235,14 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_hurt_head_local_y[1] = t3_move_probe_hurt_head_y(1);
     g_t3_diagnostics.psx_fk_root_xx[0] = t3_move_probe_fk_root_xx(0);
     g_t3_diagnostics.psx_fk_root_xx[1] = t3_move_probe_fk_root_xx(1);
+    g_t3_diagnostics.psx_shadow_contact_status[0] = t3_move_probe_shadow_status(0);
+    g_t3_diagnostics.psx_shadow_contact_status[1] = t3_move_probe_shadow_status(1);
+    g_t3_diagnostics.psx_shadow_contact_zone[0] = t3_move_probe_shadow_zone(0);
+    g_t3_diagnostics.psx_shadow_contact_zone[1] = t3_move_probe_shadow_zone(1);
+    g_t3_diagnostics.psx_shadow_contact_edges[0] = t3_move_probe_shadow_edges(0);
+    g_t3_diagnostics.psx_shadow_contact_edges[1] = t3_move_probe_shadow_edges(1);
+    g_t3_diagnostics.psx_shadow_overlap_frames[0] = t3_move_probe_shadow_frames(0);
+    g_t3_diagnostics.psx_shadow_overlap_frames[1] = t3_move_probe_shadow_frames(1);
     ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
 }
 

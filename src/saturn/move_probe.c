@@ -13,6 +13,7 @@ static uint32_t g_t3_pose_trace_tick;
 #include "psx_pose.h"
 #include "psx_ik.h"
 #include "psx_contact.h"
+#include "psx_shadow_combat.h"
 #include "psx_root.h"
 #include "t3_generated_character.h"
 
@@ -31,6 +32,18 @@ static int32_t g_hurt_head_y[2];
 static t3_psx_joint_t g_world_pose[2][T3_PSX_DRAW_PARTS];
 #endif
 static int16_t g_fk_root_xx[2];
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+/* Debugger-written external WORLD placement; never inferred from the
+ * prototype's Q8 fighter coordinates. Writer: odd epoch, update roots
+ * and valid_mask, even epoch. Reader accepts only unchanged even epoch.
+ * SH2 structs and fields use target-native BIG endian. */
+volatile uint32_t g_t3_shadow_root_epoch;
+volatile uint32_t g_t3_shadow_root_valid_mask;
+volatile t3_psx_root_t g_t3_shadow_external_roots[2];
+static t3_psx_shadow_state_t g_shadow;
+static t3_psx_shadow_result_t g_shadow_result[2];
+static uint8_t g_shadow_valid;
+#endif
 
 sat_result_t t3_move_probe_init(void) {
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
@@ -69,6 +82,12 @@ void t3_move_probe_reset(unsigned round) {
         g_hurt_head_y[i]=0;
         g_ik_mask[i]=0u;
         g_fk_root_xx[i]=0;
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+        g_shadow_result[i].status=T3_SHADOW_INACTIVE;
+        g_shadow_result[i].new_contact=0u;
+        g_shadow_result[i].zone=-1;
+        g_shadow_result[i].segment=-1;
+#endif
         g_root_pose[i][0]=g_root_pose[i][1]=g_root_pose[i][2]=0;
         if (!t3_move_vm_start(&g_vms[i],&g_bank,
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
@@ -78,6 +97,11 @@ void t3_move_probe_reset(unsigned round) {
 #endif
                    g_start_slot)) g_active=0u;
     }
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    t3_psx_shadow_reset(&g_shadow);
+    g_shadow_valid=0u;
+    g_t3_shadow_root_valid_mask=0u; /* debug writer must supply fresh data */
+#endif
 }
 
 void t3_move_probe_tick(const t3_match_t* match) {
@@ -211,6 +235,65 @@ void t3_move_probe_tick(const t3_match_t* match) {
             }
         }
     }
+
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    {
+        t3_psx_shadow_actor_t actors[2]={{0}};
+        t3_attack_sample_t attacks[2];
+        t3_psx_root_t roots[2];
+        uint32_t begin=g_t3_shadow_root_epoch, end;
+        uint32_t valid;
+        unsigned fighter;
+        if(!(begin&1u)) {
+            valid=g_t3_shadow_root_valid_mask;
+            for(fighter=0u;fighter<2u;++fighter) {
+                const volatile t3_psx_root_t* p=&g_t3_shadow_external_roots[fighter];
+                roots[fighter].origin.x=p->origin.x;
+                roots[fighter].origin.y=p->origin.y;
+                roots[fighter].origin.z=p->origin.z;
+                roots[fighter].sin_q12=p->sin_q12;
+                roots[fighter].cos_q12=p->cos_q12;
+            }
+            end=g_t3_shadow_root_epoch;
+            if(begin==end && !(end&1u) && (valid&3u)==3u) {
+                for(fighter=0u;fighter<2u;++fighter) {
+                    const t3_move_vm_t* vm=&g_vms[fighter];
+                    int decoded=t3_attack_sample(vm->active_bank,&vm->move,
+                                                 vm->frame,0,&attacks[fighter]);
+                    actors[fighter].root=roots[fighter];
+                    actors[fighter].parts=g_world_pose[fighter];
+                    actors[fighter].pose_available=(uint8_t)
+                        ((g_fk_parts[fighter]&T3_PSX_BODY_PART_MASK)==
+                           T3_PSX_BODY_PART_MASK);
+                    actors[fighter].parts_mask=g_fk_parts[fighter];
+                    actors[fighter].move_slot=vm->slot;
+                    /* t3_psx_sweep_sample expects ACTIVE-WINDOW-relative time,
+                     * not the raw DIVMOT move frame. */
+                    actors[fighter].attack_frame=
+                        vm->frame>=vm->move.active_first?
+                        (uint16_t)(vm->frame-vm->move.active_first):0u;
+                    if(decoded==1 && attacks[fighter].segment_count)
+                        actors[fighter].attack=&attacks[fighter];
+                    else if(decoded<0)
+                        actors[fighter].attack=NULL; /* no fabricated segment */
+                }
+                g_shadow_valid=(uint8_t)t3_psx_shadow_step(
+                    &g_shadow,actors,g_shadow_result);
+            } else g_shadow_valid=0u;
+        } else g_shadow_valid=0u;
+        if(!g_shadow_valid) {
+            /* Missing or unsynchronized injected roots invalidate historical
+             * endpoints. Do not reuse geometry from the last valid packet. */
+            t3_psx_shadow_reset(&g_shadow);
+            for(fighter=0u;fighter<2u;++fighter) {
+                g_shadow_result[fighter].status=T3_SHADOW_MISSING;
+                g_shadow_result[fighter].new_contact=0u;
+                g_shadow_result[fighter].zone=-1;
+                g_shadow_result[fighter].segment=-1;
+            }
+        }
+    }
+#endif
     {
         unsigned fighter, byte;
         ++g_t3_pose_trace_epoch; /* start write; odd */
@@ -270,6 +353,34 @@ int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
 #endif
 }
 uint32_t t3_move_probe_ik_mask(unsigned i) {return i<2u && g_active?g_ik_mask[i]:0u;}
+uint8_t t3_move_probe_shadow_status(unsigned i) {
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    return i<2u && g_active?g_shadow_result[i].status:0u;
+#else
+    (void)i;return 0u;
+#endif
+}
+int8_t t3_move_probe_shadow_zone(unsigned i) {
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    return i<2u && g_active?g_shadow_result[i].zone:-1;
+#else
+    (void)i;return -1;
+#endif
+}
+uint32_t t3_move_probe_shadow_edges(unsigned i) {
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    return i<2u && g_active?g_shadow.contact_edges[i]:0u;
+#else
+    (void)i;return 0u;
+#endif
+}
+uint32_t t3_move_probe_shadow_frames(unsigned i) {
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND)
+    return i<2u && g_active?g_shadow.contact_frames[i]:0u;
+#else
+    (void)i;return 0u;
+#endif
+}
 uint8_t t3_move_probe_hurt_ready(unsigned i) {
     return i<2u && g_active ? g_hurt_ready[i] : 0u;
 }
@@ -299,6 +410,10 @@ int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
     (void)i;(void)out;(void)mask;return 0;
 }
 uint32_t t3_move_probe_ik_mask(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_shadow_status(unsigned i) {(void)i;return 0u;}
+int8_t t3_move_probe_shadow_zone(unsigned i) {(void)i;return -1;}
+uint32_t t3_move_probe_shadow_edges(unsigned i) {(void)i;return 0u;}
+uint32_t t3_move_probe_shadow_frames(unsigned i) {(void)i;return 0u;}
 uint8_t t3_move_probe_hurt_ready(unsigned i) {(void)i;return 0u;}
 int32_t t3_move_probe_hurt_head_y(unsigned i) {(void)i;return 0;}
 

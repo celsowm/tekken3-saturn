@@ -167,3 +167,6 @@ copyrighted assets and must not be distributed without permission.
 - [x] Preserve per-frame swept endpoint history and distinguish contact intervals from health-changing hits.
 - [ ] Integrate calibrated original PS1 world roots into Saturn's live private probe and validate against PS1 collision traces.
 - [ ] Replace provisional hit/apply rules only after PS1 damage, guard, reaction and throw oracle parity.
+
+- [x] Wire optional read-only two-player contact observer into Saturn private DIVMOT tick with external synchronized root injection.
+- [ ] Capture correctly aligned USA PS1 movement/root samples for non-synthetic shadow contact validation.

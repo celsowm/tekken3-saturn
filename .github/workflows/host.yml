@@ -154,6 +154,15 @@ jobs:
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
               src/saturn/characters.c src/saturn/move_probe.c \
               src/saturn/psx_skin_bridge.c
+          # Shadow combat is read-only and requires externally injected roots.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -DT3_ENABLE_PSX_SHADOW_CONTACT=1 \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/main.c src/saturn/move_probe.c \
+              src/game/psx_shadow_combat.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

@@ -34,6 +34,19 @@ int t3_move_probe_copy_world(unsigned fighter,
                              t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
                              uint32_t* parts_mask);
 int16_t t3_move_probe_fk_root_xx(unsigned fighter);
+/* Private PS1 world-placement debug injection. Requires an explicit,
+ * externally supplied root for both fighters (no Saturn Q8 fallback).
+ * Write g_t3_shadow_root_epoch odd -> data + mask=3 -> even.
+ * SH-2 native layout uses BIG-endian int32/int16 fields. */
+uint8_t t3_move_probe_shadow_status(unsigned fighter);
+int8_t t3_move_probe_shadow_zone(unsigned fighter);
+uint32_t t3_move_probe_shadow_edges(unsigned fighter);
+uint32_t t3_move_probe_shadow_frames(unsigned fighter);
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_DIVMOT_ENABLED)
+extern volatile uint32_t g_t3_shadow_root_epoch;
+extern volatile uint32_t g_t3_shadow_root_valid_mask;
+extern volatile t3_psx_root_t g_t3_shadow_external_roots[2];
+#endif
 /* Private debugger ABI: each record is LE and 564 bytes.
  * Read the even epoch before/after 2 records; reject changes/odd epochs.
  * Symbol exists ONLY in explicit local DIVMOT builds. */

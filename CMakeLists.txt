@@ -97,6 +97,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_LOCAL_PSX_IK_TABLES AND NOT T3_LOCAL_PSX_TRIG_TABLE)
         message(FATAL_ERROR "T3_LOCAL_PSX_IK_TABLES requires T3_LOCAL_PSX_TRIG_TABLE")
     endif()
+    option(T3_ENABLE_PSX_SHADOW_CONTACT
+        "Private read-only PS1 contact probe with debugger-supplied world roots" OFF)
+    if(T3_ENABLE_PSX_SHADOW_CONTACT)
+        if(NOT T3_LOCAL_KMD OR NOT T3_LOCAL_DIVMOT OR
+           NOT T3_LOCAL_PSX_TRIG_TABLE OR NOT T3_LOCAL_PSX_IK_TABLES)
+            message(FATAL_ERROR "PS1 shadow contact requires private KMD, "
+                "DIVMOT, trig and IK tables; no guessed inputs allowed")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE
+            T3_ENABLE_PSX_SHADOW_CONTACT=1)
+    endif()
     option(T3_ENABLE_PSX_SKIN_PREVIEW
         "Private visual preview of fully decoded original PS1 pose matrices" OFF)
     if(T3_ENABLE_PSX_SKIN_PREVIEW)

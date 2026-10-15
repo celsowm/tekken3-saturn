@@ -816,3 +816,56 @@ masks, malformed input, continuity of swept segments and contact edges.
 This layer remains **diagnostic-only** until actual USA PS1 world roots,
 hit-apply events and animations have been compared against an emulator
 oracle.
+
+
+### Opt-in Saturn shadow collision telemetry with external PS1 roots
+
+The private Saturn build can now run \`t3_psx_shadow_step\`
+after the two DIVMOT interpreters advance. Enable it **only** when
+a local KMD, character DIVMOT bank, verified original Q12 trig and IK
+tables are already provided:
+
+\`\`\`sh
+cmake --preset saturn \
+  -DT3_LOCAL_KMD=/private/character.kmd \
+  -DT3_LOCAL_DIVMOT=/private/character.t3logic \
+  -DT3_LOCAL_COMMON_DIVMOT=/private/divmot99.t3logic \
+  -DT3_LOCAL_PSX_TRIG_TABLE=/private/psx_trig.bin \
+  -DT3_LOCAL_PSX_IK_TABLES=/private/psx_ik.bin \
+  -DT3_LOCAL_PSX_SPLINE_TABLES=/private/psx_splines.bin \
+  -DT3_ENABLE_PSX_SHADOW_CONTACT=ON
+\`\`\`
+
+This *research-only* switch defaults **OFF**. The scene's
+approximate Q8 physics is **NOT** substituted for actual PS1 world
+placements; instead a debugger/harness must write all three SH-2
+symbols exported by the ELF:
+
+- \`g_t3_shadow_root_epoch\`: 32-bit **native big-endian** seqlock;
+  write an odd value while updating inputs and a new even value when
+  the pair of roots is coherent
+- \`g_t3_shadow_external_roots[2]\`: two native SH-2 structs, each
+  \`{int32 x,y,z; int16 sin_q12,cos_q12}\`, 16 bytes each;
+  both transforms are **original PS1-comparable world-space** values
+- \`g_t3_shadow_root_valid_mask\`: native big-endian 32-bit bitmask,
+  **3** means both fighter roots have been provided; 0 means unavailable
+
+The move loop checks that the even epoch did not change while it read
+both roots and their mask. If the pair is absent or changed, it
+clears swept-endpoint state and reports missing geometry rather than
+asserting a contact. It does **not** force an interpreter move, reset
+the prototype match's HP, or modify block/throw/KO logic.
+
+\`g_t3_diagnostics\` **version 10** adds
+\`psx_shadow_contact_status[2]\` (0 inactive, 1 tested miss,
+2 geometric overlap, 3 source/history missing, 4 malformed),
+\`psx_shadow_contact_zone[2]\` (-1 or the 0–13 original hurt zone),
+\`psx_shadow_contact_edges[2]\` (rising geometric contacts), and
+\`psx_shadow_overlap_frames[2]\`. The root symbol input is intentionally
+not a user-facing public build option: it must be synchronized with
+the same DIVMOT moves and animation frames as the local model.
+
+This is an experimental **world-space geometric overlap** only.
+Correct original fighter root transforms still need external PS1
+state extraction and region-specific calibration. An overlap is not
+proof of a successful PS1 hit, damage value or correct reaction.

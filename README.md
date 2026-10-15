@@ -301,3 +301,10 @@ frame's world transforms. It tracks swept endpoints and contact edges
 without writing to health or the match state; genuine PS1 fighter world
 placement must be supplied explicitly. See [the shadow observer
 scope](docs/DIVMOT_LOGIC.md).
+
+
+For **private emulator testing**, \`-DT3_ENABLE_PSX_SHADOW_CONTACT=ON\`
+exports debugger-controlled world roots and read-only contact
+telemetry (version 10). Missing or unsynchronized roots yield
+an unavailable status, not a guessed hit. Prototype HP/blocks remain
+unchanged. Details: [PS1 shadow debugger inputs](docs/DIVMOT_LOGIC.md).
