@@ -18,6 +18,9 @@ static uint32_t g_decode_errors[2];
 static uint8_t g_pose_status[2],g_pose_frames[2];
 static int16_t g_root_pose[2][3];
 static uint32_t g_fk_mask[2],g_fk_parts[2],g_ik_mask[2];
+#if defined(T3_LOCAL_KMD_BIND)
+static t3_psx_joint_t g_world_pose[2][T3_PSX_DRAW_PARTS];
+#endif
 static int16_t g_fk_root_xx[2];
 
 sat_result_t t3_move_probe_init(void) {
@@ -151,8 +154,12 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                 root_frame.rotation.m[1][1]=4096;
                                 root_frame.rotation.m[2][2]=4096;
                                 if(t3_psx_compose_parts(t3_private_kmd_parts,
-                                    slots,valid,&root_frame,world,&partmask))
+                                    slots,valid,&root_frame,world,&partmask)) {
                                     g_fk_parts[i]=partmask;
+                                    if((partmask & 0x3FFFFu)==0x3FFFFu)
+                                        __builtin_memcpy(g_world_pose[i],world,
+                                                         sizeof(world));
+                                }
                             }
 #endif
                         }
@@ -193,6 +200,19 @@ int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {
 }
 uint32_t t3_move_probe_fk_mask(unsigned i) {return i<2u && g_active?g_fk_mask[i]:0u;}
 uint32_t t3_move_probe_fk_parts(unsigned i) {return i<2u && g_active?g_fk_parts[i]:0u;}
+int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
+                             uint32_t* mask) {
+#if defined(T3_LOCAL_KMD_BIND)
+    if(i>=2u || !g_active || !out || !mask ||
+       (g_fk_parts[i]&0x3FFFFu)!=0x3FFFFu)return 0;
+    __builtin_memcpy(out,g_world_pose[i],sizeof(g_world_pose[i]));
+    *mask=g_fk_parts[i];
+    return 1;
+#else
+    (void)i;(void)out;(void)mask;
+    return 0;
+#endif
+}
 uint32_t t3_move_probe_ik_mask(unsigned i) {return i<2u && g_active?g_ik_mask[i]:0u;}
 int16_t t3_move_probe_fk_root_xx(unsigned i) {return i<2u && g_active?g_fk_root_xx[i]:0;}
 
@@ -212,6 +232,10 @@ uint8_t t3_move_probe_pose_frames(unsigned i) {(void)i;return 0u;}
 int16_t t3_move_probe_root_pose(unsigned i,unsigned axis) {(void)i;(void)axis;return 0;}
 uint32_t t3_move_probe_fk_mask(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_fk_parts(unsigned i) {(void)i;return 0u;}
+int t3_move_probe_copy_world(unsigned i, t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
+                             uint32_t* mask) {
+    (void)i;(void)out;(void)mask;return 0;
+}
 uint32_t t3_move_probe_ik_mask(unsigned i) {(void)i;return 0u;}
 int16_t t3_move_probe_fk_root_xx(unsigned i) {(void)i;return 0;}
 

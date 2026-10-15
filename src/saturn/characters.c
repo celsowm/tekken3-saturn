@@ -5,6 +5,8 @@
  * texture residency, and palette management.
  */
 #include "characters.h"
+#include "move_probe.h"
+#include "psx_skin_bridge.h"
 
 #include "saturn/character3d.h"
 #include "saturn/math3d.h"
@@ -43,6 +45,7 @@ static sat_skeleton_clip_t g_clips[T3_CLIP_COUNT];
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT];
 static actor_t g_actors[2];
 static uint8_t g_initialized;
+static uint8_t g_skin_preview_applied[2];
 
 static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
 #if T3_CLIP_COUNT == 1
@@ -135,6 +138,7 @@ sat_result_t t3_characters_reset(void) {
     for (i = 0; i < 2u; ++i) {
         actor_t* a = &g_actors[i];
         a->clip = T3_CLIP_IDLE;
+        g_skin_preview_applied[i]=0u;
         a->last_x = i ? 360 : -360;
         a->last_z = 0;
         if ((st = sat_skel_clip_player_set_clip(&a->clip_player,
@@ -168,6 +172,19 @@ sat_result_t t3_characters_tick(const t3_match_t* game) {
                 a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
         if ((st = sat_skeleton_world_matrices(&a->skeleton,
                 a->joints, T3_JOINT_COUNT)) != SAT_OK) return st;
+        g_skin_preview_applied[i]=0u;
+#if defined(T3_ENABLE_PSX_SKIN_PREVIEW) && defined(T3_LOCAL_KMD_BIND)
+        {
+            t3_psx_joint_t originals[T3_PSX_DRAW_PARTS];
+            uint32_t parts_mask=0u;
+            /* A fully valid original 18-part world pose replaces the
+             * corresponding bind joints. Missing/unsafe geometry leaves
+             * ALL skin matrices in their existing LibSaturn path. */
+            if(t3_move_probe_copy_world(i,originals,&parts_mask) &&
+               t3_psx_skin_bridge(originals,parts_mask,a->joints))
+                g_skin_preview_applied[i]=1u;
+        }
+#endif
         if ((st = sat_skin_update_mesh(&g_asset.skin,
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
             return st;
@@ -202,4 +219,8 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
                 != SAT_OK) return st;
     }
     return SAT_OK;
+}
+
+uint8_t t3_characters_skin_preview_applied(unsigned fighter) {
+    return fighter<2u?g_skin_preview_applied[fighter]:0u;
 }

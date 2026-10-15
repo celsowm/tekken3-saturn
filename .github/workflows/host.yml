@@ -121,17 +121,35 @@ jobs:
               -I build/asset-divmot/generated \
               src/saturn/main.c src/saturn/move_probe.c \
               build/asset-divmot/generated/t3_local_divmot.c
+          # Test actual PS1 pose-to-LibSaturn 16.16 skin bridge.
+          gcc -std=c11 -Wall -Wextra -Werror \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn \
+              src/saturn/psx_skin_bridge.c tests/test_psx_skin_bridge.c \
+              -o build/asset-divmot/test_psx_skin_bridge
+          build/asset-divmot/test_psx_skin_bridge
           # Combined private KMD + DIVMOT path, with synthetic fixture only.
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \
               -I .external/libsaturn/include \
               -I src/game -I src/saturn \
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
-              src/saturn/move_probe.c
+              src/saturn/move_probe.c src/saturn/psx_skin_bridge.c \
+              src/saturn/characters.c
+          # Real renderer opt-in must compile with all private includes.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/characters.c src/saturn/move_probe.c \
+              src/saturn/psx_skin_bridge.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
             -I .external/libsaturn/include \
             -I src/game -I src/saturn -I build/asset-fixture \
             src/saturn/main.c src/saturn/characters.c \
+            src/saturn/move_probe.c src/saturn/psx_skin_bridge.c \
             build/asset-fixture/t3_generated_character.c

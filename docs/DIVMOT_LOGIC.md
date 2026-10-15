@@ -427,6 +427,57 @@ input. This does **not** establish PS1 bit-exact parity or original
 animation-on-screen. Only real-table/real-pose comparisons against
 an emulator/MIPS oracle can establish that.
 
+## Opt-in LIVE PS1 KMD skin animation preview (experimental)
+
+The new `src/saturn/psx_skin_bridge.[ch]` converts validated PS1
+model-space part matrices (Q12) to LibSaturn's row-major 16.16 world
+joint matrices, including exact integer rescaling of KMD translations
+(`PS1 / 4096`). The original KMD converter already stores skin
+anchors in each bone's joint-local coordinates, so
+`sat_skin_update_mesh()` accepts these matrices directly without an
+extra inverse-bind multiply.
+
+**For an explicitly private build only**, configure the existing
+KMD, DIVMOT, sine/spline, and IK table paths and additionally pass:
+
+```sh
+cmake --preset saturn \
+  -DLIBSATURN_SOURCE_DIR=/path/to/libsaturn \
+  -DT3_LOCAL_KMD=/private/fighter.kmd \
+  -DT3_LOCAL_DIVMOT=/private/fighter.t3logic \
+  -DT3_LOCAL_COMMON_DIVMOT=/private/divmot99.t3logic \
+  -DT3_LOCAL_PSX_TRIG_TABLE=/private/psx_trig.bin \
+  -DT3_LOCAL_PSX_IK_TABLES=/private/psx_ik.bin \
+  -DT3_LOCAL_PSX_SPLINE_TABLES=/private/psx_splines.bin \
+  -DT3_ENABLE_PSX_SKIN_PREVIEW=ON
+cmake --build --preset saturn
+```
+
+This switch is **OFF by default** and cannot be enabled unless the
+private KMD, move bank, sine and IK table inputs are configured.
+It composes the model's first **18 visible body parts**, and only
+overrides the renderer's matrices when every part has an available,
+validated transform. Invalid, partial and out-of-range poses leave
+the complete previous LibSaturn animation path untouched; the final
+four costume accessory parts are not part of the current private
+KMD geometry importer.
+
+The new `g_t3_diagnostics` **version 8** exposes
+`psx_skin_preview_applied[2]` so an emulator debugger can confirm
+whether the original pose actually reached the skinning path.
+The preview runs from the DIVMOT *diagnostic move interpreter* and
+therefore **does not yet guarantee an original move sequence or
+bit-for-bit orientation**: PS1 root scale, facing transforms and the
+original model's handedness must still be compared with the PS1
+oracle. No damage, collisions or original gameplay reactions are
+altered. Each fighter currently loads the same private character
+bank, even if different source characters should eventually be
+selected. No original data may be released publicly.
+
+Synthetic CI exercises the Q12-to-Q16 transformation, absent or
+partial joints and atomic failure behavior, plus strict C11
+compilation of the combined KMD+DIVMOT+preview path.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

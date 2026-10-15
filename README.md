@@ -46,6 +46,17 @@ diagnostic. It validates bounds, source SHA-256 and basic fixed-point
 coefficients without publishing original data. See the
 [private lookup export instructions](docs/DIVMOT_LOGIC.md).
 
+## Experimental PRIVATE original-pose rendering
+
+With KMD geometry, original DIVMOT animation data and user-supplied
+PS1 sine/IK tables, `-DT3_ENABLE_PSX_SKIN_PREVIEW=ON` now allows
+the original 18-slot pose to drive the **LibSaturn CPU skinning mesh**
+instead of merely being reported in diagnostics. Only complete and
+numerically safe poses are applied; all regular/procedural builds
+keep their existing animation. Real PS1 joint parity and the
+fighting-engine integration are still pending; see
+[PS1 KMD skin preview instructions](docs/DIVMOT_LOGIC.md).
+
 ## Original PS1 four-limb inverse kinematics
 
 `src/game/psx_ik.[ch]` now calculates the **eight missing arm/leg

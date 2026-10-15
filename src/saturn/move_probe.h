@@ -1,6 +1,7 @@
 #ifndef T3_SATURN_MOVE_PROBE_H
 #define T3_SATURN_MOVE_PROBE_H
 #include "fight.h"
+#include "psx_pose.h"
 #include "saturn/core.h"
 
 /* Optional PS1 DIVMOT logic interpreter, isolated from combat gameplay.
@@ -23,5 +24,10 @@ int16_t t3_move_probe_root_pose(unsigned fighter,unsigned axis);
 uint32_t t3_move_probe_fk_mask(unsigned fighter);
 uint32_t t3_move_probe_fk_parts(unsigned fighter);
 uint32_t t3_move_probe_ik_mask(unsigned fighter);
+/* Atomically hand a complete PRIVATE 18-part pose to the skin preview.
+ * 0 means no reliable pose; caller keeps its normal renderer. */
+int t3_move_probe_copy_world(unsigned fighter,
+                             t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
+                             uint32_t* parts_mask);
 int16_t t3_move_probe_fk_root_xx(unsigned fighter);
 #endif

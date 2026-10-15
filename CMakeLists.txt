@@ -67,7 +67,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         )
     endif()
     add_executable(tekken3_saturn src/saturn/main.c
-        src/saturn/characters.c src/saturn/move_probe.c
+        src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c
         "${_t3_gen}/t3_generated_character.c")
     target_include_directories(tekken3_saturn PRIVATE
         "${_t3_gen}" "${CMAKE_SOURCE_DIR}/src/saturn")
@@ -97,6 +97,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_LOCAL_PSX_IK_TABLES AND NOT T3_LOCAL_PSX_TRIG_TABLE)
         message(FATAL_ERROR "T3_LOCAL_PSX_IK_TABLES requires T3_LOCAL_PSX_TRIG_TABLE")
     endif()
+    option(T3_ENABLE_PSX_SKIN_PREVIEW
+        "Private visual preview of fully decoded original PS1 pose matrices" OFF)
+    if(T3_ENABLE_PSX_SKIN_PREVIEW)
+        if(NOT T3_LOCAL_KMD OR NOT T3_LOCAL_DIVMOT OR
+           NOT T3_LOCAL_PSX_TRIG_TABLE OR NOT T3_LOCAL_PSX_IK_TABLES)
+            message(FATAL_ERROR "PS1 skin preview requires PRIVATE KMD, "
+                "DIVMOT, trig and IK tables; no generated fallback allowed")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE
+            T3_ENABLE_PSX_SKIN_PREVIEW=1)
+    endif()
+
     if(T3_LOCAL_DIVMOT)
         get_filename_component(T3_LOCAL_DIVMOT "${T3_LOCAL_DIVMOT}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_DIVMOT}")

@@ -227,6 +227,8 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_fk_valid_model_parts[1] = t3_move_probe_fk_parts(1);
     g_t3_diagnostics.psx_ik_valid_slots[0] = t3_move_probe_ik_mask(0);
     g_t3_diagnostics.psx_ik_valid_slots[1] = t3_move_probe_ik_mask(1);
+    g_t3_diagnostics.psx_skin_preview_applied[0] = t3_characters_skin_preview_applied(0);
+    g_t3_diagnostics.psx_skin_preview_applied[1] = t3_characters_skin_preview_applied(1);
     g_t3_diagnostics.psx_fk_root_xx[0] = t3_move_probe_fk_root_xx(0);
     g_t3_diagnostics.psx_fk_root_xx[1] = t3_move_probe_fk_root_xx(1);
     ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
