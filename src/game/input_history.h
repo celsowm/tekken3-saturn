@@ -4,22 +4,8 @@
 #include <stdint.h>
 #include "fight.h"
 
-enum { T3_INPUT_HISTORY_FRAMES = 60, T3_INPUT_SEQUENCE_MAX = 16 };
-
 /* Neutral numpad=5, toward rival=6, away=4; high/low=8/2.
- * Buttons are LP/RP/LK/RK bits 0..3, matching original PS1 command words. */
-typedef struct {
-    uint8_t direction;
-    uint8_t held_buttons;
-    uint8_t pressed_buttons;
-} t3_command_frame_t;
-
-typedef struct {
-    t3_command_frame_t frames[T3_INPUT_HISTORY_FRAMES];
-    uint8_t next;
-    uint8_t count;
-} t3_input_history_t;
-
+ * Button bits 0..3 match original PS1 command words. */
 void t3_history_reset(t3_input_history_t* h);
 void t3_history_push(t3_input_history_t* h, t3_input_t input);
 t3_command_frame_t t3_history_at(const t3_input_history_t* h, unsigned age);

@@ -53,6 +53,7 @@ static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
     return T3_CLIP_IDLE;
 #else
     if (!fighter->health) return T3_CLIP_KNOCKDOWN;
+    if (fighter->jump_frames) return T3_CLIP_JUMP;
     if (fighter->stun) return T3_CLIP_HIT;
     if (fighter->attack)
         return fighter->attack <= 2u ? T3_CLIP_PUNCH : T3_CLIP_KICK;
@@ -185,6 +186,13 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
         sat_model_transform3d_identity(&transform);
         transform.position.x = (sat_fx16_t)(fighter->x * (SAT_FX16_ONE / 256));
         transform.position.z = (sat_fx16_t)(fighter->z * (SAT_FX16_ONE / 256));
+#if T3_CLIP_COUNT > 1
+        if (fighter->jump_frames) {
+            int32_t height = fighter->jump_frames;
+            if (height > 18) height = 36 - height;
+            transform.position.y = (sat_fx16_t)(height * (SAT_FX16_ONE / 36));
+        }
+#endif
         /* Original example model faces +Z. Turn its front towards rival. */
         transform.rotation_deg.y = (fighter->facing > 0 ? 90 : -90) * SAT_FX16_ONE;
         if ((st = sat_model_transform3d_matrix(&transform, &a->world))

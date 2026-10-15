@@ -107,6 +107,8 @@ static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
     if (mask & SAT_PAD_UP) out.held |= T3_IN_LEFT;
     if (mask & SAT_PAD_DOWN) out.held |= T3_IN_RIGHT;
     if (mask & SAT_PAD_L) out.held |= T3_IN_GUARD;
+    if (mask & SAT_PAD_R) out.held |= T3_IN_CROUCH;
+    if (mask & SAT_PAD_C) out.held |= T3_IN_JUMP;
     if (pressed & SAT_PAD_X) out.pressed |= T3_IN_LP;
     if (pressed & SAT_PAD_Y) out.pressed |= T3_IN_RP;
     if (pressed & SAT_PAD_A) out.pressed |= T3_IN_LK;

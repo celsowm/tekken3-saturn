@@ -1,4 +1,5 @@
 #include "fight.h"
+#include "input_history.h"
 
 #include <stddef.h>
 
@@ -6,13 +7,14 @@ typedef struct {
     uint8_t startup, active, recovery;
     uint16_t damage, reach, side_reach;
     uint8_t hitstun;
+    uint16_t attack_word; /* PS1 levels: high 0x412, mid 0x217, low 0x10F */
 } attack_spec_t;
 
 static const attack_spec_t attacks[4] = {
-    { 5, 3, 13, 70,  410, 115, 13 }, /* LP */
-    { 7, 3, 16, 95,  445, 120, 15 }, /* RP */
-    { 9, 4, 19, 115, 480, 135, 18 }, /* LK */
-    { 12, 4, 22, 145, 505, 145, 21 } /* RK */
+    { 5, 3, 13, 70,  410, 115, 13, 0x412 }, /* LP: high */
+    { 7, 3, 16, 95,  445, 120, 15, 0x412 }, /* RP: high */
+    { 9, 4, 19, 115, 480, 135, 18, 0x217 }, /* LK: mid */
+    { 12, 4, 22, 145, 505, 145, 21, 0x10F } /* RK: low */
 };
 
 static int32_t iabs(int32_t n) { return n < 0 ? -n : n; }
@@ -29,6 +31,8 @@ static int attack_from_input(uint16_t pressed) {
 
 static void start_round(t3_match_t* game) {
     __builtin_memset(game->fighters, 0, sizeof(game->fighters));
+    t3_history_reset(&game->input_histories[0]);
+    t3_history_reset(&game->input_histories[1]);
     game->fighters[0].x = -360;
     game->fighters[1].x = 360;
     game->fighters[0].health = T3_MAX_HEALTH;
@@ -62,7 +66,11 @@ static void update_facing(t3_match_t* game) {
 
 /* Guard, movement and attack startup operate on the same frame's controls.
  * Pressed attacks are edge-triggered, not repeated while a key is held. */
-static void update_fighter(t3_fighter_t* f, t3_input_t in) {
+static void update_fighter(t3_fighter_t* f, t3_input_t in,
+                           const t3_input_history_t* history) {
+    if (f->jump_frames) --f->jump_frames;
+    if (f->dash_frames) --f->dash_frames;
+    f->crouching = !!(in.held & T3_IN_CROUCH) && !f->jump_frames;
     if (f->stun) {
         --f->stun;
         f->guarding = 0;
@@ -72,8 +80,15 @@ static void update_fighter(t3_fighter_t* f, t3_input_t in) {
         f->guarding = 0;
         return;
     }
-    f->guarding = (in.held & T3_IN_GUARD) != 0;
+    f->guarding = (in.held & T3_IN_GUARD) != 0 && !f->jump_frames;
     if (f->guarding) return;
+    if (!f->jump_frames && (in.held & T3_IN_JUMP)) {
+        f->jump_frames = 36;
+        f->crouching = 0;
+        f->dash_frames = 0;
+        return;
+    }
+    if (f->crouching) return;
 
     {
         int attack = attack_from_input(in.pressed);
@@ -87,6 +102,12 @@ static void update_fighter(t3_fighter_t* f, t3_input_t in) {
     {
         int forward = !!(in.held & T3_IN_FORWARD) - !!(in.held & T3_IN_BACK);
         int sideways = !!(in.held & T3_IN_RIGHT) - !!(in.held & T3_IN_LEFT);
+        if (t3_command_matches(0xC001u, history)) {
+            f->dash_frames = 9; f->dash_direction = 1;
+        } else if (t3_command_matches(0xC002u, history)) {
+            f->dash_frames = 9; f->dash_direction = -1;
+        }
+        if (f->dash_frames && f->dash_direction == forward) forward *= 2;
         f->x = clamp(f->x + forward * f->facing * T3_WALK_SPEED,
                      -T3_ARENA_X, T3_ARENA_X);
         f->z = clamp(f->z + sideways * T3_STEP_SPEED, -T3_ARENA_Z, T3_ARENA_Z);
@@ -148,9 +169,11 @@ void t3_match_step(t3_match_t* game, t3_input_t player1, t3_input_t player2) {
         return;
     }
 
+    t3_history_push(&game->input_histories[0], player1);
+    t3_history_push(&game->input_histories[1], player2);
     update_facing(game);
-    update_fighter(&game->fighters[0], player1);
-    update_fighter(&game->fighters[1], player2);
+    update_fighter(&game->fighters[0], player1, &game->input_histories[0]);
+    update_fighter(&game->fighters[1], player2, &game->input_histories[1]);
     separate_bodies(game);
     update_facing(game);
 
@@ -163,13 +186,17 @@ void t3_match_step(t3_match_t* game, t3_input_t player1, t3_input_t player2) {
         const attack_spec_t* a = &attacks[f->attack - 1u];
         ++f->attack_age;
         if (!f->attack_connected &&
+            /* Highs miss crouching; lows miss airborne defenders. */
+            !((a->attack_word == 0x412u && d->crouching) ||
+              (a->attack_word == 0x10Fu && d->jump_frames)) &&
             f->attack_age >= a->startup &&
             f->attack_age < a->startup + a->active &&
             (d->x - f->x) * f->facing > 0 &&
             iabs(d->x - f->x) <= a->reach &&
             iabs(d->z - f->z) <= a->side_reach) {
             touching[i] = 1;
-            blocked[i] = d->guarding;
+            blocked[i] = d->guarding &&
+                ((a->attack_word == 0x10Fu) ? d->crouching : !d->crouching);
             f->attack_connected = 1;
         }
     }

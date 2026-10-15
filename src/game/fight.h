@@ -31,13 +31,26 @@ enum {
     T3_IN_LP = 1u << 5,
     T3_IN_RP = 1u << 6,
     T3_IN_LK = 1u << 7,
-    T3_IN_RK = 1u << 8
+    T3_IN_RK = 1u << 8,
+    T3_IN_CROUCH = 1u << 9,
+    T3_IN_JUMP = 1u << 10
 };
 
 typedef struct {
     uint16_t held;
     uint16_t pressed;
 } t3_input_t;
+
+/* Portable 60-frame input history. Keeping it in fight.h avoids any
+ * dependency cycle with the standalone command interpreter. */
+enum { T3_INPUT_HISTORY_FRAMES = 60, T3_INPUT_SEQUENCE_MAX = 16 };
+typedef struct {
+    uint8_t direction, held_buttons, pressed_buttons;
+} t3_command_frame_t;
+typedef struct {
+    t3_command_frame_t frames[T3_INPUT_HISTORY_FRAMES];
+    uint8_t next, count;
+} t3_input_history_t;
 
 /* Attack indices 1..4, 0 = not attacking. */
 typedef struct {
@@ -49,10 +62,15 @@ typedef struct {
     uint8_t attack;
     uint8_t attack_age;
     uint8_t attack_connected;
+    uint8_t crouching;
+    uint8_t jump_frames;
+    uint8_t dash_frames;
+    int8_t dash_direction;
 } t3_fighter_t;
 
 typedef struct {
     t3_fighter_t fighters[2];
+    t3_input_history_t input_histories[2];
     uint32_t total_ticks;
     uint16_t timer;
     uint16_t round_pause;
