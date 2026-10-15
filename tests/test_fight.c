@@ -1,4 +1,7 @@
 #include "fight.h"
+#ifdef NDEBUG
+#undef NDEBUG /* Test assertions must remain active in Release configurations. */
+#endif
 #include <assert.h>
 #include <stdio.h>
 

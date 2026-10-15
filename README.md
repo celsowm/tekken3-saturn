@@ -27,6 +27,20 @@ git submodule update --remote third_party/Tekken3Remake
 
 **This is a gameplay/renderer prototype, not a claim of Tekken 3 accuracy.** The models are intentionally original placeholders. Its procedural fighters and animations are original LibSaturn example content, **not** Tekken 3 models or moves; no copyrighted Namco assets or PS1 code are included.
 
+## Import data from a local Tekken 3 USA disc
+
+The source can be a BIN/ISO/ZIP stored locally or the explicit user-specified archive.org ZIP address. The importer locates the PS1 `SLUS_004.02` executable and the 303-entry `TEKKEN3.BNS` archive; it verifies the executable fingerprint and extracts only explicitly selected records, without modifying the disc.
+
+```sh
+python3 scripts/psx_disc_import.py \
+  --source '/path/to/Tekken 3 (USA).zip' \
+  --scratch-dir /mnt/large-disk/tmp \
+  --extract-ids 36,71,73 \
+  --stage-ids 56
+```
+
+The `--stage-ids 56` option creates a first **untextured stage panorama OBJ** as a geometry research preview. It does not yet convert TIM materials, fighter skins, or motion into playable Saturn assets. Outputs live under the gitignored `assets/imported/` directory. Run the importer **locally**, not in CI. See [PSX disc importer instructions](docs/PSX_DISC_IMPORT.md).
+
 ## Build and test natively
 
 ```sh

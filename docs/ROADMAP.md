@@ -21,7 +21,10 @@ but must address fundamentally different 3D fighting-game constraints.
 ## Milestone 1: asset pipeline
 
 - [x] Pin the upstream Tekken3Remake research project as a separate licensed Git submodule.
-- Identify documented game file formats and verify legally owned input.
+- [x] Read SLUS-00402 Mode 2 Form 1 track and verify the US executable.
+- [x] Inventory 303 BNS entries, selectively export original file records.
+- [x] Export untextured stage TMD geometry as a research OBJ preview.
+- [ ] Convert original TIM materials, KMD fighter skins, and DIVMOT clips.
 - Build an **offline** asset converter to an explicit versioned Saturn format:
   quantized vertices/bone weights, limited joint counts, LOD, frame sampling,
   materials indexed for VDP1, VDP2 backgrounds, and disc streaming.
