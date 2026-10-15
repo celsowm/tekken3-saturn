@@ -147,8 +147,38 @@ static void expiry_requires_original_destinations(void) {
     assert(t3_psx_combat_transition_preview_pair(a,f,s,facts,&r));
     assert(r.fighter[1].phase==T3_PSX_PHASE_RECOVERY);
 }
+
+static void guard_blockstun_and_ko(void) {
+    t3_psx_combat_attack_t a[2];
+    t3_psx_hit_apply_frame_t f[2];
+    t3_psx_fighter_transition_state_t s[2];
+    t3_psx_transition_facts_t facts[2];
+    t3_psx_transition_preview_t r;
+    fixture(a,f,s,facts);
+    a[0].test.geometry.status=T3_SHADOW_CONTACT;
+    damage[0].defender_guard=0x10u;
+    records[0x14]=44u; /* synthetic guard reaction record */
+    facts[1].reaction_phase=T3_PSX_PHASE_BLOCKSTUN;
+    assert(t3_psx_combat_transition_preview_pair(a,f,s,facts,&r));
+    assert(r.fighter[1].phase==T3_PSX_PHASE_BLOCKSTUN);
+    assert(r.fighter[1].move_slot==44u);
+    assert(r.fighter[1].health_q16==500*65536);
+    assert(r.combat.defend[1].guarded && !r.combat.defend[1].hit_clean);
+    /* At low original 16.16 HP, a clean hit takes priority over stun. */
+    fixture(a,f,s,facts);
+    a[0].test.geometry.status=T3_SHADOW_CONTACT;
+    f[1].health_q16=50*65536;
+    s[1].health_q16=f[1].health_q16;
+    assert(t3_psx_combat_transition_preview_pair(a,f,s,facts,&r));
+    assert(r.combat.defend[1].ko_started);
+    assert(r.fighter[1].phase==T3_PSX_PHASE_KO);
+    assert(r.fighter[1].health_q16==0);
+    assert(!r.reaction_started[1]);
+}
+
 int main(void) {
     trades_and_expiry();
+    guard_blockstun_and_ko();
     knockdown_and_fail_closed();
     expiry_requires_original_destinations();
     puts("PS1 read-only hitstun/knockdown/recovery transition harness: passed");
