@@ -59,7 +59,7 @@ class NormalizedTables:
             at=0x1c2+addr-self.ref.LIMB_OFFSETS
         else:
             raise DifferentialError(f"unexpected reference vector access {addr:x}")
-        if at%4:raise DifferentialError("unaligned reference vector")
+        if (at-0x192)%4:raise DifferentialError("unaligned reference vector")
         return list(struct.unpack_from("<3i",self.ik,at))
 
 def load_reference(source:Path):
