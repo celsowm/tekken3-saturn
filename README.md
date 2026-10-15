@@ -27,6 +27,16 @@ git submodule update --remote third_party/Tekken3Remake
 
 **This is a gameplay/renderer prototype, not a claim of Tekken 3 accuracy.** The models are intentionally original placeholders. Its procedural fighters and animations are original LibSaturn example content, **not** Tekken 3 models or moves; no copyrighted Namco assets or PS1 code are included.
 
+## 104 original PlayStation input sequences
+
+An offline importer can identify the two **PS1 special command tables**
+(63 + 41 entries) from the private USA SLUS executable. It checks the known
+executable fingerprint and validates every pointer, window and command word
+before a local opt-in build embeds their command patterns into the Saturn
+move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
+The retail input data is never included in public CI or releases, and the
+combat itself is not yet 1:1.
+
 ## Original Tekken 3 combat-data foundations
 
 The portable C layer now has a validated [DIVMOT interpreter](docs/DIVMOT_LOGIC.md)

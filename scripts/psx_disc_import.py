@@ -277,7 +277,7 @@ def remote_zip(url, cache):
         tmp.unlink(missing_ok=True)
     return cache
 
-def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=US_EXE_SHA):
+def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=US_EXE_SHA, dump_exe=False):
     with track(source, scratch) as image, Disc(image) as disc:
         exe_file = disc.find("TEKKEN3", "SLUS_004.02")
         exe = disc.span(exe_file, 0, exe_file[2])
@@ -285,6 +285,10 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
         exe_sha, entries = parse_bns_index(exe, bns[2], expected_sha)
         wanted = set(extract) | set(stages)
         out.mkdir(parents=True, exist_ok=True)
+        if dump_exe:
+            # Explicitly opted in private executable dump for the 104-entry
+            # input sequence importer; NEVER part of normal builds/CI.
+            (out/"SLUS_004.02").write_bytes(exe)
         inventory = []
         for i,(lba, off, size) in enumerate(entries):
             prefix = disc.span(bns, off, min(size,4096))
@@ -324,13 +328,15 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("assets/imported/tekken3-usa"))
     parser.add_argument("--extract-ids", default="")
     parser.add_argument("--stage-ids", default="")
+    parser.add_argument("--dump-exe", action="store_true",
+                        help="save PRIVATE SLUS_004.02 file in gitignored output")
     args = parser.parse_args()
     try:
         source = remote_zip(args.source,args.cache) if args.source.startswith("https://") else Path(args.source)
         extracted, stages = selected_ids(args.extract_ids), selected_ids(args.stage_ids)
         if any(not 56 <= i <= 70 for i in stages):
             raise FormatError("stage IDs must be in 56..70")
-        report = import_game(source,args.output,extracted,stages,args.scratch_dir)
+        report = import_game(source,args.output,extracted,stages,args.scratch_dir,dump_exe=args.dump_exe)
     except (OSError,FormatError,zipfile.BadZipFile,EOFError) as error:
         parser.exit(2,f"Tekken 3 disc import failed: {error}\n")
     print(f"Verified SLUS-00402: {len(report['records'])} BNS records; "

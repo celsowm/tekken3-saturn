@@ -43,7 +43,7 @@ typedef struct {
 
 /* Portable 60-frame input history. Keeping it in fight.h avoids any
  * dependency cycle with the standalone command interpreter. */
-enum { T3_INPUT_HISTORY_FRAMES = 60, T3_INPUT_SEQUENCE_MAX = 16 };
+enum { T3_INPUT_HISTORY_FRAMES = 60, T3_INPUT_SEQUENCE_MAX = 32 };
 typedef struct {
     uint8_t direction, held_buttons, pressed_buttons;
 } t3_command_frame_t;

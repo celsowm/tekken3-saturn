@@ -19,6 +19,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_psx_disc_import.py' -v
       - name: Validate DIVMOT compactor against synthetic raw and common move banks
         run: python3 -m unittest discover -s tests -p 'test_divmot_to_logic.py' -v
+      - name: Validate PS1 104-entry sequence locator against synthetic USA-layout EXE
+        run: python3 -m unittest discover -s tests -p 'test_extract_psx_sequences.py' -v
   skeletal-asset-contract:
     runs-on: ubuntu-latest
     steps:
@@ -89,10 +91,17 @@ jobs:
           root.mkdir(parents=True,exist_ok=True)
           (root/'character.t3logic').write_bytes(compact(t.fake_bank(0))[0])
           (root/'common.t3logic').write_bytes(compact(t.fake_bank(99))[0])
+          sys.path.insert(0, 'scripts')
+          from extract_psx_sequences import extract
+          import test_extract_psx_sequences as seq_fixture
+          import json
+          (root/'sequences.json').write_text(json.dumps(
+              extract(seq_fixture.make_exe(),expected_sha=None)))
           PY
           python3 scripts/build_local_divmot_assets.py \
               --bank build/asset-divmot/character.t3logic \
               --common build/asset-divmot/common.t3logic \
+              --sequences build/asset-divmot/sequences.json \
               --output build/asset-divmot/generated
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \

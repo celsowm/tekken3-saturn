@@ -98,3 +98,10 @@ copyrighted assets and must not be distributed without permission.
 - [ ] Motion decode, model variants, effects, audio, original camera/round flow.
 - [ ] CPU AI, Tekken Force/Ball, team, practice, replay, character selection and modes.
 - [ ] Real-game oracle harness and frame-by-frame regression parity across characters.
+
+### Input extraction milestone
+- [x] Independently implement safe 104-pointer PS1 sequence table scanner.
+- [x] Accept validated command sequence tables in C move interpreter.
+- [x] Wire private local input sequence manifest into the Saturn debug build.
+- [ ] Validate all extracted USA commands against a private original SLUS-00402 image.
+- [ ] Implement original conditional input buffering / stance look-ahead.

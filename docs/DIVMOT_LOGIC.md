@@ -76,9 +76,47 @@ must **never be published**. Public CI uses only synthetic test banks.
 Clear `T3_LOCAL_DIVMOT` and `T3_LOCAL_COMMON_DIVMOT` and rebuild before
 creating any public artifact.
 
+## Extract original PS1 input commands (private, opt-in)
+
+The game's EXE has **104 indirect command sequences**: 63 commands
+`0xC00E..0xC04C` and 41 commands `0xC7FF..0xC827`.
+The USA and Japan executables have different layouts: rather than assume
+Japanese addresses, `extract_psx_sequences.py` searches for exactly 104
+structurally valid pointers and validates each signed time window and
+terminated 16-bit direction/button sequence. It validates the supported
+USA executable SHA-256. It does not ship executable data.
+
+```sh
+python3 scripts/psx_disc_import.py \
+    --source '/path/to/Tekken 3 (USA).zip' \
+    --dump-exe --extract-ids 73,98
+python3 scripts/extract_psx_sequences.py \
+    --exe assets/imported/tekken3-usa/SLUS_004.02 \
+    --output assets/imported/tekken3-usa/moves/input_sequences.json
+python3 scripts/divmot_to_logic.py \
+    --bank assets/imported/tekken3-usa/raw/098.bin \
+    --output assets/imported/tekken3-usa/moves
+python3 scripts/divmot_to_logic.py \
+    --bank assets/imported/tekken3-usa/raw/073.bin \
+    --output assets/imported/tekken3-usa/moves
+```
+
+To run the sequences in the Saturn debug interpreter, configure a **private**
+build with `-DT3_LOCAL_DIVMOT=...`,
+`-DT3_LOCAL_COMMON_DIVMOT=...` and
+`-DT3_LOCAL_PSX_SEQUENCES="$PWD/assets/imported/tekken3-usa/moves/input_sequences.json"`.
+The existing `t3_move_vm_tick_ex` passes the table to the input matcher;
+the debug VM does not yet replace the ordinary combat gameplay. **Do not
+publish the executable, extracted table, generated C, ELF or ISO.**
+
+The source parser and tables have synthetic regression tests, but this
+exact ZIP/revision has **not yet been run through the importer here**.
+An unsupported EXE SHA, ambiguous table search, or a sequence exceeding the
+implementation's 32-step / 60-frame limit results in an explicit error.
+
 ## PS1 branch predicates and input sequence registry
 
-The separate \`branch_rules.[ch]\` evaluator now accepts original DIVMOT
+The separate `branch_rules.[ch]` evaluator now accepts original DIVMOT
 character/bank restrictions and documented condition types. Its input is a
 **fact record with explicit availability bits**, since the prototype's Q8
 positions and hitboxes are not the original game's calibrated data. An

@@ -77,6 +77,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         "Private compact character DIVMOT bank (.t3logic), never for distribution")
     set(T3_LOCAL_COMMON_DIVMOT "" CACHE FILEPATH
         "Private compact divmot99 bank (optional)")
+    set(T3_LOCAL_PSX_SEQUENCES "" CACHE FILEPATH
+        "Private US PS1 original 104-command sequence manifest")
+    if(T3_LOCAL_PSX_SEQUENCES AND NOT T3_LOCAL_DIVMOT)
+        message(FATAL_ERROR "T3_LOCAL_PSX_SEQUENCES requires T3_LOCAL_DIVMOT")
+    endif()
     if(T3_LOCAL_DIVMOT)
         get_filename_component(T3_LOCAL_DIVMOT "${T3_LOCAL_DIVMOT}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_DIVMOT}")
@@ -93,6 +98,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             list(APPEND _t3_private_banks "${T3_LOCAL_COMMON_DIVMOT}")
             list(APPEND _t3_private_common_args --common "${T3_LOCAL_COMMON_DIVMOT}")
         endif()
+        set(_t3_sequence_args "")
+        if(T3_LOCAL_PSX_SEQUENCES)
+            get_filename_component(T3_LOCAL_PSX_SEQUENCES
+                "${T3_LOCAL_PSX_SEQUENCES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_SEQUENCES}")
+                message(FATAL_ERROR "Local original command sequence manifest not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_SEQUENCES}")
+            list(APPEND _t3_sequence_args
+                --sequences "${T3_LOCAL_PSX_SEQUENCES}")
+        endif()
         set(_t3_logic_gen "${CMAKE_BINARY_DIR}/generated/private_logic")
         add_custom_command(
             OUTPUT "${_t3_logic_gen}/t3_local_divmot.c"
@@ -101,9 +117,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_divmot_assets.py"
                 --bank "${T3_LOCAL_DIVMOT}"
                 ${_t3_private_common_args}
+                ${_t3_sequence_args}
                 --output "${_t3_logic_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_divmot_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sequences.py"
                 ${_t3_private_banks}
             VERBATIM COMMENT "Embed PRIVATE original DIVMOT move logic (never distribute)"
         )

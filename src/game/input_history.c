@@ -79,11 +79,14 @@ int t3_command_matches(uint16_t cmd, const t3_input_history_t* h) {
 
 static int sequence_step(uint16_t step, t3_command_frame_t f) {
     uint8_t dir = (uint8_t)(step & 15u);
-    uint8_t b = (uint8_t)((step >> 8u) & 15u);
+    uint8_t spec = (uint8_t)(step >> 8u);
+    uint8_t buttons = spec & 15u;
+    if ((step & 0x00F0u) || spec > 0x1Fu) return 0;
     if (dir && dir != f.direction) return 0;
-    if (b && (!(f.pressed_buttons & b) || (f.held_buttons & b) != b))
-        return 0;
-    return 1;
+    if (spec & 0x10u) return buttons ? !!(f.pressed_buttons & buttons) : 1;
+    if (!buttons) return f.pressed_buttons == 0u;
+    return !!(f.pressed_buttons & buttons) &&
+           (f.held_buttons & buttons) == buttons;
 }
 
 int t3_sequence_matches(const t3_input_history_t* h,

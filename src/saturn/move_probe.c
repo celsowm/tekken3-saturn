@@ -52,7 +52,9 @@ void t3_move_probe_tick(const t3_match_t* match) {
     if (g_round!=match->round) t3_move_probe_reset(match->round);
     if (match->round_done || match->match_done || !g_active) return;
     for (i=0;i<2u;++i)
-        (void)t3_move_vm_tick(&g_vms[i],&match->input_histories[i]);
+        (void)t3_move_vm_tick_ex(&g_vms[i],&match->input_histories[i],
+                                NULL,t3_local_sequences,
+                                T3_LOCAL_SEQUENCE_COUNT);
 }
 
 uint8_t t3_move_probe_active(void) {return g_active;}
