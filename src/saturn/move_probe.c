@@ -3,11 +3,14 @@
 #include "t3_local_divmot.h"
 #include "divmot.h"
 #include "move_vm.h"
+#include "attack_records.h"
 
 static t3_divmot_t g_bank, g_common;
 static t3_move_vm_t g_vms[2];
 static uint8_t g_active, g_round;
 static unsigned g_start_slot;
+static uint8_t g_segments[2];
+static uint32_t g_decode_errors[2];
 
 sat_result_t t3_move_probe_init(void) {
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
@@ -36,6 +39,8 @@ void t3_move_probe_reset(unsigned round) {
     if (!g_active) return;
     g_round=(uint8_t)round;
     for (i=0;i<2u;++i) {
+        g_segments[i]=0u;
+        g_decode_errors[i]=0u;
         if (!t3_move_vm_start(&g_vms[i],&g_bank,
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
                    &g_common,
@@ -51,10 +56,17 @@ void t3_move_probe_tick(const t3_match_t* match) {
     if (!g_active || !match) return;
     if (g_round!=match->round) t3_move_probe_reset(match->round);
     if (match->round_done || match->match_done || !g_active) return;
-    for (i=0;i<2u;++i)
+    for (i=0;i<2u;++i) {
+        t3_attack_sample_t sampled;
+        int decoded;
         (void)t3_move_vm_tick_ex(&g_vms[i],&match->input_histories[i],
                                 NULL,t3_local_sequences,
                                 T3_LOCAL_SEQUENCE_COUNT);
+        decoded=t3_attack_sample(g_vms[i].active_bank,&g_vms[i].move,
+                                 g_vms[i].frame,0,&sampled);
+        g_segments[i]=decoded==1?sampled.segment_count:0u;
+        if(decoded<0) ++g_decode_errors[i];
+    }
 }
 
 uint8_t t3_move_probe_active(void) {return g_active;}
@@ -62,6 +74,8 @@ uint16_t t3_move_probe_slot(unsigned i) {return i<2u && g_active?g_vms[i].slot:0
 uint16_t t3_move_probe_frame(unsigned i) {return i<2u && g_active?g_vms[i].frame:0;}
 uint16_t t3_move_probe_attack_word(unsigned i) {return i<2u && g_active?g_vms[i].move.attack_word:0;}
 uint32_t t3_move_probe_transitions(unsigned i) {return i<2u && g_active?g_vms[i].transitions:0;}
+uint8_t t3_move_probe_segments(unsigned i) {return i<2u && g_active?g_segments[i]:0u;}
+uint32_t t3_move_probe_decode_errors(unsigned i) {return i<2u && g_active?g_decode_errors[i]:0u;}
 
 #else
 sat_result_t t3_move_probe_init(void) {return SAT_OK;}
@@ -72,4 +86,6 @@ uint16_t t3_move_probe_slot(unsigned i) {(void)i;return 0u;}
 uint16_t t3_move_probe_frame(unsigned i) {(void)i;return 0u;}
 uint16_t t3_move_probe_attack_word(unsigned i) {(void)i;return 0u;}
 uint32_t t3_move_probe_transitions(unsigned i) {(void)i;return 0u;}
+uint8_t t3_move_probe_segments(unsigned i) {(void)i;return 0u;}
+uint32_t t3_move_probe_decode_errors(unsigned i) {(void)i;return 0u;}
 #endif

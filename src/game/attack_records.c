@@ -53,15 +53,20 @@ int t3_attack_sample(const t3_divmot_t* bank, const t3_move_record_t* move,
     result->joint_a[0]=p[0];result->joint_b[0]=p[1];
     result->joint_a[1]=p[2];result->joint_b[1]=p[3];
     /* PS1 layout word is BIG endian, unlike the packed point stream. */
-    kind=(unsigned)((p[4]<<8u)|p[5])&15u;
-    alt=(unsigned)((p[4]<<8u)|p[5])&0x7FF0u;
-    result->layout_kind=(uint8_t)kind;
-    if (choose_alternative && alt) {
-        if (alt>record_size || record_size-alt<6u) return -1;
-        p+=alt;
-        record_size-=alt;
-        result->alternative_selected=1;
+    {
+        unsigned flags=(unsigned)(p[4]<<8u)|p[5];
+        kind=flags&15u;
+        /* These shifts are the original descriptor alternate-point packing.
+         * The delta applies to POINT bytes after the six-byte descriptor,
+         * not to a second descriptor header. */
+        if (choose_alternative==0) alt=0;
+        else if (choose_alternative==1) alt=(flags&0x7FFFu)>>4u;
+        else if (choose_alternative==2)
+            alt=(flags&0x8000u)?((flags&0x7FFEu)>>3u):0u;
+        else return -1;
     }
+    result->layout_kind=(uint8_t)kind;
+    result->alternative_selected=(uint8_t)(alt!=0u);
     switch (kind) {
     case 0: stride=10;lead=0;break;
     case 1: stride=5;lead=5;break;
@@ -74,7 +79,7 @@ int t3_attack_sample(const t3_divmot_t* bank, const t3_move_record_t* move,
     }
     t=pose_frame-move->active_first;
     if (t > (SIZE_MAX-6u-lead)/stride) return -1;
-    base=6u+lead+(size_t)t*stride;
+    base=6u+lead+(size_t)t*stride+alt;
     if (base>record_size) return -1;
     switch(kind) {
     case 0: case 10: case 12: case 13: case 14:
@@ -121,11 +126,20 @@ int t3_attack_sample(const t3_divmot_t* bank, const t3_move_record_t* move,
         if (!segment(p,record_size,base,base+5u,0u,
                      &result->segments[1])) return -1;
         break;
-    case 9:
-        if (base<5u ||
-            !segment(p,record_size,base-5u,base,1u,
+    case 9: {
+        /* At the first frame the seeded swept point is p+5. Afterwards
+         * it is the previous pose's segment0 START (p - stride).
+         * The caller must use the previous world-space endpoint when moving. */
+        size_t prev;
+        if (t==0u) prev=base+5u;
+        else {
+            if (base<stride) return -1;
+            prev=base-stride;
+        }
+        if (!segment(p,record_size,prev,base,1u,
                      &result->segments[1])) return -1;
         break;
+    }
     case 10: case 12:
         if (!segment(p,record_size,base+10u,
                      base+(kind==10?5u:0u),0u,

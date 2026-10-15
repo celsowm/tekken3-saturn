@@ -37,6 +37,19 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## PS1 attack geometry: experimental importer
+
+A new `src/game/attack_records.[ch]` decoder reads **authored baked
+strike segments from DIVMOT section 9**, with packed 40-bit XYZ points,
+per-frame windows, first/second hit segments, and prior-frame sweep
+markers. Use the optional `--with-hitboxes` switch in
+`scripts/divmot_to_logic.py` to retain section 9 for a **private**
+Saturn move-VM diagnostic. It reports active attack segment counts and
+decode errors. It **does not yet make the game use original hitboxes**;
+joint transforms, body hurt regions, PS1-only builtin records and
+reactions are upcoming. Full instructions:
+[DIVMOT logic and hitbox research](docs/DIVMOT_LOGIC.md).
+
 ## Original Tekken 3 combat-data foundations
 
 The portable C layer now has a validated [DIVMOT interpreter](docs/DIVMOT_LOGIC.md)

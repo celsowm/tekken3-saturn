@@ -43,10 +43,11 @@ python3 scripts/divmot_to_logic.py \
   --output assets/imported/tekken3-usa/moves
 ```
 
-The output `bank_*.t3logic` keeps only sections 0, 1 and 2 (branches,
-moves, slot indices) and a rewritten 64-byte header. Its source motion
-offsets are *metadata only*; all animation, sounds, hitbox records, events,
-camera and textures are omitted. The resulting compact file can be opened
+By default the output `bank_*.t3logic` keeps only sections 0, 1 and
+2 (branches, moves and slot indices) with a rewritten 64-byte header.
+Passing `--with-hitboxes` additionally retains section 9's original
+attack geometry. The original animation offsets remain *metadata*;
+animation, sound, frame events, camera and textures are omitted. The resulting compact file can be opened
 by `t3_divmot_open`, **but is not a standalone game and cannot drive the
 real combat without the missing sections**.
 
@@ -68,7 +69,7 @@ These paths are examples: replace `bank_0` with the bank type shown by
 your import manifest. Both fighters currently run **the same** reference bank
 in a diagnostic-only VM. The core gameplay still uses its prototype attacks.
 The profiler shows PS1 move slots for investigation; `g_t3_diagnostics`
-(version 2) also records slots, frames, attack words and transition counts.
+(version 3) also records slots, frames, attack words and transition counts.
 The VM starts at original stance slot 3 when defined, otherwise 0.
 
 Because private output embeds original move data, its generated C/ELF/ISO
@@ -137,6 +138,47 @@ Production parity requires reconstructing those facts from the original
 PS1 combat engine state, importing the full original motion sequences,
 and implementing buffering/look-ahead, transitions and frame events.
 
+## PS1 authored attack segments (DIVMOT section 9)
+
+`src/game/attack_records.[ch]` now decodes **40-bit packed X/Y/Z**
+coordinates, the 13 known descriptor layout kinds, joint-pair metadata,
+active start/end frames, multi-segment moves and swept prior-frame
+endpoints. The four-byte attack descriptor pointer is read from move
+offset `0x28`; built-in EXE descriptors are identified but **not yet
+materialized**. Bad section offsets and truncated records fail without
+reading outside the bank. Alternative point blocks for Ogre/Mokujin
+have opt-in offsets, but real-ROM visual verification remains pending.
+
+To preserve these original attack records **only in your private local
+bank**, use `--with-hitboxes` when compacting *both* the character and
+common DIVMOT archives:
+
+```sh
+python3 scripts/divmot_to_logic.py \
+  --bank assets/imported/tekken3-usa/raw/098.bin \
+  --output assets/imported/tekken3-usa/moves \
+  --with-hitboxes
+
+python3 scripts/divmot_to_logic.py \
+  --bank assets/imported/tekken3-usa/raw/073.bin \
+  --output assets/imported/tekken3-usa/moves \
+  --with-hitboxes
+```
+
+The `t3_move_probe` in a private Saturn build then samples
+**local-space attack geometry for the active frame** from each VM's
+correct character/common bank. The diagnostics structure (version 3)
+records the number of decoded attack segments and failed/truncated
+records per fighter, without changing the playable fallback's hit
+detection. Segment start points flagged as swept still require the
+previous frame's world transform. No body spheres, hurt-cylinder
+collision or hit/reaction resolution is claimed in this milestone.
+
+The compactor still omits original animation, camera, texture, audio,
+and frame-event sections. The resulting `.t3logic` plus attack
+records is an intermediate for research and local builds; **never
+publish it or an ELF/ISO containing it**.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US
@@ -145,8 +187,9 @@ and implementing buffering/look-ahead, transitions and frame events.
    condition types (not just condition 0). Add strict unknown-opcode diagnostics.
 3. Link character and shared banks into two combat actors; data-driven
    authoritative motion selection instead of four fabricated attack entries.
-4. Decode original motion banks into LibSaturn skeleton keyframes, hit
-   segment records and per-frame state changes.
+4. Decode original motion banks into LibSaturn skeleton keyframes and
+   frame events; authored attack segments are now parsed, but collision
+   against transformed hurt volumes remains unfinished.
 5. Reproduce original grounded/air reactions, counter hits, throws,
    juggles, ground recovery, environment limits, frame events, sound,
    dynamic difficulty CPU, team/force/ball modes and original UI/camera.

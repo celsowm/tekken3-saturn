@@ -93,6 +93,9 @@ copyrighted assets and must not be distributed without permission.
 - [ ] Import/verify all source DIVMOT files and shared bank on a local legitimate disc.
 - [ ] Complete command/condition/restriction semantics and move-slot transitions.
 - [ ] Replace fallback attacks with bank-defined full character moves and reactions.
+- [x] Read original DIVMOT section 9 attack descriptors and per-frame local-space hit segments.
+- [x] Preserve section 9 optionally in private compact banks; expose decoded segment diagnostics.
+- [ ] Transform PS1 segments to fighter world space and test versus hurt/body volumes.
 - [ ] Per-frame original movement, collision, hit segments, counters and juggles.
 - [ ] Throws, reversals, multiple stances, knockdown/get-ups and posture/evades.
 - [ ] Motion decode, model variants, effects, audio, original camera/round flow.

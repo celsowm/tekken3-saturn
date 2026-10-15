@@ -13,4 +13,6 @@ uint16_t t3_move_probe_slot(unsigned fighter);
 uint16_t t3_move_probe_frame(unsigned fighter);
 uint16_t t3_move_probe_attack_word(unsigned fighter);
 uint32_t t3_move_probe_transitions(unsigned fighter);
+uint8_t t3_move_probe_segments(unsigned fighter);
+uint32_t t3_move_probe_decode_errors(unsigned fighter);
 #endif

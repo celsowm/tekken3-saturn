@@ -97,6 +97,29 @@ static void malformed(void) {
     assert(t3_divmot_open(&bank,bank_data,sizeof(bank_data)));
     assert(t3_divmot_move(&bank,0,&move));
     assert(t3_attack_sample(&bank,&move,1,0,&sample)==-1);
+    /* Alternative packed points start after the descriptor header. */
+    fixture(0);
+    bank_data[132+4]=0x80;
+    bank_data[132+5]=0x50; /* alt1=5 bytes; alt2=10 bytes */
+    assert(t3_divmot_open(&bank,bank_data,sizeof(bank_data)));
+    assert(t3_divmot_move(&bank,0,&move));
+    assert(t3_attack_sample(&bank,&move,1,0,&sample)==1);
+    eq(sample.segments[0].start,100,0,0);
+    assert(t3_attack_sample(&bank,&move,1,1,&sample)==1);
+    assert(sample.alternative_selected==1);
+    eq(sample.segments[0].start,107,-1,2);
+    assert(t3_attack_sample(&bank,&move,1,2,&sample)==1);
+    eq(sample.segments[0].start,114,-2,4);
+    assert(t3_attack_sample(&bank,&move,1,3,&sample)==-1);
+    fixture(2);
+    assert(t3_divmot_open(&bank,bank_data,sizeof(bank_data)));
+    assert(t3_divmot_move(&bank,0,&move));
+    assert(t3_attack_sample(&bank,&move,2,0,&sample)==1);
+    eq(sample.segments[0].start,114,-2,4);
+    eq(sample.segments[0].end,128,-4,8);
+    eq(sample.segments[1].start,121,-3,6);
+    eq(sample.segments[1].end,135,-5,10);
+
     /* Positive and negative extremes survive the packed 40-bit format. */
     fixture(0);
     point(bank_data+132+6,-4096,4095,-8192);

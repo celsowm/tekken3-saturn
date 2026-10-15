@@ -8,7 +8,7 @@
  * frame_serial is committed LAST, so a debugger can check it before/after
  * reading the record. Loop rate is NOT necessarily visible screen FPS. */
 #define T3_DIAGNOSTICS_MAGIC 0x54334431u /* T3D1 */
-#define T3_DIAGNOSTICS_VERSION 2u
+#define T3_DIAGNOSTICS_VERSION 3u
 
 typedef struct {
     uint32_t magic, version;
@@ -31,6 +31,8 @@ typedef struct {
     uint32_t psx_logic_active;
     uint16_t psx_move_slot[2], psx_move_frame[2], psx_attack_word[2];
     uint32_t psx_transitions[2];
+    uint8_t psx_attack_segments[2];
+    uint32_t psx_attack_decode_errors[2];
 } t3_diagnostics_t;
 
 extern volatile t3_diagnostics_t g_t3_diagnostics;

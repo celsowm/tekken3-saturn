@@ -207,6 +207,10 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_attack_word[1] = t3_move_probe_attack_word(1);
     g_t3_diagnostics.psx_transitions[0] = t3_move_probe_transitions(0);
     g_t3_diagnostics.psx_transitions[1] = t3_move_probe_transitions(1);
+    g_t3_diagnostics.psx_attack_segments[0] = t3_move_probe_segments(0);
+    g_t3_diagnostics.psx_attack_segments[1] = t3_move_probe_segments(1);
+    g_t3_diagnostics.psx_attack_decode_errors[0] = t3_move_probe_decode_errors(0);
+    g_t3_diagnostics.psx_attack_decode_errors[1] = t3_move_probe_decode_errors(1);
     ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
 }
 
