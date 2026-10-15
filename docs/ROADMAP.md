@@ -96,6 +96,9 @@ copyrighted assets and must not be distributed without permission.
 - [x] Read original DIVMOT section 9 attack descriptors and per-frame local-space hit segments.
 - [x] Preserve section 9 optionally in private compact banks; expose decoded segment diagnostics.
 - [x] Implement independent PS1 world transforms and integer attack-segment ↔ 14-zone hurt-cylinder tests.
+- [x] Parse PS1 DIVMOT animation section 6, decode 49 raw pose channels and stream limits.
+- [x] Preserve tagged animation streams in locally compacted motion banks.
+- [ ] Import private original EXE spline coefficients and validate the USA revision.
 - [ ] Feed real 24-joint PS1 animation poses into hurt cylinders in the Saturn build.
 - [ ] Validate exact PS1 collision arithmetic, body spheres and reaction logic against an oracle.
 - [ ] Per-frame original movement, collision, hit segments, counters and juggles.

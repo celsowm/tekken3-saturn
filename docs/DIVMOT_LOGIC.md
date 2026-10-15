@@ -212,6 +212,56 @@ LibSaturn skeleton transforms as if they were PS1 joints would create
 false contacts. We must first finish DIVMOT animation import, precise
 PS1 root/heading calibration and per-frame joint evaluation.
 
+## Original 49-channel animation streams (section 6)
+
+The new independent `src/game/psx_motion.[ch]` decoder opens a raw
+**PS1 DIVMOT animation stream** by the original move row's section-6
+offset, including `0x40000000` references into shared `divmot99`.
+It validates the 50-byte stream header, the 49 per-channel key counts,
+the full signed 16-bit payload, frame duration, and every compressed
+B-spline knot span **without reading beyond section 6**.
+
+For any frame in `0..N-1` (clamped), it samples all 49 channels,
+including the first 3 root coordinates, four 3-axis IK limb targets,
+four limb swivel angles, and ten 3-axis Euler rotations. The original
+**odd channels are sampled in reverse time**. Constants (0/1 keys),
+linear 2-key channels, and raw one-key-per-frame streams can be
+decoded with no auxiliary data. For all other key counts, the decoder
+executes the original fixed-point spline arithmetic and requires the
+**original 0x660-byte spline/index lookup tables from the user-owned
+PS1 executable**, passed in a normalized `t3_motion_tables_t`.
+If those tables are unavailable, a call that needs a spline returns
+`0` (unavailable), **never a fabricated interpolation**. Invalid
+streams return `-1`.
+
+To keep the tagged motion bytes in locally compacted banks:
+
+```sh
+python3 scripts/divmot_to_logic.py \
+    --bank assets/imported/tekken3-usa/raw/098.bin \
+    --output assets/imported/tekken3-usa/moves \
+    --with-motion --with-hitboxes
+
+python3 scripts/divmot_to_logic.py \
+    --bank assets/imported/tekken3-usa/raw/073.bin \
+    --output assets/imported/tekken3-usa/moves \
+    --with-motion --with-hitboxes
+```
+
+The generated `.t3logic` retains the original **section 6 and 9**
+contents along with branches/rows/slots; all other copyrighted
+runtime data stays omitted. A synthetic host C test covers shared
+stream addressing, key-count bounds, linear/time-reversed sampling,
+and a keyed channel with a synthetic spline table. A synthetic Python
+test proves both optional sections survive compaction unchanged.
+
+**Important:** decoding the scalar pose vector does **not** compose
+PS1 local rotations/world joint matrices, nor perform four-limb IK,
+model offset transforms, root scaling, material animation, collision
+reactions or original physics. Source animation bytes and compacted
+banks remain PRIVATE. Actual USA stream lengths and spline weights
+have not been compared with a PS1 oracle in this milestone.
+
 ## Next major work, in dependency order
 
 1. Validate 22 banks and all available row/branch references from the US

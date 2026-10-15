@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c)
+add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
@@ -157,5 +157,9 @@ else()
         target_link_libraries(test_psx_collision PRIVATE tekken3_fight)
         target_compile_options(test_psx_collision PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_world_segments_and_hurt_zones COMMAND test_psx_collision)
+        add_executable(test_psx_motion tests/test_psx_motion.c)
+        target_link_libraries(test_psx_motion PRIVATE tekken3_fight)
+        target_compile_options(test_psx_motion PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_motion_streams_and_spline_tables COMMAND test_psx_motion)
     endif()
 endif()

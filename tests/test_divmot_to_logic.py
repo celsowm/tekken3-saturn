@@ -66,6 +66,40 @@ class Tests(unittest.TestCase):
         self.assertEqual(t3.compact(with_points,with_hitboxes=True)[0],with_points)
         self.assertEqual(t3.compact(with_points)[0],default)
 
+    def test_preserve_motion_streams_and_hitboxes_independently(self):
+        source = fake_bank(99)
+        motion = b"\x34\x12" + bytes([12, 0]) + bytes(48) + b"\x00"*40
+        attack = bytes(range(80))
+        # Original section3 holds 32 sound bytes, section6 is appended,
+        # section9 contains original authored hit points. Other sections empty.
+        body = bytearray(source + motion + attack)
+        s3 = struct.unpack_from("<I", body, 4 + 3*4)[0]
+        s6 = len(source)
+        s7 = s6 + len(motion)
+        end = len(body)
+        offsets = [64, 76, 132, s3, s6, s6, s6,
+                   s7, s7, s7, end, end, end, end, end]
+        struct.pack_into("<15I", body, 4, *offsets)
+        default, _ = t3.compact(bytes(body))
+        anim, meta_anim = t3.compact(bytes(body), with_motion=True)
+        hit, meta_hit = t3.compact(bytes(body), with_hitboxes=True)
+        both, meta_both = t3.compact(bytes(body), with_motion=True,
+                                    with_hitboxes=True)
+        self.assertEqual(meta_anim["motion_bytes"], len(motion))
+        self.assertTrue(meta_anim["motion_streams_included"])
+        self.assertEqual(meta_both["hitbox_bytes"], len(attack))
+        self.assertEqual(len(anim)-len(default), len(motion))
+        self.assertEqual(len(hit)-len(default), len(attack))
+        self.assertEqual(len(both)-len(default), len(motion)+len(attack))
+        starts = t3.sections_of(both)[1]
+        self.assertEqual(starts[7]-starts[6], len(motion))
+        self.assertEqual(starts[10]-starts[9], len(attack))
+        self.assertEqual(both[starts[6]:starts[7]], motion)
+        self.assertEqual(both[starts[9]:starts[10]], attack)
+        self.assertEqual(t3.compact(both, True, True)[0], both)
+        self.assertEqual(t3.compact(both, True, False)[0], hit)
+        self.assertEqual(t3.compact(both, False, True)[0], anim)
+
     def test_reject_malformed(self):
         source=bytearray(fake_bank())
         source[0]=7

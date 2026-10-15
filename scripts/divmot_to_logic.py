@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build a PRIVATE logic-only DIVMOT binary from a local PS1 bank.
 
-Keeps original section 0 (12-byte branches), 1 (56-byte moves), 2 (4023
-move slots). With --with-hitboxes, also preserves section 9's authored
-attack points; raw animations, cameras, sounds and models are omitted. This is a RESEARCH/PORTING intermediate, never a gameplay-ready
-replacement for a bank with all data.
+Keeps sections 0 (branches), 1 (moves), 2 (move slots). Optional
+--with-motion preserves raw animation section 6 (including tags);
+--with-hitboxes preserves baked hitbox section 9. Other copyrighted
+streams are dropped. All output stays local, not in Git or CI.
 """
 import argparse
 import hashlib
@@ -36,15 +36,19 @@ def sections_of(data):
         raise FormatError("character bank must have exactly 4023 move slots")
     return moves,offsets
 
-def compact(data, with_hitboxes=False):
+def compact(data, with_hitboxes=False, with_motion=False):
     count,s=sections_of(data)
     kept=data[s[0]:s[3]]
-    # Original section9 move descriptor offsets are section-relative. Preserve
-    # its bytes untouched and relocate only the section directory itself.
+    # Sections 6 and 9 use section-relative offsets inside move rows, so
+    # the original bytes can be preserved independently. Do not relocate
+    # internal stream offsets or non-selected asset streams.
+    motion=data[s[6]:s[7]] if with_motion else b""
     attacks=data[s[9]:s[10]] if with_hitboxes else b""
     end=64+len(kept)
-    offsets=[64,64+s[1]-s[0],64+s[2]-s[0]]+[end]*7+[end+len(attacks)]*5
-    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+attacks)
+    end_motion=end+len(motion)
+    offsets=[64,64+s[1]-s[0],64+s[2]-s[0]] + [end]*4 + \
+            [end_motion]*3 + [end_motion+len(attacks)]*5
+    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+motion+attacks)
     assert len(result)==offsets[-1]
     sections_of(result)
     return bytes(result),{
@@ -57,22 +61,27 @@ def compact(data, with_hitboxes=False):
         "original_bytes":len(data),
         "logic_bytes":len(result),
         "hitbox_bytes":len(attacks),
+        "motion_bytes":len(motion),
+        "motion_streams_included":bool(with_motion),
         "attack_geometry_included":bool(with_hitboxes),
-        "omitted":"animations, textures, camera, audio, events"
+        "omitted":"textures, camera, audio, events"
+                  + ("" if with_motion else ", animations")
                   + ("" if with_hitboxes else ", attack points"),
-        "valid_for":"move VM and local attack geometry decoding only; full combat pending"
+        "valid_for":"move VM and optional raw pose/attack decoding; full combat pending"
     }
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--bank",type=Path,required=True,help="local extracted raw BNS DIVMOT record")
     p.add_argument("--output",type=Path,required=True,help="gitignored destination directory")
+    p.add_argument("--with-motion",action="store_true",
+                   help="preserve original animation section 6 (private research)")
     p.add_argument("--with-hitboxes",action="store_true",
                    help="preserve local copyrighted baked attack descriptors (section 9)")
     a=p.parse_args()
     try:
         data=a.bank.read_bytes()
-        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes)
+        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes,with_motion=a.with_motion)
         a.output.mkdir(parents=True,exist_ok=True)
         (a.output/f"bank_{manifest['bank_type']}.t3logic").write_bytes(logic)
         (a.output/f"bank_{manifest['bank_type']}.json").write_text(

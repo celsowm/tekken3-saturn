@@ -37,6 +37,17 @@ move debugger. See [DIVMOT and original input extraction](docs/DIVMOT_LOGIC.md).
 The retail input data is never included in public CI or releases, and the
 combat itself is not yet 1:1.
 
+## Original DIVMOT animation stream reader
+
+`src/game/psx_motion.[ch]` now parses section-6 tagged PS1 animation
+streams with **49 pose channels**, including reverse-time channels,
+linear/per-frame values and **lookup-table-based keyed splines**.
+The real spline coefficient tables are not redistributed. Local
+`scripts/divmot_to_logic.py --with-motion --with-hitboxes` preserves
+the original streams in a private analysis bank. This gives us
+the scalar poses, **not yet the 18-slot FK/IK solver or 24 real PS1
+world joints**. See [motion import scope](docs/DIVMOT_LOGIC.md).
+
 ## PS1 world-space collision primitives
 
 New `src/game/psx_collision.[ch]` supports integer Q12 world transforms
