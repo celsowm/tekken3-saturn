@@ -1,6 +1,11 @@
 #include "move_probe.h"
 #if defined(T3_LOCAL_DIVMOT_ENABLED)
 #include "t3_local_divmot.h"
+/* Read by a debugger after each simulation tick, not disk I/O/VDP1.
+ * Epoch odd = write in progress; even and unchanged = stable pair. */
+volatile uint32_t g_t3_pose_trace_epoch;
+volatile uint8_t g_t3_pose_trace[2][T3_PSX_TRACE_BYTES];
+static uint32_t g_t3_pose_trace_tick;
 #include "divmot.h"
 #include "move_vm.h"
 #include "attack_records.h"
@@ -205,6 +210,35 @@ void t3_move_probe_tick(const t3_match_t* match) {
                 g_pose_status[i]=4u;
             }
         }
+    }
+    {
+        unsigned fighter, byte;
+        ++g_t3_pose_trace_epoch; /* start write; odd */
+        for(fighter=0u;fighter<2u;++fighter) {
+            uint8_t encoded[T3_PSX_TRACE_BYTES];
+            uint32_t mask=0u;
+            const t3_psx_joint_t* joints=NULL;
+#if defined(T3_LOCAL_KMD_BIND)
+            if((g_fk_parts[fighter]&T3_PSX_TRACE_BODY_MASK)==
+                            T3_PSX_TRACE_BODY_MASK) {
+                mask=T3_PSX_TRACE_BODY_MASK;
+                joints=g_world_pose[fighter];
+            }
+#endif
+            if(!t3_psx_trace_encode(g_t3_pose_trace_tick,fighter,
+                    g_vms[fighter].slot,g_vms[fighter].frame,
+                    joints,mask,encoded,sizeof(encoded))) {
+                /* Unexpected invalid part coordinates: never expose stale
+                 * valid joints to the oracle harness. */
+                (void)t3_psx_trace_encode(g_t3_pose_trace_tick,fighter,
+                    g_vms[fighter].slot,g_vms[fighter].frame,
+                    NULL,0u,encoded,sizeof(encoded));
+            }
+            for(byte=0u;byte<T3_PSX_TRACE_BYTES;++byte)
+                g_t3_pose_trace[fighter][byte]=encoded[byte];
+        }
+        ++g_t3_pose_trace_epoch; /* release stable paired records */
+        ++g_t3_pose_trace_tick;
     }
 }
 

@@ -2,6 +2,7 @@
 #define T3_SATURN_MOVE_PROBE_H
 #include "fight.h"
 #include "psx_pose.h"
+#include "psx_trace.h"
 #include "saturn/core.h"
 
 /* Optional PS1 DIVMOT logic interpreter, isolated from combat gameplay.
@@ -33,4 +34,11 @@ int t3_move_probe_copy_world(unsigned fighter,
                              t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
                              uint32_t* parts_mask);
 int16_t t3_move_probe_fk_root_xx(unsigned fighter);
+/* Private debugger ABI: each record is LE and 564 bytes.
+ * Read the even epoch before/after 2 records; reject changes/odd epochs.
+ * Symbol exists ONLY in explicit local DIVMOT builds. */
+#if defined(T3_LOCAL_DIVMOT_ENABLED)
+extern volatile uint32_t g_t3_pose_trace_epoch;
+extern volatile uint8_t g_t3_pose_trace[2][T3_PSX_TRACE_BYTES];
+#endif
 #endif

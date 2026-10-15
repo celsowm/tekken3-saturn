@@ -611,7 +611,33 @@ python3 scripts/compare_psx_pose_traces.py \
 
 Original PS1 oracle records must be captured independently on a local
 emulator; no original game traces or disc assets are included in Git.
-Captures from the Saturn debug symbol require a frame-stepping harness
-to append each sample, rather than repeatedly reading the same final
-memory frame. A failing comparison is a discrepancy to investigate,
-**not proof the original game is wrong**.
+### Capturing Saturn binary snapshots
+
+In a PRIVATE `T3_LOCAL_DIVMOT` build, the native SH-2 ELF now exports:
+
+- `g_t3_pose_trace[2][564]`: two consecutive standardized binary
+  records, fighter 0 then fighter 1, updated every simulation tick
+- `g_t3_pose_trace_epoch`: an incrementing even/odd write guard;
+  **even and unchanged** before/after reading both records means
+  the pair was captured atomically
+
+An emulator/debugger harness must repeat these operations **once per
+simulation tick**: step to the `t3_move_probe_tick` return, read the
+epoch, discard odd epochs, read exactly **1128 bytes** beginning at
+`g_t3_pose_trace`, reread the epoch and append the 1128 bytes only if
+both epochs match. Retry on change. Capturing only one frame from a
+running emulator cannot reconstruct missed frames, so do not infer
+parity if tick numbers skip.
+
+The binary memory buffer is intentionally **not exported in default
+public/procedural builds**. If original KMD matrices are incomplete,
+the header still contains the move/frame/tick, but the joint mask is
+zero: the tool cannot interpret an old pose as valid. A user-provided
+PS1 oracle should use the **same animation tick/input stream**, fighter
+index, move slot and PS1 orientation basis before comparison. Without
+independently captured PS1 input/frame traces, the tool can only
+verify its own synthetic fixtures, not 1:1 fidelity.
+
+A failing comparison is a discrepancy to investigate, **not proof the
+original game is wrong**. No reference traces were captured during
+this change.

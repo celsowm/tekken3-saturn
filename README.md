@@ -57,6 +57,9 @@ and 3×3 Q12 rotation differences. Strict matching is the default;
 optional tolerances are for diagnosing numerical divergences. The
 binary format and synthetic tests are documented in
 [the pose-oracle workflow](docs/DIVMOT_LOGIC.md).
+A private Saturn ELF now exposes debugger symbols
+`g_t3_pose_trace` and `g_t3_pose_trace_epoch` for recording both
+fighter traces at every simulation tick (with an even/odd write guard).
 **No original oracle traces have been captured or validated yet.**
 
 ## Authored PS1 root movement and heading
