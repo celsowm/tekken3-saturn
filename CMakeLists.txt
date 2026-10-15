@@ -242,5 +242,23 @@ else()
         target_link_libraries(test_psx_trace PRIVATE tekken3_fight)
         target_compile_options(test_psx_trace PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_pose_oracle_trace_encoding COMMAND test_psx_trace)
+        # Independent numerical reference, imported from our existing
+        # pinned research submodule. No commercial disc or fixture is used.
+        add_executable(t3_pose_eval tools/psx_pose_eval.c)
+        target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
+        set(_t3_pose_upstream
+            "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/pose.py")
+        if(EXISTS "${_t3_pose_upstream}")
+            find_package(Python3 REQUIRED COMPONENTS Interpreter)
+            add_test(NAME ps1_fk_ik_upstream_differential
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_SOURCE_DIR}/tests/test_diff_psx_solver.py"
+                    --runner "$<TARGET_FILE:t3_pose_eval>"
+                    --upstream "${_t3_pose_upstream}")
+        else()
+            message(STATUS "PS1 reference comparison unavailable: "
+                "git submodule update --init third_party/Tekken3Remake")
+        endif()
     endif()
 endif()

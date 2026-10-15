@@ -9,10 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true  # pinned Tekken3Remake research oracle
+          persist-credentials: false
       - name: Configure portable core
         run: cmake --preset host
       - name: Compile tests
         run: cmake --build --preset host
+      - name: Confirm independent pose reference is available
+        run: |
+          test -f third_party/Tekken3Remake/tools/research/pose.py
+          cmake --build --preset host --target t3_pose_eval
       - name: Run deterministic regressions
         run: ctest --preset host
       - name: Validate synthetic PS1 disc, ZIP, BNS table and stage converter

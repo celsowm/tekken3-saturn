@@ -641,3 +641,52 @@ verify its own synthetic fixtures, not 1:1 fidelity.
 A failing comparison is a discrepancy to investigate, **not proof the
 original game is wrong**. No reference traces were captured during
 this change.
+
+## Independent 18-slot FK/IK numerical differential harness
+
+For genuine **frame-by-frame validation** before Saturn visual testing,
+`tools/psx_pose_eval.c` runs the portable PS1 solver on the host CPU
+for every packed 49-channel signed-16-bit pose and returns all 18
+Q12 rotation matrices with an explicit missing-slot mask.
+
+`scripts/diff_psx_pose_solver.py` compares each computed element
+against the **separately maintained** Python
+`pose_build_matrices` implementation in the project's pinned
+`third_party/Tekken3Remake/tools/research/pose.py` submodule.
+The reference source is loaded dynamically rather than copied into
+our repository. Both engines receive identical lookup data through
+a normalized-table adapter (no assumption about US/JP EXE addresses).
+
+For a private comparison, build the host C runner, supply normalized
+trig/IK tables from your own executable and a sequence of signed
+16-bit pose vectors (49 entries per frame, little-endian):
+
+```sh
+git submodule update --init third_party/Tekken3Remake
+cmake --preset host
+cmake --build --preset host --target t3_pose_eval
+python3 scripts/diff_psx_pose_solver.py \
+  --runner build/host/t3_pose_eval \
+  --trig /private/psx_trig.bin \
+  --ik /private/psx_ik.bin \
+  --poses /private/pose_samples_le16.bin \
+  --strict-complete
+```
+
+The executable path depends on the local CMake host preset output
+directory. `--strict-complete` fails when a limb is unavailable,
+rather than silently calling the other joints a complete match.
+Output includes the first 30 differing elements, original PS1
+matrix slot, component index and both signed values. Exit status
+0 means every **evaluated** slot matched the reference.
+
+CI generates only **synthetic sine, sqrt and pose input values**
+and loads the pinned research submodule for a 16-frame independent
+regression. No retail tables, poses, animation banks or PS1 binary
+are embedded in the repo or CI artifacts.
+
+**Scope:** this is parity against the published reverse-engineering
+reference, **not direct proof of correctness against the executing
+PlayStation game**. Subsequent work must capture genuine USA MIPS
+pose oracles and confirm root placement, animation blending,
+rounding and fighting state.

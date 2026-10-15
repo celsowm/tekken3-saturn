@@ -146,3 +146,9 @@ copyrighted assets and must not be distributed without permission.
 - [x] Define endian-independent 18-joint 564-byte pose-trace serialization.
 - [x] Compare joint translations and rotations against externally captured PS1 oracle frames.
 - [ ] Capture actual original PS1 and Saturn frame traces, align control inputs, and close numerical deviations.
+
+### Independent solver parity
+- [x] Add native batch evaluator for 49-channel input and all 18 Q12 matrices.
+- [x] Add numerical Python-vs-C differential harness using pinned research submodule.
+- [x] Exercise FK/IK across synthetic bending, singular poses and mixed rotations.
+- [ ] Compare actual USA animation streams with PlayStation emulator traces.

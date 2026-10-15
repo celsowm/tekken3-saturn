@@ -262,3 +262,14 @@ The playable build has **no external ROM requirement** and must never ship copyr
 Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x10, scene faces, VDP1 command usage, frame work time). The ELF also exports a fixed-layout `g_t3_diagnostics` record defined in `src/saturn/diagnostics.h` for emulator memory inspection. It includes VBlank count, simulation ticks, VDP1 command count/capacity, culled/rejected faces, late swaps and draw timeouts.
 
 These are instrumented counters only: **no emulator/real-console FPS measurement has been reported**. Rendering frame rate and presentation rate differ when the VDP1 spends longer than one display field drawing.
+
+## FK/IK differential oracle
+
+`tools/psx_pose_eval.c` and
+`scripts/diff_psx_pose_solver.py` compare all valid PS1 Q12 rotation
+matrix components of a batch of 49-channel DIVMOT poses with the
+**pinned upstream Tekken3Remake research implementation**. Host CI
+uses synthetic data only and reports precise per-slot mismatches.
+See [the offline solver harness](docs/DIVMOT_LOGIC.md).
+A match establishes parity against upstream research—not real-hardware
+MIPS parity or a fully rendered 1:1 game.
