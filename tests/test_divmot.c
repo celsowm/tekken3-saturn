@@ -143,6 +143,46 @@ static void test_vm_execution(void) {
     assert(!t3_move_vm_start(&vm,&bank,NULL,4)); /* empty move slot */
 }
 
+static void test_common_bank_branches(void) {
+    /* Common bank branch table has its OWN row0 terminator, whereas
+     * character bank row0 is LP -> attack. VM must never confuse them. */
+    enum { COMMON_BYTES=64+12+56 };
+    uint8_t raw[COMMON_BYTES]={0};
+    const unsigned b0=64u, b1=76u, b2=132u, b3=132u;
+    t3_divmot_t bank={0},common={0};
+    t3_move_vm_t vm={0};
+    t3_input_history_t h;
+    const t3_divmot_t* owner=NULL;
+    t3_move_record_t move;
+    unsigned i;
+    make_bank();
+    raw[1]=99;put16(raw+2,1);
+    put32(raw+4,b0);put32(raw+8,b1);put32(raw+12,b2);
+    for (i=3;i<15u;++i)put32(raw+4+i*4u,b3);
+    put16(raw+b0,0xC000);put16(raw+b0+6,0);
+    raw[b1+24]=3;
+    put32(raw+b1+12,0);
+    put16(raw+b1+8,0x217);
+    put32(bank_bytes+64u+3u*12u+2u*56u+2u*4u,0x40000000u);
+    assert(t3_divmot_open(&bank,bank_bytes,sizeof(bank_bytes)));
+    assert(t3_divmot_open(&common,raw,sizeof(raw)));
+    assert(t3_divmot_slot_resolve(&bank,&common,2,&move,&owner)==1);
+    assert(owner==&common && move.attack_word==0x217);
+    assert(t3_move_vm_start(&vm,&bank,&common,2));
+    assert(vm.active_bank==&common && vm.slot==2);
+    t3_history_reset(&h);
+    t3_history_push(&h,input(0,T3_IN_LP));
+    /* Main bank LP branch would incorrectly trigger immediately. */
+    assert(t3_move_vm_tick(&vm,&h)==0);
+    assert(vm.slot==2 && vm.frame==1);
+    t3_history_reset(&h);
+    t3_history_push(&h,input(0,0));
+    assert(t3_move_vm_tick(&vm,&h)==0);
+    assert(t3_move_vm_tick(&vm,&h)==0);
+    assert(t3_move_vm_tick(&vm,&h)==1);
+    assert(vm.slot==0 && vm.active_bank==&bank);
+}
+
 static void advance(t3_match_t* match, unsigned frames,t3_input_t a,t3_input_t b) {
     unsigned i;
     for(i=0;i<frames;++i)t3_match_step(match,a,b);
@@ -202,6 +242,7 @@ int main(void) {
     test_commands();
     test_bank_and_branch();
     test_vm_execution();
+    test_common_bank_branches();
     test_live_combat_levels();
     test_dash_and_round_history();
     puts("DIVMOT input/branch and combat level regressions passed");

@@ -13,6 +13,7 @@
 typedef struct {
     const t3_divmot_t* bank;
     const t3_divmot_t* common;
+    const t3_divmot_t* active_bank; /* may be shared divmot99 */
     t3_move_record_t move;
     uint16_t slot;
     uint16_t frame;

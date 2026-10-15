@@ -52,6 +52,11 @@ int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
  * resolves to common bank when supplied (bank_type 99). */
 int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
                    unsigned slot, t3_move_record_t* out);
+/* Also return the containing bank: common-bank moves use common branch rows. */
+int t3_divmot_slot_resolve(const t3_divmot_t* bank,
+                            const t3_divmot_t* common,
+                            unsigned slot, t3_move_record_t* out,
+                            const t3_divmot_t** owner);
 /* First matching branch. Only unconditional branch conditions and command
  * words implemented by t3_command_matches are accepted. An unsupported
  * branch condition is not erroneously treated as true. Default continuation

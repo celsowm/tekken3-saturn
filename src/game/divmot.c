@@ -83,18 +83,31 @@ int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
     return 1;
 }
 
-int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
-                   unsigned slot, t3_move_record_t* out) {
+int t3_divmot_slot_resolve(const t3_divmot_t* bank,
+                            const t3_divmot_t* common,
+                            unsigned slot, t3_move_record_t* out,
+                            const t3_divmot_t** owner) {
     uint32_t id;
+    const t3_divmot_t* selected;
+    if (owner) *owner = NULL;
     if (!bank || !out || !bank->data || bank->bank_type==99u ||
         slot>=T3_DIVMOT_MOVE_SLOTS) return -1;
     id=le32(bank->data+bank->sections[2]+slot*4u);
     if (id==T3_DIVMOT_EMPTY_SLOT) return 0;
+    selected=bank;
     if (id>=0x40000000u) {
         if (!common || common->bank_type!=99u || !common->data) return 0;
-        return t3_divmot_move(common, id-0x40000000u, out);
+        selected=common;
+        id-=0x40000000u;
     }
-    return t3_divmot_move(bank,id,out);
+    if (!t3_divmot_move(selected,id,out)) return 0;
+    if (owner) *owner=selected;
+    return 1;
+}
+
+int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
+                   unsigned slot, t3_move_record_t* out) {
+    return t3_divmot_slot_resolve(bank,common,slot,out,NULL);
 }
 
 int t3_divmot_branch_pick(const t3_divmot_t* bank, t3_move_record_t current,

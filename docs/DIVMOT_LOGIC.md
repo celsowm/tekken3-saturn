@@ -11,7 +11,7 @@ this MIT codebase.
   header (15 ordered section boundaries, 56-byte move rows, 12-byte branch
   rows, 4,023 move slots). Supports bank 0–20 and shared bank 99. Decodes
   move state/attack words, action window, damage, stance, flags and reactions.
-  Local/common slot lookup observes `0x3FFFFFFF` (empty) and
+  Local/common slot lookup also reports its owning bank, so common moves use the correct branch table. Slot lookup observes `0x3FFFFFFF` (empty) and
   `0x40000000` (common namespace).
 - `src/game/input_history.[ch]` — each player has 60 frames of input history,
   Tekken-style numpad directions relative to the opponent, four attack
