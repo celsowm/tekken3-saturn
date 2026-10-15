@@ -36,3 +36,8 @@ __pycache__/
 # Private differential reports and local animation samples
 *.pose49.bin
 *.fkik-audit.json
+
+# Private USA PS1 combat oracle dumps
+*.psx-combat.jsonl
+*.psx-combat.jsonl.tmp
+*.psx-ram
