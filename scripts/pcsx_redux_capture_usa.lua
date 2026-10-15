@@ -10,7 +10,7 @@
 -- Important: the EXE fingerprint is not checked by this Lua script.
 -- Verify the mounted USA SLUS_004.02 before treating these as oracle data.
 local CONFIG = {
-    output = "tekken3-usa-ps1-combat.jsonl",
+    output = "tekken3-usa-ps1-combat.psx-combat.jsonl",
     max_frames = 1200,
     -- Guest MIPS addresses for unmodified USA SLUS_004.02 (NOT Japan).
     fighter0 = 0x800A9228,
