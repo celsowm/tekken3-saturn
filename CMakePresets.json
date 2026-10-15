@@ -1,0 +1,33 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {"major": 3, "minor": 24, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "host",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/host",
+      "cacheVariables": {"CMAKE_BUILD_TYPE": "Release"}
+    },
+    {
+      "name": "saturn",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/saturn",
+      "toolchainFile": "$env{LIBSATURN_PREFIX}/share/libsaturn/toolchains/sh2eb-elf.cmake",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{LIBSATURN_PREFIX}",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {"name": "host", "configurePreset": "host"},
+    {"name": "saturn", "configurePreset": "saturn"}
+  ],
+  "testPresets": [
+    {
+      "name": "host",
+      "configurePreset": "host",
+      "output": {"outputOnFailure": true}
+    }
+  ]
+}

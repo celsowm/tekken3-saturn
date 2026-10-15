@@ -1,0 +1,30 @@
+# Outputs
+/build/
+/out/
+/.external/
+*.elf
+*.map
+*.app.bin
+
+# Game data must never enter the repository
+/assets/imported/
+/assets/extracted/
+/remake/imported/
+/roms/
+/discs/
+*.iso
+*.cue
+*.chd
+*.ecm
+*.bin
+*.img
+*.ccd
+*.sub
+*.pbp
+*.zip
+
+# Tool state
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
