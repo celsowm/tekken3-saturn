@@ -30,14 +30,22 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_sequences.py' -v
       - name: Validate private PS1 IK lookup exporter against synthetic EXE
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_ik_tables.py' -v
+      - name: Validate big-endian Saturn gameplay diagnostics
+        run: python3 -m unittest discover -s tests -p 'test_saturn_probe.py' -v
+      - name: Validate private texture importer with synthetic ARC and TIM data
+        run: python3 -m unittest discover -s tests -p 'test_psx_character_textures.py' -v
       - name: Analyze synthetic PS1 combat oracle event timeline
         run: python3 -m unittest discover -s tests -p 'test_analyze_psx_combat_oracle.py' -v
       - name: Validate independent USA PS1 RAM oracle snapshots
         run: python3 -m unittest discover -s tests -p 'test_psx_ram_oracle.py' -v
+      - name: Validate instruction-phase capture nesting and RAM checkpoint
+        run: python3 -m unittest discover -s tests -p 'test_analyze_psx_phases.py' -v
       - name: Compile-check PCSX-Redux LuaJIT capture script
         run: |
           command -v luajit || (sudo apt-get update -qq && sudo apt-get install -y -qq luajit)
           luajit -b scripts/pcsx_redux_capture_usa.lua /tmp/t3-psx-capture.luac
+          luajit -b scripts/pcsx_redux_phase_capture.lua /tmp/t3-psx-phases.luac
+          luajit -b scripts/pcsx_redux_paul_session.lua /tmp/t3-psx-session.luac
       - name: Validate frame-by-frame PS1 combat oracle comparator
         run: python3 -m unittest discover -s tests -p 'test_compare_psx_combat_traces.py' -v
       - name: Validate PS1 pose trace binary/JSONL oracle comparator
@@ -124,6 +132,8 @@ jobs:
           Path("build/asset-divmot/spline.bin").write_bytes(bytes(0x660))
           Path("build/asset-divmot/trig.bin").write_bytes(bytes(0x2800))
           Path("build/asset-divmot/ik.bin").write_bytes(bytes(0x1F2))
+          Path("build/asset-divmot/ground.bin").write_bytes(bytes(1025+0x58C))
+          Path("build/asset-divmot/body.bin").write_bytes(bytes(432))
           PY
           python3 scripts/build_local_divmot_assets.py \
               --bank build/asset-divmot/character.t3logic \
@@ -132,7 +142,12 @@ jobs:
               --spline-tables build/asset-divmot/spline.bin \
               --trig-table build/asset-divmot/trig.bin \
               --ik-tables build/asset-divmot/ik.bin \
+              --ground-tables build/asset-divmot/ground.bin \
+              --body-tables build/asset-divmot/body.bin \
               --output build/asset-divmot/generated
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -I src/game -I build/asset-divmot/generated \
+              tools/psx_move_decision_eval.c
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \
               -I .external/libsaturn/include \
@@ -164,6 +179,26 @@ jobs:
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
               src/saturn/characters.c src/saturn/move_probe.c \
               src/saturn/psx_skin_bridge.c
+          # Owned movement must compile without provisional runtime dependencies.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
+              -DT3_ENABLE_PSX_MOVE_LIFECYCLE=1 \
+              -DT3_ENABLE_PSX_OWNED_MATCH=1 \
+              -I .external/libsaturn/include \
+              -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/main.c src/saturn/move_probe.c src/saturn/characters.c
+          # Combat mode's types and frontend wiring compile with synthetic
+          # includes; full retail reaction data is never required in CI.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 \
+              -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
+              -DT3_ENABLE_PSX_MOVE_LIFECYCLE=1 \
+              -DT3_ENABLE_PSX_OWNED_MATCH=1 -DT3_ENABLE_PSX_COMBAT=1 \
+              -I .external/libsaturn/include -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/main.c src/saturn/move_probe.c src/saturn/characters.c
           # Shadow combat is read-only and requires externally injected roots.
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
               -DT3_LOCAL_DIVMOT_ENABLED=1 \

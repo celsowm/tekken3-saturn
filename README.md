@@ -1,6 +1,8 @@
 # Tekken 3 Saturn
 
-An **unofficial, independently built Sega Saturn fighting-game port experiment**, inspired by the original *Tekken 3*. It consumes [LibSaturn](https://github.com/celsowm/libsaturn) as an **installed package**, like [ikemen-saturn](https://github.com/celsowm/ikemen-saturn). The research reference [Tekken3Remake](https://github.com/n0madic/Tekken3Remake) is pinned as a **Git submodule**, never linked into the Saturn game.
+An **unofficial Sega Saturn port project for Tekken 3**, using the readable implementation and original-game research in [n0madic/Tekken3Remake](https://github.com/n0madic/Tekken3Remake) as its implementation reference. Its documented combat, motion, model and game-flow rules guide the portable C implementation, with differential checks against its research tools. The Saturn runtime uses [LibSaturn](https://github.com/celsowm/libsaturn) as an **installed package**.
+
+**Source reference: [Tekken3Remake @ e59c4da](https://github.com/n0madic/Tekken3Remake/tree/e59c4da179f39b4e915ccdc547567c8479a9f611)** — tracked at [`third_party/Tekken3Remake`](third_party/Tekken3Remake) as a Git submodule. GitHub displays that directory as a linked repository with its pinned commit. The Godot runtime is separate from the Saturn executable; the submodule supplies the source reference and host-side comparison tools.
 
 ## Upstream research submodule
 
@@ -14,9 +16,16 @@ git submodule update --init --recursive
 git submodule update --remote third_party/Tekken3Remake
 ```
 
-**License boundary:** the submodule uses **PolyForm Noncommercial 1.0.0** with the upstream project's own required attribution, not this repository's MIT license. It is a separate research reference, not compiled/linked by the Saturn CMake build, and its source must not be silently copied or relicensed. Users must comply with the upstream license for uses of that source. No Tekken 3 retail data is part of the submodule checkout.
+**License boundary:** the submodule uses **PolyForm Noncommercial 1.0.0** with the upstream project's required attribution. Its Godot application is not compiled by the Saturn build. The C adaptations in `src/game/move_clock.c`, `move_lifecycle.c`, `psx_ground.c`, `psx_match.c`, `psx_body.c`, `psx_exact_contact.c`, `psx_hit_transaction.c` and `psx_round.c` retain that license; see [NOTICE.md](NOTICE.md). The local MIT license does not replace those terms. No Tekken 3 retail data is part of the submodule checkout.
 
 ## Milestone 0: executable foundation
+
+The [current private milestone](docs/NEXT_PLAYABLE_PROGRESS.md) renders two
+original Paul models with converted textures and independently controlled
+DIVMOT poses, confirmed through Mednafen CD boot and headless Ymir tests.
+Original USA Paul mirror-match input/health/defense observations have also been
+captured in PCSX-Redux and cross-checked against paused RAM. Live Saturn combat
+still uses the provisional match below; original combat parity is pending.
 
 - A portable, integer-only, deterministic 60 Hz fight simulation.
 - Two fighters, four distinct limb attacks, hit/guard stun, spacing, sidesteps, collision, health, a timer, and best-of-three rounds.
@@ -60,7 +69,8 @@ binary format and synthetic tests are documented in
 A private Saturn ELF now exposes debugger symbols
 `g_t3_pose_trace` and `g_t3_pose_trace_epoch` for recording both
 fighter traces at every simulation tick (with an even/odd write guard).
-**No original oracle traces have been captured or validated yet.**
+Private original combat traces are now captured and independently RAM-checked;
+complete paired Saturn/PS1 joint-trace parity remains pending.
 
 ## Authored PS1 root movement and heading
 
@@ -241,11 +251,11 @@ L: guard; START: reset match. Connect a second pad to control P2.
 
 ## Scope, fidelity, and legal terms
 
-The gameplay engine in `src/game/` is a standalone porting foundation, **not** imported Godot or PS1 code. The [Tekken3Remake](https://github.com/n0madic/Tekken3Remake) repository uses **PolyForm Noncommercial 1.0.0**, with required attribution. Do not copy its source into this project without respecting its licence. Reference research and trace-based comparisons can be added separately.
+The gameplay engine in `src/game/` is a standalone C porting foundation. The original move-clock advance path is adapted from the pinned [Tekken3Remake](https://github.com/n0madic/Tekken3Remake) research under **PolyForm Noncommercial 1.0.0**, with its required attribution and license URL in the file and [NOTICE.md](NOTICE.md). The Godot application and proprietary PS1 executable are not compiled into the Saturn application.
 
 No copyrighted game assets or proprietary disc images are stored here; future import tools must operate on a **user-supplied, legally obtained game copy**, with output excluded from Git. Namco/Bandai Namco own Tekken 3; this project is unaffiliated.
 
-Animations: idle, walk, run, jump, punch, kick, guard, hit and knockdown. Playback follows the deterministic fight tick; bone deformation runs on the current rendering code path. **Saturn boot/real hardware performance are not yet validated.**
+The procedural asset includes idle, walk, run, jump, punch, kick, guard, hit and knockdown clips. The private Paul build uses original DIVMOT poses. CD boot is verified in Mednafen; original combat integration and real-hardware performance remain unverified. See the [current milestone evidence](docs/NEXT_PLAYABLE_PROGRESS.md).
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for stages, accuracy gates, and Saturn hardware targets.
 
@@ -384,7 +394,7 @@ Two-player projections are atomic and do not alter gameplay.
 A [strict JSONL comparator](scripts/compare_psx_combat_traces.py)
 is available for frame-by-frame PS1-versus-Saturn source oracle
 validation, with a synthetic regression suite in host CI. Real
-PlayStation capture/parity remains pending.
+Paired Saturn/PlayStation timing and combat parity remain pending.
 
 
 ## Original-USA PlayStation combat oracle capture
@@ -400,6 +410,9 @@ RAM decoding are tested in host CI.
 
 The [event analyzer](scripts/analyze_psx_combat_oracle.py) reports
 observed move-slot/health/KO/pose-stall transitions without inventing
-stun durations or other original PS1 rules. **No original gameplay
-trace has yet been captured, frame-aligned and parity-validated.**
+stun durations or other original PS1 rules. Private original gameplay traces
+now include measured movement, attack, health and defense transitions.
+Read-only CPU phase hooks now establish where these observations fall within
+the original frame. Eight real contacts pass the portable C damage/health and
+reaction-slot audit. **Live Saturn combat integration/parity remains pending.**
 Follow the complete [private capture guide](docs/PS1_COMBAT_ORACLE_CAPTURE.md).

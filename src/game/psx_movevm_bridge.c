@@ -10,7 +10,7 @@ static int source_is_current(const t3_move_vm_t* vm) {
     if(!vm || !vm->bank || !vm->bank->data ||
        vm->bank->bank_type==99u || !vm->active_bank ||
        vm->slot>=T3_DIVMOT_MOVE_SLOTS ||
-       t3_divmot_slot_resolve(vm->bank,vm->common,vm->slot,
+       t3_move_vm_resolve(vm->bank,vm->common,vm->slot,
                               &decoded,&owner)!=1 ||
        owner!=vm->active_bank)
         return 0;
@@ -28,7 +28,7 @@ int t3_psx_movevm_project(const t3_move_vm_t* before,
     t3_move_vm_t staged;
     if(!out || !source_is_current(before) ||
        next_slot>=T3_DIVMOT_MOVE_SLOTS ||
-       t3_divmot_slot_resolve(before->bank,before->common,
+       t3_move_vm_resolve(before->bank,before->common,
                              next_slot,&target,&owner)!=1 ||
        !owner || next_pose_frame>target.length ||
        (next_slot!=before->slot && before->transitions==UINT32_MAX))
@@ -37,7 +37,7 @@ int t3_psx_movevm_project(const t3_move_vm_t* before,
     staged.active_bank=owner;
     staged.move=target;
     staged.slot=(uint16_t)next_slot;
-    staged.frame=(uint16_t)next_pose_frame;
+    staged.clock.pose_frame=(uint16_t)next_pose_frame;
     if(next_slot!=before->slot)++staged.transitions;
     *out=staged;
     return 1;
@@ -74,7 +74,7 @@ int t3_psx_movevm_bridge_preview_pair(
             return 0;
         staged.slot_changed[i]=(uint8_t)(staged.vm[i].slot!=vms[i].slot);
         staged.pose_frame_changed[i]=(uint8_t)(
-            staged.vm[i].frame!=vms[i].frame);
+            staged.vm[i].clock.pose_frame!=vms[i].clock.pose_frame);
     }
     *out=staged;
     return 1;

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Tekken 3 PlayStation KMD -> LibSaturn SKA1 (local, offline, original data excluded).
 
-First milestone: exact KMD block/face traversal and the PS1 two-anchor seam
-exchange, mapped into LibSaturn's multi-anchor SourceModel. Exports a bind-pose
-SKA1 with a NEUTRAL PLACEHOLDER texture and a stationary 'bind' clip.
-Does NOT convert Namco textures, motion (DIVMOT), morphs, or material animation.
+KMD block/face traversal and PS1 two-anchor seam exchange, mapped into
+LibSaturn's multi-anchor SourceModel. Exports SKA1 with a stationary 'bind'
+clip. Optional character ARC input supplies original TIM/palette/UV patches;
+otherwise a neutral placeholder texture is used. Authored motion is loaded
+separately from DIVMOT at runtime. Morphs/material animation remain unsupported.
 """
 from __future__ import annotations
 import argparse
@@ -44,6 +45,8 @@ class KmdRow:
     faces: tuple[tuple[int,...], ...]
     materials: tuple[int,...]
     variants: tuple[int,...]
+    double_sided: tuple[int,...] = ()
+    face_uvs: tuple = ()
     @property
     def parent(self):
         return struct.unpack("<i",struct.pack("<I",self.words[8]))[0]
@@ -90,7 +93,7 @@ def parse_vertex(data,start,end,normals=False):
     return VertBlock(local,shared,tuple(coords),post)
 
 def parse_faces(data,start,end):
-    rd=Reader(data,start,end);faces=[];counts=[]
+    rd=Reader(data,start,end);faces=[];counts=[];double_sided=[]
     for i,(length,corners) in enumerate(zip(GROUP_SIZES,GROUP_CORNERS)):
         count=rd.u32()
         if count>8192:raise KmdError("excessive KMD face count")
@@ -101,10 +104,12 @@ def parse_faces(data,start,end):
             vi=((w&0x1fc)>>2,(w>>9)&0x7f,(w>>16)&0x7f)
             if corners==4:vi+=((w>>25)&0x7f,)
             faces.append(vi)
+            flags=words[1] if corners==4 else words[0]
+            double_sided.append(int(bool(flags & 0x1000000)))
     if rd.pos!=end:raise KmdError("KMD faces have extra or truncated data")
-    return tuple(faces),tuple(counts)
+    return tuple(faces),tuple(counts),tuple(double_sided)
 
-def parse_texmap(data,start,end,counts):
+def parse_texmap(data,start,end,counts,with_uv=False):
     rd=Reader(data,start,end)
     msize=struct.unpack("<H",rd.take(2))[0]
     if msize<2 or msize%2 or msize>4096:raise KmdError("invalid material header")
@@ -113,7 +118,7 @@ def parse_texmap(data,start,end,counts):
     if uvsize<2 or uvsize%2 or uvsize>8192:raise KmdError("invalid UV table")
     uvs=rd.take(uvsize-2)
     if len(uvs)%2:raise KmdError("invalid UV array")
-    face_materials=[]
+    face_materials=[];face_uvs=[]
     for gi,count in enumerate(counts):
         observed=rd.take(1)[0]
         if observed!=count:raise KmdError("KMD texture face count mismatch")
@@ -122,10 +127,12 @@ def parse_texmap(data,start,end,counts):
             if fields[0]>=len(mats) or any(k>=len(uvs)//2 for k in fields[1:]):
                 raise KmdError("invalid material/UV index")
             face_materials.append(int(mats[fields[0]]))
-    rd.take(2) # documented trailer
+            face_uvs.append(tuple((uvs[2*k],uvs[2*k+1]) for k in fields[1:]))
+    # Original Paul rows end immediately after the four groups, aligned to
+    # four bytes. There is no mandatory two-byte trailer.
     padding=rd.take(end-rd.pos)
     if len(padding)>3 or any(padding):raise KmdError("unexpected KMD texture padding")
-    return tuple(face_materials)
+    return (tuple(face_materials),tuple(face_uvs)) if with_uv else tuple(face_materials)
 
 def parse_kmd(data):
     if len(data)<KMD_HEADER+ROWS*ROW_BYTES or data[8:12]!=b"3DMK":
@@ -159,9 +166,9 @@ def parse_kmd(data):
             raise KmdError("incomplete KMD mesh block pointers")
         vert=parse_vertex(data,row[0],ends[row[0]])
         parse_vertex(data,row[2],ends[row[2]],normals=True)
-        faces,counts=parse_faces(data,row[3],ends[row[3]])
-        mats=parse_texmap(data,row[4],ends[row[4]],counts)
-        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,()))))
+        faces,counts,double_sided=parse_faces(data,row[3],ends[row[3]])
+        mats,uvs=parse_texmap(data,row[4],ends[row[4]],counts,with_uv=True)
+        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,())),double_sided,uvs))
     return Kmd(scale,tuple(parsed))
 
 def merge(a,b):
@@ -239,7 +246,9 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
             par=row.parent
             if par>=part or par < -1:raise KmdError(f"invalid parent for draw part {part}: {par}")
             dx,dy,dz=row.offset
-            translation=(dx*unit,dy*unit,-dz*unit) # PS1 basis sign flip; orientation needs oracle
+            # PS1 loads the file offset as (x,y,-z); D=(1,-1,-1)
+            # then converts that runtime offset to Saturn's up-Y basis.
+            translation=(dx*unit,-dy*unit,dz*unit)
             model.nodes.append(SourceNode(f"part_{part:02d}_matrix_{PART_MATRICES[part]:02d}",translation=translation))
             if par>=0:model.nodes[par].children.append(part)
             pivot=(tuple(global_rest[par][i]+translation[i] for i in range(3))
@@ -262,7 +271,7 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
                     x=[0.,0.,0.]
                     for (bone,row_id,idx),w in anchors.items():
                         vx,vy,vz=kmd.rows[row_id].vert.coords[idx]
-                        local=(vx*unit,vy*unit,-vz*unit)
+                        local=(vx*unit,-vy*unit,-vz*unit)
                         weights.append((bone,w,local))
                         for axis in range(3):
                             x[axis]+=w*(global_rest[bone][axis]+local[axis])
@@ -273,10 +282,12 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
                 out.append(corners[key])
             if len(out)==3:
                 quad=(out[0],out[1],out[2],out[2])
-                model.triangles.append((out[0],out[2],out[1]))
+                model.triangles.append((out[0],out[1],out[2]))
             else:
-                quad=tuple(out)
-                model.triangles.extend(((out[0],out[3],out[1]),(out[1],out[3],out[2])))
+                # PS1 quads are a strip (012,132); VDP1 expects perimeter
+                # order. Sending 0123 crosses the final two edges.
+                quad=(out[0],out[1],out[3],out[2])
+                model.triangles.extend(((out[0],out[1],out[2]),(out[1],out[3],out[2])))
             quads.append(quad)
             model.tri_materials.extend([0]*(1 if len(out)==3 else 2))
         if not model.vertices or not quads:raise KmdError("KMD produced no visible model geometry")
@@ -285,8 +296,15 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
     finally:
         sys.path.remove(str(source))
 
-def compile_ska(kmd,source,output):
+def compile_ska(kmd,source,output,texture_arc=None):
     model,quads,variants_omitted=to_source_model(kmd,source)
+    double_sided=[]
+    for part,row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
+            row=kmd.rows[ri]
+            if row.vert is not None:
+                double_sided.extend(row.double_sided or (0,)*len(row.faces))
+    if len(double_sided)!=len(quads):raise KmdError('face flag/geometry order disagrees')
     sys.path.insert(0,str((source/"tools").resolve()))
     try:
         from model_pipeline import skeletal_export as sx
@@ -304,6 +322,39 @@ def compile_ska(kmd,source,output):
             [tuple(remap[i] for i in q) for q in quads],
             [0]*len(quads),[texture],[0,0xBDEF]+[0]*254,1,
             {"source_bounds_fx":bounds})
+        texture_report={}
+        if texture_arc is not None:
+            from psx_character_textures import load_character_vram,bake_face
+            from model_pipeline.texture_bake import build_shared_palette,map_faces_to_indices
+            vram,tim_count=load_character_vram(texture_arc.read_bytes())
+            rgba=[]
+            for part,row_index in enumerate(PART_ROWS[:18]):
+                for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
+                    row=kmd.rows[ri]
+                    if row.vert is not None:
+                        for material,uv in zip(row.materials,row.face_uvs):
+                            rgba.append(bake_face(vram,material,uv))
+            if len(rgba)!=len(quads):raise KmdError('texture/geometry face order disagrees')
+            palette,transparent,_=build_shared_palette(rgba)
+            indexed=map_faces_to_indices(rgba,[(8,8)]*len(rgba),palette)
+            unique=[];lookup={};face_textures=[]
+            for pixels in indexed:
+                data=bytes(pixels)
+                if data not in lookup:
+                    lookup[data]=len(unique)
+                    unique.append(dict(width=8,height=8,pixels=data,
+                                       flags=0 if transparent else 1,pixel_count=64))
+                face_textures.append(lookup[data])
+            colors=[0 if transparent and i==0 else
+                    0x8000|((r*31+127)//255)|((g*31+127)//255)<<5|((b*31+127)//255)<<10
+                    for i,(r,g,b) in enumerate(palette)]
+            colors=(colors+[0]*256)[:256]
+            render.textures=unique
+            render.face_texture_indices=face_textures
+            render.palette_rgb555=colors
+            texture_report=dict(tim_uploads=tim_count,textures=len(unique),
+                                indexed_texture_bytes=64*len(unique),
+                                texture_patch_size=[8,8],source_arc_sha256=hashlib.sha256(texture_arc.read_bytes()).hexdigest())
         blob=encode(export,render,[node.name for node in model.nodes])
     finally:
         sys.path.remove(str((source/"tools").resolve()))
@@ -320,8 +371,10 @@ def compile_ska(kmd,source,output):
             "logical_vertices":len(model.vertices),
             "compiled_vertices":len(export.skin.source_vertex),
             "blend_vertices":len(export.skin.blend),
+            "double_sided_faces":double_sided,
             "variant_rows_pending":variants_omitted,
-            "original_textures":False,"original_motion":False,
+            "original_textures":texture_arc is not None,"original_motion":False,
+            "textures":len(render.textures),"texture_report":texture_report,
             "clip":["bind"],"archive_bytes":len(blob),
             "archive_sha256":hashlib.sha256(blob).hexdigest(),
             "export_verify":verified}

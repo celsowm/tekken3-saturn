@@ -7,6 +7,8 @@
 
 /* PS1 KMD coordinates are expressed in integer units, where 4096 =
  * one LibSaturn unit. A Q12 matrix therefore becomes Q16 with << 4.
+ * Both anchors and matrices use D=diag(1,-1,-1), mapping PS1 down-Y to
+ * Saturn up-Y. Matrices are conjugated D*R*D and translations use D*t.
  * This bridge is a PRIVATE visual study, not a claim of exact orientation
  * parity: the real PS1 part basis and facing transform still need an oracle.
  *
@@ -21,5 +23,11 @@
 int t3_psx_skin_bridge(const t3_psx_joint_t pose[T3_PSX_DRAW_PARTS],
                        uint32_t valid_parts,
                        sat_mat4_t matrices[T3_PSX_DRAW_PARTS]);
+
+/* Exact owned renderer transform: sixfold scale and arena-center translation.
+ * Runs after skinning, so rounding agrees with the former Q16 world matrix.
+ * |center| <= 30000 original units and |vertex component| <= 0x0FFFFFFF;
+ * failure leaves the complete vertex buffer untouched. */
+int t3_psx_skin_place(sat_vec3_t* vertices,uint32_t count,int32_t center_x,int32_t center_z);
 
 #endif

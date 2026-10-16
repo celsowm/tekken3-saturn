@@ -5,7 +5,7 @@
 #include "psx_collision.h"
 
 /* The original PS1 engine exposes 24 joint blocks, but its 14 defensive
- * cylinders refer ONLY to 18 KMD draw parts (indices 0..17).
+ * cylinders refer ONLY to 18 original joint slots (indices 0..17).
  * The extra blocks 18..23 are attachment/projectile point storage, not
  * legitimate substitutes for damaged limb poses. */
 enum { T3_PSX_BODY_PART_MASK=0x3FFFFu };
@@ -21,7 +21,7 @@ typedef struct {
     uint8_t evaluated;    /* 1 only after complete geometry validation */
 } t3_psx_contact_result_t;
 
-/* Build original 14 hurt cylinders from REAL KMD model-space/world-space
+/* Build original 14 hurt cylinders from original joint-slot model/world-space
  * part translations. All referenced parts MUST be marked valid.
  * Neither the 18-part array nor the resulting zones imply calibrated world
  * root placement: the caller must supply parts in the SAME space as attacks.

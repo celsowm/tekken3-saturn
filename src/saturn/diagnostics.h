@@ -5,10 +5,11 @@
 
 /* Integer-only externally discoverable probe for debug emulators. Fields
  * snapshot at the end of each work loop, before the next VDP1 submission.
- * frame_serial is committed LAST, so a debugger can check it before/after
- * reading the record. Loop rate is NOT necessarily visible screen FPS. */
+ * snapshot_epoch is odd while publishing and even on commit. A running
+ * debugger checks it before/after reading; a paused reader rejects odd.
+ * Loop rate is NOT necessarily visible screen FPS. */
 #define T3_DIAGNOSTICS_MAGIC 0x54334431u /* T3D1 */
-#define T3_DIAGNOSTICS_VERSION 11u
+#define T3_DIAGNOSTICS_VERSION 19u
 
 typedef struct {
     uint32_t magic, version;
@@ -28,6 +29,14 @@ typedef struct {
     uint32_t draw_waits;
     uint32_t draw_timeouts;
     int32_t first_error;
+    /* Version 12: fixed-width, big-endian gameplay snapshot. */
+    uint32_t pad_connected[2], pad_held[2], pad_pressed[2];
+    int32_t fighter_x[2], fighter_z[2];
+    uint32_t health[2], attack[2], attack_age[2];
+    uint32_t guarding[2], crouching[2], stun[2];
+    uint32_t round, wins[2], round_done, match_done;
+    int32_t winner;
+    uint32_t timer, hits, blocks;
     uint32_t psx_logic_active;
     uint16_t psx_move_slot[2], psx_move_frame[2], psx_attack_word[2];
     uint32_t psx_transitions[2];
@@ -48,6 +57,23 @@ typedef struct {
     uint32_t psx_shadow_overlap_frames[2];
     uint8_t psx_event_status[2],psx_extra_kind[2],psx_extra_damage[2];
     uint16_t psx_events_fired[2];
+    uint32_t snapshot_epoch; /* odd while publishing; even = committed */
+    uint32_t model_archive_bytes, model_texture_count, model_texture_vram_bytes;
+    uint32_t skin_work_ms, render_work_ms, submitted_frames;
+    uint32_t psx_lifecycle_active;
+    int16_t psx_pending_slot[2],psx_root_frame[2],psx_move_age[2];
+    int16_t psx_freeze[2],psx_hold_frames[2];
+    uint32_t psx_owned_active;
+    int32_t psx_health_q16[2],psx_world_root[2][3],psx_anchor[2][3];
+    uint32_t psx_body_active,psx_body_contacts[2];
+    int32_t psx_body_push[2][3];
+    uint32_t psx_contact_active,psx_geometry_status[2];
+    int32_t psx_contact_zone[2];
+    uint32_t psx_hit_gate[2],psx_contact_frames[2];
+    uint32_t psx_gate_frames[2]; /* eligibility queries, not registered damage */
+    uint32_t psx_combat_active,psx_registered_hits[2],psx_registered_blocks[2],psx_unsupported_moves[2];
+    int32_t psx_damage_last_tick[2],psx_reaction_slot[2],psx_reaction_transition[2];
+    uint32_t psx_hit_done[2],psx_guarded_last_tick[2],psx_ko_collapse[2];
 } t3_diagnostics_t;
 
 extern volatile t3_diagnostics_t g_t3_diagnostics;

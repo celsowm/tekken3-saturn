@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+from divmot_to_logic import compact, FormatError as DivmotError
+
 US_EXE_SHA = "fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c"
 STAGE_NAMES = "a b c d e f g n i j k l m t u".split()
 SECTOR = 2048
@@ -250,12 +252,39 @@ def track(source, scratch=None):
             raise FormatError("incomplete extracted Track 1")
         yield path
 
-def remote_zip(url, cache):
+def archive_zip_url(url):
+    """Resolve an Archive ZIP listing to its download, without fetching HTML."""
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "archive.org" \
-            or not parsed.path.lower().endswith(".zip"):
-        raise FormatError("only explicit HTTPS archive.org ZIP downloads allowed")
+    host = parsed.hostname or ""
+    if (parsed.scheme != "https" or
+            not (host == "archive.org" or host.endswith(".archive.org")) or
+            parsed.username is not None or parsed.password is not None or
+            parsed.netloc.lower() != host or parsed.fragment):
+        raise FormatError("only explicit HTTPS archive.org ZIP downloads/listings allowed")
+    if parsed.path == "/view_archive.php":
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        if set(query) != {"archive"} or len(query["archive"]) != 1:
+            raise FormatError("expected one archive parameter for a ZIP listing")
+        # Storage shard numbers are not part of the public download path.
+        match = re.fullmatch(r"/\d+/items/([^/]+)/([^/]+\.zip)",
+                             query["archive"][0], re.I)
+        if not match or any(v in (".", "..") for v in match.groups()):
+            raise FormatError("expected /shard/items/item/file.zip archive path")
+        return "https://archive.org/download/" + "/".join(
+            urllib.parse.quote(v, safe="") for v in match.groups())
+    parts = urllib.parse.unquote(parsed.path).split("/")
+    if (parsed.query or len(parts) != 4 or parts[:2] != ["", "download"] or
+            any(v in ("", ".", "..") for v in parts[2:]) or
+            not parts[-1].lower().endswith(".zip")):
+        raise FormatError("expected explicit /download/item/file.zip URL")
+    return "https://archive.org/download/" + "/".join(
+        urllib.parse.quote(v, safe="") for v in parts[2:])
+
+def remote_zip(url, cache):
+    url = archive_zip_url(url)
     if cache.exists():
+        if not zipfile.is_zipfile(cache):
+            raise FormatError("cached source is not a ZIP file: " + str(cache))
         return cache
     cache.parent.mkdir(parents=True, exist_ok=True)
     tmp = cache.with_suffix(".zip.part")
@@ -277,7 +306,14 @@ def remote_zip(url, cache):
         tmp.unlink(missing_ok=True)
     return cache
 
-def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=US_EXE_SHA, dump_exe=False):
+def divmot_candidate(prefix, size):
+    """Recognize the raw bank directory before reading a whole BNS record."""
+    return (len(prefix) >= 64 and prefix[0] == 0 and
+            prefix[1] in (*range(21), 99) and
+            struct.unpack_from("<I", prefix, 4)[0] == 64 and
+            struct.unpack_from("<I", prefix, 60)[0] == size)
+
+def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=US_EXE_SHA, dump_exe=False, divmot_banks=False):
     with track(source, scratch) as image, Disc(image) as disc:
         exe_file = disc.find("TEKKEN3", "SLUS_004.02")
         exe = disc.span(exe_file, 0, exe_file[2])
@@ -290,6 +326,7 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
             # input sequence importer; NEVER part of normal builds/CI.
             (out/"SLUS_004.02").write_bytes(exe)
         inventory = []
+        banks = []
         for i,(lba, off, size) in enumerate(entries):
             prefix = disc.span(bns, off, min(size,4096))
             row = {"id":i,"bns_lba":lba,"bytes":size,"kind":identify(prefix)}
@@ -297,9 +334,31 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
                 row["research_name"] = f"stg_{STAGE_NAMES[i-36]}.arc"
             if 56 <= i <= 70:
                 row["research_name"] = f"stg_{STAGE_NAMES[i-56]}.tmd"
-            if i in wanted and size:
+            is_bank = divmot_banks and divmot_candidate(prefix, size)
+            if (i in wanted or is_bank) and size:
                 data = disc.span(bns, off, size)
                 row["sha256"] = hashlib.sha256(data).hexdigest()
+                if is_bank:
+                    try:
+                        logic, meta = compact(data, with_motion=True,
+                                              with_hitboxes=True, with_events=True)
+                    except DivmotError as error:
+                        raise FormatError(f"invalid DIVMOT BNS record {i}: {error}") from error
+                    kind = meta["bank_type"]
+                    meta["bns_record_id"] = i
+                    # Multiple disc records can share an internal bank type.
+                    # Keep each source independently; never overwrite a variant.
+                    dest = out/"divmot"/f"{i:03}"
+                    dest.mkdir(parents=True, exist_ok=True)
+                    (dest/f"bank_{kind}.t3logic").write_bytes(logic)
+                    (dest/f"bank_{kind}.json").write_text(
+                        json.dumps(meta, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+                    banks.append({"bank_type":kind,"bns_record_id":i,
+                                  "path":f"divmot/{i:03}/bank_{kind}.t3logic"})
+                    row.update(kind="DIVMOT", bank_type=kind, move_rows=meta["move_rows"])
+                if i not in wanted:
+                    inventory.append(row)
+                    continue
                 raw = out/"raw"/f"{i:03}.bin"
                 raw.parent.mkdir(parents=True,exist_ok=True)
                 raw.write_bytes(data)
@@ -315,6 +374,7 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
                   "volume":disc.volume,"track_width":disc.width,
                   "payload_offset":disc.offset,"bns_bytes":bns[2],
                   "records":inventory,"selected":sorted(wanted),
+                  "divmot_banks":banks,
                   "warning":"copyrighted game data; private/local use only"}
         (out/"inventory.json").write_text(
             json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8")
@@ -322,7 +382,7 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", required=True, help="local BIN/ISO/ZIP or explicit archive.org ZIP URL")
+    parser.add_argument("--source", required=True, help="local BIN/ISO/ZIP or archive.org ZIP download/listing URL")
     parser.add_argument("--cache", type=Path, default=Path("roms/tekken3_usa.zip"))
     parser.add_argument("--scratch-dir", type=Path, help="disk with enough space for the raw track")
     parser.add_argument("--output", type=Path, default=Path("assets/imported/tekken3-usa"))
@@ -330,17 +390,21 @@ def main():
     parser.add_argument("--stage-ids", default="")
     parser.add_argument("--dump-exe", action="store_true",
                         help="save PRIVATE SLUS_004.02 file in gitignored output")
+    parser.add_argument("--divmot-banks", action="store_true",
+                        help="discover and validate all private DIVMOT banks; preserve motion, hitboxes and events")
     args = parser.parse_args()
     try:
-        source = remote_zip(args.source,args.cache) if args.source.startswith("https://") else Path(args.source)
         extracted, stages = selected_ids(args.extract_ids), selected_ids(args.stage_ids)
         if any(not 56 <= i <= 70 for i in stages):
             raise FormatError("stage IDs must be in 56..70")
-        report = import_game(source,args.output,extracted,stages,args.scratch_dir,dump_exe=args.dump_exe)
+        source = remote_zip(args.source,args.cache) if args.source.startswith("https://") else Path(args.source)
+        report = import_game(source,args.output,extracted,stages,args.scratch_dir,
+                             dump_exe=args.dump_exe,divmot_banks=args.divmot_banks)
     except (OSError,FormatError,zipfile.BadZipFile,EOFError) as error:
         parser.exit(2,f"Tekken 3 disc import failed: {error}\n")
     print(f"Verified SLUS-00402: {len(report['records'])} BNS records; "
-          f"{len(report['selected'])} records extracted; inventory in {args.output}")
+          f"{len(report['selected'])} records extracted; "
+          f"{len(report['divmot_banks'])} DIVMOT banks; inventory in {args.output}")
 
 if __name__=="__main__":
     main()

@@ -1,10 +1,11 @@
 #include "psx_pose.h"
+#include "fixed_shift.h"
 #include <stdint.h>
 
 static const uint8_t k_slots[10]={0u,1u,11u,2u,3u,7u,6u,10u,14u,17u};
 
 static int32_t floor12(int64_t v) {
-    return (int32_t)(v>=0 ? v/4096 : -((-v+4095)/4096));
+    return t3_floor_shift(v,12u);
 }
 static int16_t sat16(int32_t v) {
     return (int16_t)(v>32767 ? 32767 : (v< -32768 ? -32768 : v));
@@ -135,6 +136,19 @@ int t3_psx_compose_parts(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
     for(i=0;i<T3_PSX_DRAW_PARTS;++i)out[i]=result[i];
     *valid_parts=mask;
     return 1;
+}
+int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
+                         const t3_psx_joint_t in[T3_PSX_DRAW_PARTS],uint32_t valid_parts,
+                         t3_psx_joint_t out[T3_PSX_DRAW_PARTS],uint32_t* valid_slots) {
+    t3_psx_joint_t result[T3_PSX_DRAW_PARTS]={0};uint32_t mask=0;
+    if(!parts || !in || !out || !valid_slots || (valid_parts>>T3_PSX_DRAW_PARTS))return 0;
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)if(valid_parts&(1u<<i)) {
+        unsigned slot=parts[i].slot;
+        if(slot>=T3_PSX_DRAW_PARTS || (mask&(1u<<slot)))return 0;
+        result[slot]=in[i];mask|=1u<<slot;
+    }
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)out[i]=result[i];
+    *valid_slots=mask;return 1;
 }
 unsigned t3_psx_count_parts(uint32_t mask) {
     unsigned n=0u;

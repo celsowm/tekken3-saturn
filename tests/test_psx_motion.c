@@ -77,6 +77,12 @@ static void open_and_sample(void) {
     assert(pose[20]==0);
     assert(t3_motion_sample(&stream,11u,&tab,pose)==1);
     assert(pose[0]==222);
+    /* At the final knot, 0x8000 + 0x5555 + 0x2AAB = 0x10000.
+     * Keep that coefficient in32bits: channel4 must reach authored106,
+     * doubled212, rather than lose the last increment and return204. */
+    put16(table+0x40+0x300,0x5555u);
+    assert(t3_motion_sample(&stream,11u,&tab,pose)==1);
+    assert(pose[4]==212);
     assert(t3_motion_sample(&stream,0u,NULL,pose)==0);
     tab.length=0;
     assert(t3_motion_sample(&stream,0u,&tab,pose)==0);
@@ -90,6 +96,26 @@ static void open_and_sample(void) {
     assert(t3_motion_open(&bank,&common,0x80000002u,&stream)==-1);
     assert(t3_motion_open(&bank,NULL,0u,&stream)==-1);
     assert(t3_motion_open(&bank,NULL,999999u,&stream)==-1);
+}
+static void cache_ownership(void) {
+    t3_divmot_t bank={0},common={0};
+    t3_motion_cache_t cache={0};
+    const t3_motion_stream_t *view=NULL,*again=NULL;
+    int16_t root[3];
+    assert(t3_divmot_open(&bank,bytes,make(bytes,99)));
+    assert(t3_divmot_open(&common,common_bytes,make(common_bytes,99)));
+    assert(t3_motion_open_cached(&cache,&bank,&common,2,&view)==1);
+    assert(t3_motion_open_cached(&cache,&bank,&common,2,&again)==1 && again==view);
+    assert(t3_motion_sample_root(view,0,NULL,root)==1 && root[0]==200);
+    assert(t3_motion_open_cached(&cache,&bank,&common,0x40000002,&view)==1);
+    assert(view->data==common_bytes && view->bank_type==99);
+    assert(t3_motion_open_cached(&cache,&bank,NULL,0x40000002,&view)==-1);
+    assert(!view && !cache.valid); /* never expose a stale successful view */
+    assert(t3_motion_open_cached(&cache,&bank,&common,2,&view)==1);
+    assert(view->data==bytes);
+    cache=(t3_motion_cache_t){0}; /* explicit invalidation after a bank edit */
+    bytes[134]=0;
+    assert(t3_motion_open_cached(&cache,&bank,&common,2,&view)==-1 && !view);
 }
 static void malformed_streams(void) {
     t3_divmot_t bank={0};
@@ -114,6 +140,7 @@ static void malformed_streams(void) {
 int main(void) {
     open_and_sample();
     malformed_streams();
+    cache_ownership();
     puts("PS1 49-channel motion layout and sparse spline sample: passed");
     return 0;
 }

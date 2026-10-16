@@ -40,6 +40,17 @@ int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length) {
     out->branch_count = (uint16_t)((sections[1]-sections[0]) /
                                     T3_DIVMOT_BRANCH_BYTES);
     out->bank_type = kind;
+    out->common_branches = NULL;
+    out->common_branch_count = 0u;
+    return 1;
+}
+
+int t3_divmot_set_common_branches(t3_divmot_t* bank, const uint8_t* data,
+                                 size_t length) {
+    if (!bank || !bank->data || (length && !data) || length%12u ||
+        length/12u>65535u) return 0;
+    bank->common_branches=data;
+    bank->common_branch_count=(uint16_t)(length/12u);
     return 1;
 }
 
@@ -54,6 +65,7 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     out->attack_word = le16(p+8);
     out->branch_index = le32(p+12);
     out->stance_slot = le16(p+16);
+    out->end_turn = (int16_t)le16(p+18);
     out->damage_class = le16(p+20);
     out->step = (int16_t)le16(p+22);
     out->length = p[24];
@@ -65,16 +77,13 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     out->hit_freeze = p[44];
     out->active_first = p[45];
     out->active_last = p[46];
+    out->body_profile = le16(p+48);
     out->reaction = le16(p+50);
     out->close_reaction = le16(p+52);
     return 1;
 }
 
-int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
-                     t3_branch_record_t* out) {
-    const uint8_t* p;
-    if (!bank || !bank->data || !out || index >= bank->branch_count) return 0;
-    p = bank->data + bank->sections[0] + index*T3_DIVMOT_BRANCH_BYTES;
+static void decode_branch(const uint8_t* p, t3_branch_record_t* out) {
     out->command = le16(p);
     out->restriction = p[2];
     out->condition = p[3];
@@ -84,6 +93,12 @@ int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
     out->first_frame = p[9];
     out->last_frame = p[10];
     out->target_frame = p[11];
+}
+
+int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
+                     t3_branch_record_t* out) {
+    if (!bank || !bank->data || !out || index >= bank->branch_count) return 0;
+    decode_branch(bank->data + bank->sections[0] + index*T3_DIVMOT_BRANCH_BYTES,out);
     return 1;
 }
 
@@ -114,20 +129,39 @@ int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
     return t3_divmot_slot_resolve(bank,common,slot,out,NULL);
 }
 
-int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
+static int branch_find(const t3_divmot_t* bank, t3_move_record_t current,
                              const t3_input_history_t* input, unsigned frame,
                              uint8_t own_bank, const t3_branch_context_t* facts,
                              const t3_command_sequence_t* sequences,
                              size_t sequence_count,
-                             t3_branch_record_t* picked) {
-    unsigned i;
+                             t3_branch_record_t* picked,int return_end) {
+    unsigned i, return_index=0u, in_common=0u, walked=0u;
     t3_branch_record_t row;
     if (!bank || !input || !picked || current.branch_index>=bank->branch_count)
         return 0;
-    for (i=current.branch_index; i<bank->branch_count; ++i) {
-        if (!t3_divmot_branch(bank,i,&row)) return 0;
+    for (i=current.branch_index; walked++<(unsigned)bank->branch_count*
+                                       (1u+bank->common_branch_count); ++i) {
+        if (in_common) {
+            if (!bank->common_branches || i>=bank->common_branch_count) return 0;
+            decode_branch(bank->common_branches+i*12u,&row);
+        } else if (!t3_divmot_branch(bank,i,&row)) return 0;
+        if (row.command==0xC00Du) {
+            if (!in_common) return 0; /* return without a call is malformed */
+            i=return_index;
+            in_common=0u;
+            continue;
+        }
+        if (row.command==0xC00Cu) {
+            if (in_common || !bank->common_branches ||
+                row.target_slot>=bank->common_branch_count) return 0;
+            return_index=i;
+            in_common=1u;
+            /* The for-loop increment enters the target at its first row. */
+            i=(unsigned)row.target_slot-1u;
+            continue;
+        }
         if (row.command == 0xC000u) {
-            if (frame >= current.length) {*picked=row;return 1;}
+            if (return_end || frame >= current.length) {*picked=row;return 1;}
             return 0;
         }
         if (frame<row.first_frame || frame>row.last_frame ||
@@ -139,17 +173,33 @@ int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
                 /* An eligible skip-to-terminator branch discards the remaining
                  * alternatives. An ineligible one must NOT skip them. */
                 while (++i<bank->branch_count) {
+                    if (in_common) return 0; /* no unchecked cross-table scan */
                     if (!t3_divmot_branch(bank,i,&row)) return 0;
                     if (row.command==0xC000u) break;
                 }
                 if (i>=bank->branch_count) return 0;
-                if (frame>=current.length) {*picked=row;return 1;}
+                if (return_end || frame>=current.length) {*picked=row;return 1;}
                 return 0;
             }
             *picked=row;return 1;
         }
     }
     return 0;
+}
+
+int t3_divmot_branch_pick_ex(const t3_divmot_t* bank,t3_move_record_t current,
+                             const t3_input_history_t* input,unsigned frame,
+                             uint8_t own_bank,const t3_branch_context_t* facts,
+                             const t3_command_sequence_t* sequences,size_t sequence_count,
+                             t3_branch_record_t* picked) {
+    return branch_find(bank,current,input,frame,own_bank,facts,sequences,sequence_count,picked,0);
+}
+int t3_divmot_branch_find_ex(const t3_divmot_t* bank,t3_move_record_t current,
+                             const t3_input_history_t* input,unsigned frame,
+                             uint8_t own_bank,const t3_branch_context_t* facts,
+                             const t3_command_sequence_t* sequences,size_t sequence_count,
+                             t3_branch_record_t* picked) {
+    return branch_find(bank,current,input,frame,own_bank,facts,sequences,sequence_count,picked,1);
 }
 
 int t3_divmot_branch_pick(const t3_divmot_t* bank, t3_move_record_t current,

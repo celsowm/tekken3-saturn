@@ -4,6 +4,11 @@ This project is its own game/runtime repository, with LibSaturn as an external
 installed dependency. Build strategy mirrors `ikemen-saturn` and `sa2-saturn`
 but must address fundamentally different 3D fighting-game constraints.
 
+Next execution scope: [Paul mirror-match playable milestone](NEXT_PLAYABLE_MILESTONE.md).
+The current procedural slice boots visibly from CD in Mednafen and runs through
+the headless Ymir harness; scripted input validation and original combat
+integration are the next gates.
+
 ## Milestone 0 (started): vertical slice foundation
 
 - [x] Initialize independent repository, native/SH-2 CMake split
@@ -15,7 +20,9 @@ but must address fundamentally different 3D fighting-game constraints.
 - [x] Nine animation clips, independent P1/P2 poses and palettes
 - [ ] Measure renderer command budget and performance on Saturn hardware
 - [x] External LibSaturn package and native IP boot contract
-- [ ] Validate SH-2 build, Saturn disc boot, frame rate and pad inputs on Ymir/Mednafen
+- [x] Build SH-2 application and confirm visible Saturn CD boot in Mednafen
+- [x] Execute the application with the headless Ymir injection harness
+- [ ] Measure render cadence and validate scripted pad inputs on Ymir/Mednafen
 - [ ] Screenshot and telemetry capture on real hardware, SAROO, Satiator
 
 ## Milestone 1: asset pipeline
@@ -68,8 +75,11 @@ measured performance. Additional modes only after the fight system is credible.
 
 The current simulation is **not** Tekken 3's fighting engine and shares no
 upstream assets; the blockout fighters deliberately do not resemble its cast.
-There is an original-procedural SKA1 animation pipeline, but no Tekken 3
-asset import, move data, combos, grabs, replay oracle or save data yet. Passing host tests is NOT evidence the SH-2 ISO boots.
+There is an original-procedural SKA1 animation pipeline and private original
+asset/move decoders, but original authored combat is not yet active in the
+playable match. Combos, grabs, authenticated replay parity and save support
+remain incomplete. The SH-2 ISO's CD boot is confirmed separately in Mednafen;
+passing host tests alone is not boot evidence.
 
 ## Sources and licensing boundaries
 
@@ -90,7 +100,7 @@ copyrighted assets and must not be distributed without permission.
 - [x] Portable 60-frame input history, double tap, simple motion sequence matching.
 - [x] Deterministic move VM for first-match branch and end-of-move continuation.
 - [x] High/mid/low attacks, crouch/standing guard, jump and dash in fallback combat.
-- [ ] Import/verify all source DIVMOT files and shared bank on a local legitimate disc.
+- [x] Discover and structurally validate all 73 USA disc DIVMOT records, preserving per-record variants and the shared bank in private compact output.
 - [ ] Complete command/condition/restriction semantics and move-slot transitions.
 - [ ] Replace fallback attacks with bank-defined full character moves and reactions.
 - [x] Read original DIVMOT section 9 attack descriptors and per-frame local-space hit segments.
@@ -111,7 +121,8 @@ copyrighted assets and must not be distributed without permission.
 - [x] Independently implement safe 104-pointer PS1 sequence table scanner.
 - [x] Accept validated command sequence tables in C move interpreter.
 - [x] Wire private local input sequence manifest into the Saturn debug build.
-- [ ] Validate all extracted USA commands against a private original SLUS-00402 image.
+- [x] Extract and structurally validate all 104 USA commands against the fingerprinted private original SLUS_004.02 image.
+- [ ] Verify original command acceptance and timing against matched PS1 gameplay input traces.
 - [ ] Implement original conditional input buffering / stance look-ahead.
 
 ### FK pose milestone
@@ -217,7 +228,7 @@ copyrighted assets and must not be distributed without permission.
 - [x] Independent Python decoder of two-fighter RAM snapshot frames with strict guest-frame continuity and atomic output.
 - [x] Compare only directly observed move-slot, pose-frame, health and KO; preserve raw PS1 state without claiming inferred stun/combos.
 - [x] Produce measured raw move/HP/KO/pose-stall event timeline; synthetic regression tests and CI syntax checks.
-- [ ] Run the original USA game in PCSX-Redux with matched executable fingerprint and record reproducible input/trace clips.
+- [x] Run original USA Paul mirror encounters in PCSX-Redux, record consecutive input/move/health/guard observations and cross-check paused Lua/RAM.
 - [ ] Align VSync sampling with PS1 FightFrame, HitApply and MoveStepAll boundaries; verify source-frame skew explicitly.
 - [ ] Inject original measured reaction durations and valid transition destinations into the read-only MoveVM bridge.
 - [ ] Capture equivalent Saturn simulation observations and close exact frame-by-frame parity before touching live match state.

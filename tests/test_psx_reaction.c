@@ -67,7 +67,7 @@ static void guard_counter_down_and_throw(void) {
     facts.defender_state=2u;
     assert(t3_psx_reaction_select(&hit,&facts,&t,&r));
     assert(r.selected && r.move_slot==110 && r.transition==0x23 &&
-           r.push_index==11);
+           r.push_index==11 && r.push_angle==-30);
     facts.defender_state=1u;
     assert(t3_psx_reaction_select(&hit,&facts,&t,&r));
     assert(r.move_slot==111);
@@ -121,11 +121,29 @@ static void unsupported_and_class_gating(void) {
     t.records_size=1u;
     assert(!t3_psx_reaction_select(&hit,&facts,&t,&r));
 }
+static void sparse_records(void) {
+    uint8_t sparse[88]={0};t3_psx_hit_candidate_t hit={0};
+    t3_psx_reaction_facts_t facts={0x842,0,0};t3_psx_reaction_pick_t a,b;
+    t3_psx_reaction_tables_t t=table();
+    word(sparse,0,7);memcpy(sparse+2,records+42,42);
+    word(sparse,44,9);memcpy(sparse+46,records+42,42);
+    hit.reaction_word=1;hit.zone=8;hit.hit=1;
+    assert(t3_psx_reaction_select(&hit,&facts,&t,&a));
+    hit.reaction_word=7;
+    assert(t3_psx_reaction_select_sparse(&hit,&facts,sparse,sizeof(sparse),&b));
+    assert(a.move_slot==b.move_slot && a.transition==b.transition && a.push_angle==b.push_angle);
+    hit.reaction_word=8;a=b;
+    assert(!t3_psx_reaction_select_sparse(&hit,&facts,sparse,sizeof(sparse),&b));
+    assert(!memcmp(&a,&b,sizeof(a)));
+    hit.reaction_word=7;word(sparse,44,7); /* reject duplicate original indices */
+    assert(!t3_psx_reaction_select_sparse(&hit,&facts,sparse,sizeof(sparse),&b));
+}
 int main(void) {
     setup();
     directions_and_postures();
     guard_counter_down_and_throw();
     unsupported_and_class_gating();
+    sparse_records();
     puts("PS1 read-only reaction record/throw-victim selection: passed");
     return 0;
 }

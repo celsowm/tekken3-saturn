@@ -12,11 +12,11 @@ import sys
 
 from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES
 
-def generate(kmd_path, lib_source, output):
+def generate(kmd_path, lib_source, output,texture_arc=None):
     raw = kmd_path.read_bytes()
     model = parse_kmd(raw)
     preview = output/"kmd_preview"
-    report = compile_ska(model,lib_source,preview)
+    report = compile_ska(model,lib_source,preview,texture_arc)
     archive = (preview/"fighter_bind.ska").read_bytes()
     vertices = report["compiled_vertices"]
     faces = report["faces"]
@@ -36,7 +36,8 @@ def generate(kmd_path, lib_source, output):
 #define T3_VERTEX_COUNT {vertices}u
 #define T3_FACE_COUNT {faces}u
 #define T3_JOINT_COUNT {joints}u
-#define T3_TEXTURE_COUNT 1u
+#define T3_TEXTURE_COUNT {report['textures']}u
+#define T3_ORIGINAL_TEXTURES {int(report['original_textures'])}
 #define T3_CLIP_COUNT 1u
 #define T3_CLIP_IDLE 0u
 #define T3_LOCAL_KMD_BIND 1u
@@ -47,6 +48,7 @@ typedef union t3_embedded_archive {{
 }} t3_embedded_archive_t;
 extern t3_embedded_archive_t t3_archive;
 extern const uint16_t t3_red_palette[256];
+extern const uint8_t t3_kmd_double_sided[T3_FACE_COUNT];
 extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
 #endif
 """
@@ -61,6 +63,11 @@ extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
     for i in range(0,256,16):
         payload.append('    '+','.join(str(v) for v in alt_palette[i:i+16])+',')
     payload.append('};')
+    payload.append('const uint8_t t3_kmd_double_sided[T3_FACE_COUNT] = {')
+    flags=report['double_sided_faces']
+    for i in range(0,len(flags),32):
+        payload.append('    '+','.join(str(v) for v in flags[i:i+32])+',')
+    payload.append('};')
     # These ORIGINAL draw-part parent indices and model offsets are private,
     # and must be interpreted in PS1 coordinate space, never guessed from GLB.
     payload.append('const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS] = {')
@@ -70,6 +77,8 @@ extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
         if parent<-1 or parent>=part:
             raise ValueError(f"bad KMD draw-part parent {part}: {parent}")
         x,y,z=row.offset
+        # FighterSetupPart negates the FILE offset's Z when loading it.
+        # This loader fixup precedes the separate Saturn basis conversion.
         payload.append('    {%d,%du,{%d,%d,%d}},' % (parent,slot,x,y,-z))
     payload.append('};')
     (output/"t3_generated_character.c").write_text('\n'.join(payload)+'\n',encoding='utf8')
@@ -87,11 +96,12 @@ def main():
     p.add_argument("--kmd",type=Path,required=True)
     p.add_argument("--libsaturn-source",type=Path,required=True)
     p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--textures-arc",type=Path,help="private matching character ARC textures")
     a=p.parse_args()
     try:
-        result=generate(a.kmd,a.libsaturn_source,a.output)
+        result=generate(a.kmd,a.libsaturn_source,a.output,a.textures_arc)
     except (OSError,ValueError,ImportError,AssertionError) as exc:
         p.exit(1,f"local KMD embed failed: {exc}\n")
-    print(json.dumps(result,sort_keys=True))
+    print(json.dumps({k:v for k,v in result.items() if k!='double_sided_faces'},sort_keys=True))
 
 if __name__=="__main__":main()

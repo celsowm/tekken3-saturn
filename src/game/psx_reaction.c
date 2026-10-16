@@ -60,6 +60,7 @@ int t3_psx_reaction_select(const t3_psx_hit_candidate_t* hit,
     if(hit->guarded) {
         off=0x14u+2u*crouch;
         value.transition=0x23u;
+        value.push_angle=le16(p+0x1Cu);
         value.push_index=le16(p+0x28u);
     } else if(down) {
         off=(facts->defender_state&0x200u)?0x1Au:0x18u;
@@ -83,4 +84,23 @@ int t3_psx_reaction_select(const t3_psx_hit_candidate_t* hit,
     value.selected=1u;
     *out=value;
     return 1;
+}
+
+int t3_psx_reaction_select_sparse(const t3_psx_hit_candidate_t* hit,
+                                  const t3_psx_reaction_facts_t* facts,
+                                  const uint8_t* records,size_t size,
+                                  t3_psx_reaction_pick_t* out) {
+    t3_psx_reaction_tables_t tables={0};t3_psx_hit_candidate_t local;
+    const uint8_t* found=NULL;int previous=-1;
+    if(!hit || !facts || !out || !records || !size || size%44u || size/44u>T3_PSX_REACTIONS_MAX)return 0;
+    for(size_t offset=0;offset<size;offset+=44u) {
+        int index=le16(records+offset);
+        if(index<=previous || index>=T3_PSX_REACTIONS_MAX)return 0;
+        previous=index;if(index==hit->reaction_word)found=records+offset+2;
+    }
+    if(hit->reaction_kind!=T3_HIT_REACTION_RECORD)return 0;
+    if(!found)return 0;
+    local=*hit;local.reaction_word=0;
+    tables.records=found;tables.records_size=T3_PSX_REACTION_BYTES;
+    return t3_psx_reaction_select(&local,facts,&tables,out);
 }

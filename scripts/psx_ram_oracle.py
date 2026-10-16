@@ -36,6 +36,13 @@ FIELDS = {
     "root_y": (0x04, "i"),
     "root_z": (0x08, "i"),
     "facing": (0x0E, "H"),
+    "input_direction": (0x402, "H"),
+    "input_pressed": (0x404, "H"),
+    "input_held": (0x406, "H"),
+    "character_id": (0x18, "H"),
+    "max_health_q16": (0x3F8, "i"),
+    "round_wins": (0x44, "h"),
+    "round_won": (0x46, "h"),
 }
 
 
@@ -64,7 +71,7 @@ def decode_snapshot(ram: bytes, tick: int) -> tuple[int, list[dict]]:
         base = FIGHTER_BASE + FIGHTER_STRIDE * player
         hp = read_at(ram, base + 0x3F4, "i")
         max_hp = read_at(ram, base + 0x3F8, "i")
-        move = read_at(ram, base + 0x1A0, "h")
+        move = read_at(ram, base + 0xA0, "h")  # running curSlot, not pending moveSlot
         pose = read_at(ram, base + 0x58, "h")
         ko = read_at(ram, base + 0xDE, "B")
         if not 0 < max_hp or not 0 <= hp <= max_hp:
@@ -73,6 +80,8 @@ def decode_snapshot(ram: bytes, tick: int) -> tuple[int, list[dict]]:
             raise InvalidSnapshot(f"P{player+1} invalid move/pose/KO")
         raw = {name: read_at(ram, base + off, fmt)
                for name, (off, fmt) in FIELDS.items()}
+        if raw['state'] == 0:
+            raise InvalidSnapshot(f"P{player+1} unfinished fighter initialization")
         rows.append({
             "tick": tick, "fighter": player, "move_slot": move,
             "pose_frame": pose, "health_q16": hp, "ko": ko,

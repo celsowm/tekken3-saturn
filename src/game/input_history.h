@@ -14,7 +14,8 @@ t3_command_frame_t t3_history_at(const t3_input_history_t* h, unsigned age);
 /* Original move-bank input command format:
  * <0xC000: buttons, any-button and numpad direction mask.
  * 0xC001/C002: 6,5,6 / 4,5,4 double tap within 20 frames;
- * 0xC00D: condition-only. Other special commands require bank sequence data.
+ * 0xC00C/0xC00D: CALL/RETURN belong to the branch walker, not input tests.
+ * Other special commands require bank sequence data.
  * Returns 0 for unsupported rather than pretending a move is valid. */
 int t3_command_matches(uint16_t command, const t3_input_history_t* h);
 

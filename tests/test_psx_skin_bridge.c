@@ -28,13 +28,13 @@ static void test_valid_and_axis_mapping(void) {
     pose[0].rotation.m[1][1]=0;
     assert(t3_psx_skin_bridge(pose,T3_PSX_VISIBLE_MASK,matrices));
     assert(matrices[0].m[0]==0);
-    assert(matrices[0].m[1]==-65536);
-    assert(matrices[0].m[4]==65536);
+    assert(matrices[0].m[1]==65536);
+    assert(matrices[0].m[4]==-65536);
     assert(matrices[0].m[5]==0);
     assert(matrices[0].m[10]==65536);
     assert(matrices[0].m[3]==-800);
     assert(matrices[0].m[7]==0);
-    assert(matrices[0].m[11]==-1600);
+    assert(matrices[0].m[11]==1600);
     assert(matrices[0].m[15]==SAT_FX16_ONE);
     assert(matrices[17].m[3]==(17*10-50)*16);
     /* Four accessory matrices remain untouched, since those KMD body
@@ -58,9 +58,31 @@ static void test_fails_atomically(void) {
     assert(!t3_psx_skin_bridge(NULL,T3_PSX_VISIBLE_MASK,matrices));
     assert(!t3_psx_skin_bridge(pose,T3_PSX_VISIBLE_MASK,NULL));
 }
+static void test_exact_render_placement(void) {
+    sat_vec3_t p[1001],original[1001];uint32_t seed=47;
+    for(unsigned i=0;i<1001;++i) {
+        int32_t q[3];
+        for(unsigned j=0;j<3;++j){seed=seed*1664525u+1013904223u;q[j]=(int32_t)(seed&0x1FFFFFFFu)-0x0FFFFFFF;}
+        p[i]=(sat_vec3_t){q[0],q[1],q[2]};
+    }
+    memcpy(original,p,sizeof(p));
+    assert(t3_psx_skin_place(p,1001,-30000,30000));
+    for(unsigned i=0;i<1001;++i) {
+        /* Former diagonal Q16 matrix path, including negative inputs. */
+        assert(p[i].x==((int64_t)original[i].x*(6*65536)>>16)+30000*96);
+        assert(p[i].y==((int64_t)original[i].y*(6*65536)>>16));
+        assert(p[i].z==((int64_t)original[i].z*(6*65536)>>16)+30000*96);
+    }
+    memcpy(p,original,sizeof(p));p[1000].z=0x10000000;
+    memcpy(original,p,sizeof(p));
+    assert(!t3_psx_skin_place(p,1001,0,0));assert(!memcmp(p,original,sizeof(p)));
+    assert(!t3_psx_skin_place(p,1001,30001,0));assert(!memcmp(p,original,sizeof(p)));
+    assert(!t3_psx_skin_place(NULL,1,0,0));assert(!t3_psx_skin_place(p,0,0,0));
+}
 int main(void) {
     test_valid_and_axis_mapping();
     test_fails_atomically();
+    test_exact_render_placement();
     puts("PS1 Q12 pose -> LibSaturn Q16 skin matrix bridge: passed");
     return 0;
 }

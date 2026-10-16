@@ -57,6 +57,13 @@ int t3_psx_compose_parts(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
                          uint32_t* valid_parts);
 
+/* KMD records are mesh order; the original fighter's collision/joint array
+ * is animation-slot order. Remap explicitly before using original table indices.
+ * Supports in-place use; missing slots are zero and invalid. Failure is atomic. */
+int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
+                         const t3_psx_joint_t in[T3_PSX_DRAW_PARTS],uint32_t valid_parts,
+                         t3_psx_joint_t out[T3_PSX_DRAW_PARTS],uint32_t* valid_slots);
+
 /* Number of available draw parts, useful for Saturn debug telemetry. */
 unsigned t3_psx_count_parts(uint32_t mask);
 

@@ -22,6 +22,7 @@
 *.sub
 *.pbp
 *.zip
+*.zip.part
 
 # Tool state
 __pycache__/

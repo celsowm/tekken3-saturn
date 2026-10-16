@@ -22,7 +22,8 @@ def ram_image(frame=1, state=8):
     put(ram, oracle.GLOBAL_FRAME, "I", frame)
     for i in range(2):
         base = oracle.FIGHTER_BASE + i * oracle.FIGHTER_STRIDE
-        put(ram, base + 0x1A0, "h", 3 + i)
+        put(ram, base + 0xA0, "h", 3 + i)
+        put(ram, base + 0x1A0, "h", -1)  # no pending move is normal
         put(ram, base + 0x58, "h", 7 + i)
         put(ram, base + 0x3F4, "i", (500 - 10 * i) * 65536)
         put(ram, base + 0x3F8, "i", 1000 * 65536)
@@ -51,7 +52,7 @@ class PS1RamOracleTests(unittest.TestCase):
         lua = (Path(__file__).resolve().parents[1] /
                "scripts/pcsx_redux_capture_usa.lua").read_text()
         for needle in ["0x800A9228", "0x800AFA4C", "0x800AE204",
-                       "0x188C", "0x1A0", "0x3F4", "0x3F8"]:
+                       "0x188C", "0xA0", "0x3F4", "0x3F8"]:
             self.assertIn(needle, lua)
 
     def test_extraction_of_both_fighters_and_raw_signed_fields(self):
@@ -79,7 +80,7 @@ class PS1RamOracleTests(unittest.TestCase):
         with self.assertRaisesRegex(oracle.InvalidSnapshot, "health"):
             oracle.decode_snapshot(ram, 0)
         ram = ram_image()
-        put(ram, oracle.FIGHTER_BASE + 0x1A0, "h", -1)
+        put(ram, oracle.FIGHTER_BASE + 0xA0, "h", -1)
         with self.assertRaisesRegex(oracle.InvalidSnapshot, "move/pose"):
             oracle.decode_snapshot(ram, 0)
 

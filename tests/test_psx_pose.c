@@ -120,9 +120,26 @@ static void compose_tests(void) {
     }
     verify_matrix(slots[1],I);
 }
+static void joint_slot_order_tests(void) {
+    t3_psx_part_t parts[T3_PSX_DRAW_PARTS]={0};
+    t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]={0},saved[T3_PSX_DRAW_PARTS];uint32_t mask=99;
+    parts[0].slot=11;parts[1].slot=2;
+    joints[0].origin=(t3_vec3i_t){10,20,30};joints[1].origin=(t3_vec3i_t){40,50,60};
+    assert(t3_psx_parts_to_slots(parts,joints,3,joints,&mask));
+    assert(mask==((1u<<11)|(1u<<2)));
+    assert(joints[11].origin.x==10 && joints[2].origin.y==50 && joints[0].origin.x==0);
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)saved[i]=joints[i];
+    parts[1].slot=11;
+    assert(!t3_psx_parts_to_slots(parts,joints,3,joints,&mask));
+    assert(!memcmp(joints,saved,sizeof(joints)));
+    assert(mask==((1u<<11)|(1u<<2)));
+    parts[1].slot=T3_PSX_DRAW_PARTS;
+    assert(!t3_psx_parts_to_slots(parts,joints,3,joints,&mask));
+}
 int main(void) {
     euler_tests();
     compose_tests();
+    joint_slot_order_tests();
     puts("PS1 ten Euler/FK slots and parent partial-composition: passed");
     return 0;
 }

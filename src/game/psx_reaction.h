@@ -40,4 +40,10 @@ int t3_psx_reaction_select(const t3_psx_hit_candidate_t* hit,
                            const t3_psx_reaction_facts_t* facts,
                            const t3_psx_reaction_tables_t* tables,
                            t3_psx_reaction_pick_t* out);
+/* Private compact records: repeated LE u16 original index + 42-byte row.
+ * Missing indices fail; no zero-filled replacement record is fabricated. */
+int t3_psx_reaction_select_sparse(const t3_psx_hit_candidate_t* hit,
+                                  const t3_psx_reaction_facts_t* facts,
+                                  const uint8_t* records,size_t size,
+                                  t3_psx_reaction_pick_t* out);
 #endif

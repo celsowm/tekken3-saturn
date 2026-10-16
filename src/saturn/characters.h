@@ -14,5 +14,7 @@ sat_result_t t3_characters_reset(void);
 sat_result_t t3_characters_tick(const t3_match_t* game);
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game);
 uint8_t t3_characters_skin_preview_applied(unsigned fighter);
+uint32_t t3_characters_texture_vram_bytes(void);
+uint32_t t3_characters_skin_work_ms(void);
 
 #endif

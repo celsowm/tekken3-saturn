@@ -12,6 +12,7 @@
 #include "saturn/math3d.h"
 #include "saturn/skeleton3d.h"
 #include "saturn/skin3d.h"
+#include "saturn/time.h"
 
 #define DT_Q16 (SAT_FX16_ONE / T3_HZ)
 #define FADE_Q16 (SAT_FX16_ONE / 10)
@@ -35,6 +36,7 @@ typedef struct {
     sat_projected_vertex_t projected[T3_VERTEX_COUNT];
     sat_vec3_t world_vertices[T3_VERTEX_COUNT];
     sat_scene3d_instance_t instance;
+    sat_scene3d_instance_binding_t binding;
     sat_mat4_t world;
     uint8_t clip;
     int32_t last_x, last_z;
@@ -42,10 +44,17 @@ typedef struct {
 
 static sat_character_asset_t g_asset;
 static sat_skeleton_clip_t g_clips[T3_CLIP_COUNT];
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
+/* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
+static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT] __attribute__((section(".wram_l")));
+static actor_t g_actors[2] __attribute__((section(".wram_l")));
+#else
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT];
 static actor_t g_actors[2];
+#endif
 static uint8_t g_initialized;
 static uint8_t g_skin_preview_applied[2];
+static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 
 static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
 #if T3_CLIP_COUNT == 1
@@ -92,12 +101,34 @@ sat_result_t t3_characters_init(void) {
         if (i == 1u) {
             /* The second costume gets a separate CRAM bank, never overriding
              * the first actor's colors. Both share the same SKA1 geometry. */
+#if !defined(T3_LOCAL_KMD_BIND) || !T3_ORIGINAL_TEXTURES
             model.palettes_rgb555 = t3_red_palette;
+#endif
             model.palette_base = (uint16_t)(model.palette_base + 1u);
         }
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
+        /* These immutable model textures live for the application lifetime.
+         * Use the public native model uploader; the logical texture registry
+         * has 64 owner slots and is intended for individually managed assets. */
+        if ((st = sat_model_upload_textures(&model,a->textures,T3_TEXTURE_COUNT)) != SAT_OK)
+            return st;
+        for (unsigned t=0;t<T3_TEXTURE_COUNT;++t) {
+            sat_scene3d_material_t* material=&a->materials[t];
+            const sat_model_texture_asset_t* texture=&model.textures[t];
+            material->kind=SAT_SCENE3D_INDEXED_TEXTURED;
+            material->texture=&a->textures[t];
+            material->color_calc_slot=SAT_INDEXED_SOLID_OPAQUE;
+            material->rgb555=model.palettes_rgb555[
+                texture->palette_slot*256u+texture->pixels[texture->pixel_count/2u]];
+        }
+#else
         if ((st = sat_character_materials_upload(&model, a->owners,
                 a->textures, a->materials, T3_TEXTURE_COUNT)) != SAT_OK)
             return st;
+#endif
+        for (unsigned t=0;t<T3_TEXTURE_COUNT;++t)
+            g_texture_vram_bytes+=(uint32_t)a->textures[t].width*a->textures[t].height/
+                (a->textures[t].format==SAT_VDP1_TEXTURE_LUT4?2u:1u);
         if ((st = sat_mesh_init(&a->mesh, a->vertices, T3_VERTEX_COUNT,
                 a->indices, T3_FACE_COUNT)) != SAT_OK) return st;
         if ((st = sat_model_copy_to_mesh(&g_asset.model, &a->mesh)) != SAT_OK)
@@ -120,9 +151,17 @@ sat_result_t t3_characters_init(void) {
         a->instance.material_count = T3_TEXTURE_COUNT;
         a->instance.face_materials = a->face_materials;
         a->instance.world = &a->world;
-        /* Research bind-pose preview: KMD winding has not been calibrated. */
+        /* Topology, texture residency and the face/material mapping remain
+         * immutable after initialization. Pay their validation once; skinning
+         * changes only vertex coordinates, which the binding permits. */
+        if ((st = sat_scene3d_instance_binding_init(&a->binding, &a->mesh,
+                a->materials, T3_TEXTURE_COUNT, a->face_materials)) != SAT_OK)
+            return st;
+        a->instance.validated_binding = &a->binding;
+        /* Preserve the original per-face two-sided flag when culling. */
 #if T3_CLIP_COUNT == 1
-        a->instance.cull_backfaces = 0u;
+        a->instance.cull_backfaces = 1u;
+        a->instance.double_sided_faces = t3_kmd_double_sided;
 #else
         a->instance.cull_backfaces = 1u;
 #endif
@@ -164,9 +203,20 @@ sat_result_t t3_characters_tick(const t3_match_t* game) {
         if ((st = select_clip(a, clip_for(fighter, moved))) != SAT_OK) return st;
         if ((st = sat_skel_clip_player_advance(&a->clip_player,
                 DT_Q16, NULL, 0, NULL, NULL)) != SAT_OK) return st;
+        sat_pose_fade_advance(&a->fade, DT_Q16);
+    }
+    return SAT_OK;
+}
+
+/* Skinning is presentation work: run once for the final pose submitted to
+ * VDP1, rather than again for every catch-up simulation tick. */
+static sat_result_t prepare_actors(void) {
+    sat_result_t st;
+    const uint32_t started=sat_time_ms();
+    for (unsigned i = 0; i < 2u; ++i) {
+        actor_t* a = &g_actors[i];
         if ((st = sat_skel_clip_player_sample(&a->clip_player,
                 a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
-        sat_pose_fade_advance(&a->fade, DT_Q16);
         if ((st = sat_pose_fade_apply(&a->fade, a->pose)) != SAT_OK) return st;
         if ((st = sat_skeleton_evaluate(&a->skeleton,
                 a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
@@ -189,6 +239,7 @@ sat_result_t t3_characters_tick(const t3_match_t* game) {
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
             return st;
     }
+    g_skin_work_ms=sat_time_ms()-started;
     return SAT_OK;
 }
 
@@ -196,11 +247,17 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
     unsigned i;
     sat_result_t st;
     if (!scene || !game || !g_initialized) return SAT_ERR_INVALID_ARG;
+    if ((st = prepare_actors()) != SAT_OK) return st;
     for (i = 0; i < 2u; ++i) {
         actor_t* a = &g_actors[i];
         const t3_fighter_t* fighter = &game->fighters[i];
         sat_model_transform3d_t transform;
         sat_model_transform3d_identity(&transform);
+#if defined(T3_LOCAL_KMD_BIND)
+        /* Visual world-unit conversion only; original simulation/collision
+         * remains in PS1 units. Paul is about 1400 units tall in idle. */
+        transform.scale.x = transform.scale.y = transform.scale.z = 6 * SAT_FX16_ONE;
+#endif
         transform.position.x = (sat_fx16_t)(fighter->x * (SAT_FX16_ONE / 256));
         transform.position.z = (sat_fx16_t)(fighter->z * (SAT_FX16_ONE / 256));
 #if T3_CLIP_COUNT > 1
@@ -212,8 +269,20 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #endif
         /* Original example model faces +Z. Turn its front towards rival. */
         transform.rotation_deg.y = (fighter->facing > 0 ? 90 : -90) * SAT_FX16_ONE;
-        if ((st = sat_model_transform3d_matrix(&transform, &a->world))
-                != SAT_OK) return st;
+        if(t3_move_probe_owned()) {
+            /* The owned world matrix is diagonal scale six + translation.
+             * Apply that exact transform in place after skinning rather than
+             * paying the generic matrix-vector path for every visible vertex.
+             * prepare_actors rewrites these vertices before every submission. */
+            if(!t3_psx_skin_place(a->mesh.vertices,a->mesh.vertex_count,
+                    t3_move_probe_world_center(0),t3_move_probe_world_center(2)))
+                return SAT_ERR_INVALID_ARG;
+            a->instance.world=NULL;
+        } else {
+            if ((st = sat_model_transform3d_matrix(&transform, &a->world))
+                    != SAT_OK) return st;
+            a->instance.world=&a->world;
+        }
         if ((st = sat_scene_submit_instance(scene, &a->instance,
                 SAT_SCENE3D_SLOT_INHERIT, a->projected, a->world_vertices))
                 != SAT_OK) return st;
@@ -224,3 +293,6 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 uint8_t t3_characters_skin_preview_applied(unsigned fighter) {
     return fighter<2u?g_skin_preview_applied[fighter]:0u;
 }
+
+uint32_t t3_characters_texture_vram_bytes(void) {return g_texture_vram_bytes;}
+uint32_t t3_characters_skin_work_ms(void) {return g_skin_work_ms;}

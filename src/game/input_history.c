@@ -64,7 +64,6 @@ int t3_command_matches(uint16_t cmd, const t3_input_history_t* h) {
     uint8_t mask;
     if (!h || !h->count) return 0;
     f = t3_history_at(h, 0);
-    if (cmd == 0xC00Du) return 1;
     if (cmd == 0xC001u) return double_tap(h, 6u);
     if (cmd == 0xC002u) return double_tap(h, 4u);
     if (cmd >= 0xC000u) return 0;

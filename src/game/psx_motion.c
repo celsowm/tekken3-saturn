@@ -1,4 +1,5 @@
 #include "psx_motion.h"
+#include "fixed_shift.h"
 #include <limits.h>
 
 #define TABLE_BASE 0x80096B40u
@@ -15,8 +16,7 @@ static int32_t wrap32(int64_t v) {
     return lo<0x80000000u ? (int32_t)lo : (int32_t)((int64_t)lo-4294967296LL);
 }
 static int32_t floor_shift(int64_t v,unsigned shift) {
-    int64_t n=(int64_t)1<<shift;
-    return (int32_t)(v>=0 ? v/n : -((-v+n-1)/n));
+    return t3_floor_shift(v,shift);
 }
 static int get_byte(const t3_motion_tables_t* t, uint32_t addr, uint8_t* out) {
     size_t p;
@@ -83,6 +83,24 @@ int t3_motion_open(const t3_divmot_t* charbank, const t3_divmot_t* common,
     return 1;
 }
 
+int t3_motion_open_cached(t3_motion_cache_t* cache,const t3_divmot_t* bank,
+                          const t3_divmot_t* common,uint32_t word,
+                          const t3_motion_stream_t** out) {
+    int opened;
+    if(!cache || !out)return -1;
+    *out=NULL;
+    if(cache->valid && cache->bank==bank && cache->common==common && cache->word==word) {
+        *out=&cache->stream;return 1;
+    }
+    cache->valid=0;
+    opened=t3_motion_open(bank,common,word,&cache->stream);
+    if(opened==1) {
+        cache->bank=bank;cache->common=common;cache->word=word;cache->valid=1;
+        *out=&cache->stream;
+    }
+    return opened;
+}
+
 /* PS1 keyed-channel B-spline. Weight tables are taken from a PRIVATE
  * executable or a synthetic fixture supplied by the caller. This is
  * intentionally the integer/table algorithm, not approximate catmull-rom. */
@@ -92,7 +110,8 @@ static int spline(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
     int32_t p0=get_key(s,ch,0),p1=p0,p2,p3;
     int32_t delta=get_key(s,ch,1);
     unsigned span=(unsigned)(delta&31)+1u,prev=0u,cur=span,local;
-    uint16_t a0=0,a1=0,a2=0,a3=0;
+    uint16_t a0=0,a2=0,a3=0,lookup_word=0;
+    uint32_t a1=0;
     uint8_t lookup;
     uint32_t key_base=TABLE_BASE, t8,t9;
     int64_t weighted;
@@ -124,19 +143,23 @@ static int spline(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
     t9=key_base-local;
     if(prev==0u) {
         if (!get_word(t,t9+0x300u,&a0) ||
-            !get_word(t,t9+0x504u,&a1))return 0;
+            !get_word(t,t9+0x504u,&lookup_word))return 0;
+        a1=lookup_word;
         weighted=(int64_t)a0*(p3-p1);
     } else {
         if (!get_word(t,t8+0x200u,&a0))return 0;
         weighted=(int64_t)a0*(p0-p1);
         if(cur!=frames-1u) {
             if (!get_word(t,t9+0x300u,&a2) ||
-                !get_word(t,t9+0x402u,&a1))return 0;
+                !get_word(t,t9+0x402u,&lookup_word))return 0;
+            a1=lookup_word;
             weighted+=(int64_t)a2*(p3-p1);
         } else {
-            if (!get_word(t,t9+0x504u,&a1) ||
+            if (!get_word(t,t9+0x504u,&lookup_word) ||
                 !get_word(t,t9+0x300u,&a3))return 0;
-            a1=(uint16_t)((uint32_t)a1+a3+0x2AABu);
+            /* The final-segment coefficient is a 32-bit sum. It commonly
+             * equals 0x10000 at the endpoint; narrowing to16 erased it. */
+            a1=(uint32_t)lookup_word+a3+0x2AABu;
         }
     }
     weighted+=(int64_t)a1*(p2-p1);

@@ -11,8 +11,20 @@ sat_result_t t3_move_probe_init(void);
 void t3_move_probe_reset(unsigned round);
 void t3_move_probe_tick(const t3_match_t* match);
 uint8_t t3_move_probe_active(void);
+/* Original-state mode: view is presentation only, never a second simulation. */
+uint8_t t3_move_probe_owned(void);
+uint8_t t3_move_probe_combat(void);
+sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view);
+int32_t t3_move_probe_world_center(unsigned axis);
+int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 uint16_t t3_move_probe_slot(unsigned fighter);
 uint16_t t3_move_probe_frame(unsigned fighter);
+uint8_t t3_move_probe_phased(void);
+int16_t t3_move_probe_pending_slot(unsigned fighter);
+int16_t t3_move_probe_root_frame(unsigned fighter);
+int16_t t3_move_probe_move_age(unsigned fighter);
+int16_t t3_move_probe_freeze(unsigned fighter);
+int16_t t3_move_probe_hold_frames(unsigned fighter);
 uint16_t t3_move_probe_attack_word(unsigned fighter);
 uint32_t t3_move_probe_transitions(unsigned fighter);
 uint8_t t3_move_probe_segments(unsigned fighter);
@@ -48,7 +60,7 @@ uint8_t t3_move_probe_shadow_status(unsigned fighter);
 int8_t t3_move_probe_shadow_zone(unsigned fighter);
 uint32_t t3_move_probe_shadow_edges(unsigned fighter);
 uint32_t t3_move_probe_shadow_frames(unsigned fighter);
-#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_DIVMOT_ENABLED)
+#if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_DIVMOT_ENABLED) && !defined(T3_ENABLE_PSX_OWNED_MATCH)
 extern volatile uint32_t g_t3_shadow_root_epoch;
 extern volatile uint32_t g_t3_shadow_root_valid_mask;
 extern volatile t3_psx_root_t g_t3_shadow_external_roots[2];

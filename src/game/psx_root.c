@@ -1,8 +1,8 @@
 #include "psx_root.h"
+#include "fixed_shift.h"
 
 static int32_t floor12(int64_t value) {
-    return (int32_t)(value>=0?value/4096:
-                     -((-value+4095)/4096));
+    return t3_floor_shift(value,12u);
 }
 static int32_t trunc12(int64_t value) {
     return (int32_t)(value>=0?value/4096:

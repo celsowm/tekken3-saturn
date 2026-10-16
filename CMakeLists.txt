@@ -6,12 +6,21 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c)
+add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/move_clock.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
+target_sources(tekken3_fight PRIVATE src/game/move_lifecycle.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_ground.c src/game/psx_body.c src/game/psx_exact_contact.c src/game/psx_hit_transaction.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_match.c src/game/psx_round.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+    # These new blend routines otherwise exceed High WRAM's stack boundary.
+    # Restrict size optimization to this small component; retain the measured
+    # O3 pose/skinning/owned-match path. Runtime cadence is checked separately.
+    set_source_files_properties(src/game/psx_blend.c src/game/psx_blend_math.c
+        PROPERTIES COMPILE_OPTIONS "-Os")
     # A freestanding GCC 13 SH-2 toolchain has no hosted system stdint.h.
     # Without -ffreestanding, GCC's own stdint.h attempts include_next.
     target_compile_options(tekken3_fight PRIVATE -m2 -mb -ffreestanding)
@@ -32,10 +41,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # builds nor CI extract a game image or include Namco model bytes.
     set(T3_LOCAL_KMD "" CACHE FILEPATH
         "Optional absolute path to a locally extracted Tekken 3 KMD (private bind-pose preview)")
+    set(T3_LOCAL_CHARACTER_ARC "" CACHE FILEPATH "Private matching original character texture ARC")
+    if(T3_LOCAL_CHARACTER_ARC AND NOT T3_LOCAL_KMD)
+        message(FATAL_ERROR "T3_LOCAL_CHARACTER_ARC requires T3_LOCAL_KMD")
+    endif()
     if(T3_LOCAL_KMD)
         get_filename_component(T3_LOCAL_KMD "${T3_LOCAL_KMD}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_KMD}")
             message(FATAL_ERROR "T3_LOCAL_KMD file not found: ${T3_LOCAL_KMD}")
+        endif()
+        set(_t3_texture_args "")
+        if(T3_LOCAL_CHARACTER_ARC)
+            get_filename_component(T3_LOCAL_CHARACTER_ARC "${T3_LOCAL_CHARACTER_ARC}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_CHARACTER_ARC}")
+                message(FATAL_ERROR "Private character texture ARC not found")
+            endif()
+            list(APPEND _t3_texture_args --textures-arc "${T3_LOCAL_CHARACTER_ARC}")
         endif()
         add_custom_command(
             OUTPUT "${_t3_gen}/t3_generated_character.c"
@@ -44,11 +65,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
                 --kmd "${T3_LOCAL_KMD}"
+                ${_t3_texture_args}
                 --libsaturn-source "${LIBSATURN_SOURCE_DIR}"
                 --output "${_t3_gen}"
             DEPENDS "${T3_LOCAL_KMD}"
+                ${T3_LOCAL_CHARACTER_ARC}
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/kmd_to_ska.py"
+                "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
                 ${_t3_pipeline}
             VERBATIM COMMENT "Compile local Tekken 3 KMD into PRIVATE LibSaturn bind-pose archive"
         )
@@ -79,6 +103,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         "Private compact divmot99 bank (optional)")
     set(T3_LOCAL_PSX_SEQUENCES "" CACHE FILEPATH
         "Private US PS1 original 104-command sequence manifest")
+    set(T3_LOCAL_PSX_COMMON_BRANCHES "" CACHE FILEPATH
+        "Private original EXE common-branch table (12-byte rows)")
+    set(T3_LOCAL_PSX_REACTIONS "" CACHE FILEPATH "Private original reaction records")
+    set(T3_LOCAL_PSX_BODY_TABLES "" CACHE FILEPATH "Private sqrt/joint/Paul body-radius tables")
+    set(T3_LOCAL_PSX_RSQRT_TABLE "" CACHE FILEPATH "Private 768-byte original blend coefficient window")
+    set(T3_LOCAL_PSX_GROUND_TABLES "" CACHE FILEPATH "Private concatenated atan/push tables")
+    if(T3_LOCAL_PSX_COMMON_BRANCHES AND NOT T3_LOCAL_DIVMOT)
+        message(FATAL_ERROR "T3_LOCAL_PSX_COMMON_BRANCHES requires T3_LOCAL_DIVMOT")
+    endif()
     if(T3_LOCAL_PSX_SEQUENCES AND NOT T3_LOCAL_DIVMOT)
         message(FATAL_ERROR "T3_LOCAL_PSX_SEQUENCES requires T3_LOCAL_DIVMOT")
     endif()
@@ -119,6 +152,50 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE
             T3_ENABLE_PSX_SKIN_PREVIEW=1)
     endif()
+    option(T3_ENABLE_PSX_MOVE_LIFECYCLE "Experimental original begin/queue move clock (not combat parity)" OFF)
+    option(T3_ENABLE_PSX_OWNED_MATCH "Experimental original owned movement state (damage not enabled)" OFF)
+    option(T3_ENABLE_PSX_COMBAT "Experimental bounded original damage and reactions" OFF)
+    option(T3_CAPTURE_INPUT_TAPE "Record private tick-indexed simulation inputs in Low WRAM" OFF)
+    set(T3_LOCAL_INPUT_TAPE "" CACHE FILEPATH "Private captured simulation inputs for a demonstration CD")
+    if(T3_CAPTURE_INPUT_TAPE OR T3_LOCAL_INPUT_TAPE)
+        if(NOT T3_ENABLE_PSX_COMBAT)
+            message(FATAL_ERROR "Input fixture requires original combat mode")
+        endif()
+        target_sources(tekken3_saturn PRIVATE src/saturn/input_tape.c)
+        if(T3_CAPTURE_INPUT_TAPE)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_CAPTURE_INPUT_TAPE=1)
+        endif()
+        if(T3_LOCAL_INPUT_TAPE)
+            set(_t3_tape "${CMAKE_BINARY_DIR}/generated/private_input/t3_private_input_tape.h")
+            add_custom_command(OUTPUT "${_t3_tape}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_input_tape.py"
+                    "${T3_LOCAL_INPUT_TAPE}" "${_t3_tape}"
+                DEPENDS "${T3_LOCAL_INPUT_TAPE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_input_tape.py")
+            target_sources(tekken3_saturn PRIVATE "${_t3_tape}")
+            target_include_directories(tekken3_saturn PRIVATE "${CMAKE_BINARY_DIR}/generated/private_input")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_REPLAY_INPUT_TAPE=1)
+        endif()
+    endif()
+
+    if(T3_ENABLE_PSX_COMBAT)
+        if(NOT T3_ENABLE_PSX_OWNED_MATCH OR NOT T3_LOCAL_PSX_REACTIONS)
+            message(FATAL_ERROR "Original combat requires owned state and private reaction records")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ENABLE_PSX_COMBAT=1)
+    endif()
+    if(T3_ENABLE_PSX_OWNED_MATCH)
+        if(NOT T3_LOCAL_PSX_GROUND_TABLES OR NOT T3_LOCAL_PSX_BODY_TABLES OR NOT T3_ENABLE_PSX_SKIN_PREVIEW OR NOT T3_LOCAL_COMMON_DIVMOT)
+            message(FATAL_ERROR "Owned original match requires private ground/body tables, shared bank and original skin path")
+        endif()
+        set(T3_ENABLE_PSX_MOVE_LIFECYCLE ON)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ENABLE_PSX_OWNED_MATCH=1)
+    endif()
+    if(T3_ENABLE_PSX_MOVE_LIFECYCLE)
+        if(NOT T3_LOCAL_DIVMOT)
+            message(FATAL_ERROR "Original move lifecycle requires private DIVMOT")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ENABLE_PSX_MOVE_LIFECYCLE=1)
+    endif()
 
     if(T3_LOCAL_DIVMOT)
         get_filename_component(T3_LOCAL_DIVMOT "${T3_LOCAL_DIVMOT}" ABSOLUTE)
@@ -137,6 +214,47 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             list(APPEND _t3_private_common_args --common "${T3_LOCAL_COMMON_DIVMOT}")
         endif()
         set(_t3_sequence_args "")
+        set(_t3_common_branch_args "")
+        if(T3_LOCAL_PSX_REACTIONS)
+            get_filename_component(T3_LOCAL_PSX_REACTIONS "${T3_LOCAL_PSX_REACTIONS}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_REACTIONS}")
+                message(FATAL_ERROR "Private reaction records not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_REACTIONS}")
+            list(APPEND _t3_common_branch_args --combat-reactions "${T3_LOCAL_PSX_REACTIONS}")
+        endif()
+        if(T3_LOCAL_PSX_BODY_TABLES)
+            get_filename_component(T3_LOCAL_PSX_BODY_TABLES "${T3_LOCAL_PSX_BODY_TABLES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_BODY_TABLES}")
+                message(FATAL_ERROR "Private original body tables not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_BODY_TABLES}")
+            list(APPEND _t3_common_branch_args --body-tables "${T3_LOCAL_PSX_BODY_TABLES}")
+        endif()
+        if(T3_LOCAL_PSX_RSQRT_TABLE)
+            get_filename_component(T3_LOCAL_PSX_RSQRT_TABLE "${T3_LOCAL_PSX_RSQRT_TABLE}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_RSQRT_TABLE}")
+                message(FATAL_ERROR "Private original blend coefficient window missing")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_RSQRT_TABLE}")
+            list(APPEND _t3_common_branch_args --rsqrt-table "${T3_LOCAL_PSX_RSQRT_TABLE}")
+        endif()
+        if(T3_LOCAL_PSX_GROUND_TABLES)
+            get_filename_component(T3_LOCAL_PSX_GROUND_TABLES "${T3_LOCAL_PSX_GROUND_TABLES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_GROUND_TABLES}")
+                message(FATAL_ERROR "Private original ground tables not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_GROUND_TABLES}")
+            list(APPEND _t3_common_branch_args --ground-tables "${T3_LOCAL_PSX_GROUND_TABLES}")
+        endif()
+        if(T3_LOCAL_PSX_COMMON_BRANCHES)
+            get_filename_component(T3_LOCAL_PSX_COMMON_BRANCHES "${T3_LOCAL_PSX_COMMON_BRANCHES}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PSX_COMMON_BRANCHES}")
+                message(FATAL_ERROR "Private EXE common branch table not found")
+            endif()
+            list(APPEND _t3_private_banks "${T3_LOCAL_PSX_COMMON_BRANCHES}")
+            list(APPEND _t3_common_branch_args --common-branches "${T3_LOCAL_PSX_COMMON_BRANCHES}")
+        endif()
         if(T3_LOCAL_PSX_SEQUENCES)
             get_filename_component(T3_LOCAL_PSX_SEQUENCES
                 "${T3_LOCAL_PSX_SEQUENCES}" ABSOLUTE)
@@ -187,6 +305,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 --bank "${T3_LOCAL_DIVMOT}"
                 ${_t3_private_common_args}
                 ${_t3_sequence_args}
+                ${_t3_common_branch_args}
                 ${_t3_spline_args}
                 ${_t3_trig_args}
                 ${_t3_ik_args}
@@ -209,6 +328,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     libsaturn_add_disc(tekken3_saturn NAME tekken3_saturn
         IP_TEMPLATE_KIND native ALL)
 else()
+    # Explicit local-only replay against private generated assets. Public CI
+    # leaves this empty and neither compiles nor downloads retail data.
+    set(T3_PRIVATE_REPLAY_ASSET_DIR "" CACHE PATH "Configured private Saturn build used by the native match replay evaluator")
+    if(T3_PRIVATE_REPLAY_ASSET_DIR)
+        set(_replay_logic "${T3_PRIVATE_REPLAY_ASSET_DIR}/generated/private_logic")
+        set(_replay_character "${T3_PRIVATE_REPLAY_ASSET_DIR}/generated/characters")
+        if(NOT EXISTS "${_replay_logic}/t3_local_divmot.c" OR
+           NOT EXISTS "${_replay_character}/t3_generated_character.c")
+            message(FATAL_ERROR "Private replay requires previously generated original logic and character data")
+        endif()
+        add_executable(t3_match_replay_eval tools/psx_match_replay_eval.c
+            "${_replay_logic}/t3_local_divmot.c" "${_replay_character}/t3_generated_character.c")
+        target_include_directories(t3_match_replay_eval PRIVATE "${_replay_logic}" "${_replay_character}")
+        target_link_libraries(t3_match_replay_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_match_replay_eval PRIVATE -Wall -Wextra -Werror)
+    endif()
     include(CTest)
     if(BUILD_TESTING)
         add_executable(test_fight tests/test_fight.c)
@@ -300,10 +435,77 @@ else()
         add_executable(t3_hit_eval tools/psx_hit_eval.c)
         target_link_libraries(t3_hit_eval PRIVATE tekken3_fight)
         target_compile_options(t3_hit_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_hit_transaction_eval tools/psx_hit_transaction_eval.c)
+        target_link_libraries(t3_hit_transaction_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_hit_transaction_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_hit_ram_eval tools/psx_hit_ram_eval.c)
+        target_link_libraries(t3_hit_ram_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_hit_ram_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_exact_contact_eval tools/psx_exact_contact_eval.c)
+        target_link_libraries(t3_exact_contact_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_exact_contact_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(test_psx_exact_contact tests/test_psx_exact_contact.c)
+        target_link_libraries(test_psx_exact_contact PRIVATE tekken3_fight)
+        target_compile_options(test_psx_exact_contact PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_exact_collision_and_attack_placement COMMAND test_psx_exact_contact)
+        add_executable(t3_contact_ram_eval tools/psx_contact_ram_eval.c)
+        target_link_libraries(t3_contact_ram_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_contact_ram_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_body_ram_eval tools/psx_body_ram_eval.c)
+        target_link_libraries(t3_body_ram_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_body_ram_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_ground_ram_eval tools/psx_ground_ram_eval.c)
+        target_link_libraries(t3_ground_ram_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_ground_ram_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(t3_clock_eval tools/psx_clock_eval.c)
+        target_link_libraries(t3_clock_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_clock_eval PRIVATE -Wall -Wextra -Werror)
+        add_executable(test_move_clock tests/test_move_clock.c)
+        target_link_libraries(test_move_clock PRIVATE tekken3_fight)
+        add_test(NAME ps1_move_clock_freeze_hold_and_reverse COMMAND test_move_clock)
+        add_executable(test_psx_body tests/test_psx_body.c)
+        target_link_libraries(test_psx_body PRIVATE tekken3_fight)
+        target_compile_options(test_psx_body PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_grounded_body_separation_and_arena COMMAND test_psx_body)
+        add_executable(test_psx_hit_transaction tests/test_psx_hit_transaction.c)
+        target_link_libraries(test_psx_hit_transaction PRIVATE tekken3_fight)
+        target_compile_options(test_psx_hit_transaction PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_owned_hit_transaction_and_ko_collapse COMMAND test_psx_hit_transaction)
+        add_executable(test_psx_round tests/test_psx_round.c)
+        target_link_libraries(test_psx_round PRIVATE tekken3_fight)
+        add_test(NAME ps1_result_and_bounded_round_restart COMMAND test_psx_round)
+        add_executable(test_psx_match tests/test_psx_match.c)
+        target_link_libraries(test_psx_match PRIVATE tekken3_fight)
+        add_test(NAME ps1_owned_ground_match_tick_order COMMAND test_psx_match)
         add_executable(t3_pose_eval tools/psx_pose_eval.c)
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_executable(test_psx_blend_math tests/test_psx_blend_math.c)
+        add_executable(test_psx_blend tests/test_psx_blend.c)
+        target_link_libraries(test_psx_blend PRIVATE tekken3_fight)
+        target_compile_options(test_psx_blend PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_live_transition_blend_modes COMMAND test_psx_blend)
+        target_link_libraries(test_psx_blend_math PRIVATE tekken3_fight)
+        target_compile_options(test_psx_blend_math PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_blend_math_validation_and_aliasing COMMAND test_psx_blend_math)
+        add_executable(t3_blend_math_eval tools/psx_blend_math_eval.c)
+        target_link_libraries(t3_blend_math_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_blend_math_eval PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_blend_math_upstream_differential
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_diff_psx_blend_math.py"
+                --runner "$<TARGET_FILE:t3_blend_math_eval>"
+                --upstream "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/fight_sim.py")
+        add_test(NAME ps1_original_hitapply_ram_adapter
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_psx_hit_ram_eval.py"
+                --runner "$<TARGET_FILE:t3_hit_ram_eval>")
+        add_test(NAME ps1_move_clock_upstream_differential
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_diff_move_clock.py"
+                --runner "$<TARGET_FILE:t3_clock_eval>"
+                --upstream "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/fight_sim.py")
         add_test(NAME ps1_private_divmot_pose_export
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/tests/test_psx_motion_export.py"
@@ -313,6 +515,11 @@ else()
         set(_t3_hit_upstream
             "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/fight_math.py")
         if(EXISTS "${_t3_hit_upstream}")
+            add_test(NAME ps1_exact_collision_upstream_differential
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_SOURCE_DIR}/tests/test_diff_exact_contact.py"
+                    --runner "$<TARGET_FILE:t3_exact_contact_eval>"
+                    --upstream "${_t3_hit_upstream}")
             add_test(NAME ps1_hit_damage_upstream_differential
                 COMMAND "${Python3_EXECUTABLE}"
                     "${CMAKE_SOURCE_DIR}/tests/test_diff_psx_hit_damage.py"

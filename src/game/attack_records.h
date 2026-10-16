@@ -14,8 +14,9 @@ typedef struct {
 
 typedef struct {
     t3_attack_point_t start, end;
-    /* 1 -> start was a point from the preceding pose frame, which needs the
-     * PREVIOUS frame's root transform for accurate swept collisions. */
+    /* Swept start: first active frame uses the previous arena anchor with
+     * current heading/facing. Later frames copy the previous WORLD endpoint.
+     * See psx_exact_contact.h for the original placement arithmetic. */
     uint8_t previous_start;
 } t3_attack_segment_t;
 

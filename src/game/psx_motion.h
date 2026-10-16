@@ -40,6 +40,19 @@ int t3_motion_open(const t3_divmot_t* character,
                    const t3_divmot_t* common,
                    uint32_t animation_word, t3_motion_stream_t* out);
 
+/* Caller-owned single-entry cache. Banks and their bytes must be immutable
+ * while cached; zero the cache when reloading/modifying a bank. Only successful
+ * opens are cached. The returned view belongs to cache, until its next miss. */
+typedef struct {
+    const t3_divmot_t *bank,*common;
+    uint32_t word;
+    uint8_t valid;
+    t3_motion_stream_t stream;
+} t3_motion_cache_t;
+int t3_motion_open_cached(t3_motion_cache_t* cache,const t3_divmot_t* bank,
+                          const t3_divmot_t* common,uint32_t word,
+                          const t3_motion_stream_t** out);
+
 /* Decode the original 49 scalar pose channels (including XYZ displacement),
  * already doubled and 16-bit wrapped. Frame is clamped to N-1.
  * 1 success; 0 = requires missing spline table; -1 bad input/tables.

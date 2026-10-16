@@ -22,7 +22,7 @@ typedef struct {
     uint8_t pose_available;
     uint8_t use_large_hurt;
     t3_psx_root_t root;
-    const t3_psx_joint_t* parts; /* 22 PS1 KMD draw-part matrices */
+    const t3_psx_joint_t* parts; /* Original joint-slot matrices, not KMD mesh order. */
     uint32_t parts_mask;
 } t3_psx_shadow_actor_t;
 typedef struct {

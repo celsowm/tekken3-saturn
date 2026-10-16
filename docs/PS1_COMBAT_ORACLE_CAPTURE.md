@@ -1,7 +1,8 @@
 # Tekken 3 USA: private PS1 combat oracle capture
 
-This is a **real emulator-memory capture pathway**, not a claim that
-real retail frames have already been recorded. It does not bundle a PS1 disc,
+Original USA Paul mirror captures now exist privately, including high/mid/low
+hits, guards, health depletion and round results. This document describes
+their capture and its timing limits. The repository does not bundle a PS1 disc,
 BIOS, game assets, private trace data, or recompile proprietary MIPS code.
 
 ## Version and verified static address provenance
@@ -30,7 +31,7 @@ shared across these versions according to the upstream research:
 
 | Member | Offset | Reading |
 |---|---|---|
-| Current move slot | `+0x1A0` | little-endian signed 16-bit |
+| Running move slot (`curSlot`) | `+0xA0` | little-endian signed 16-bit; `+0x1A0` is the pending slot, often −1 |
 | Current pose frame | `+0x058` | little-endian signed 16-bit |
 | Health / health max | `+0x3F4 / +0x3F8` | little-endian signed 32-bit Q16 |
 | Fighter state word | `+0x060` | little-endian unsigned 32-bit |
@@ -42,10 +43,11 @@ shared across these versions according to the upstream research:
 The upstream USA executable layout lists SHA-256
 `525e689449eb135bf833ecaff26a5e2623686e5a4e2104f425978bb33a55ffec`
 for its normalized extracted **EXE block** (`size=1183744` bytes).
-**The capture scripts do not fingerprint the disc or EXE**, so the operator
-must verify their own executable independently. The mapping has been
-checked statically against the upstream layout; it still needs an actual
-live original-game capture to confirm timing and field behavior.
+The standalone Vsync Lua recorder does not fingerprint the disc or EXE.
+`collect_psx_session.py` checks the full USA EXE fingerprint and mounted disc
+identity; `prepare_psx_phase_capture.py` verifies both full EXE and body/layout
+hashes before generating CPU breakpoint addresses. Live captures independently
+cross-check their final paused RAM and Lua observations.
 
 ## Option A: continuous capture inside PCSX-Redux
 
@@ -80,12 +82,12 @@ the capture rather than quietly combining unrelated frames. The file is
 closed on normal stop. The callback stores only small field snapshots,
 not the complete game RAM.
 
-**Sampling limitation:** `GPU::Vsync` is an emulator event; it is *not*
-by itself proof of the exact PS1 `FightFrame` end boundary. The guest
-counter is checked for duplicates/gaps and later frame alignment must
-be confirmed by comparing the move/HP transitions against breakpoints
-around `HitApply` and `MoveStepAll`. No PS1 input movie, pad timing,
-savestate baseline or original replay trace has been supplied here.
+**Measured sampling limitation:** `GPU::Vsync` can interrupt HitTest,
+HitApply, InputSource or MoveStepAll. The game can execute multiple FightFrame
+calls with the same guest counter. Vsync clips are valid observations of
+events, but their rows are not necessarily completed combat ticks. Do not use
+their line indices directly as original simulation tick numbers. Input schedules,
+hashes and read-only CPU-phase observations are retained with the private runs.
 
 ## Option B: independent decoding of full RAM snapshots
 
@@ -112,6 +114,114 @@ both fighters valid, and subsequent guest counters exactly +1
 Any invalid frame aborts without replacing an existing output.
 This decoder is also useful to independently check a Lua-captured
 specific frame's unsigned/signed field decoding.
+
+## Option C: CPU phase boundaries and real-contact native audit
+
+The interpreter with `-debugger` supports non-pausing, read-only Exec callbacks.
+The observer hooks entry and the saved return PC (with matching stack pointer)
+of six original functions. No guest code, RAM or register is changed. Retained
+Lua objects keep callbacks alive. The final FightFrame return pauses execution.
+
+```sh
+python3 scripts/prepare_psx_phase_capture.py \
+  --exe assets/imported/tekken3-usa/SLUS_004.02 \
+  --output assets/imported/ps1-paul-hit-phases \
+  --first 650 --last 2300 --hit-ram
+SDL_AUDIODRIVER=dummy "$HOME/dev/pcsx-redux/pcsx-redux" \
+  -no-ui -interpreter -debugger -softgpu \
+  -bios "$HOME/dev/pcsx-redux/src/mips/openbios/openbios.bin" \
+  -iso "$PWD/roms/Tekken 3 USA/Tekken 3 (USA).cue" \
+  -run -webserver -webserver-port 8082 \
+  -dofile "$PWD/scripts/pcsx_redux_paul_session.lua" \
+  -dofile "$PWD/assets/imported/ps1-paul-hit-phases/capture.lua"
+```
+
+After the observer reports its final return, require `running=false` from
+`/api/v1/execution-flow`, save `/api/v1/cpu/ram/raw` as `paused-ram.bin` and
+`/api/v1/lua/t3-latest-phase` as `paused-phase.jsonl` in the capture directory.
+The latter must equal the final trace row. Preserve the loaded observer,
+pad-session script, screenshot, emulator log and input/output hashes with the
+generated provenance manifest; do not replace scripts during an active run.
+
+```sh
+python3 scripts/analyze_psx_phases.py \
+  assets/imported/ps1-paul-hit-phases/phases.jsonl \
+  --ram assets/imported/ps1-paul-hit-phases/paused-ram.bin \
+  --output assets/imported/ps1-paul-hit-phases/audit.json
+cmake --build build/host --target t3_hit_ram_eval
+python3 scripts/audit_psx_hit_ram.py \
+  --capture assets/imported/ps1-paul-hit-phases \
+  --evaluator build/host/t3_hit_ram_eval \
+  --exe assets/imported/tekken3-usa/SLUS_004.02
+```
+
+With `--hit-ram`, each actual `gotHit` HitApply call saves complete pre/post
+2 MiB RAM snapshots. The native evaluator feeds **pre-hit** facts and original
+tables into the portable `t3_psx_hit_apply_preview`, rather than recomputing
+damage in Python. The audit checks original resulting HP, slot classification,
+damage, outcome flags and the reaction slot queued at the following MoveStepAll
+return. It rejects missing snapshots and changed classification angle predicates;
+it does not claim to reproduce the angle-refresh calculation itself.
+
+The executed 650..2300 window contains 1,818 FightFrame calls, 167 repeated
+guest counters, eight observed contacts and an independently verified final
+RAM checkpoint. All eight native evaluations agree: high/mid/low hits and their
+guards. This does not validate live collision, input buffering, freeze/hold
+timing, KO collapse or a complete Saturn fight. The separate 4,732-observation
+Vsync clip confirms original HP depletion and round result, while its sampled
+`ko` byte remains zero. A round-ending pre/post HitApply sample is still needed.
+
+The observer also records independent pose/root/move counters, step direction,
+freeze/hold state, pending-move pointer, active state and the current move's
+authored hold frame. The separate `ps1-paul-clock-phases/` capture independently
+matches paused RAM. Audit the no-pending clock path with:
+
+```sh
+cmake --build build/host --target t3_clock_eval
+python3 scripts/audit_psx_move_clock.py \
+  --trace assets/imported/ps1-paul-clock-phases/phases.jsonl \
+  --evaluator build/host/t3_clock_eval \
+  --output assets/imported/ps1-paul-clock-phases/clock-audit.json
+```
+
+Its 3,498 normal forward cases agree; 138 pending starts are excluded, not
+counted as passes. Freeze, holds and reverse playback did not occur in that
+bounded real capture. Their 10,000-case differential test compares against
+the pinned research with synthetic RAM, not against new original CPU captures.
+
+The newer `ps1-paul-start-phases/` capture starts at source counter 547 and
+records queued-entry parameters and current/root/pending move metadata as well.
+Its 145 pending ground starts and 3,741 no-pending advances agree with native
+clock results. The capture's final paused RAM is independently cross-checked.
+
+```sh
+python3 scripts/audit_psx_move_clock.py --pending \
+  --trace assets/imported/ps1-paul-start-phases/phases.jsonl \
+  --evaluator build/host/t3_clock_eval \
+  --output assets/imported/ps1-paul-start-phases/start-audit.json
+cc -std=c11 -O2 -Isrc/game -Ibuild/paul/generated/private_logic \
+  tools/psx_move_decision_eval.c \
+  build/paul/generated/private_logic/t3_local_divmot.c \
+  build/host/libtekken3_fight.a -o build/host/t3_private_move_decision_eval
+python3 scripts/audit_psx_move_decisions.py \
+  --trace assets/imported/ps1-paul-start-phases/phases.jsonl \
+  --evaluator build/host/t3_private_move_decision_eval \
+  --output assets/imported/ps1-paul-start-phases/input-audit.json
+```
+
+That native input evaluator embeds the **private generated banks**, so its
+binary stays under ignored `build/`. Each decision starts independently from
+the observed running slot, clock, previous entry frame and reconstructed pad
+history. All 3,760 compared decisions agree, including exact pending slot,
+transition, kind, entry and window. The audit excludes 118 warmup observations
+and eight non-input hit reactions. It proves those boundary decisions, not a
+free-running simulation, physics or original HP on the Saturn.
+
+The private runtime can enable `T3_ENABLE_PSX_MOVE_LIFECYCLE=ON` to use this
+begin/queue path with one-based clocks. Its nine Ymir pose cases include mid,
+low and low recovery, while provisional HP/physics remain explicitly separate.
+End-turn orientation refresh, input-buffer mutation, original fighter physics,
+reaction integration and complete supported-round replay remain required.
 
 ## Trace contract and what NOT to infer
 
@@ -167,3 +277,100 @@ gaps, malformed diagnostic data and inconsistent paired snapshots.
 Only after the events have been aligned to PS1 `FightFrame` stages
 can frame durations and recovery/knockdown classifications be imported
 as oracle-supplied facts into the Saturn MoveVM bridge.
+
+## Grounded body separation and arena bounds
+
+Use `prepare_psx_phase_capture.py --body-ram` for read-only entry/return
+observations of BodySeparate and ArenaBounds. The compact range snapshots
+include both fighter records, current/pending move rows, previous roots, pair
+metrics and correction ramps. `audit_psx_body.py` checks every captured pair
+through `t3_body_ram_eval`; it separately reconstructs body spheres from the
+observed original joints and the fingerprinted private Paul radius table.
+The final FightFrame return must agree with an independently decoded paused
+2 MiB RAM snapshot using `analyze_psx_phases.py --ram`.
+
+The 547..2300 capture has 5,829 matching calls, including 776 calls with actual
+root corrections and zero body-shape discrepancies. This remains a component
+audit seeded from the original each call; neither these counts nor sphere
+reconstruction proves our free-running animated poses or complete combat.
+
+## Exact world attack shapes and HitTest
+
+`prepare_psx_phase_capture.py --contact-ram` adds CollisionShapesUpdate entry
+and return observations plus compact snapshots around HitTest. It retains
+current descriptor/packed points, previous anchors and segment ends, segment
+mode and original joint matrices in addition to both fighter records. Body and
+contact capture options can be combined; their global ranges are merged.
+
+`audit_psx_contact.py` invokes `t3_contact_ram_eval` against every captured
+function pair. Shape checks reconstruct current/previous baked world points
+and the 14 hurt cylinders. Gate checks consume the pre-HitTest original shape,
+compare the resulting slot/zone/point/direction and verify changed contact,
+freeze/cooldown and whiff fields. The 547..2300 clip has 7,772 matching calls,
+including eight accepted contacts. A paused independent RAM checkpoint also
+passes. This is seeded component parity, not a free-running Saturn fight.
+
+`saturn_contact_suite.py` separately exercises owned-state runtime geometry
+with scripted pads. Its contact/gate frame counts do not reserve hit slots or
+change HP; live damage and reactions require the complete hit transaction.
+
+## Continuous owned-match replay from one original seed
+
+Use `prepare_psx_phase_capture.py --frame-ram` for a separate private capture.
+This writes one full 2 MiB RAM seed at a neutral FightFrame entry (standing slot
+3, no pending row, identical pose/root rows, unpressed inputs/history), then
+compact RAM ranges at every consecutive FightFrame return. Existing entry/exit
+hooks retain the exact InputSource results and frame/call timing. The generated
+launcher still checks the USA executable/layout fingerprints. The observer never
+writes guest RAM. Keep seed, ranges, phases and screenshots private.
+
+For the current controlled Paul session, use `--first 550 --last 3000`; retain
+its launcher/observer hashes and a paused final RAM/phase cross-check with
+`analyze_psx_phases.py`. Archive the actual observer used by the emulator as
+`observer.lua` next to `provenance.json` before making further script edits.
+
+Configure an explicit local-only native evaluator using the already generated
+private Saturn assets:
+
+```sh
+cmake -S . -B build/host \
+  -DT3_PRIVATE_REPLAY_ASSET_DIR="$PWD/build/paul-combat"
+cmake --build build/host --target t3_match_replay_eval
+python3 scripts/audit_psx_match_replay.py \
+  --capture assets/imported/ps1-paul-frame-replay \
+  --evaluator build/host/t3_match_replay_eval
+```
+
+Public CI leaves `T3_PRIVATE_REPLAY_ASSET_DIR` empty. The evaluator contains
+private generated logic/character data and must not be distributed. It seeds
+its own match once, then advances `t3_psx_match_step` with the observed inputs.
+Expected RAM ranges are read solely to compare results, never to replace native
+state. The auditor rejects missing consecutive snapshots and verifies native
+tick continuity, seed/entry agreement and observer provenance. It reports
+matching prefixes separately for ground, move, hit and world-joint fields;
+any mismatch keeps overall parity false. Original scripted/clear input modes
+that cannot be expressed by the pad adapter stop the requested replay explicitly,
+rather than skipping those ticks or manufacturing neutral input.
+
+Original world joints are indexed by animation slot. KMD mesh records have a
+different order: mesh record 2 maps to joint 11, while mesh record 17 maps to
+joint 2. The owned core now remaps before body/hurt/attack queries; rendering
+uses the inverse model map at its boundary. Component tests supplied with
+original joint arrays cannot detect a missing conversion in an integrated match.
+
+To audit normal transition blending, generate the private Saturn assets with
+`T3_LOCAL_PSX_RSQRT_TABLE` set to `psx_rsqrt.bin` from the fingerprinted pose-table
+extractor, then point `T3_PRIVATE_REPLAY_ASSET_DIR` to that build (currently
+`build/paul-blend`). The evaluator also seeds displayed local matrices, blend
+counters, previous root displacement and retained frame bytes from the same
+initial RAM. It compares mode/active/counter/frames/weight, displayed rootY,
+root deltas and all previous/delta local matrix elements. Source/destination
+frame bytes are compared too; row identities remain native bank indices rather
+than relocated guest pointers. `blend_checked` records whether those checks
+actually ran; an omitted table must not produce a claimed blend pass.
+
+Use `--output assets/imported/paul-blend-replay` on the auditor to retain earlier
+reports unchanged. The new report still fails overall when world geometry or
+input-mode coverage differs, even if every checked blend field agrees. This
+distinction matters: local matrices are saved before procedural head tracking,
+and their agreement does not establish complete world-pose/body parity.

@@ -1,10 +1,12 @@
 """Synthetic PS1 ISO9660 and stage TMD tests, no commercial game data."""
 import hashlib
+import io
 from pathlib import Path
 import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
@@ -21,7 +23,7 @@ def entry(name,lba,size,directory=False):
     data[33:33+len(name)]=name
     return bytes(data)
 
-def fixture():
+def fixture(banks=()):
     exe=bytearray(0x16000);exe[:8]=b"PS-X EXE"
     struct.pack_into("<I",exe,0x10,0x80079c70)
     struct.pack_into("<II",exe,0x18,0x80010000,0x121000)
@@ -39,7 +41,13 @@ def fixture():
     for i,v in enumerate(((0,0,0),(4096,0,0),(4096,0,4096),(0,0,4096))):
         struct.pack_into("<hhhh",stage,0x404+i*8,*v,0)
     bns=bytearray(4096);bns[:len(stage)]=stage;bns[2056:2060]=b"3DMK"
-    sectors=[bytearray(2048) for _ in range(80)]
+    for i, bank in enumerate(banks, 72):
+        struct.pack_into("<II",exe,0x14c00+i*8,len(bns)//2048,len(bank))
+        bns += bank
+        bns += bytes(-len(bns)%2048)
+    for i in range(72+len(banks),303):
+        struct.pack_into("<II",exe,0x14c00+i*8,len(bns)//2048,0)
+    sectors=[bytearray(2048) for _ in range(max(80,68+len(bns)//2048))]
     sectors[16][:7]=b"\x01CD001\x01"
     sectors[16][156:190]=entry(b"\x00",20,2048,True)
     d=entry(b"\x00",20,2048,True)+entry(b"TEKKEN3",21,2048,True)
@@ -51,10 +59,105 @@ def fixture():
     for off in range(0,len(exe),2048):
         chunk=exe[off:off+2048]
         sectors[23+off//2048][:len(chunk)]=chunk
-    sectors[68][:]=bns[:2048];sectors[69][:]=bns[2048:]
+    for offset in range(0,len(bns),2048):
+        sectors[68+offset//2048][:]=bns[offset:offset+2048]
     return sectors,bytes(exe)
 
 class ImportTests(unittest.TestCase):
+    def test_discover_and_compact_private_divmot_banks(self):
+        from test_divmot_to_logic import fake_bank
+        for kinds in ((0,99),(0,0)):
+            sectors,exe=fixture([fake_bank(k) for k in kinds])
+            with self.subTest(kinds=kinds),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                source=root/"disc.iso"
+                source.write_bytes(b"".join(sectors))
+                args=(source,root/"out")
+                options={"expected_sha":hashlib.sha256(exe).hexdigest(),"divmot_banks":True}
+                report=t3.import_game(*args,**options)
+                self.assertEqual([b["bank_type"] for b in report["divmot_banks"]],list(kinds))
+                self.assertEqual(report["records"][72]["kind"],"DIVMOT")
+                self.assertEqual(report["records"][73]["bank_type"],kinds[1])
+                self.assertFalse((root/"out/raw").exists())
+                for record,kind in enumerate(kinds,72):
+                    data=(root/f"out/divmot/{record:03}/bank_{kind}.t3logic").read_bytes()
+                    self.assertEqual(t3.compact(data,True,True,True)[0],data)
+                # Default import does not extract authored banks.
+                t3.import_game(source,root/"default",expected_sha=options["expected_sha"])
+                self.assertFalse((root/"default/divmot").exists())
+
+    def test_divmot_candidate_requires_directory_and_record_length(self):
+        from test_divmot_to_logic import fake_bank
+        data=fake_bank(0)
+        self.assertTrue(t3.divmot_candidate(data[:64],len(data)))
+        self.assertFalse(t3.divmot_candidate(data[:63],len(data)))
+        self.assertFalse(t3.divmot_candidate(data[:64],len(data)+1))
+        bad=bytearray(data)
+        struct.pack_into("<I",bad,8,63)  # recognized header, invalid directory
+        sectors,exe=fixture([bad])
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            source=root/"bad.iso"
+            source.write_bytes(b"".join(sectors))
+            with self.assertRaisesRegex(t3.FormatError,"invalid DIVMOT BNS record 72"):
+                t3.import_game(source,root/"out",expected_sha=hashlib.sha256(exe).hexdigest(),
+                               divmot_banks=True)
+
+    def test_archive_listing_url(self):
+        expected = "https://archive.org/download/tekken3_playstation/Tekken%203%20%28USA%29.zip"
+        listing = ("https://ia601000.us.archive.org/view_archive.php?archive="
+                   "/33/items/tekken3_playstation/Tekken%203%20%28USA%29.zip")
+        self.assertEqual(t3.archive_zip_url(listing), expected)
+        self.assertEqual(t3.archive_zip_url(expected), expected)
+        self.assertEqual(t3.archive_zip_url(expected.replace(
+            "archive.org/", "ia601000.us.archive.org/")), expected)
+        for bad in (
+            listing.replace("https:", "http:"),
+            listing.replace("ia601000.us.archive.org", "archive.org.example.com"),
+            listing.replace("ia601000.us.archive.org", "user@archive.org"),
+            listing + "&archive=/33/items/another/file.zip",
+            listing + "&file=Track%201.bin",
+            listing.replace("/tekken3_playstation/", "/../"),
+            listing.replace(".zip", ".bin"),
+            expected + "#fragment", expected + "?download=1",
+            expected.replace("/download/", "/other/"),
+            expected.replace("tekken3_playstation", ".."),
+            expected.replace("tekken3_playstation", "bad%2Fitem"),
+        ):
+            with self.subTest(url=bad), self.assertRaises(t3.FormatError):
+                t3.archive_zip_url(bad)
+
+    def test_remote_listing_download_and_cache(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("Track 1.bin", b"synthetic track")
+        url = "https://ia601000.us.archive.org/view_archive.php?archive=/33/items/item/game.zip"
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root)/"game.zip"
+            with mock.patch.object(t3.urllib.request, "urlopen",
+                                   return_value=io.BytesIO(buf.getvalue())) as request:
+                self.assertEqual(t3.remote_zip(url, cache), cache)
+                request.assert_called_once_with(
+                    "https://archive.org/download/item/game.zip", timeout=60)
+            with mock.patch.object(t3.urllib.request, "urlopen") as request:
+                self.assertEqual(t3.remote_zip(url, cache), cache)
+                request.assert_not_called()
+                cache.write_bytes(b"partial download")
+                with self.assertRaises(t3.FormatError):
+                    t3.remote_zip(url, cache)
+                request.assert_not_called()
+
+    def test_remote_invalid_download_cleanup(self):
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root)/"game.zip"
+            for response in (b"<html>not a zip</html>", b""):
+                with mock.patch.object(t3.urllib.request, "urlopen",
+                                       return_value=io.BytesIO(response)):
+                    with self.assertRaises(t3.FormatError):
+                        t3.remote_zip("https://archive.org/download/item/game.zip", cache)
+                self.assertFalse(cache.exists())
+                self.assertFalse(cache.with_suffix(".zip.part").exists())
+
     def test_ids(self):
         self.assertEqual(t3.selected_ids("56,71,73-74"),[56,71,73,74])
         for bad in ("1-0","303","foo"):

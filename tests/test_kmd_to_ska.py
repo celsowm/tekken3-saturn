@@ -16,7 +16,8 @@ def synthetic_kmd():
     # one normal list, one FT4 face and an indexed texmap.
     start=0x10+27*56
     def u32(n):return struct.pack("<I",n)
-    coord=((0,0,0),(4096,0,0),(4096,0,4096),(0,0,4096))
+    # PS1 quad strip order: top-left, top-right, bottom-left, bottom-right.
+    coord=((0,0,0),(4096,0,0),(0,0,4096),(4096,0,4096))
     verts=(u32(2)+u32(0)+u32(0)+u32(4)+
            b"".join(struct.pack("<4h",*v,0) for v in coord)+u32(0)*6)
     normal=u32(4)+u32(0)+u32(0)+u32(0)+u32(0)*2
@@ -24,11 +25,9 @@ def synthetic_kmd():
     faces=u32(0)+u32(1)+struct.pack("<II",face_word,0)+u32(0)+u32(0)
     uvs=bytes((0,0,8,0,8,8,0,8))
     # Groups: FT3 count0; FT4 count1, material0, four UV indices;
-    # GT3 count0; GT4 count0; documented two-byte texmap trailer.
-    material=struct.pack("<HHH",4,7,10)+uvs+bytes((0,1,0,0,1,2,3,0,0,0,0))+b"\0"*3
-    # len must be 28: material hdr 4, uv hdr 10, group counts 4,
-    # one FT4 record 5, trailer 2, padding 3.
-    assert len(material)==28,(len(material),material)
+    # GT3 count0; GT4 count0; zero padding to a four-byte boundary.
+    material=struct.pack("<HHH",4,7,10)+uvs+bytes((0,1,0,0,1,2,3,0,0,0))
+    assert len(material)==24,(len(material),material)
     start_normal=start+len(verts)
     start_faces=start_normal+len(normal)
     start_material=start_faces+len(faces)
@@ -43,6 +42,10 @@ def synthetic_kmd():
     return bytes(hdr)+verts+normal+faces+material
 
 class KmdTests(unittest.TestCase):
+    def test_meshless_root_texmap_has_no_trailer(self):
+        block = struct.pack('<HH4B', 2, 2, 0, 0, 0, 0)
+        self.assertEqual(kmd.parse_texmap(block, 0, len(block), (0, 0, 0, 0)), ())
+
     def test_parse_fixture(self):
         data=synthetic_kmd()
         parsed=kmd.parse_kmd(data)
@@ -54,6 +57,14 @@ class KmdTests(unittest.TestCase):
         _,refs,variants=kmd.record_slots(parsed)
         self.assertEqual(refs,[(1,1,(0,1,2,3))])
         self.assertEqual(variants,0)
+
+    def test_quad_two_sided_flag_is_not_a_vertex_index_bit(self):
+        data=bytearray(synthetic_kmd())
+        face_base=kmd.KMD_HEADER+kmd.ROWS*kmd.ROW_BYTES+72+24
+        struct.pack_into('<I',data,face_base+12,0x1000000)
+        row=kmd.parse_kmd(data).rows[1]
+        self.assertEqual(row.double_sided,(1,))
+        self.assertEqual(row.faces,((0,1,2,3),))
 
     def test_reject_bad_signature_and_index(self):
         data=bytearray(synthetic_kmd());data[8]=0
@@ -84,6 +95,9 @@ class KmdTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             dest=Path(root)
             parsed=kmd.parse_kmd(synthetic_kmd())
+            model,quads,_=kmd.to_source_model(parsed,Path(checkout))
+            self.assertEqual(quads,[(0,1,3,2)])
+            self.assertEqual(model.triangles,[(0,1,2),(1,3,2)])
             result=kmd.compile_ska(parsed,Path(checkout),dest)
             self.assertEqual(result["format"],"SKA1")
             self.assertEqual(result["joints"],22)
@@ -96,5 +110,18 @@ class KmdTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(data).hexdigest(),result["archive_sha256"])
             self.assertEqual(result["clip"],["bind"])
             self.assertTrue((dest/"fighter_bind.obj").exists())
+
+    def test_file_offsets_are_loaded_before_saturn_basis_conversion(self):
+        checkout=os.environ.get("LIBSATURN_SOURCE_DIR")
+        if not checkout:
+            self.skipTest("Pass LIBSATURN_SOURCE_DIR for SourceModel integration")
+        data=bytearray(synthetic_kmd())
+        # Original FighterSetupPart loads (x,y,-z), then the renderer uses
+        # D=(1,-1,-1). Rest translations therefore become (x,-y,+z).
+        struct.pack_into('<3i',data,kmd.KMD_HEADER+kmd.ROW_BYTES+5*4,
+                         123,-456,789)
+        model,_,_=kmd.to_source_model(kmd.parse_kmd(bytes(data)),Path(checkout))
+        self.assertEqual(model.nodes[1].translation,
+                         (123/4096,456/4096,789/4096))
 
 if __name__=="__main__":unittest.main()

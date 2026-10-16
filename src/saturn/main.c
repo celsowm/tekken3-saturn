@@ -7,6 +7,9 @@
 #include <stdint.h>
 
 #include "fight.h"
+#if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
+#include "input_tape.h"
+#endif
 #include "characters.h"
 #include "saturn/app.h"
 #include "saturn/color.h"
@@ -26,15 +29,20 @@ enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
 
-static t3_match_t g_game;
+/* Fully initialized by t3_match_reset before any read. */
+static t3_match_t g_game __attribute__((section(".wram_l")));
 static sat_scene_t g_scene;
-static sat_scene3d_face_t g_faces[FACE_CAP];
-static uint32_t g_keys[FACE_CAP];
-static uint16_t g_order[FACE_CAP];
-static sat_ascii_font_t g_font;
+/* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
+ * and hot actor data in High WRAM; the linker checks both memory budgets. */
+static sat_scene3d_face_t g_faces[FACE_CAP] __attribute__((section(".wram_l")));
+static uint32_t g_keys[FACE_CAP] __attribute__((section(".wram_l")));
+static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
+/* Explicitly cleared and uploaded by HUD initialization before its first use. */
+static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
 static sat_camera3d_t g_camera;
 static uint8_t g_show_profiler;
+static uint32_t g_render_work_ms, g_render_submissions;
 static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
@@ -110,6 +118,10 @@ static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
     if (mask & SAT_PAD_L) out.held |= T3_IN_GUARD;
     if (mask & SAT_PAD_R) out.held |= T3_IN_CROUCH;
     if (mask & SAT_PAD_C) out.held |= T3_IN_JUMP;
+    if (mask & SAT_PAD_X) out.held |= T3_IN_LP;
+    if (mask & SAT_PAD_Y) out.held |= T3_IN_RP;
+    if (mask & SAT_PAD_A) out.held |= T3_IN_LK;
+    if (mask & SAT_PAD_B) out.held |= T3_IN_RK;
     if (pressed & SAT_PAD_X) out.pressed |= T3_IN_LP;
     if (pressed & SAT_PAD_Y) out.pressed |= T3_IN_RP;
     if (pressed & SAT_PAD_A) out.pressed |= T3_IN_LK;
@@ -130,6 +142,9 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (g_game.timer + 59u) / 60u, 125, 35));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[0], 8, 47));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[1], 248, 47));
+#if defined(T3_REPLAY_INPUT_TAPE)
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
+#endif
     if (g_game.match_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
             g_game.winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!", W/2, 85));
@@ -137,8 +152,10 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
             g_game.winner < 0 ? "DRAW" :
             (g_game.winner == 0 ? "PLAYER 1 ROUND" : "PLAYER 2 ROUND"), W/2, 85));
-    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
-    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "D-PAD MOVE/STEP  START RESET", 40, 208));
+    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_combat()?"X HIGH  DF+X MID  D+A LOW":t3_move_probe_owned()?
+        "X/Y PUNCH  A/B KICK":"X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
+    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_owned()?
+        "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
 }
 
 static void draw_scene(void) {
@@ -165,12 +182,14 @@ static void draw_profiler(void) {
     }
 }
 
-static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
+static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
+                                const sat_pad_state_t pads[2]) {
     sat_scene_stats_t scene = {0};
     sat_vdp1_command_stats_t commands = {0};
     sat_vdp1_frame_stats_t pacing = {0};
     uint32_t now = sat_frame_count();
     uint32_t span = now - g_rate_sample_vblank;
+    ++g_t3_diagnostics.snapshot_epoch;
     SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
     SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
@@ -198,6 +217,28 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.draw_waits = pacing.draw_waits;
     g_t3_diagnostics.draw_timeouts = pacing.draw_timeouts;
     g_t3_diagnostics.first_error = (int32_t)scene.result;
+    for (unsigned i = 0; i < 2u; ++i) {
+        const t3_fighter_t* f = &g_game.fighters[i];
+        g_t3_diagnostics.pad_connected[i] = pads[i].connected;
+        g_t3_diagnostics.pad_held[i] = pads[i].held;
+        g_t3_diagnostics.pad_pressed[i] = pads[i].pressed;
+        g_t3_diagnostics.fighter_x[i] = f->x;
+        g_t3_diagnostics.fighter_z[i] = f->z;
+        g_t3_diagnostics.health[i] = f->health;
+        g_t3_diagnostics.attack[i] = f->attack;
+        g_t3_diagnostics.attack_age[i] = f->attack_age;
+        g_t3_diagnostics.guarding[i] = f->guarding;
+        g_t3_diagnostics.crouching[i] = f->crouching;
+        g_t3_diagnostics.stun[i] = f->stun;
+        g_t3_diagnostics.wins[i] = g_game.wins[i];
+    }
+    g_t3_diagnostics.round = g_game.round;
+    g_t3_diagnostics.round_done = g_game.round_done;
+    g_t3_diagnostics.match_done = g_game.match_done;
+    g_t3_diagnostics.winner = g_game.winner;
+    g_t3_diagnostics.timer = g_game.timer;
+    g_t3_diagnostics.hits = g_game.hits;
+    g_t3_diagnostics.blocks = g_game.blocks;
     g_t3_diagnostics.psx_logic_active = t3_move_probe_active();
     g_t3_diagnostics.psx_move_slot[0] = t3_move_probe_slot(0);
     g_t3_diagnostics.psx_move_slot[1] = t3_move_probe_slot(1);
@@ -243,6 +284,46 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_hurt_head_local_y[1] = t3_move_probe_hurt_head_y(1);
     g_t3_diagnostics.psx_fk_root_xx[0] = t3_move_probe_fk_root_xx(0);
     g_t3_diagnostics.psx_fk_root_xx[1] = t3_move_probe_fk_root_xx(1);
+    g_t3_diagnostics.model_archive_bytes=T3_ARCHIVE_BYTES;
+    g_t3_diagnostics.model_texture_count=T3_TEXTURE_COUNT;
+    g_t3_diagnostics.model_texture_vram_bytes=t3_characters_texture_vram_bytes();
+    g_t3_diagnostics.skin_work_ms=t3_characters_skin_work_ms();
+    g_t3_diagnostics.render_work_ms=g_render_work_ms;
+    g_t3_diagnostics.submitted_frames=g_render_submissions;
+    g_t3_diagnostics.psx_lifecycle_active=t3_move_probe_phased();
+    g_t3_diagnostics.psx_owned_active=t3_move_probe_owned();
+    g_t3_diagnostics.psx_body_active=t3_move_probe_owned();
+    g_t3_diagnostics.psx_contact_active=t3_move_probe_owned();
+    g_t3_diagnostics.psx_combat_active=t3_move_probe_combat();
+    for(unsigned fighter=0;fighter<2u;++fighter) {
+        g_t3_diagnostics.psx_registered_hits[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,16);
+        g_t3_diagnostics.psx_registered_blocks[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,17);
+        g_t3_diagnostics.psx_unsupported_moves[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,18);
+        g_t3_diagnostics.psx_damage_last_tick[fighter]=t3_move_probe_owned_value(fighter,19);
+        g_t3_diagnostics.psx_reaction_slot[fighter]=t3_move_probe_owned_value(fighter,20);
+        g_t3_diagnostics.psx_reaction_transition[fighter]=t3_move_probe_owned_value(fighter,21);
+        g_t3_diagnostics.psx_hit_done[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,22);
+        g_t3_diagnostics.psx_guarded_last_tick[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,23);
+        g_t3_diagnostics.psx_ko_collapse[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,25);
+        g_t3_diagnostics.psx_geometry_status[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,11);
+        g_t3_diagnostics.psx_contact_zone[fighter]=t3_move_probe_owned_value(fighter,12);
+        g_t3_diagnostics.psx_hit_gate[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,13);
+        g_t3_diagnostics.psx_gate_frames[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,15);
+        g_t3_diagnostics.psx_contact_frames[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,14);
+        g_t3_diagnostics.psx_body_contacts[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,7);
+        for(unsigned axis=0;axis<3u;++axis)
+            g_t3_diagnostics.psx_body_push[fighter][axis]=t3_move_probe_owned_value(fighter,axis+8u);
+        g_t3_diagnostics.psx_health_q16[fighter]=t3_move_probe_owned_value(fighter,0);
+        for(unsigned axis=0;axis<3u;++axis) {
+            g_t3_diagnostics.psx_world_root[fighter][axis]=t3_move_probe_owned_value(fighter,axis+1u);
+            g_t3_diagnostics.psx_anchor[fighter][axis]=t3_move_probe_owned_value(fighter,axis+4u);
+        }
+        g_t3_diagnostics.psx_pending_slot[fighter]=t3_move_probe_pending_slot(fighter);
+        g_t3_diagnostics.psx_root_frame[fighter]=t3_move_probe_root_frame(fighter);
+        g_t3_diagnostics.psx_move_age[fighter]=t3_move_probe_move_age(fighter);
+        g_t3_diagnostics.psx_freeze[fighter]=t3_move_probe_freeze(fighter);
+        g_t3_diagnostics.psx_hold_frames[fighter]=t3_move_probe_hold_frames(fighter);
+    }
     g_t3_diagnostics.psx_shadow_contact_status[0] = t3_move_probe_shadow_status(0);
     g_t3_diagnostics.psx_shadow_contact_status[1] = t3_move_probe_shadow_status(1);
     g_t3_diagnostics.psx_shadow_contact_zone[0] = t3_move_probe_shadow_zone(0);
@@ -251,7 +332,8 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count) {
     g_t3_diagnostics.psx_shadow_contact_edges[1] = t3_move_probe_shadow_edges(1);
     g_t3_diagnostics.psx_shadow_overlap_frames[0] = t3_move_probe_shadow_frames(0);
     g_t3_diagnostics.psx_shadow_overlap_frames[1] = t3_move_probe_shadow_frames(1);
-    ++g_t3_diagnostics.frame_serial; /* last write publishes snapshot */
+    ++g_t3_diagnostics.frame_serial;
+    ++g_t3_diagnostics.snapshot_epoch;
 }
 
 int main(void) {
@@ -261,6 +343,7 @@ int main(void) {
     sat_vec3_t up = {0, SAT_FX16_ONE, 0};
     uint32_t prev_frame, accumulated = 0;
     SAT_PANIC_IF_ERROR(sat_init(&video));
+    g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
@@ -269,6 +352,9 @@ int main(void) {
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
     t3_move_probe_reset(g_game.round);
+#if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
+    t3_input_tape_reset();
+#endif
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
     prev_frame = sat_frame_count();
@@ -290,6 +376,9 @@ int main(void) {
         if (pad0.pressed & SAT_PAD_START) {
             t3_match_reset(&g_game);
             t3_move_probe_reset(g_game.round);
+#if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
+            t3_input_tape_reset();
+#endif
             SAT_PANIC_IF_ERROR(t3_characters_reset());
         }
         now = sat_frame_count();
@@ -304,19 +393,30 @@ int main(void) {
             t3_input_t p1 = controller(&pad0, g_game.fighters[0].facing);
             t3_input_t p2 = pad1.connected ?
                 controller(&pad1, g_game.fighters[1].facing) :
-                t3_cpu_input(&g_game, 1);
+                (t3_move_probe_owned() ? (t3_input_t){0} : t3_cpu_input(&g_game, 1));
             if (i > 0u) {
                 p1.pressed = 0; /* a press belongs to only one sim frame */
                 if (pad1.connected) p2.pressed = 0;
             }
-            t3_match_step(&g_game,p1,p2);
+#if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
+            t3_input_tape_step(g_game.total_ticks,&p1,&p2);
+#endif
+            if(t3_move_probe_owned()) {
+                SAT_PANIC_IF_ERROR(t3_move_probe_owned_step(p1,p2,&g_game));
+            } else t3_match_step(&g_game,p1,p2);
             t3_move_probe_tick(&g_game);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
         }
+        const uint32_t render_started_ms=sat_time_ms();
         draw_scene();
         draw_hud();
         if (g_show_profiler) draw_profiler();
-        publish_diagnostics(work_started_ms, ticks);
+        g_render_work_ms=sat_time_ms()-render_started_ms;
+        {
+            const sat_pad_state_t pads[2] = {pad0, pad1};
+            publish_diagnostics(work_started_ms, ticks, pads);
+        }
         SAT_PANIC_IF_ERROR(sat_end_frame());
+        ++g_render_submissions;
     }
 }

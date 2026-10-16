@@ -1,0 +1,727 @@
+# Paul playable milestone: execution evidence
+
+The objective remains the complete [playable milestone](NEXT_PLAYABLE_MILESTONE.md).
+It is **not complete**. `build/paul` remains the provisional animated preview;
+`build/paul-owned` owns original movement/body/contact queries without live damage.
+The newer `build/paul-combat` activates bounded original high/mid/low damage,
+guard, reactions and USA VS KO collapse, with the temporary round policy below.
+Free-running matched PS1 replay, pose details and performance remain open.
+A private, visibly labeled input replay now demonstrates the complete bounded
+encounter and next-round restoration from an actual Mednafen CD boot.
+
+## Live transition blending and spline endpoint correction (2026-10-16)
+
+- `build/paul-blend` integrates the original normal-match DECAY, BRANCH and
+  STANCE blends into the authoritative match transaction: arbitrary-row root
+  and FK/IK sampling, retained displayed local matrices, signed 16-bit deltas,
+  original counters/weights, truncated root-Y adjustment and orthonormalized
+  slots 1–17. World placement still uses the root stream; FK/IK correctly keeps
+  the pose stream's root channels when those streams differ. Global replay
+  playback/hold is outside this bounded live path.
+- The reciprocal-sqrt coefficient window is extracted from the fingerprinted
+  USA EXE with mapped-address and static-reference checks. Its 768 bytes include
+  preceding data addressed by wrapped-negative squared vector lengths. No
+  generated coefficients or retail fixtures enter public tests or Git.
+  Native normalization/scaled-matrix arithmetic agrees with pinned research in
+  10,008 synthetic cases, including saturation and signed overflow; the same
+  comparison passes with private coefficients and ASan/UBSan.
+- Continuous replay exposed a separate motion-decoder error: the final spline
+  segment's coefficient sum was narrowed to 16 bits. At the endpoint its value
+  can be 0x10000, so narrowing erased the last authored increment (walk's first
+  displayed rootY was -986 instead of -1034). The sum now stays 32 bits; a public
+  synthetic endpoint regression reproduces the failure without game data.
+- The same one-seed, 2,396-tick PS1 comparison now matches **all checked blend
+  scalar fields, previous local matrices and delta matrices for both actors**,
+  along with all previously matched move/clock/queue and hit/HP fields. This
+  also validates sampling endpoints across repeated transitions. No expected
+  snapshot reseeds the running state. Ground matching improves from 107 to 135
+  consecutive ticks; the first remaining position discrepancy is one unit at
+  tick 136/source 663. Head rotation still differs at tick 1, and P1 still uses
+  reference costume 75 while the native configuration shares 71. Those world
+  geometry differences and the clear/scripted input boundary remain open;
+  **overall replay is still failed**, not relabeled as a blend-only success.
+- The interactive image is 949,156 initialized bytes; both WRAM link bounds and
+  the 16 KiB Master stack reserve pass. The new blend routines use size
+  optimization only within that component. Font storage and match config use
+  Low WRAM, with complete initialization before first read. High WRAM BSS ends
+  at 0x060FBFF8 (only 8 bytes beyond the reserved 16 KiB stack); Low WRAM ends at
+  0x002A49DC. Compiler stack-usage reports 7,084 bytes for match-step, 704 for blend
+  preparation and 764 for its sampling callback, excluding deeper callees.
+  This is a tight residency fit, not proof of a measured maximum stack depth.
+- All 36 CTest checks and 80 Python tests pass, including three blend checks and
+  the spline regression. All 18 interactive Ymir combat/round cases pass with
+  this exact ELF: guard/hit, KO, full-HP next round, 2–0 match end and Start reset.
+  The procedural baseline also passes its 23 emulator input scenarios after
+  the shared HUD storage change.
+  Neutral profiling observes no decode/command/face overflow or draw timeout:
+  126 ms work, 73 ms scene/HUD, 12 ms skin, 781/2048 commands, 280 logic ticks per 600
+  emulator frames and 7.0 work loops/s. **30 Hz rendering/60 Hz logic remains unmet.**
+- The same interactive CUE boots in Mednafen and records 1,426 video frames/
+  23.835 seconds with clean exit. Inspected second 22 shows two recognizable
+  animated Paul actors, health bars and readable controls. This recording is
+  neutral CD-boot validation; it does not replace the earlier full encounter
+  evidence or claim a new-blend CD encounter with attacks/KO.
+- Private evidence: `paul-blend-replay/frame-replay-audit.json`,
+  `paul-blend-tables/manifest.json`, `paul-blend-full-suite/suite.json`,
+  `paul-blend-baseline-input/suite.json`,
+  `paul-blend-profile/observation.json` and `paul-blend-mednafen/` under
+  `assets/imported/`. Previous checkpoint evidence is retained separately.
+
+## Continuous PS1 replay and joint-order correction (2026-10-16)
+
+- A new read-only original capture retains one full neutral FightFrame entry
+  seed and 2,690 consecutive exit snapshots. The paused final RAM independently
+  agrees with the phase observer. The native evaluator copies state **once**;
+  subsequent snapshots compare results only. It advances the same owned match
+  core used by Saturn with each observed InputSource result. Missing frame
+  snapshots, wrong seed/entry data and broken native tick continuity fail closed.
+- This exposed a real integration bug: KMD mesh order was being passed to
+  collision routines that index the original joint slots. For example KMD part
+  2 is slot 11 (hips), while part 17 is slot 2 (head). Component audits seeded
+  with original joint arrays could not reveal this caller-side mistake.
+- `t3_psx_parts_to_slots` now remaps composed poses before body/hurt/attack
+  queries. The renderer maps back through the model's slot table when copying
+  skin matrices, preserving mesh ownership and coordinates. The optional old
+  preview/shadow observer also converts explicitly at that boundary. Missing
+  or duplicate mappings fail atomically; in-place permutation is tested with
+  ASan/UBSan. The original contact table's zone zero is a foot, despite the
+  legacy diagnostics field name `psx_hurt_head_local_y`.
+- With the correction, all checked movement/clock/queued-branch fields and hit
+  fields (including HP, guard/clean flags and per-opponent hitDone) match for
+  **2,396 continuously advanced ticks**, covering high/mid/low moves, standing
+  and crouching guard reactions, and eight actual HP changes. The earlier
+  incorrect ordering diverged in HP at tick 157. This is stronger than the
+  earlier independently seeded transactions, but **overall replay still fails**.
+- The replay stops explicitly before original InputSource's unrepresented
+  clear/scripted direction at source frame 2704. The remaining 294 captured
+  frames are not silently skipped or labeled as verified. Ground fields match
+  only the initial 107 ticks: root Y differs at tick 108 when the fighter starts
+  walking, and later roots/angles/separation also diverge. Original transition
+  blending remains unimplemented.
+- Head rotation differs at tick 1 because procedural head tracking is missing.
+  There is also a one-unit initial P1 leg-origin discrepancy. Its data cause is
+  identified: the original reference loads KMD record 75 for P1 (left hip Z 99)
+  and record 71 for P2 (Z 100); our current rendering configuration shares record
+  71 for both. All 243 non-pointer KMD row fields per actor agree with their
+  respective loaded original headers. Model/costume correspondence must be
+  aligned before treating that coordinate as a solver arithmetic error.
+- All 18 interactive combat/round cases pass with the corrected order, including
+  next-round restoration, a 2–0 match end and Start reset. The round-case control
+  generator now follows the observed side instead of an old fixed direction
+  sequence. Its full pad prefix is rerun from reset at every observation; HP,
+  collapse, score and reset assertions remain strict. A new
+  pad-only controlled encounter also passes two guards and a mid hit followed
+  by lows through KO: 12 hits, two blocks and P1's point at tick 1340. Its private
+  replay matches all 67 observed fields and the input trace at the same tick.
+- The corrected demonstration CUE boots in Mednafen 1.32.1 and was recorded for
+  6,274 frames / 104.87 seconds, exiting cleanly. Inspected frame 80 shows P2 HP
+  zero, collapse and P1's point; frame 90 shows round 2 with both HP restored and
+  score 1–0. ELF/app hashes match its validated Ymir replay. It is visibly labeled
+  RECORDED INPUT DEMO. Earlier recordings remain historical checkpoints, not
+  validation of the corrected collision integration.
+- All 33 CTest checks and 79 Python checks pass. Owned and preview/shadow SH-2
+  syntax checks also pass. The interactive image is 945,412 initialized bytes,
+  with 67,944 High WRAM BSS bytes and 671,632 Low WRAM bytes; native/CD checks and
+  the 16 KiB stack reserve still pass. No command/face overflow, decode error or
+  draw timeout is observed in the bounded cases. The profile measures 126 ms
+  work / 73 ms scene-HUD / 12 ms skin, 292 logic ticks in 600 emulator frames
+  and 7.5 work loops/s. **The performance gate remains unmet.**
+- Evidence: `ps1-paul-frame-replay/frame-replay-audit.json`, its before/after
+  summaries and `model-identity-audit.json`; `paul-slot-feedback-full-suite/`,
+  `paul-slot-encounter/`, `paul-slot-replay-aligned/`, `paul-slot-profile/` and
+  `paul-slot-mednafen/encounter.mp4`. Seeds, source RAM, assets and movies stay
+  private. The optional native evaluator is configured only through explicit
+  `T3_PRIVATE_REPLAY_ASSET_DIR`; public CI does not compile retail fixtures.
+
+Next align the reference model data, implement and audit transition/root blending
+and head tracking, represent original clear/scripted input modes, then repeat the
+continuous host/Saturn/PS1 comparison. Preserve the verified bounded CD encounter
+while addressing the separate 30 Hz render / 60 Hz logic shortfall.
+
+## Tick-indexed encounter and measured optimization checkpoint (2026-10-16)
+
+- The fixed-point pose helpers now use arithmetic right shift on compilers that
+  define signed shift that way, with a portable division fallback. This removes
+  redundant signed-floor corrections while preserving the audited PS1 rounding.
+- Owned rendering applies its exact diagonal scale-six/arena-center transform
+  directly to the freshly skinned vertices. It bypasses the generic 4x4 transform
+  per vertex without changing skinning order or rounding. A 1,001-vertex test
+  compares the former Q16 result, including negative components and atomic
+  rejection of unsafe buffers; it passes ASan/UBSan.
+- The final interactive profile measures 123 ms work, 72 ms scene/HUD and 11 ms
+  skin, versus the previous 128/76/12 ms. It still advances 292 ticks in 600
+  emulator frames at 7.5 work loops/s: **the performance gate still fails**.
+  Current initialized image is 945,012 bytes, High WRAM BSS 67,944 bytes and Low
+  WRAM 671,632 bytes. No rejected face, command overflow or draw timeout occurs.
+- An `-Os` experiment reduced image size but worsened the observed rate to
+  5.5 work loops/s and 178 ms work. It was rejected. A generic small-face culling
+  experiment also failed to improve measured work and was reverted; the sibling
+  library retains only the earlier HUD fix. No new library optimization is claimed.
+- All 18 final interactive combat/round cases pass. The KO case now locates the
+  score checkpoint when a cadence change makes the fixed emulator-frame sample
+  occur after the next round; this remains a pad-only run from reset, without
+  guest-state writes. All 33 CTest checks and 79 Python checks pass.
+- New opt-in input recording/replay captures the exact relative input pairs at
+  the controller-to-simulation boundary, indexed by logic tick. Only explicitly
+  configured private builds include it. The 512-record Low WRAM buffer reports
+  overflow; the generator rejects malformed/unordered input fixtures. Replay
+  changes inputs only and is visibly labeled RECORDED INPUT DEMO.
+- A controlled encounter records standing high guard, crouching low guard, a mid
+  hit and lows through KO. Both guards preserve native HP. At tick 1812 there are
+  12 hits, two blocks, P2 HP zero and one point for P1. The 95-event replay reaches
+  that same tick from reset with all 67 checked game/pose fields and its input
+  stream matching exactly. This is **free-running Saturn-to-Saturn** evidence at
+  an aligned checkpoint, not an audit of every intermediate tick or PS1 parity.
+- Input collection, replay configuration and actual-CD recording commands are
+  documented in [SATURN_INPUT_REPLAY.md](SATURN_INPUT_REPLAY.md). Private evidence
+  includes `paul-encounter-inputs/`, `paul-encounter-replay-aligned/`,
+  `paul-perf-final-combat-suite/`, `paul-perf-current-profile/` and the shorter preliminary
+  `paul-demo-mednafen/` recording. The preliminary 78-second recording stops before
+  KO and cannot satisfy the complete CD encounter gate.
+
+- The final labeled demonstration CUE was recorded in Mednafen 1.32.1 for
+  7,471 frames / 124.878 seconds, with clean exit. Its ELF/app hashes match the
+  validated Ymir replay exactly. Inspected frames show P2 HP zero, P1's round
+  point and collapse at 105 seconds; at 115 seconds round 2 has full HP and
+  score 1–0. The recording includes the preceding movement, high/low guards,
+  mid hit and subsequent lows. This closes the actual-CD **bounded encounter**
+  demonstration, using recorded inputs rather than live manual input. It does
+  not claim original PS1 round-flow or replay parity, or hardware performance.
+- The complete CD evidence is `paul-encounter-mednafen/`: command/build hashes,
+  MOV, ffprobe metadata, inspected PNG checkpoints and a compressed MP4. The
+  normal interactive build has input recording/replay disabled. Further work
+  must preserve that separation and rerun the appropriate final-build checks.
+
+## Live combat and bounded round checkpoint (2026-10-16)
+
+- `psx_hit_transaction.c` applies the original pair of hit transactions before
+  committing either actor. It uses sparse original reaction rows, native HP,
+  original classification/guard and per-move hitDone continuity. Only attack
+  slots 295 (high), 357 (mid) and 355 (low) are enabled. Unsupported attacking
+  branches increment diagnostics and are rejected without prototype damage.
+- Queued reactions own the same VM used by movement and rendering. USA VS
+  FighterCollapse starts slot 3430 immediately in the lethal tick. The regional
+  collapse flag is independently observed in the USA game's RAM. Air reactions,
+  reversals, throw pairing and the alternate regional KO path remain unsupported.
+- A new original capture contains 22 HitApply RAM pairs, including the lethal
+  mid at source frame 5007/call 27312. The actual owned transaction matches all
+  22 through MoveStepAll: HP, damage/guard/counter flags, current or pending slot,
+  pose/root/move clocks, entry, branch kind and transition. An older capture's
+  eight pairs also match with its missing trace fields explicitly reported.
+  These are independently seeded transactions, **not full input replay parity**.
+- The arithmetic-only audit reports 22 matching cases and explicitly excludes
+  the queued normal reaction at KO: MoveStepAll replaces it with immediate
+  collapse. The owned transaction audit covers that immediate collapse directly.
+- Private reactions are three indexed original records (132 bytes), rather than
+  embedding the full 26,586-byte table. The extractor fingerprints the full
+  original table; the asset builder validates and selects the exact used rows.
+- A MoveVM stream-identity bug was corrected: the bank pointer alone cannot
+  identify an animation. Comparing its validated stream key offset distinguishes
+  different streams while retaining move age for a shared stream.
+- Diagnostics v19 exposes registered hits/blocks, unsupported moves, damage,
+  reaction selection, hitDone and persistent KO-collapse state. Saved decoder
+  versions 12–18 remain supported. Query contact counts remain separate.
+- Fifteen real Ymir combat cases pass: high/mid/low hits, standing/crouching
+  guards, a visible reaction, miss, held/repressed input, independent P2 damage,
+  simultaneous contact, unsupported command reporting, reset and pad-only KO.
+  The KO replay registers 12 hits and reaches native HP zero/slot 3430 without
+  guest-memory mutation or runtime/decode/draw error. The selected original
+  moves have zero hit-freeze bytes; no visible hitstop is claimed for them.
+- `psx_round.c` now connects KO/time-out to a HUD result, score and fighter reset.
+  **Temporary slice policy:** start directly in FIGHT with 3,600 ticks; first to
+  two wins; draws award neither side and have no maximum-round cap; hold a KO
+  result 240 logic ticks or a time-out 90, then restore both fighters for the next
+  round. Match end stays latched until Start. Result input and new damage are
+  disabled while authored collapse/recovery continues. Intro, replay, win poses
+  and original draw/tie-break handling are omitted. Result health normalization
+  and KO/perfect/great flags follow the pinned reference; this is not original
+  round-flow parity.
+- The extended 18-case Ymir suite now passes the complete bounded round sequence:
+  KO gives P1 one point; at 4,000 emulator frames round 2 has both HP restored,
+  original spawn anchors, no retained hits/KO and score 1–0. At 7,460 frames a
+  second pad-only KO produces match end with score 2–0. Start resets round,
+  score and native HP. No rejected face, command overflow, runtime/decode error
+  or draw timeout occurs. The final
+  screenshot visibly shows PLAYER 1 WINS, round 2 and the 2–0 score.
+- All 33 CTest checks pass, including result classification, a single score award,
+  result hold, match-end latch, time-out/draw, and owned fighter-state restoration.
+  All 77 Python checks also pass. The final procedural 23 and owned movement 12
+  regressions pass; the preceding checkpoint also passed nine owned pose cases.
+  Owned match/restart and hit-transaction tests pass with ASan/UBSan, and the
+  SH-2 frontend passes strict warning/syntax checks.
+- The presentation-only `g_game` buffer moved to Low WRAM and is fully initialized
+  by `t3_match_reset`; this preserves the 16 KiB High WRAM stack reserve after
+  round integration. Initialized bytes are never placed in NOLOAD Low WRAM.
+  The current private image is 947,292 bytes, with 67,944 High WRAM BSS bytes
+  and 671,632 Low WRAM bytes, and passes native/CD image checks.
+- The final round build profile still measures 7.5 work loops/s,
+  292 logic ticks in 600 emulator frames, 128 ms work / 76 ms scene-HUD / 12 ms
+  skin, 767 commands and 678 faces, with no draw timeout/runtime error. The
+  performance gate remains unmet.
+- The matching CUE boots in Mednafen 1.32.1 with both textured actors and clear
+  HUD/controls. Its neutral recording contains 1,188 frames / 19.8569 seconds
+  and exits cleanly. ELF/app/disc hashes match the Ymir build. This is actual
+  CD boot evidence, **not** the required complete encounter recording.
+- Private evidence includes `ps1-paul-ko-hit-phases/owned-hit-audit.json`,
+  `ps1-paul-hit-phases/owned-hit-audit.json`, `paul-combat-v19-suite/`,
+  `paul-combat-v19-profile/`, `paul-combat-feedback-ko/`, `paul-round-suite/`,
+  `paul-round-complete-suite/`, `paul-round-profile/` and `paul-round-mednafen/`.
+  Earlier neutral CD boot recordings do not demonstrate the complete encounter.
+
+Next close matched free-running PS1 replay and pose differences, and improve
+logic/render cadence. The newer checkpoint above records the bounded CD encounter.
+
+## Earlier exact attack/contact integration checkpoint (2026-10-16)
+
+- `psx_exact_contact.c` ports the original baked attack placement and
+  SegmentHitsCylinder arithmetic. It preserves wrapped perpendicular-foot
+  products, slab clipping and truncation towards zero. The legacy generic
+  Q16 collision helper remains for its existing callers; original match
+  queries now use the exact routine. A synthetic long segment explicitly
+  demonstrates a PS1 overflow decision differing from ideal geometry.
+- Baked placement uses current signed heading/facing for both current and
+  previous anchors, compensates heading-minus-facing around the current root,
+  and copies previous WORLD endpoints verbatim on later swept frames. It
+  does not require pose time to advance, so a frozen pose can retain a sweep.
+- A new original capture contains 1,943 FightFrame calls, 3,886 shape updates
+  and 3,886 HitTest calls. All 7,772 independently seeded native cases match,
+  including both segment endpoints, 14 hurt-zone centers/radii, slot flags,
+  accepted zone, contact point/direction, cooldown, freeze input and whiff.
+  Eight contacts were accepted by the original. The final checkpoint agrees
+  with independently decoded paused RAM. These counts do not establish our
+  free-running animation/HP parity.
+- The owned match now builds attack segments after arena correction and before
+  body separation, uses its existing world joints directly for hurt geometry,
+  and queries the original HitTest eligibility rules. There is no second
+  transform of world-space joints. No external root injection is needed.
+  The old local-pose/injected-root shadow path is excluded from owned mode.
+- Diagnostics v17/v18 expose geometry status, zone, gate status and accumulated
+  contact/eligible-frame counts. These count queries, not registered hits:
+  hit-slot reservation and per-move hitDone state are not active yet. Decoder
+  support for saved versions 12–17 remains intact in v18.
+- Six real Ymir contact cases pass: far high misses after retreat; near high,
+  mid and low contact; a crouched opponent avoids the high but is reached by
+  the low. Twelve owned movement and nine owned pose cases still pass, plus
+  all 23 procedural cases. Native HP remains 140 Q16 for both actors in these
+  query scenarios, as required until the full transaction is activated.
+- All 31 CTest checks and 76 Python checks pass. New C/Python differential
+  coverage compares 10,001 synthetic cylinders/segments with pinned original
+  arithmetic, including cases differing from its optional non-wrapping fix.
+  Placement/atomic-failure tests also pass ASan/UBSan.
+- Initialization-only texture metadata and the debugger's fully rewritten pose
+  trace buffer now reside in Low WRAM, resolving a linker stack-reserve failure
+  when the new geometry became reachable. No LibSaturn source change was needed.
+  Current image: 939,588 initialized bytes, 68,360 High WRAM BSS bytes and
+  671,004 Low WRAM bytes; both link budgets and native image checks pass.
+- At 600 emulator frames, the integrated query build advances 292 logic ticks
+  and publishes 73 work loops. Sampled work is 126 ms, scene/HUD 75 ms, skin
+  12 ms and loop rate 7.5 Hz. There are 761/2,048 commands, 678 flushed faces,
+  no draw timeout or runtime error. The performance gate remains unmet.
+- The matching v18 CUE boots in Mednafen with both textured actors and the
+  revised original-mode control legend visible. The recording has 1,188 frames
+  / 19.8569 seconds and a clean SIGINT exit. ELF/app/disc hashes are retained;
+  this is neutral CD boot evidence, not a completed fight.
+- Evidence stays private under `ps1-paul-contact-phases/`,
+  `paul-contact-v18-suite/`, `paul-contact-v18-inputs/`,
+  `paul-contact-v18-poses/`, `paul-contact-v18-profile/`,
+  `paul-contact-baseline-regression/` and `paul-contact-v18-mednafen/`.
+
+Next activate the complete hit transaction: original hit-slot/per-move
+continuity, damage/guard classification, event effects, hit freeze and queued
+reaction selection/starts. Keep head tracking/blending, original free-running
+replay, KO/round completion and 60 Hz logic/performance gates open. Contact
+queries must not be presented as completed playable combat.
+
+## Earlier grounded body/arena integration checkpoint (2026-10-16)
+
+- `psx_body.c` ports normal-mode ArenaBounds, BodyOverlapSolve, BodySeparate
+  and BodySphereProfile with explicit integer wrapping, original table sqrt,
+  raw trig, movement-weighted overlap, charging and push/contact flags.
+  Ball, Force and throw-linked behavior are outside this grounded path.
+- A new read-only PCSX-Redux capture observes 1,943 FightFrame calls and
+  5,829 component calls: 1,943 separation and 3,886 arena-bounds calls.
+  All match the native C adapter, including all eight body spheres' centers
+  and radii from original joint observations. There are 776 calls with actual
+  root corrections. The final instruction-boundary checkpoint independently
+  matches paused RAM. This proves seeded component behavior, not free-running
+  original match parity or the correctness of our animated joint inputs.
+- The owning portable match now evaluates authored pose/FK/IK/world parts.
+  Saturn rendering reuses that result instead of independently evaluating it.
+  After root placement/composition, normal arena correction and body separation
+  execute before input queuing. Shapes/joints retain their pre-separation
+  coordinates for the source frame, matching the reference's ordering.
+- The private extractor emits `psx_body.bin`: 384 bytes of original SquareRoot0
+  mantissas, 32 bytes of body-joint indices and 16 bytes of Paul radii. These
+  are embedded only through the explicit `T3_LOCAL_PSX_BODY_TABLES` input.
+  Provenance records their hash and the radii pointer from the verified EXE.
+- Diagnostics v16 adds body activation, accumulated contact ticks and last
+  per-actor push vectors. The decoder retains saved v12–15 compatibility.
+  Twelve owned movement cases pass, including three sustained approach
+  checkpoints: contacts accumulate, the opponent is pushed and actors do not
+  cross. Nine owned authored-pose cases and 23 procedural cases also pass.
+- All 29 CTest checks and 73 Python checks pass. New synthetic regressions
+  cover normal overlap, charge minimum, invulnerability, atomic table failure,
+  arena correction clamping and body-radius profiles. CI's owned-mode compile
+  fixture now supplies synthetic body tables too.
+- The integrated image has 930,700 initialized bytes, 81,064 High WRAM BSS
+  bytes and 658,100 Low WRAM bytes. The first link rejected insufficient
+  Master stack reserve; moving the uninitialized owned match/world-pose buffers
+  to Low WRAM resolved it without changing that reserve or requiring a RAM cart.
+  Compiler-reported stack for the match-step function itself is 5,272 bytes;
+  this excludes nested callees and is not a measured maximum stack depth.
+- The 600-frame profile advances 292 logic ticks and publishes 73 work loops;
+  sampled work is 125 ms, scene/HUD 75 ms, skin 12 ms, loop rate 7.5 Hz.
+  There are 770/2,048 commands, 678 flushed faces, zero rejected faces, no
+  draw timeout or runtime error. The fixed-60-Hz/performance gate still fails.
+- The v16 build also boots from its actual CUE in Mednafen: 1,188 recorded
+  frames / 19.8569 seconds, textured actors and HUD visible, clean SIGINT exit.
+  Its ELF/app/disc hashes match the corresponding Ymir profile and suites.
+  This remains a neutral boot recording, not a fight through round completion.
+- Private evidence: `ps1-paul-body-phases/`, `paul-body-v16-inputs/`,
+  `paul-body-v16-poses/`, `paul-body-v16-profile/`,
+  `paul-body-baseline-regression/` and `paul-body-v16-mednafen/`.
+
+The full objective remains open. Head tracking, transition/root-Y blending and
+free-running placement/contact comparisons remain unverified. Next integrate
+and verify attack geometry/gates, damage and queued reactions against original
+instruction observations, then KO/round flow and sustained timing.
+
+## Earlier owned movement integration checkpoint (2026-10-16)
+
+- `T3_ENABLE_PSX_OWNED_MATCH=ON` now routes the frontend through
+  `t3_psx_match_step`, without advancing `t3_match_step`. The HUD/camera receive
+  a presentation snapshot; the renderer consumes the owning state's world pose
+  and root with one shared centering transform. Disconnected P2 stays neutral.
+- Original grounded start effects match 145 instruction-boundary RAM pairs;
+  ground physics matches all 3,886 observed calls in the same capture. The
+  1,943-call capture's final FightFrame return independently matches paused
+  RAM. These remain independently seeded component audits, not match replay.
+  The paused emulator sessions were collected and terminated after validation.
+- Diagnostics v15 adds mode activation, Q16 HP and both original root/anchor
+  coordinates; saved versions 12–14 remain readable. Idle animation can displace
+  a root relative to its stable anchor, so movement tests distinguish them.
+- Nine owned movement scenarios pass in Ymir: neutral/repeat, approach, retreat,
+  P2 control, disconnected P2, held punch versus release/repress and reset.
+  Nine authored-pose scenarios also pass with both lifecycle and ownership
+  required. All 23 procedural scenarios pass separately after rebuilding.
+- A caller-owned motion-stream cache avoids repeatedly parsing/validating the
+  immutable active/root stream. The same 360-emulator-frame profile improves
+  from 152 to 172 simulation ticks and 38 to 43 published work loops. Sampled
+  work falls from 134 to 124 ms; loop rate rises from 6.7 to 7.5 Hz. Skin work
+  remains 11 ms and scene/HUD work 76 ms. This still drops simulation time and
+  fails the 30 Hz render / 60 Hz logic target. PC samples additionally identify
+  projection, mesh transformation, skinning, face submission and branch work;
+  one PC sample per emulator frame is coarse evidence, not cycle attribution.
+- The cached build contains 923,096 initialized image bytes, 85,240 High WRAM
+  BSS bytes and 652,372 Low WRAM bytes. It links and passes the native CD image
+  checks without a RAM cartridge. Texture residency remains 92,672 bytes for
+  both actors. At the profile checkpoint there are 784/2,048 commands, no
+  rejected faces, no draw timeout and no runtime/animation decode error.
+- Host CTest passes 28/28 and Python passes 72 tests with native runners
+  initialized. The cache regression covers local/shared selection, cache hits,
+  failed opens and explicit invalidation. CI now compile-checks owned mode
+  using synthetic ground tables; no retail bytes are required for that check.
+- The matching cached build boots from its CUE in Mednafen with `softfb`:
+  1,190 recorded frames over 19.8903 seconds, both textured actors and HUD
+  visible. The run exits cleanly after SIGINT; build hashes and video metadata
+  are retained beside the recording. This is neutral CD boot evidence, not a
+  supported encounter through round completion.
+- Private evidence: `paul-owned-neutral/` (before cache), `paul-owned-cached/`
+  (after), `paul-owned-cached-inputs/`, `paul-owned-cached-poses/`,
+  `paul-owned-baseline-regression/`, `ps1-paul-ground-starts/` and
+  `paul-owned-cached-mednafen/`, all under ignored `assets/imported/`.
+
+Next: body separation/arena constraints, required blending, contact against
+owned world poses, live HitApply/reaction integration, KO/round reset and a
+free-running original replay. The presentation timer currently counts down
+without enforcing a round result. Input-buffer mutation and unsupported
+transition/branch semantics still require audit. Movement integration does not
+prove collision, damage, KO, original round policy or final performance.
+The [continuation plan](CONTINUATION_PLAN.md) retains those gates.
+
+## Earlier phased-preview checkpoint
+
+- The MoveVM now owns independent signed 16-bit pose, root and move clocks,
+  with the original no-pending-move advance path for freeze, held poses,
+  reverse playback and ballistic holds. Rendering/events/diagnostics read the
+  owning VM's pose clock. The private build now enables
+  `T3_ENABLE_PSX_MOVE_LIFECYCLE`: one-based counters, a separate pending move,
+  begin-of-step starts/advancement and end-of-step input decisions. Pose stream
+  sampling explicitly subtracts one. The legacy immediate-branch API remains
+  available for comparison, but rejects accidental use on a phased VM.
+- The phased VM keeps root and pose move ownership separate for held
+  transitions 4/5, and rebinds the root stream when the hold releases. It
+  implements delayed forward/reverse entry tests, clock effects of the bounded
+  ground starts, continuation and input look-ahead. No original health or
+  physics is inferred from the provisional match.
+- The newer original 547..2300 capture contains 1,943 FightFrame calls.
+  All 145 queued ground starts match native clock/readiness results. All 3,760
+  audited input decisions match target slot, transition, branch kind, entry
+  frame and branch window. Each decision is independently seeded with observed
+  original move/clock/history state; this is not a free-running match replay.
+  The audit excludes 118 history warmup observations and eight non-input hit
+  reactions. It exposed two corrected bugs: END continuations retain window
+  -1, and recovery can look ahead into the next stance's input branches.
+- 3,498 original no-pending-move observations match the native clock exactly
+  at MoveStartAll entry/return. All observed cases are normal forward play;
+  138 pending starts are explicitly excluded. The final capture checkpoint
+  matches independent paused RAM. An additional 10,000 synthetic states match
+  the pinned original research across freeze/hold/reverse/ballistic and signed
+  wrapping cases. This exposed and corrected the held-pose release rule:
+  root time resynchronizes to pose time instead of advancing its old counter.
+- Post-hit MoveVM projection now uses the same animation-length normalization
+  as the running VM. Previously a real raw row's length zero disagreed with
+  the loaded authored length, so original-data projections were rejected even
+  when the target move existed. A synthetic stream exercises real loading,
+  projection and rejection of an out-of-range target frame.
+- `src/game/move_clock.c` and `src/game/move_lifecycle.c` are attributed C adaptations of the
+  pinned research under PolyForm Noncommercial 1.0.0. Its required notice,
+  license URL and changes are recorded in the file and `NOTICE.md`; it is not
+  silently covered by the repository's MIT license.
+- After the phased integration, nine original-pose and 23 procedural input
+  Ymir scenarios still pass. The matching current CD records 1,135 Mednafen
+  frames (18.971 seconds), showing both textured actors and the HUD. Current
+  evidence lives in `saturn-phased-pose-suite/`, `saturn-phased-baseline-suite/`,
+  `paul-phased-profile/` and `paul-phased-mednafen/` under ignored imported assets.
+  The extra authored cases cover df+LP mid (357), d+LK low (355) and its
+  observed continuation into 3564. At 600 emulator frames the latest profile
+  reports 292 logic ticks, 668 flushed faces, 760/2,048 commands and no draw
+  timeout/error. Work-loop rate remains 7.5 Hz with 127 ms total and 75 ms scene/HUD work: no performance
+  improvement is claimed for the correctness change.
+- Diagnostics version 14 exposes lifecycle activation, pending slots and each
+  fighter's independent root/move/freeze/hold counters. The big-endian decoder
+  retains support for saved version-12/13 records.
+- Original Paul textures now render on both models in Ymir and through real
+  Mednafen CD boot. The private converter uploads 31 TIM records from ARC 73
+  into a virtual PS1 VRAM, resolves KMD materials/CLUTs and UVs, bakes 8x8
+  patches, and quantizes a shared 256-color palette through LibSaturn's host
+  tools. There are 724 unique patches, 46,336 bytes per actor and an 81,885-byte
+  SKA1 archive. Both actors currently share the same original costume.
+- The model's original two-sided flags are preserved. PS1 quad strip ordering
+  is converted to VDP1 perimeter ordering; enabling backface culling without
+  that conversion exposed holes. The corrected textured scene uses about 780
+  commands instead of the earlier unculled 1,698 in the measured idle pose.
+- Textures use the existing public `sat_model_upload_textures` API with static
+  application lifetime. The individually managed texture registry has only 64
+  slots, so the original managed-character uploader cannot hold 724 patches.
+  Two independent native uploads and CRAM banks fit without changing that
+  registry's capacity. Textured actor storage uses existing Low WRAM.
+- Diagnostics version 13 additionally measures model upload bytes, skinning
+  time, rendering time and successful frame submissions. The decoder still
+  accepts saved version-12 records. At 600 Ymir frames, the textured build
+  reports 92,672 uploaded model texture bytes, 12 ms pose/skin preparation,
+  83 ms scene/HUD work (including that preparation), and 131 ms total work for
+  the sampled loop. Millisecond timers are quantized; these are emulator
+  measurements and submission counts, not hardware/presented FPS.
+- EXE common branches are extracted through the fingerprinted layout and
+  attached to both DIVMOT banks. The bounded walker implements `0xC00C` CALL
+  and `0xC00D` RETURN rather than treating RETURN as input. Synthetic tests
+  cover call matching, return/continuation, missing tables and invalid nesting.
+- `scripts/saturn_original_pose_suite.py` passes six actual-emulator cases:
+  idle, LP/RP/LK/RK and independent LP/RK on both actors. These confirm full
+  authored pose application and observed move slots 295/296/300/301 for the
+  basic limb buttons; they do not validate live original HP or reactions.
+- Pad-only PCSX-Redux automation now reaches an original USA Paul mirror
+  encounter in VS mode. The recorder uses running `curSlot +0xA0` and rejects
+  unfinished zero-state fighters; using pending `moveSlot +0x1A0` previously
+  discarded real gameplay. Listeners are retained explicitly across Lua GC.
+- `assets/imported/ps1-paul-levels/` contains 4,000 consecutive paired source
+  frames 397..4396, original pad observations, a screenshot and 20 observed HP
+  changes (including a round reset). It includes high/mid/low moves and two
+  guarded-hit edges. LP is slot 295 (high); the selected mid is slot 357 and
+  low is slot 355, with other crouch/transition slots retained as observed.
+  No KO was observed in that bounded clip. A subsequent longer run reproduced
+  its first 4,000 records exactly before continuing towards a KO.
+- `scripts/collect_psx_session.py` validates mounted disc identity and the
+  fingerprinted executable, requires paused execution, independently decodes
+  RAM, and requires exact agreement with both the final Lua observation and
+  the trace's last paired frame. Artifacts, hashes, inputs and logs remain
+  private. This gate passed on both captured 4,000-frame clips.
+- A paused original P2 idle pose (slot 3, pose frame 37, blend mode 0) agrees
+  with the C solver in 17 of 18 local matrices when sampled at `poseFrame-1`.
+  All nine remaining differences are in slot 2, modified by the original
+  procedural HeadLookAt. The saved source audit reports full parity as false;
+  head tracking and blending are still required.
+- The KMD loader's Z inversion is now checked against paused original RAM.
+  After loading file offsets as `(x,y,-z)`, the C-computed root and all 18
+  world joint origins match the sampled original idle pose exactly. Only the
+  head rotation still differs. Saturn rest translations use `(x,-y,+z)`;
+  vertex anchors use `(x,-y,-z)`. A nonzero-Z synthetic fixture protects this
+  distinction.
+- `ps1-paul-round-end/` retains 4,732 original paired Vsync observations,
+  source counters 397..5128, ending after HP depletion and an observation
+  window. The paused final RAM agrees exactly with Lua, including original
+  round wins/result (`round_won=1/-1`). Its sampled `ko` byte stays zero;
+  HP depletion/result are proven, instruction-level KO flag timing is not.
+- Instruction-phase capture now uses read-only entry/return Exec hooks for
+  FightFrame, MoveStartAll, HitTest, HitApply, InputSource and MoveStepAll.
+  The 650..2300 source-counter window contains 1,818 FightFrame calls and
+  167 repeated guest counters. Vsync occurs inside multiple functions, so the
+  earlier Vsync clips cannot be treated as completed combat ticks. The final
+  FightFrame-return checkpoint independently matches paused RAM.
+- Eight actual pre/post HitApply RAM pairs pass the native portable C core:
+  high/mid/low damage, resulting Q16 HP, all used slot flags and next reaction
+  slots agree with the original. Hits cause 6/9/12 HP damage for these contact
+  zones; standing/crouching guards cause zero. Reaction slots are
+  2250/2328/2352 for those hits and 2693/2725/2739 for the guards. This is
+  observed-contact arithmetic/selection parity, not live Saturn fight parity.
+- Immutable mesh/material bindings are validated once using the existing
+  public LibSaturn API. The measured scene/HUD cost falls from 83 to 76 ms,
+  sampled loop work from 131 to 124 ms, and work-loop rate from 7.3 to 7.5 Hz.
+  The current textured CD boots in Mednafen and records 1,135 frames / 18.971 s;
+  both original actors and the HUD are visible after the offset correction.
+
+## Executed and verified
+
+- `scripts/saturn_probe.py` invokes sibling LibSaturn's external Ymir probe,
+  resolves `_g_t3_diagnostics` and its size from the matching SH-2 ELF, dumps
+  target RAM, decodes big-endian signed/unsigned fields, captures the screen,
+  and records image/emulator/BIOS hashes and repository revisions.
+- Diagnostics exposes both pad samples, position, health, attacks,
+  defense, rounds and the existing original-pose observations. An odd/even
+  publication epoch rejects interrupted snapshots. Simulation ticks, work-loop
+  serials and emulator frames are reported separately.
+- `scripts/saturn_input_suite.py` passed 23 emulator cases on the procedural
+  build: neutral/repeat, approach/retreat, both sidesteps, guard/crouch, P2,
+  CPU on disconnect, four attacks, four release/repress cases, three guards
+  and reset. Neutral diagnostics reproduced exactly. Held attacks produced
+  one hit; release/repress produced a second. These damage assertions apply
+  only to the explicitly provisional moveset.
+- The HUD overlap was fixed in sibling LibSaturn's
+  `src/graphics/2d/hud.cpp`: the font API expects an absolute glyph advance,
+  whereas the default HUD supplied 1 rather than 8 pixels. New captures show
+  legible labels and counters. The sibling change is local and uncommitted.
+- Skinning/evaluation now runs once per submitted scene, with animation clocks
+  still advanced by simulation ticks. In the procedural neutral observation,
+  work-loop rate improved from approximately 15 to 30 Hz; this does not prove
+  visible frame cadence or real-hardware performance.
+- Paul KMD record 71 compiles: 556 compiled vertices, 773 faces, 22 skeleton
+  joints, 103 blend vertices and a 24,045-byte bind archive. The original-data
+  importer incorrectly demanded a texmap trailer; the real rows instead end
+  with zero to three alignment bytes. That parser and its synthetic fixture
+  are corrected. Hand variants remain pending; original texture support is
+  described in the current checkpoint above.
+- Record identity uses the pinned research's original `paul3.kmd` filename,
+  repeated costume-group layout and cross-region model correspondence; motion
+  record 74 has bank type 0. Shared bank 99 is record 279. Private input hashes
+  are retained in the imported inventory and generated model manifest.
+- `scripts/extract_psx_pose_tables.py` checks the USA EXE fingerprint and the
+  headerless-body hash against the pinned release layout, requires full mapped
+  segments, cross-checks explicit address points and records static MIPS
+  references to the tables. Limb offsets immediately follow the skeleton
+  offsets in the same checked segment. It extracts sine, sqrt, basis, skeleton,
+  limb and normalized spline data. This verifies provenance, not PS1 pose parity.
+- Twelve actual local/shared animation streams, sampled for twelve frames each,
+  passed the existing C/Python FK/IK differential audit: 23,328 matrix components,
+  zero mismatches and zero incomplete frames. This is reference-code agreement;
+  original-emulator joint observations are still required.
+- The private build uses matching axis conversion for anchors, rotations and
+  translations (`D=diag(1,-1,-1)`) and a presentation-only scale of 6. Original
+  solver offsets use PS1 loader coordinates `(x,y,-z)`. Both actors have full 18-part validity
+  and apply authored poses. This visual scale is not original world calibration.
+- MoveVM now performs the loader's animation-length fixup. Raw retail move rows
+  store zero duration; before this fix idle restarted every tick. The current
+  neutral run reaches pose frame 46 with two transitions in 156 ticks. A synthetic
+  regression verifies both initial loading and destination-move fixup.
+- The private model/pose build boots from CD in Mednafen with `softfb`, showing
+  both original models and the repaired HUD. Ymir runs it through injection.
+
+## Reproduction
+
+Keep BIOS and retail data under ignored paths. Configure/build the existing
+Saturn toolchain and sibling installed package as in
+[the macOS execution guide](MACOS_EXECUTION_PLAN.md). Then:
+
+```sh
+export LIBSATURN_BIOS="$PWD/assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin"
+export PATH="$HOME/dev/saturn-tools/bin:$PATH"
+python3 -m venv build/asset-venv
+build/asset-venv/bin/python -m pip install pillow numpy
+python3 scripts/saturn_input_suite.py --bios "$LIBSATURN_BIOS"
+python3 scripts/extract_psx_pose_tables.py \
+  --exe assets/imported/tekken3-usa/SLUS_004.02 \
+  --output assets/imported/tekken3-usa/pose-tables
+
+cmake -S . -B build/paul -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE="$HOME/dev/saturn-prefix/share/libsaturn/toolchains/sh2eb-elf.cmake" \
+  -DCMAKE_PREFIX_PATH="$HOME/dev/saturn-prefix" \
+  -DLIBSATURN_SOURCE_DIR="$HOME/dev/lib-saturn" \
+  -DPython3_EXECUTABLE="$PWD/build/asset-venv/bin/python" \
+  -DT3_LOCAL_KMD="$PWD/assets/imported/tekken3-usa/raw/071.bin" \
+  -DT3_LOCAL_CHARACTER_ARC="$PWD/assets/imported/tekken3-usa/raw/073.bin" \
+  -DT3_LOCAL_DIVMOT="$PWD/assets/imported/tekken3-usa/divmot/074/bank_0.t3logic" \
+  -DT3_LOCAL_COMMON_DIVMOT="$PWD/assets/imported/tekken3-usa/divmot/279/bank_99.t3logic" \
+  -DT3_LOCAL_PSX_SEQUENCES="$PWD/assets/imported/tekken3-usa/sequences.json" \
+  -DT3_LOCAL_PSX_COMMON_BRANCHES="$PWD/assets/imported/tekken3-usa/pose-tables/psx_common_branches.bin" \
+  -DT3_LOCAL_PSX_SPLINE_TABLES="$PWD/assets/imported/tekken3-usa/pose-tables/psx_spline.bin" \
+  -DT3_LOCAL_PSX_TRIG_TABLE="$PWD/assets/imported/tekken3-usa/pose-tables/psx_trig.bin" \
+  -DT3_LOCAL_PSX_IK_TABLES="$PWD/assets/imported/tekken3-usa/pose-tables/psx_ik.bin" \
+  -DT3_ENABLE_PSX_SKIN_PREVIEW=ON \
+  -DT3_ENABLE_PSX_MOVE_LIFECYCLE=ON
+cmake --build build/paul -j4
+python3 scripts/saturn_original_pose_suite.py --require-phased --bios "$LIBSATURN_BIOS"
+python3 scripts/saturn_probe.py --build build/paul --bios "$LIBSATURN_BIOS" \
+  --frames 360 --profile --out assets/imported/paul-profile
+mednafen -sound 0 -video.driver softfb -ss.region_default na \
+  -qtrecord /tmp/paul.mov build/paul/disc/tekken3_saturn.cue
+```
+
+For the owned movement configuration, use the same private inputs in a separate
+`build/paul-owned` directory, additionally set `T3_ENABLE_PSX_OWNED_MATCH=ON` and
+`T3_LOCAL_PSX_GROUND_TABLES` to the extractor's `psx_ground.bin`, plus
+`T3_LOCAL_PSX_BODY_TABLES` to `psx_body.bin`. Run
+`scripts/saturn_owned_input_suite.py` against that build; pass `--require-owned`
+and `--require-phased` to the authored-pose suite. The owned suite deliberately
+asserts unchanged native HP until live contact/damage are integrated.
+
+Interrupt Mednafen with SIGINT to finalize its recording. The harness emits
+PC, cycle, instruction and transfer profiles when `--profile` is selected.
+
+Local evidence is under `assets/imported/saturn-input-suite/`,
+`saturn-baseline-profile/`, `paul-profile/`, `paul-pose/`,
+`paul-mednafen-animated/` and `tekken3-usa/pose-tables/`. All are ignored.
+
+## Measurements and unresolved gates
+
+The current textured model build has 911,052 initialized image bytes,
+82,744 High WRAM BSS bytes and 652,372 Low WRAM bytes. The linker accepts
+both memory regions and the native image validator accepts CD loading. No RAM
+cartridge is required. The private-bank input cap was raised from 450,000 to
+600,000 bytes for the measured 543,988-byte Paul/shared pair; full link-time
+RAM and image limits still apply.
+
+At the 600-frame Ymir checkpoint before binding validation, the corrected
+textured Paul scene flushes 681 faces and uses 773 of 2,048 commands, with no
+rejected faces or draw timeouts. The binding optimization runs at about
+7.5 work loops per second. The four-tick recovery cap drops simulation
+time under this load (292 simulation ticks versus 600 emulator frames), so
+this build does **not** satisfy fixed-60-Hz runtime behavior or the performance
+gate. Profiling and substantial reduction of repeated pose/geometry work are
+required before choosing a 30/60-Hz rendering target for the original models.
+
+Tests executed at this checkpoint: 27/27 project CTest checks, 71 Python checks
+with native integration runners assigned, the standalone skin basis/atomic-failure
+regression, 23 procedural input scenarios and nine original-pose scenarios in
+Ymir. The eight private original HitApply cases also pass the compiled native
+adapter. Sibling LibSaturn previously passed 3/3 host checks; its only local
+source correction remains the HUD advance. Native integration Python modules
+require their runner arguments; plain blanket `unittest discover` leaves those
+runner globals uninitialized (the new RAM adapter explicitly skips without one).
+
+Still required to finish the original objective:
+
+- Free-running calibration of original movement, root placement and body
+  inputs. Grounded start/physics/separation components and runtime integration
+  now exist, but do not establish match parity. Complete end-turn orientation
+  refresh, input-buffer mutation and required command/condition semantics.
+- Higher-resolution texture/UV/lighting calibration, hand variants, head
+  tracking, blending and visual checks against the original encounter.
+- Replay original FightFrame-return observations through the same host/Saturn
+  simulation. Timing boundaries are now measured; VM transition/hold/freeze
+  timing and KO-collapse timing still need integration. The original
+  health-zero/round-result capture exists, but native KO arithmetic still
+  needs a pre/post HitApply round-ending sample.
+- A single authoritative original-combat path with calibrated movement, collision,
+  live damage/reactions and supported round completion verified against those clips.
+- Full private-input regression scenarios, measured visible cadence, optimization,
+  and a recorded supported encounter from CD boot through round end.

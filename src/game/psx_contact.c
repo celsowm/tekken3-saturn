@@ -1,9 +1,9 @@
 #include "psx_contact.h"
 
-/* PS1 zone table is keyed by the first 18 KMD draw-part indices. This list
+/* PS1 zone table is keyed by the first 18 original joint-slot indices. This list
  * matches the independent game's hurt-zone-joints lookup.
  * Keep this mapping adjacent to the 14-zone generator: no cast from
- * arbitrary LibSaturn skeleton/GLB indices is safe here. */
+ * KMD mesh order or arbitrary LibSaturn skeleton/GLB indices is safe here. */
 static const uint8_t body_parts[T3_PSX_HURT_ZONES] =
     {17u,14u,10u,6u,16u,13u,9u,5u,2u,8u,4u,0u,15u,12u};
 

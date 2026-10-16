@@ -133,7 +133,7 @@ static void test_slot_projection(void) {
     fixture(a,f,s,t,v,pose);
     assert(t3_psx_movevm_project(&v[0],43u,2u,&out));
     assert(out.active_bank==&common_bank && out.slot==43u);
-    assert(out.frame==2u && out.move.length==6u);
+    assert(out.clock.pose_frame==2u && out.move.length==6u);
     assert(out.transitions==v[0].transitions+1u);
     memset(&out,0xCB,sizeof(out));old=out;
     assert(!t3_psx_movevm_project(&v[0],43u,7u,&out));
@@ -168,7 +168,7 @@ static void test_two_player_trade(void) {
     assert(r.transition.fighter[1].move_slot==42u);
     assert(r.vm[0].slot==43u && r.vm[0].active_bank==&common_bank);
     assert(r.vm[1].slot==42u && r.vm[1].active_bank==&main_bank);
-    assert(r.vm[0].frame==2u &&
+    assert(r.vm[0].clock.pose_frame==2u &&
            r.transition.fighter[0].phase_frame==0u);
     assert(r.transition.fighter[0].health_q16==440*65536);
     assert(r.transition.fighter[1].health_q16==410*65536);
@@ -185,7 +185,7 @@ static void test_two_player_trade(void) {
     assert(t3_psx_movevm_bridge_preview_pair(a,f,s,t,v,pose,&r));
     assert(r.transition.fighter[0].phase_frame==1u);
     assert(r.transition.fighter[0].frames_left==2u);
-    assert(r.vm[0].frame==3u && r.vm[1].frame==1u);
+    assert(r.vm[0].clock.pose_frame==3u && r.vm[1].clock.pose_frame==1u);
     assert(!r.slot_changed[0] && !r.slot_changed[1]);
 }
 static void test_recovery_and_neutral(void) {
@@ -198,7 +198,7 @@ static void test_recovery_and_neutral(void) {
     t3_psx_movevm_bridge_preview_t r;
     fixture(a,f,s,t,v,pose);
     assert(t3_move_vm_start(&v[1],&main_bank,&common_bank,42u));
-    v[1].frame=8u;
+    v[1].clock.pose_frame=8u;
     s[1].phase=T3_PSX_PHASE_HITSTUN;
     s[1].phase_frame=8u;
     s[1].frames_left=1u;
@@ -206,16 +206,16 @@ static void test_recovery_and_neutral(void) {
     s[1].combo_hits_received=2u;
     assert(t3_psx_movevm_bridge_preview_pair(a,f,s,t,v,pose,&r));
     assert(r.transition.entered_recovery[1]);
-    assert(r.vm[1].slot==4u && r.vm[1].frame==0u);
+    assert(r.vm[1].slot==4u && r.vm[1].clock.pose_frame==0u);
     s[1]=r.transition.fighter[1];v[1]=r.vm[1];
     pose[1].pose_frame=1u;
     assert(t3_psx_movevm_bridge_preview_pair(a,f,s,t,v,pose,&r));
-    assert(r.vm[1].slot==4u && r.vm[1].frame==1u);
+    assert(r.vm[1].slot==4u && r.vm[1].clock.pose_frame==1u);
     s[1]=r.transition.fighter[1];v[1]=r.vm[1];
     pose[1].pose_frame=0u;
     assert(t3_psx_movevm_bridge_preview_pair(a,f,s,t,v,pose,&r));
     assert(r.transition.returned_neutral[1]);
-    assert(r.vm[1].slot==3u && r.vm[1].frame==0u);
+    assert(r.vm[1].slot==3u && r.vm[1].clock.pose_frame==0u);
     assert(r.transition.fighter[1].combo_hits_received==0u);
 }
 static void test_atomic_rejection(void) {

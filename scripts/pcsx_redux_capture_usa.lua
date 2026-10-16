@@ -20,6 +20,10 @@ local CONFIG = {
     required_game_state = 8, -- FightMain, not its preparation state 7
 }
 
+if T3_CAPTURE_OPTIONS then
+    CONFIG.output = T3_CAPTURE_OPTIONS.output or CONFIG.output
+    CONFIG.max_frames = T3_CAPTURE_OPTIONS.max_frames or CONFIG.max_frames
+end
 assert(PCSX and PCSX.Events and PCSX.getMemPtr and Support.File,
        "Run this file in PCSX-Redux's Lua editor/console")
 assert(CONFIG.max_frames > 0 and CONFIG.max_frames <= 60000,
@@ -66,10 +70,12 @@ end
 local function fighter(base, fighter_id, tick, source_frame)
     local health = s32(base + 0x3F4)
     local max_health = s32(base + 0x3F8)
-    local move_slot = s16(base + 0x1A0)
+    -- curSlot is the running move; moveSlot +0x1A0 is pending and commonly -1.
+    local move_slot = s16(base + 0xA0)
     local pose_frame = s16(base + 0x58)
     local ko_flag = u8(base + 0xDE)
     if max_health <= 0 or health < 0 or health > max_health or
+       u32(base + 0x60) == 0 or
        move_slot < 0 or move_slot >= 4023 or
        pose_frame < 0 or pose_frame > 65535 or ko_flag > 1 then
         return nil, "invalid fighter state/slot/pose/HP (wrong game revision or unfinished fight initialization)"
@@ -86,7 +92,11 @@ local function fighter(base, fighter_id, tick, source_frame)
         hit_clean = u8(base+0xD0), counter_hit = u8(base+0xD3),
         in_air = u8(base+0xDB),
         root_x = s32(base+0x00), root_y = s32(base+0x04),
-        root_z = s32(base+0x08), facing = u16(base+0x0E)
+        root_z = s32(base+0x08), facing = u16(base+0x0E),
+        input_direction = u16(base+0x402), input_pressed = u16(base+0x404),
+        input_held = u16(base+0x406), character_id = u16(base+0x18),
+        max_health_q16 = max_health, round_wins = s16(base+0x44),
+        round_won = s16(base+0x46)
     }
     local json = string.format(
         '{"tick":%s,"fighter":%d,"move_slot":%d,"pose_frame":%d,' ..
@@ -94,13 +104,17 @@ local function fighter(base, fighter_id, tick, source_frame)
         '"psx":{"state":%s,"move_frame":%s,"hit_freeze":%s,' ..
         '"recover_frames":%s,"got_hit":%d,"guarded":%d,"hit_clean":%d,' ..
         '"counter_hit":%d,"in_air":%d,"root_x":%s,"root_y":%s,' ..
-        '"root_z":%s,"facing":%d}}',
+        '"root_z":%s,"facing":%d,"input_direction":%d,' ..
+        '"input_pressed":%d,"input_held":%d,"character_id":%d,' ..
+        '"max_health_q16":%s,"round_wins":%d,"round_won":%d}}',
         as_int(tick), fighter_id, move_slot, pose_frame, as_int(health),
         ko_flag, as_int(source_frame), as_int(raw.state),
         as_int(raw.move_frame), as_int(raw.hit_freeze),
         as_int(raw.recover_frames), raw.got_hit, raw.guarded,
         raw.hit_clean, raw.counter_hit, raw.in_air, as_int(raw.root_x),
-        as_int(raw.root_y), as_int(raw.root_z), raw.facing)
+        as_int(raw.root_y), as_int(raw.root_z), raw.facing,
+        raw.input_direction, raw.input_pressed, raw.input_held, raw.character_id,
+        as_int(raw.max_health_q16), raw.round_wins, raw.round_won)
     return json
 end
 
@@ -168,10 +182,28 @@ local function sample()
         return
     end
     capture.started = true
+    capture.latest = batch
     capture.last_counter = guest_before
     capture.count = capture.count + 1
-    if capture.count >= CONFIG.max_frames then
-        capture.stop("frame limit reached")
+    local stop_reason = nil
+    if T3_CAPTURE_OPTIONS and T3_CAPTURE_OPTIONS.stop_after_health_frames and
+       (s32(base0+0x3F4) == 0 or s32(base1+0x3F4) == 0) then
+        capture.depleted_at = capture.depleted_at or capture.count
+    end
+    if T3_CAPTURE_OPTIONS and T3_CAPTURE_OPTIONS.stop_on_ko and
+       (u8(base0+0xDE) == 1 or u8(base1+0xDE) == 1) then
+        stop_reason = 'observed original KO'
+    elseif capture.depleted_at and capture.count-capture.depleted_at >=
+           T3_CAPTURE_OPTIONS.stop_after_health_frames then
+        stop_reason = 'observed original health depletion and post-hit window'
+    elseif capture.count >= CONFIG.max_frames then
+        stop_reason = 'frame limit reached'
+    end
+    if stop_reason then
+        capture.stop(stop_reason)
+        if T3_CAPTURE_OPTIONS and T3_CAPTURE_OPTIONS.pause_on_limit then
+            PCSX.pauseEmulator()
+        end
     end
 end
 local function safe_sample()
@@ -187,5 +219,10 @@ capture.load_listener = PCSX.Events.createEventListener(
 capture.quitting_listener = PCSX.Events.createEventListener(
     "Quitting", function() capture.stop("emulator quitting") end)
 T3_REDUX_CAPTURE = capture
+PCSX.WebServer = PCSX.WebServer or {}
+PCSX.WebServer.Handlers = PCSX.WebServer.Handlers or {}
+PCSX.WebServer.Handlers['t3-latest-combat'] = function()
+    return capture.latest or ''
+end
 print("T3 USA PS1 capture armed (FightMain state 8 only), limit " ..
       tostring(CONFIG.max_frames) .. " frames; NO disc fingerprint check")

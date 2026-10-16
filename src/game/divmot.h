@@ -20,6 +20,8 @@ typedef struct {
     uint16_t move_count;
     uint16_t branch_count;
     uint8_t bank_type;
+    const uint8_t* common_branches; /* optional private EXE 12-byte rows */
+    uint16_t common_branch_count;
 } t3_divmot_t;
 
 typedef struct {
@@ -32,10 +34,10 @@ typedef struct {
     uint16_t attack_word;
     uint16_t damage_class;
     uint16_t stance_slot;
-    int16_t step;
+    int16_t step,end_turn;
     uint8_t length, air_start, air_end, hold_frame;
     uint8_t hit_freeze, active_first, active_last;
-    uint16_t reaction, close_reaction;
+    uint16_t body_profile,reaction, close_reaction;
 } t3_move_record_t;
 
 typedef struct {
@@ -46,6 +48,10 @@ typedef struct {
 } t3_branch_record_t;
 
 int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length);
+/* Attach a bounded EXE branch table (distinct from the divmot99 move bank).
+ * The caller owns its lifetime. Empty input detaches it. */
+int t3_divmot_set_common_branches(t3_divmot_t* bank, const uint8_t* data,
+                                 size_t length);
 int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
                    t3_move_record_t* out);
 int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
@@ -59,9 +65,9 @@ int t3_divmot_slot_resolve(const t3_divmot_t* bank,
                             const t3_divmot_t* common,
                             unsigned slot, t3_move_record_t* out,
                             const t3_divmot_t** owner);
-/* First matching branch. Only unconditional branch conditions and command
- * words implemented by t3_command_matches are accepted. An unsupported
- * branch condition is not erroneously treated as true. Default continuation
+/* First matching supported branch, including EXE common CALL/RETURN when
+ * its bounded table is attached. Unknown facts/commands never match;
+ * nested calls and invalid table references fail closed. Default continuation
  * at list terminator is returned after current move's final frame. */
 struct t3_branch_context;
 int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
@@ -69,6 +75,14 @@ int t3_divmot_branch_pick_ex(const t3_divmot_t* bank, t3_move_record_t current,
                              uint8_t own_bank, const struct t3_branch_context* facts,
                              const t3_command_sequence_t* sequences,
                              size_t sequence_count,
+                             t3_branch_record_t* picked);
+/* Same bounded walker, but returns the default END row regardless of current
+ * frame. The original phased scheduler owns forward/backward completion and
+ * look-ahead decisions; callers must not execute END as an ordinary command. */
+int t3_divmot_branch_find_ex(const t3_divmot_t* bank,t3_move_record_t current,
+                             const t3_input_history_t* input,unsigned frame,
+                             uint8_t own_bank,const struct t3_branch_context* facts,
+                             const t3_command_sequence_t* sequences,size_t sequence_count,
                              t3_branch_record_t* picked);
 int t3_divmot_branch_pick(const t3_divmot_t* bank, t3_move_record_t current,
                           const t3_input_history_t* input, unsigned frame,
