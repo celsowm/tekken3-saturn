@@ -12,7 +12,7 @@ static unsigned isqrt(unsigned n) {
     return lo;
 }
 int main(void) {
-    t3_psx_body_tables_t t={0};t3_psx_body_actor_t a[2]={{0}},before[2];
+    t3_psx_body_tables_t t={0};t3_psx_body_actor_t a[2]={0},before[2];
     uint32_t n; t3_psx_joint_t parts[T3_PSX_DRAW_PARTS]={0};t3_move_record_t move={0};
     for(unsigned i=0;i<192;++i)p16(sqrt_bytes+2*i,isqrt((i+64)<<18));
     p16(trig+0x800,4096);p16(trig+0x1800,(uint16_t)-4096);
