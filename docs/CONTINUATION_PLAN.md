@@ -30,13 +30,14 @@ The native owned core now also runs from one original neutral seed without
 replacing fighter state between ticks. Its checked move/clock/queued-branch and
 hit fields match for 2,396 ticks, including eight HP changes. This exposed and
 fixed a KMD mesh-order versus original joint-slot mismatch in body/contact
-integration. Overall replay is still unproven: head rotation differs immediately;
-P1 uses a different reference model offset. The newer `build/paul-blend` ports
+integration. Overall replay is still unproven: head rotation differs immediately.
+The newer `build/paul-blend` ports
 all three normal transition blends and fixes a 32-bit spline endpoint coefficient
 that had been truncated to 16 bits. All checked blend scalars, previous local
 matrices and matrix deltas now match for both actors across all 2,396 ticks.
-Ground matching advances to 135 ticks; a one-unit root/anchor discrepancy begins
-at tick 136 and grows into later roots/angles differences. Clear/scripted input
+Per-actor skeleton selection now eliminates the subsequent placement discrepancy:
+ground, all joint origins and body-sphere/push fields match all 2,396 ticks.
+The only remaining world-matrix differences are head slot 2 rotations. Clear/scripted input
 mode at source frame 2704 stops the requested comparison explicitly.
 
 The corrected order passes the short interactive combat cases and a controlled
@@ -46,13 +47,18 @@ Its ELF/app hashes match the aligned Ymir replay. The earlier first-to-two round
 policy remains explicitly provisional; original intro/replay/win poses and draw
 handling are omitted.
 
-Remaining execution order: align reference model/costume data and audit the
-remaining body separation difference; port and audit head tracking; implement
+Remaining execution order: port and audit head tracking; implement
 original input clear mode;
 repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.
 Preserve the verified corrected CD encounter. The 30 Hz render / 60 Hz logic gate
 still fails at approximately 7.0 work loops/s and 280 logic ticks per 600 emulator
 frames. The [progress record](NEXT_PLAYABLE_PROGRESS.md) holds scoped evidence.
+
+`T3_LOCAL_ACTOR0_KMD` optionally imports P1's original skeleton independently
+from the shared render archive. The current private configuration uses record
+75 for P1's skeleton and record 71 for P2's, matching the captured mirror match.
+The displayed meshes/textures still share record 71; this is not a complete
+second-costume renderer. Both skeletons must have the same authored scale.
 
 The numbered sections below retain the implementation rationale; use the
 [progress record](NEXT_PLAYABLE_PROGRESS.md) for what has actually passed.

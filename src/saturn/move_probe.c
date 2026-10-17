@@ -113,7 +113,7 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.reactions=t3_local_combat_reactions;
     g_owned_config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
 #endif
-    g_owned_config.parts=t3_private_kmd_parts;
+    g_owned_config.parts[0]=t3_private_actor_parts[0];g_owned_config.parts[1]=t3_private_actor_parts[1];
     g_owned_config.ik=(t3_psx_ik_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     g_owned_config.body_tables=t3_local_body_blob;g_owned_config.body_tables_size=T3_LOCAL_BODY_BYTES;
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0

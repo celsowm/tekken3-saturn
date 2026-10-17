@@ -374,3 +374,15 @@ reports unchanged. The new report still fails overall when world geometry or
 input-mode coverage differs, even if every checked blend field agrees. This
 distinction matters: local matrices are saved before procedural head tracking,
 and their agreement does not establish complete world-pose/body parity.
+
+The mirror reference uses different Paul models: record 75 for P1 and 71 for
+P2. Configure the private build with
+`-DT3_LOCAL_ACTOR0_KMD="$PWD/assets/imported/tekken3-usa/raw/075.bin"` to import
+P1's skeleton alongside the existing record-71 render archive. The generated
+manifest retains both source hashes and states that the render mesh is shared.
+The owned core requires each actor's parts explicitly; it does not patch a
+coordinate or assume that mirror-match skeletons are identical. Without an
+override the generator explicitly selects the primary model for both actors.
+Rebuild the private generated assets and the native evaluator before auditing.
+`body_checked` enables comparison of all eight sphere XYZ/radius fields and
+three push components per actor; old evaluators cannot claim this coverage.

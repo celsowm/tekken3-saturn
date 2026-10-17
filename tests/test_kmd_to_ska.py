@@ -10,6 +10,7 @@ import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 import kmd_to_ska as kmd
+from build_local_kmd_assets import skeleton_parts,generate
 
 def synthetic_kmd():
     # The 27-row header ends at 0x5F8. One row includes four rigid vertices,
@@ -42,6 +43,35 @@ def synthetic_kmd():
     return bytes(hdr)+verts+normal+faces+material
 
 class KmdTests(unittest.TestCase):
+    def test_empty_or_differently_scaled_override_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);primary=root/'primary.kmd';override=root/'override.kmd'
+            primary.write_bytes(synthetic_kmd());override.write_bytes(b'')
+            with self.assertRaises(ValueError):
+                generate(primary,root,root/'out',actor0_kmd=override)
+            other=bytearray(synthetic_kmd());struct.pack_into('<I',other,4,101)
+            override.write_bytes(other)
+            with self.assertRaisesRegex(ValueError,'same scale'):
+                generate(primary,root,root/'out',actor0_kmd=override)
+            self.assertFalse((root/'out').exists())
+
+    def test_skeleton_keeps_each_models_offsets_and_loader_z_fixup(self):
+        first=bytearray(synthetic_kmd());second=bytearray(first)
+        row=kmd.PART_ROWS[6]
+        struct.pack_into('<3i',first,0x10+row*56+20,31,-7,-45)
+        struct.pack_into('<3i',second,0x10+row*56+20,31,-7,-46)
+        a=skeleton_parts(kmd.parse_kmd(bytes(first)))
+        b=skeleton_parts(kmd.parse_kmd(bytes(second)))
+        self.assertEqual(a[6],(0,kmd.PART_MATRICES[6],(31,-7,45)))
+        self.assertEqual(b[6],(0,kmd.PART_MATRICES[6],(31,-7,46)))
+        self.assertEqual(a[:6]+a[7:],b[:6]+b[7:])
+
+    def test_skeleton_rejects_forward_parent(self):
+        data=bytearray(synthetic_kmd())
+        struct.pack_into('<i',data,0x10+kmd.PART_ROWS[6]*56+32,6)
+        with self.assertRaisesRegex(ValueError,'parent'):
+            skeleton_parts(kmd.parse_kmd(bytes(data)))
+
     def test_meshless_root_texmap_has_no_trailer(self):
         block = struct.pack('<HH4B', 2, 2, 0, 0, 0, 0)
         self.assertEqual(kmd.parse_texmap(block, 0, len(block), (0, 0, 0, 0)), ())

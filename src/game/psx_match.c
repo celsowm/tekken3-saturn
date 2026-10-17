@@ -110,8 +110,10 @@ static int place(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     f->ground.root=result.origin;
     return 1;
 }
-static int compose(t3_psx_match_t* match,t3_psx_fighter_t* f) {
+static int compose(t3_psx_match_t* match,unsigned index) {
+    t3_psx_fighter_t* f=&match->fighter[index];
     const t3_psx_match_config_t* c=match->config;
+    const t3_psx_part_t* parts=c->parts[index];
     const t3_motion_stream_t* stream;
     t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],complete[T3_PSX_ROTATION_SLOTS];
     t3_psx_joint_t root;
@@ -128,9 +130,9 @@ static int compose(t3_psx_match_t* match,t3_psx_fighter_t* f) {
                                f->ground.heading,&c->ground_tables.trig,&root))return 0;
     root.origin=f->ground.root;
     if(c->rsqrt.data && !t3_psx_blend_locals(&f->blend,&c->rsqrt,complete))return 0;
-    if(!t3_psx_compose_parts(c->parts,complete,mask,&root,f->world,&f->parts_mask) ||
+    if(!t3_psx_compose_parts(parts,complete,mask,&root,f->world,&f->parts_mask) ||
        (f->parts_mask&0x3FFFFu)!=0x3FFFFu ||
-       !t3_psx_parts_to_slots(c->parts,f->world,f->parts_mask,f->world,&f->parts_mask) ||
+       !t3_psx_parts_to_slots(parts,f->world,f->parts_mask,f->world,&f->parts_mask) ||
        (f->parts_mask&0x3FFFFu)!=0x3FFFFu)return 0;
     f->fk_mask=fk;f->ik_mask=mask&~fk;f->fk_root_xx=slots[0].m[0][0];
     return t3_psx_body_shapes(&f->body,f->world,f->parts_mask,c->body_tables+384,
@@ -258,7 +260,7 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
        config->ground_tables.atan_size!=1025u || !config->ground_tables.trig.data ||
        config->ground_tables.trig.size!=T3_PSX_TRIG_BYTES ||
        config->max_health_q16<=0 || config->scale_percent<1u || config->scale_percent>200u)return 0;
-    if(config->enable_body && (!config->parts || !config->body_tables ||
+    if(config->enable_body && (!config->parts[0] || !config->parts[1] || !config->body_tables ||
        config->body_tables_size!=432u || !config->ik.ik_blob ||
        config->ik.ik_size!=T3_PSX_IK_BYTES))return 0;
     if(config->enable_combat && (!config->enable_body || !config->reactions ||
@@ -320,7 +322,7 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1) {
         n.fighter[i].body.previous_root=n.fighter[i].ground.root;
         n.fighter[i].body.placed=n.fighter[i].ground.root;
         if(!place(&n,&n.fighter[i]))return 0;
-        if(c->enable_body && !compose(&n,&n.fighter[i]))return 0;
+        if(c->enable_body && !compose(&n,i))return 0;
     }
     if(c->enable_body && (!bodies(&n) || !contacts(&n)))return 0;
     if(c->enable_combat) {

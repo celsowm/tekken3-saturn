@@ -9,6 +9,48 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Per-actor skeleton alignment (2026-10-16)
+
+- The owned match now requires a parts table for each actor. Private generation
+  accepts `T3_LOCAL_ACTOR0_KMD` for P1's original skeleton, records its source
+  SHA, checks the common scale and preserves the loader's original Z fixup.
+  The current `build/paul-blend` uses record 75 for P1's skeleton and record 71
+  for P2's. Both rendered meshes/textures still use record 71; the override is
+  explicitly skeletal and does not claim a second-costume mesh import.
+- `paul-peractor-replay/frame-replay-audit.json` advances the unchanged owned
+  match from the same single original seed for all 2,396 requested ticks.
+  **Every checked ground, joint-origin, body-sphere/push, move/clock/queue,
+  hit/HP and blend/local-matrix field matches throughout.** This resolves the
+  first separation discrepancy and the later accumulated root/angle drift.
+  The only remaining differences in this interval are world rotations of
+  head slot 2 (37,337 matrix-element differences). Overall replay remains
+  failed; procedural head tracking and the original clear/scripted input
+  boundary at source frame 2704 still need implementation. No snapshot reseeds
+  the simulation and no comparison tolerance was added.
+- The diagnostic record now lives in Low WRAM and receives its complete
+  zero/default initialization in `main` before the first publish. This permits
+  the additional private skeleton within the existing linker limits. The
+  initialized image is 949,040 bytes; High WRAM BSS ends at 0x060FBF78, leaving
+  the reserved 16 KiB stack plus 136 bytes. Low WRAM ends at 0x002A4C2C.
+  The fit is still tight; no larger memory map or reduced stack reserve is used.
+- All 36 CTest and 83 Python tests pass, including actual LibSaturn exporter
+  integration and three new synthetic skeleton import checks. All 18 original
+  combat/round Ymir cases pass with ELF SHA256
+  `5af01b16599dfb2803712949e7e23bf356e78a49c143ffbe73898c75db489f1d`:
+  guards, hits, held/repressed input, two pads, simultaneous hits, KO, next round,
+  first-to-two completion and Start reset, without decode/runtime/command errors.
+  The procedural baseline also passes all 23 emulator input scenarios after the
+  shared diagnostic storage change (`paul-peractor-baseline-input/suite.json`).
+- The same ELF/app/disc is recorded through actual Mednafen CD boot in
+  `paul-peractor-mednafen/`: 1,427 video frames, 23.8518 seconds, exit 0. Inspected
+  second 22 shows both recognizable animated Paul instances and readable HUD.
+  This is a neutral boot recording; the earlier full encounter CD recording
+  remains historical evidence for its own build.
+- `paul-peractor-profile/observation.json` still measures 126 ms work, 73 ms
+  scene/HUD, 12 ms skin, 781/2048 commands, 7.0 work loops/s and 280 logic ticks
+  in 600 emulator frames, with zero rejected faces, draw timeouts or runtime
+  errors. The 30 Hz render/60 Hz logic gate remains failed.
+
 ## Body replay diagnosis and library publication (2026-10-16)
 
 - The continuous evaluator now compares all eight body-sphere XYZ/radius fields

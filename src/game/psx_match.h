@@ -24,7 +24,7 @@ typedef struct {
     unsigned scale_percent;
     int32_t max_health_q16;
     /* Optional full original world pose + normal-mode body/arena integration. */
-    const t3_psx_part_t* parts;
+    const t3_psx_part_t* parts[2]; /* Each actor's model, even in mirror matches. */
     t3_psx_ik_tables_t ik;
     t3_psx_rsqrt_t rsqrt; /* Optional original transition blend, requires body poses. */
     const uint8_t* body_tables;size_t body_tables_size;

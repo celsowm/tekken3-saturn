@@ -42,6 +42,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(T3_LOCAL_KMD "" CACHE FILEPATH
         "Optional absolute path to a locally extracted Tekken 3 KMD (private bind-pose preview)")
     set(T3_LOCAL_CHARACTER_ARC "" CACHE FILEPATH "Private matching original character texture ARC")
+    set(T3_LOCAL_ACTOR0_KMD "" CACHE FILEPATH "Private P1 skeleton override; render mesh still uses T3_LOCAL_KMD")
+    if(T3_LOCAL_ACTOR0_KMD AND NOT T3_LOCAL_KMD)
+        message(FATAL_ERROR "T3_LOCAL_ACTOR0_KMD requires T3_LOCAL_KMD")
+    endif()
     if(T3_LOCAL_CHARACTER_ARC AND NOT T3_LOCAL_KMD)
         message(FATAL_ERROR "T3_LOCAL_CHARACTER_ARC requires T3_LOCAL_KMD")
     endif()
@@ -51,6 +55,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             message(FATAL_ERROR "T3_LOCAL_KMD file not found: ${T3_LOCAL_KMD}")
         endif()
         set(_t3_texture_args "")
+        if(T3_LOCAL_ACTOR0_KMD)
+            get_filename_component(T3_LOCAL_ACTOR0_KMD "${T3_LOCAL_ACTOR0_KMD}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_ACTOR0_KMD}")
+                message(FATAL_ERROR "Private P1 KMD not found")
+            endif()
+            list(APPEND _t3_texture_args --actor0-kmd "${T3_LOCAL_ACTOR0_KMD}")
+        endif()
         if(T3_LOCAL_CHARACTER_ARC)
             get_filename_component(T3_LOCAL_CHARACTER_ARC "${T3_LOCAL_CHARACTER_ARC}" ABSOLUTE)
             if(NOT EXISTS "${T3_LOCAL_CHARACTER_ARC}")
@@ -69,6 +80,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 --libsaturn-source "${LIBSATURN_SOURCE_DIR}"
                 --output "${_t3_gen}"
             DEPENDS "${T3_LOCAL_KMD}"
+                ${T3_LOCAL_ACTOR0_KMD}
                 ${T3_LOCAL_CHARACTER_ARC}
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/kmd_to_ska.py"

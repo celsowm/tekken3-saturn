@@ -47,10 +47,7 @@ static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
  * frame_serial is written last: it marks a complete snapshot. */
-volatile t3_diagnostics_t g_t3_diagnostics = {
-    .magic = T3_DIAGNOSTICS_MAGIC,
-    .version = T3_DIAGNOSTICS_VERSION
-};
+volatile t3_diagnostics_t g_t3_diagnostics __attribute__((section(".wram_l")));
 
 static sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
     sat_vec3_t v = {x, y, z};
@@ -342,6 +339,8 @@ int main(void) {
     sat_vec3_t target = {0, FX(1), 0};
     sat_vec3_t up = {0, SAT_FX16_ONE, 0};
     uint32_t prev_frame, accumulated = 0;
+    g_t3_diagnostics=(t3_diagnostics_t){
+        .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
     g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));

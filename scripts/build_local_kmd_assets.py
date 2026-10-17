@@ -12,9 +12,24 @@ import sys
 
 from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES
 
-def generate(kmd_path, lib_source, output,texture_arc=None):
+def skeleton_parts(model):
+    """Return the original loader's draw order and Z fixup, without mesh data."""
+    result=[]
+    for part,(row_i,slot) in enumerate(zip(PART_ROWS,PART_MATRICES)):
+        row=model.rows[row_i]
+        if row.parent<-1 or row.parent>=part:
+            raise ValueError(f"bad KMD draw-part parent {part}: {row.parent}")
+        x,y,z=row.offset
+        result.append((row.parent,slot,(x,y,-z)))
+    return result
+
+def generate(kmd_path, lib_source, output,texture_arc=None,actor0_kmd=None):
     raw = kmd_path.read_bytes()
     model = parse_kmd(raw)
+    actor0_raw=actor0_kmd.read_bytes() if actor0_kmd is not None else None
+    actor0_model=parse_kmd(actor0_raw) if actor0_raw is not None else model
+    if actor0_model.scale_percent!=model.scale_percent:
+        raise ValueError('actor skeletons must use the same scale')
     preview = output/"kmd_preview"
     report = compile_ska(model,lib_source,preview,texture_arc)
     archive = (preview/"fighter_bind.ska").read_bytes()
@@ -50,6 +65,7 @@ extern t3_embedded_archive_t t3_archive;
 extern const uint16_t t3_red_palette[256];
 extern const uint8_t t3_kmd_double_sided[T3_FACE_COUNT];
 extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
+extern const t3_psx_part_t* const t3_private_actor_parts[2];
 #endif
 """
     payload=[
@@ -71,20 +87,22 @@ extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
     # These ORIGINAL draw-part parent indices and model offsets are private,
     # and must be interpreted in PS1 coordinate space, never guessed from GLB.
     payload.append('const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS] = {')
-    for part,(row_i,slot) in enumerate(zip(PART_ROWS,PART_MATRICES)):
-        row=model.rows[row_i]
-        parent=row.parent
-        if parent<-1 or parent>=part:
-            raise ValueError(f"bad KMD draw-part parent {part}: {parent}")
-        x,y,z=row.offset
-        # FighterSetupPart negates the FILE offset's Z when loading it.
-        # This loader fixup precedes the separate Saturn basis conversion.
-        payload.append('    {%d,%du,{%d,%d,%d}},' % (parent,slot,x,y,-z))
+    for parent,slot,(x,y,z) in skeleton_parts(model):
+        payload.append('    {%d,%du,{%d,%d,%d}},' % (parent,slot,x,y,z))
     payload.append('};')
+    if actor0_raw is not None:
+        payload.append('static const t3_psx_part_t actor0_parts[T3_PSX_DRAW_PARTS] = {')
+        for parent,slot,(x,y,z) in skeleton_parts(actor0_model):
+            payload.append('    {%d,%du,{%d,%d,%d}},' % (parent,slot,x,y,z))
+        payload.append('};')
+    payload.append('const t3_psx_part_t* const t3_private_actor_parts[2] = {%s,t3_private_kmd_parts};' %
+                   ('actor0_parts' if actor0_raw is not None else 't3_private_kmd_parts'))
     (output/"t3_generated_character.c").write_text('\n'.join(payload)+'\n',encoding='utf8')
     (output/"t3_generated_character.h").write_text(header,encoding='utf8')
     report.update(
         input_sha256=hashlib.sha256(raw).hexdigest(),
+        actor0_skeleton_sha256=hashlib.sha256(actor0_raw or raw).hexdigest(),
+        shared_render_mesh=True,
         scale_percent=model.scale_percent,
         local_kmd_bind_preview=True,
         distribution="PRIVATE, no commercial game data may enter Git or GitHub Actions")
@@ -97,9 +115,10 @@ def main():
     p.add_argument("--libsaturn-source",type=Path,required=True)
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--textures-arc",type=Path,help="private matching character ARC textures")
+    p.add_argument("--actor0-kmd",type=Path,help="private P1 skeleton override; render mesh remains --kmd")
     a=p.parse_args()
     try:
-        result=generate(a.kmd,a.libsaturn_source,a.output,a.textures_arc)
+        result=generate(a.kmd,a.libsaturn_source,a.output,a.textures_arc,a.actor0_kmd)
     except (OSError,ValueError,ImportError,AssertionError) as exc:
         p.exit(1,f"local KMD embed failed: {exc}\n")
     print(json.dumps({k:v for k,v in result.items() if k!='double_sided_faces'},sort_keys=True))
