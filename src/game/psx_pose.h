@@ -32,6 +32,9 @@ typedef struct {
     t3_vec3i_t origin;
 } t3_psx_joint_t;
 
+int t3_psx_euler_matrix(int16_t x,int16_t y,int16_t z,
+                        const t3_psx_trig_t* trig,t3_psx_matrix_t* out);
+
 /* Builds ONLY 10 original FK Euler matrices from channels 19..48.
  * Returns a bitmask of VALID slots. IK slots remain invalid; they MUST be
  * supplied by the original limb solver before full character composition.

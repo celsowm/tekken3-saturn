@@ -10,6 +10,7 @@
 #include "psx_hit_apply.h"
 #include "psx_move_events.h"
 #include "psx_blend.h"
+#include "psx_head.h"
 
 typedef struct {
     t3_vec3i_t anchor,root;
@@ -44,6 +45,8 @@ typedef struct {
     uint8_t pose_frames;
     t3_psx_body_actor_t body;
     t3_psx_blend_t blend;
+    t3_psx_head_t head;
+    uint8_t no_look_at;
     uint8_t blend_guarded_previous,blend_in_reaction;
     int32_t ramp_step;
     uint32_t body_contacts;

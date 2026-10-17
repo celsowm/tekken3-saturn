@@ -386,3 +386,13 @@ override the generator explicitly selects the primary model for both actors.
 Rebuild the private generated assets and the native evaluator before auditing.
 `body_checked` enables comparison of all eight sphere XYZ/radius fields and
 three push components per actor; old evaluators cannot claim this coverage.
+
+Head look-at consumes the previous world-joint frames. The evaluator therefore
+seeds those frames along with the initial normal-camera head state from the
+full RAM dump: USA `0x8009E578 + 20*actor` (JP `0x8009E920` in the fingerprinted
+release layout). It rejects a seed outside camera phase 2. The head adjustment
+runs after blend-retained matrices and before new world composition; P2 can
+therefore observe P1's newly composed joints, as in the original sequential
+actor order. World matrices are compared in every subsequent exit snapshot.
+The older capture does not contain per-frame head globals, so this establishes
+matrix-result parity rather than a separate scalar-head-state comparison.

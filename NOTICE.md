@@ -17,14 +17,15 @@ implementation of Tekken3Remake.
   `src/game/move_lifecycle.c`, `src/game/psx_ground.c`,
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
-  `src/game/psx_round.c`, `src/game/psx_blend.c` and `src/game/psx_blend_math.c` adapt
+  `src/game/psx_round.c`, `src/game/psx_blend.c`, `src/game/psx_head.c` and `src/game/psx_blend_math.c` adapt
   grounded physics, original hit transaction/reaction queuing and KO collapse,
   root/attack placement, exact integer collision, normal arena bounds, body
   spheres/separation, blend matrix normalization and scaling,
   clock advancement, queued move starts and
   branch scheduling from the pinned research's `tools/research/fight_sim.py`
   and `fight_math.py`, plus body profiles from
-  `remake/core/combat/combat.gd` and result classification from
+  `remake/core/combat/combat.gd`, procedural head tracking from
+  `remake/core/fighter/fighter_animation.gd` and result classification from
   `remake/core/fight/round_flow.gd`, to C.
   These files are under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/),
   not MIT. Required Notice: Copyright (c) 2026 n0madic.

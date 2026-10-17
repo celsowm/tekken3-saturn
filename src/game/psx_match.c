@@ -130,6 +130,11 @@ static int compose(t3_psx_match_t* match,unsigned index) {
                                f->ground.heading,&c->ground_tables.trig,&root))return 0;
     root.origin=f->ground.root;
     if(c->rsqrt.data && !t3_psx_blend_locals(&f->blend,&c->rsqrt,complete))return 0;
+    if(f->parts_mask) {
+        t3_psx_body_tables_t tables={c->ground_tables,c->body_tables,384u};
+        if(!t3_psx_head_look(&f->head,&tables,f->world,match->fighter[1u-index].world,
+                            &f->vm.move,f->vm.clock.pose_frame,f->no_look_at,&complete[2]))return 0;
+    }
     if(!t3_psx_compose_parts(parts,complete,mask,&root,f->world,&f->parts_mask) ||
        (f->parts_mask&0x3FFFFu)!=0x3FFFFu ||
        !t3_psx_parts_to_slots(parts,f->world,f->parts_mask,f->world,&f->parts_mask) ||
@@ -247,6 +252,7 @@ static int reset_fighters(t3_psx_match_t* n) {
         f->ground.state_class=(uint8_t)((f->vm.move.state_word>>11)&31u);
         f->ground.human_guard=1;f->ground.guard=(uint16_t)(f->ground.state&0x18u);
         f->body.active=1;f->ramp_step=2;
+        f->head.snap=1;
         f->body.root=f->ground.root;f->body.anchor=f->ground.anchor;
         f->body.previous_root=f->ground.root;f->body.placed=f->ground.root;
         f->health_q16=config->max_health_q16;

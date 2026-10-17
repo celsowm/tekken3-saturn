@@ -60,6 +60,20 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         f->contact=u8(b+0xD1);f->contact_this_move=u8(b+0x88);f->got_hit=u8(b+0xCE);
         f->hit_freeze_in=i16(b+0xEE);f->previous_anchor=f->ground.anchor;
         f->blend_guarded_previous=u8(b+0x89);f->blend_in_reaction=u8(b+0x8A);
+        /* USA release-layout mapping of JP HeadLookAt state 0x8009E920.
+         * Only the initial full RAM seeds it; expected exits never reseed. */
+        uint32_t look=0x8009E578u+20*i;
+        if(u32(0x8009546Cu)!=2)return 0;
+        for(unsigned k=0;k<4;++k){f->head.current[k]=i16(look+2*k);f->head.target[k]=i16(look+8+2*k);}
+        f->head.active=u8(look+16);f->head.snap=u8(look+17);f->head.hold=u8(look+18);
+        f->no_look_at=u8(b+0xC9);
+        f->parts_mask=0x3FFFFu;
+        for(unsigned k=0;k<18;++k) {
+            uint32_t p=b+0x8F4+0x44*k;
+            for(unsigned r=0;r<3;++r)for(unsigned c=0;c<3;++c)
+                f->world[k].rotation.m[r][c]=i16(p+2*(3*r+c));
+            f->world[k].origin=(t3_vec3i_t){i32(p+0x14),i32(p+0x18),i32(p+0x1C)};
+        }
         f->blend.mode=(uint8_t)i32(b+0x181C);f->blend.active=u8(b+0xE5);
         f->blend.frames=i32(b+0x1870);f->blend.counter=i32(b+0x1878);
         f->blend.weight=i16(b+0x186E);f->blend.last_frame=i32(b+0x182C);

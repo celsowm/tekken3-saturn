@@ -28,8 +28,9 @@ static int valid_table(const t3_psx_trig_t* table) {
     return table && table->data && table->size==T3_PSX_TRIG_BYTES;
 }
 
-static void euler(int16_t x,int16_t y,int16_t z,
+int t3_psx_euler_matrix(int16_t x,int16_t y,int16_t z,
                   const t3_psx_trig_t* trig,t3_psx_matrix_t* out) {
+    if(!valid_table(trig) || !out)return 0;
     /* Port of the original GTE sequence documented in
      * Tekken3Remake tools/research/pose.py EulerToMatrix.
      * GPF (IR) saturation happens at each intermediate multiply. */
@@ -50,6 +51,7 @@ static void euler(int16_t x,int16_t y,int16_t z,
     out->m[0][0]=c1;
     out->m[1][0]=c2;
     out->m[2][2]=c3;
+    return 1;
 }
 int t3_psx_pose_fk(const int16_t pose[T3_PSX_POSE_CHANNELS],
                    const t3_psx_trig_t* table,
@@ -61,7 +63,7 @@ int t3_psx_pose_fk(const int16_t pose[T3_PSX_POSE_CHANNELS],
     if (!pose || !valid_table(table) || !out || !valid_slots) return 0;
     for(i=0;i<10u;++i) {
         unsigned ch=19u+3u*i;
-        euler(pose[ch],pose[ch+1u],pose[ch+2u],table,&result[k_slots[i]]);
+        t3_psx_euler_matrix(pose[ch],pose[ch+1u],pose[ch+2u],table,&result[k_slots[i]]);
         mask|=(uint32_t)1u<<k_slots[i];
     }
     for(i=0;i<T3_PSX_ROTATION_SLOTS;++i)out[i]=result[i];

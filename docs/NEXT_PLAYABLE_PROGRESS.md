@@ -9,6 +9,53 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Procedural head tracking (2026-10-16)
+
+- The normal Paul match now applies original head look-at after retaining the
+  blended local matrices and before world composition. It uses previous world
+  joints, move/active-window gating, original atan/sqrt/trig arithmetic, tilt
+  limits, target hold, bounded angular steps, snap and animated-head angle
+  decomposition on activation. The original Euler builder is shared with FK.
+  Non-fight cameras, Gon eyes and original intro flow remain outside this slice.
+  At native reset the first authored composition initializes the previous world
+  joints; look-at starts on the following tick with snap enabled.
+- The private evaluator additionally seeds initial world joints, no-look-at
+  state and the 20-byte head record from the full entry RAM. Verified USA layout
+  maps JP `0x8009E920` to `0x8009E578` and camera phase to `0x8009546C` (must be 2).
+  Expected exits still compare only, never reseed. The final report at
+  `paul-head-final-replay/frame-replay-audit.json` has **zero differences in any
+  checked category for all 2,396 executed ticks**, including every world-joint
+  rotation. No tolerance or head-specific exclusion was added. This checks the
+  head's matrix results, not its uncaptured intermediate global scalar state.
+  Overall replay remains failed because the original clear-input mode at
+  source frame 2704 prevents the remaining captured ticks from executing.
+- LibSaturn `c5861ba` moves the 33,184-byte audio-stream registry, dominated by
+  staging buffers, into existing Low WRAM. Reset/CRT clearing, Sound RAM
+  locations and refill algorithms are unchanged. Available native tests, tools,
+  header/manifest gates and installed SH-2 package build pass. The rebuilt
+  jukebox passes all four Ymir audio assertions both at 300 frames and at 1,100
+  with seeks/pause: active-half protection, slot format and stereo phase.
+  These are emulator invariants, not hardware timing measurements.
+- The private Saturn initialized image is 951,984 bytes. High WRAM BSS ends
+  at `0x060F4958` and Low WRAM at `0x002ACDF4`, preserving the 16 KiB stack
+  reservation. The image's ELF SHA256 is
+  `55f1dac0afc7dedcc7e0bab0e4945f86281ab5a67a32124979f9553f7515680f`.
+  All 37 CTest checks and 83 Python tests pass. The new head lifecycle test also
+  passes ASan/UBSan. The procedural baseline passes all 23 input scenarios.
+- All 18 combat/round scenarios pass on this final ELF, including controlled
+  guards/hits, P2, simultaneous contact, KO, next round, 2–0 match completion and
+  Start reset (`paul-head-final-suite/suite.json`). The earlier preliminary head
+  suite is retained separately; these final results all have the hash above.
+  The same final image boots from CD in Mednafen with exit 0: 1,428 frames over
+  23.8685 seconds, inspected at second 22 (`paul-head-final-mednafen/`). Both
+  animated Paul instances and readable HUD are visible. This recording is a
+  neutral boot check, not a new full-encounter recording.
+- `paul-head-final-profile/observation.json` reports 127 ms work, 72 ms scene/HUD,
+  12 ms skin, 774/2048 commands, 7.0 work loops/s and 280 logic ticks per 600
+  emulator frames. Rejected faces, draw timeouts and runtime errors are zero.
+  The 30 Hz render / 60 Hz logic gate still fails. Head correctness and the
+  larger High WRAM margin do not establish usable final performance.
+
 ## Per-actor skeleton alignment (2026-10-16)
 
 - The owned match now requires a parts table for each actor. Private generation
