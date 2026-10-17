@@ -18,6 +18,131 @@ The implementation reference remains the pinned `third_party/Tekken3Remake`
 submodule. PCSX-Redux observes the original; sibling `../lib-saturn` supplies
 the Saturn runtime and external Ymir harness. Retail data and BIOS stay private.
 
+## Resume execution plan (2026-10-17)
+
+This section is the next execution order. The older numbered sections below
+retain design rationale, not a list of work to repeat. Baseline commit is
+`579815d`: 38 CTest checks, 91 Python checks and 20 Ymir combat cases passed;
+the current image boots from CD. Scoring is verified, but round sequencing,
+continuous comparison past tick 2,487 and the performance gate remain open.
+No gameplay implementation is part of this planning update.
+
+### A. Establish the round-transition contract
+
+Start with the corrected `ps1-paul-score-verified/` and
+`ps1-paul-draw-verified/` captures. Check which transition edges their valid
+compact snapshots actually cover before launching another original session.
+Use the fingerprinted USA executable and pinned `round_flow.gd`,
+`round_state.gd` and `replay_state.gd` to build a transition table: entry
+condition, call order, counter/timer changes, input ownership, fighter clock
+policy, pose start and exit condition. Capture missing edges read-only.
+Do not reuse the invalid round ranges from the historical captures.
+
+Cover timeout, ordinary/perfect KO, a drawn round, next-round initialization
+and terminal match result within normal two-player VS. Observe P2 as winner
+too. Verify the replay mode/request and skip paths rather than assuming a KO
+and timeout take the same path. The initial divergence is victory slot 3432
+at native tick 2,488/source 2795; this is an investigation anchor, never a
+hardcoded trigger. Round camera controls need observation where they gate
+progress, even if exact camera rendering is outside the current comparison.
+
+Deliverable: a documented transition table and independently checked RAM/JSON
+evidence for each supported branch. Identify missing evidence explicitly.
+
+### B. Implement original normal-VS round flow in the shared core
+
+Replace the bounded hold/reset path with explicit observed states. Keep the
+already verified scorer. Implement input lockout/scripted input, winner pose
+selection, loser clock behavior, victory completion, next-round fighter reset,
+intro and timer activation in source call order. Reset the required input,
+blend, contact and reaction state; preserve match scores and configuration.
+Use the same implementation in host replay and the Saturn application.
+
+Budget replay storage before adding it: the reference fighter rings alone
+contain `300 * 2 * 0x34 = 31,200` bytes, before bookkeeping. The current image
+has 961,780 initialized bytes against a 983,040-byte loader limit. Decide
+placement from the linker map and measured stack/Low WRAM headroom; preserve
+the existing 16 KiB stack reserve and image assertions. `t3_psx_match_step`
+currently copies the complete match for atomic updates. Keep a large history
+buffer outside that per-tick copy and commit ring mutations only after a
+successful tick. Do not add a RAM-cartridge requirement by default.
+
+Implement the observed replay playback/restore path when required by this
+encounter, including the half-speed pose/root behavior. A user-accessible skip
+branch may be validated separately; it must not stand in for an unimplemented
+default path. Do not require unrelated modes, audio or effects to close this
+bounded gameplay comparison; report their coverage separately.
+
+Deliverable: host state-transition regressions, paired original component
+audits and an initial Saturn victory/next-round checkpoint. Synthetic cases
+must exercise ordering, off-by-one boundaries and state restoration rather
+than repeat constants from the implementation.
+
+### C. Close uninterrupted original/host/Saturn comparison
+
+Extend the existing replay seed to initialize round globals and configuration
+once. The current adapter does not enable original round flow. Add comparisons
+for round state, counter, timer, score, result and relevant replay state, while
+retaining every existing fighter comparison. Extend capture ranges only from
+verified USA addresses and instruction widths.
+
+Execute all 2,690 existing captured ticks and retain all divergences. Require
+the previously matching 2,487-tick prefix to remain intact, then pass the
+victory and next-round boundary. Extend the trace through the later intro's
+return to FIGHT and an accepted player command. Separately cover KO and the
+two-draw terminal result. Original InputSource outputs can help diagnose a
+component; end-to-end validation must distinguish external pad input from
+internally generated/cleared input and let native round flow own the latter.
+
+Compare Saturn at the same simulation checkpoints with the same initialization
+and external pad schedule. Never reseed fighters, copy expected return state
+into the simulation or truncate a failing tail to claim parity. Archive exact
+comparison coverage, first mismatch and artifact hashes.
+
+Deliverable: passing continuous comparisons for the supported branches, plus
+the complete Ymir combat suite updated for original transition timings. Keep
+emulator frame numbers separate from simulation ticks when updating schedules.
+
+### D. Reach the measured 30 Hz render / 60 Hz logic budget
+
+Take a fresh live baseline after round integration. Measure intervals across
+multiple checkpoints, including moving/hitting poses and round transitions;
+separate logic, pose/skin, scene/HUD, waits, submissions and presentation where
+observable. The previous live interval was 8.1 submissions/s and 32.4 logic
+steps/s. Rendering/skin samples overlap and cannot be added as separate costs.
+
+Optimize the largest measured costs first, with one attributable change at a
+time. Inspect repeated pose/matrix work, state copying and dense face/HUD work
+before considering Slave SH-2 scheduling. Generic fixes belong in sibling
+LibSaturn, with library checks and a rebuilt installed SDK. Use the labeled
+fixed-pose benchmark only for controlled render comparisons; final evidence
+must use `T3_RENDER_BENCH_TICK=0`, live inputs and both animated actors.
+
+Require sustained 60 logic steps/s and at least 30 scene submissions/s over
+measured intervals at nominal 60 Hz VBlank, with bounded input-to-state delay,
+no discarded accumulated ticks, and presentation cadence checked separately.
+Increasing the four-tick catch-up cap alone does not pass. Preserve recognizable
+authored models, memory limits, command capacity and zero draw timeouts. If
+this remains unmet, publish the measured shortfall and leave the gate open.
+Emulator measurements do not certify real hardware performance.
+
+### E. Validate and publish the complete encounter
+
+On the final live build, run the relevant host/Python checks, full Ymir combat
+suite, image/memory validation and affected library checks. Record actual
+Mednafen CD boot through movement, high/mid/low, standing/crouching defense,
+KO, victory and a controllable next round. Retain a terminal match/draw check
+and reset/two-pad evidence. A neutral boot alone does not satisfy this gate.
+
+Bind video, screenshots, diagnostics, input schedule and performance results
+to the same final ELF/app/disc hashes and repository/SDK/emulator revisions.
+Commit and push each coherent passing implementation increment, checking its
+CI result. Keep retail assets, BIOS and private captures out of Git. Update
+the progress record with passed gates and unresolved mismatches; mark the
+milestone complete only after its behavior, continuous comparison, performance
+and final CD encounter gates pass. Do not expand the roster or install Godot
+unless a concrete remaining dependency makes it useful.
+
 ## Current checkpoint and immediate gap
 
 Owned movement, clocks, world pose, body/arena and exact contact are integrated.
