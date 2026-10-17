@@ -4,6 +4,7 @@
  * Generated headers/data are explicit local build inputs, never public fixtures. */
 #include "psx_match.h"
 #include "psx_ground_eval_fields.h"
+#include "psx_round_flow_eval_fields.h"
 #include "t3_local_divmot.h"
 #include "t3_generated_character.h"
 #include <stdio.h>
@@ -14,6 +15,7 @@ static t3_psx_match_t game;
 static t3_psx_match_config_t config;
 static t3_divmot_t bank,common;
 static unsigned differences;
+static int original_round_flow;
 static void check(unsigned i,const char* category,const char* field,int64_t got,int64_t expected) {
     if(got==expected)return;
     printf("%s{\"fighter\":%u,\"category\":\"%s\",\"field\":\"%s\",\"actual\":%lld,\"expected\":%lld}",
@@ -37,9 +39,17 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     config.rsqrt=(t3_psx_rsqrt_t){t3_local_rsqrt_blob,T3_LOCAL_RSQRT_BYTES};
 #endif
     config.enable_body=config.enable_combat=1;config.collapse_on_ko=u8(0x800AFA93u);
+    config.enable_rounds=original_round_flow?2:0;
     config.chip_enabled=u32(0x800AFA58u)!=0;
     config.reactions=t3_local_combat_reactions;config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
     if(!t3_psx_match_init(&game,&config))return 0;
+    if(original_round_flow) {
+#define READ_FLOW(member,offset,kind) game.flow.member=kind(offset);
+        T3_ROUND_FLOW_EVAL_FIELDS(READ_FLOW)
+#undef READ_FLOW
+        game.replay_mode=i32(0x8009BCA8u);
+        game.fight_clock=u32(0x800AFAB4u);
+    }
     for(unsigned i=0;i<2;++i) {
         uint32_t b=0x800A9228u+i*0x188Cu;
         t3_psx_fighter_t* f=&game.fighter[i];
@@ -57,6 +67,12 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         f->vm.current_transition=(uint8_t)u16(b+0xA2);f->vm.current_branch_kind=u8(b+0x8B);
         f->vm.last_entry_frame=i16(b+0x198);
         f->health_q16=i32(b+0x3F4);f->hit_done=u8(b+0x83+1u-i);
+        if(original_round_flow) {
+            t3_psx_round_actor_t* a=&game.round_actor[i];
+            a->wins=i16(b+0x44);a->won=i16(b+0x46);a->win_pose=i16(b+0x48);
+            a->health_left=i16(b+0x400);a->carried_health=i32(b+0x3FC);
+            a->script_input=u16(b+0x408);a->costume=i16(b+0x1C);
+        }
         f->contact=u8(b+0xD1);f->contact_this_move=u8(b+0x88);f->got_hit=u8(b+0xCE);
         f->hit_freeze_in=i16(b+0xEE);f->previous_anchor=f->ground.anchor;
         f->blend_guarded_previous=u8(b+0x89);f->blend_in_reaction=u8(b+0x8A);
@@ -106,6 +122,16 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 }
 static void compare(unsigned i,uint32_t sx,uint32_t sz) {
     const t3_psx_fighter_t* f=&game.fighter[i];uint32_t b=0x800A9228u+i*0x188Cu;
+    if(original_round_flow) {
+        const t3_psx_round_actor_t* a=&game.round_actor[i];
+        check(i,"round_actor","wins",a->wins,i16(b+0x44));
+        check(i,"round_actor","won",a->won,i16(b+0x46));
+        check(i,"round_actor","win_pose",a->win_pose,i16(b+0x48));
+        check(i,"round_actor","active",f->body.active,u8(b+0xC3));
+        check(i,"round_actor","health_left",a->health_left,i16(b+0x400));
+        check(i,"round_actor","carried_health",a->carried_health,i32(b+0x3FC));
+        check(i,"round_actor","script_input",a->script_input,u16(b+0x408));
+    }
 #define CHECK(member,offset,kind) check(i,"ground",#member,f->ground.member,kind(b+offset));
     T3_GROUND_EVAL_FIELDS(CHECK)
 #undef CHECK
@@ -174,21 +200,31 @@ static void compare(unsigned i,uint32_t sx,uint32_t sz) {
 }
 int main(int argc,char** argv) {
     char line[4096];FILE* input;uint32_t sx,sz,prev,ramp;unsigned rows=0;
-    if(argc!=7)return 2;
+    if(argc!=7 && argc!=8)return 2;
+    if(argc==8){if(strcmp(argv[7],"--original-round-flow"))return 2;original_round_flow=1;}
     sx=(uint32_t)strtoul(argv[3],NULL,0);sz=(uint32_t)strtoul(argv[4],NULL,0);
     prev=(uint32_t)strtoul(argv[5],NULL,0);ramp=(uint32_t)strtoul(argv[6],NULL,0);
     if(!seed(argv[1],sx,sz,prev,ramp)){fprintf(stderr,"invalid or unsupported neutral seed\n");return 2;}
     input=fopen(argv[2],"r");if(!input)return 2;
     while(fgets(line,sizeof(line),input)) {
-        char path[2048];unsigned held0,pressed0,held1,pressed1,call,frame;
-        if(sscanf(line,"%2047[^\t] %u %u %u %u %u %u",path,&held0,&pressed0,&held1,&pressed1,&call,&frame)!=7 ||
+        char path[2048];unsigned held0,pressed0,held1,pressed1,call,frame,physical0=0,physical1=0,edge0=0,edge1=0;
+        int fields=sscanf(line,"%2047[^\t] %u %u %u %u %u %u %u %u %u %u",path,&held0,&pressed0,&held1,&pressed1,&call,&frame,
+                          &physical0,&physical1,&edge0,&edge1);
+        if(fields!=(original_round_flow?11:7) || physical0>65535 || physical1>65535 || edge0>65535 || edge1>65535 ||
            (held0&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed0>2047 ||
            (held1&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed1>2047){fclose(input);return 2;}
-        int ok=t3_psx_match_step(&game,(t3_input_t){(uint16_t)held0,(uint16_t)pressed0},
-                                         (t3_input_t){(uint16_t)held1,(uint16_t)pressed1});
+        t3_input_t p0={(uint16_t)held0,(uint16_t)pressed0},p1={(uint16_t)held1,(uint16_t)pressed1};
+        const t3_psx_match_frame_t video={frame,{(uint16_t)physical0,(uint16_t)physical1},{(uint16_t)edge0,(uint16_t)edge1}};
+        int ok=original_round_flow?t3_psx_match_step_original(&game,p0,p1,&video):t3_psx_match_step(&game,p0,p1);
         if(!snapshot(path)){fclose(input);return 2;}
-        printf("{\"call\":%u,\"source_frame\":%u,\"native_tick\":%u,\"supported\":%s,\"body_checked\":true,\"blend_checked\":%s,\"differences\":[",call,frame,game.ticks,ok?"true":"false",config.rsqrt.data?"true":"false");
+        printf("{\"call\":%u,\"source_frame\":%u,\"native_tick\":%u,\"supported\":%s,\"clear_inputs\":[%u,%u],\"body_checked\":true,\"blend_checked\":%s,\"differences\":[",call,frame,game.ticks,ok?"true":"false",game.fighter[0].input.direction_cleared,game.fighter[1].input.direction_cleared,config.rsqrt.data?"true":"false");
         differences=0;for(unsigned i=0;i<2;++i)compare(i,sx,sz);
+        if(original_round_flow) {
+#define CHECK_FLOW(member,offset,kind) check(0,"round",#member,game.flow.member,kind(offset));
+            T3_ROUND_FLOW_EVAL_FIELDS(CHECK_FLOW)
+#undef CHECK_FLOW
+            check(0,"round","replay_mode",game.replay_mode,i32(0x8009BCA8u));
+        }
         printf("],\"passed\":%s}\n",ok && !differences && !bad?"true":"false");++rows;
         if(!ok || bad)break;
     }

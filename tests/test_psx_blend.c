@@ -61,5 +61,13 @@ int main(void) {
     f.row=99;
     assert(!t3_psx_blend_prepare(&s,&f,sample,0));
     assert(!t3_psx_blend_prepare(0,&f,sample,0));
+    /* A round's global hold bypasses both blend selection and sampling. */
+    s=(t3_psx_blend_t){.mode=T3_BLEND_STANCE,.frames=10,.counter=5};
+    f.global_hold=1;f.decoded_root_dy=17;samples=0;
+    assert(t3_psx_blend_prepare(&s,&f,sample,0));
+    assert(!samples && !s.mode && !s.frames && !s.counter && s.previous_root[1]==17);
+    s.active=1;s.frames=4;s.counter=2;
+    assert(t3_psx_blend_prepare(&s,&f,sample,0));
+    assert(s.active && s.frames==4 && s.counter==2);
     return 0;
 }

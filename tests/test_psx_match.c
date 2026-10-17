@@ -70,5 +70,34 @@ int main(void) {
     assert(game.fighter[0].input.count==1 && !game.fighter[0].hit_done);
     assert(game.fighter[0].ground.root.x==-100 && game.fighter[1].ground.root.x==100);
     assert(game.fighter[0].vm.slot==3 && game.fighter[1].vm.slot==3);
+    c.enable_rounds=2;
+    assert(t3_psx_match_init(&game,&c));
+    assert(!t3_psx_match_step(&game,neutral,neutral));
+    t3_psx_match_frame_t video={1,{0,0},{0,0}};
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(game.ticks==1 && game.flow.timer==2399 && game.fight_clock==1);
+    game.flow.timer=0;
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.state==T3_ROUND_RESULT && game.round_actor[0].wins==1 && game.round_actor[1].wins==1);
+    assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
+    for(unsigned i=0;i<90;++i)assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.state==T3_ROUND_REPLAY_DONE && game.flow.replay_request);
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.state==T3_ROUND_WIN_WAIT && game.replay_mode==5 && game.flow.hold==299);
+    game.flow.state=T3_ROUND_END;before=game;
+    /* The public synthetic bank initially lacks the required intro slot. */
+    assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(!memcmp(&game,&before,sizeof(game)));
+    p32(bytes+B2+1*4,0);
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.played==2 && game.flow.state==T3_ROUND_INTRO && game.flow.frame==1);
+    assert(game.flow.timer==2400 && game.round_actor[0].wins==1 && game.round_actor[1].wins==1);
+    assert(game.fighter[0].health_q16==c.max_health_q16 && game.fighter[1].health_q16==c.max_health_q16);
+    assert(game.fighter[0].ground.anchor.x==-1000 && game.fighter[1].ground.anchor.x==1000);
+    assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
+    assert(game.flow.camera==1 && !game.flow.no_damage);
+    game.flow.state=T3_ROUND_REPLAY_DONE;game.flow.result=10;game.flow.replay_request=1;before=game;
+    assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(!memcmp(&game,&before,sizeof(game)));
     return 0;
 }

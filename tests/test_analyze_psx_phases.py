@@ -10,6 +10,17 @@ from psx_ram_oracle import RAM_BYTES,FIGHTER_BASE,FIGHTER_STRIDE,GLOBAL_FRAME,GA
 
 
 class PhaseAuditTests(unittest.TestCase):
+    def test_mapped_pad_checkpoint_requires_typed_and_equal_ram(self):
+        ram=bytearray(RAM_BYTES)
+        struct.pack_into('<I',ram,GAME_STATE-0x80000000,8)
+        struct.pack_into('<I',ram,GLOBAL_FRAME-0x80000000,701)
+        struct.pack_into('<H',ram,0x100,0x8000)
+        last=dict(phase='FightFrame:exit',source_frame=701,fighters=[{},{}],pads={'held0':0x8000})
+        fields={'held0':dict(address=0x80000100,size=2,signed=False)}
+        self.assertTrue(verify_checkpoint(ram,last,pad_fields=fields))
+        with self.assertRaisesRegex(ValueError,'provenance'):verify_checkpoint(ram,last)
+        last['pads']['held0']=1
+        with self.assertRaisesRegex(ValueError,'pad RAM'):verify_checkpoint(ram,last,pad_fields=fields)
     def fixture(self):
         rows=[]
         for frame in [700,700,701]:

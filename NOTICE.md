@@ -26,7 +26,8 @@ implementation of Tekken3Remake.
   and `fight_math.py`, plus body profiles from
   `remake/core/combat/combat.gd`, procedural head tracking from
   `remake/core/fighter/fighter_animation.gd` and result classification from
-  `remake/core/fight/round_flow.gd`, to C.
+  `remake/core/fight/round_flow.gd`, plus selective round placement from
+  `remake/core/fight/fight_simulation.gd`, to C.
   These files are under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/),
   not MIT. Required Notice: Copyright (c) 2026 n0madic.
   Its header identifies the changes. Builds linking this adaptation include

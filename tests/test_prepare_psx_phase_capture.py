@@ -22,9 +22,13 @@ class RoundCaptureMappingTests(unittest.TestCase):
             p=Path(temp);exe=p/'exe';exe.write_bytes(raw)
             meta=p/'layout.json';meta.write_text(json.dumps(layout))
             with patch.object(capture,'US_EXE_SHA',hashlib.sha256(raw).hexdigest()):
-                launcher=capture.prepare(exe,meta,p/'out',550,6500,round_flow_ram=True,stop_round_ends=2)
+                launcher=capture.prepare(exe,meta,p/'out',550,6500,round_flow_ram=True,stop_round_ends=2,pad_ram=True)
             provenance=json.loads((p/'out/provenance.json').read_text())
             self.assertTrue(provenance['round_flow_capture'])
+            self.assertEqual(provenance['pad_fields']['held0']['address'],0x800A8C48)
+            self.assertEqual(provenance['pad_fields']['held1']['address'],0x800A8C4A)
+            self.assertEqual(provenance['pad_fields']['pressed0']['address'],0x800ADC78)
+            self.assertEqual(provenance['pad_fields']['pressed1']['address'],0x800ADC7A)
             self.assertEqual(provenance['stop_round_ends'],2)
             fields=provenance['round_fields']
             for name,base in [('physical',0x800ADD68),('pressed',0x800ADF08)]:

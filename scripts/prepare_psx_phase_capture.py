@@ -55,7 +55,13 @@ def round_descriptors(point,flow=False):
     return fields
 
 
-def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=False,body_ram=False,contact_ram=False,frame_ram=False,round_ram=False,stop_round_results=0,round_flow_ram=False,stop_round_ends=0):
+def pad_descriptors(point):
+    # USA PadRead 0x80029EC4/ED8 and 0x80029F44/54 store u16s.
+    return {name+str(i):dict(address=point(address)+2*i,size=2,signed=False)
+            for name,address in [('held',0x800A9110),('pressed',0x800AE140)] for i in range(2)}
+
+
+def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=False,body_ram=False,contact_ram=False,frame_ram=False,round_ram=False,stop_round_results=0,round_flow_ram=False,stop_round_ends=0,pad_ram=False):
     if round_flow_ram:round_ram=True
     raw = exe.read_bytes()
     layout = json.loads(layout_path.read_text())['blocks']['exe']
@@ -93,6 +99,11 @@ def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=Fals
                json.dumps(str(output / 'start-')) if ground_ram else 'nil',
                point(0x8009E9A8),point(0x8009E9B8)))
     extra_ranges=[]
+    if pad_ram:
+        pad_fields=pad_descriptors(point)
+        config+='pad_fields={'+','.join('{%s,%d,%d,false}'%(json.dumps(name),f['address'],f['size'])
+            for name,f in pad_fields.items())+'},'
+        extra_ranges += [(0x800A9110,4),(0x800AE140,4)]
     round_fields={}
     if round_ram:
         round_fields=round_descriptors(point,round_flow_ram)
@@ -148,6 +159,7 @@ def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=Fals
     if round_flow_ram:
         manifest.update(round_flow_capture=True,round_move_banks=point(0x800AE0E8))
     if stop_round_ends:manifest['stop_round_ends']=stop_round_ends
+    if pad_ram:manifest['pad_fields']=pad_fields
     if contact_ram:
         manifest['segment_addresses']={name:point(address) for name,address in
             [('anchor',0x800A0920),('end0',0x800A08D0),('end1',0x800A08F4),('mode',0x800A0950),('trig',0x800A0960)]}
@@ -171,7 +183,8 @@ if __name__ == '__main__':
     p.add_argument('--frame-ram',action='store_true',help='One neutral full-RAM seed and consecutive FightFrame exit ranges')
     p.add_argument('--round-ram',action='store_true',help='Read-only round globals and RoundFlow/result/win-pose phases')
     p.add_argument('--round-flow-ram',action='store_true',help='Also capture replay controls, physical pads and win-pose completion flags')
+    p.add_argument('--pad-ram',action='store_true',help='Observe the mapped pad words refreshed during InputSource')
     p.add_argument('--stop-round-results',type=int,default=0,help='Pause at the FightFrame return after this many observed RoundWins calls')
     p.add_argument('--stop-round-ends',type=int,default=0,help='Pause after this many FightFrame returns in END, including victory/replay')
     a = p.parse_args()
-    print(prepare(a.exe, a.layout, a.output, a.first, a.last,a.hit_ram,a.ground_ram,a.body_ram,a.contact_ram,a.frame_ram,a.round_ram,a.stop_round_results,a.round_flow_ram,a.stop_round_ends))
+    print(prepare(a.exe, a.layout, a.output, a.first, a.last,a.hit_ram,a.ground_ram,a.body_ram,a.contact_ram,a.frame_ram,a.round_ram,a.stop_round_results,a.round_flow_ram,a.stop_round_ends,a.pad_ram))

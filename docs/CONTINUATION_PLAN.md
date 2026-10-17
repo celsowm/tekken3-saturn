@@ -191,24 +191,19 @@ immediate USA VS KO collapse. The normal frontend routes it through the owned
 core and only copies presentation data to the old match structure. It does not
 call provisional `t3_match_step` in this mode.
 
-The native owned core now also runs from one original neutral seed without
-replacing fighter state between ticks. Its checked move/clock/queued-branch and
-hit fields match for 2,487 ticks, including eight HP changes. This exposed and
-fixed a KMD mesh-order versus original joint-slot mismatch in body/contact
-integration. Overall replay is still incomplete at the original victory-pose boundary.
-The newer `build/paul-blend` ports
-all three normal transition blends and fixes a 32-bit spline endpoint coefficient
-that had been truncated to 16 bits. All checked blend scalars, previous local
-matrices and matrix deltas now match for both actors across all 2,396 ticks.
-Per-actor skeleton selection now eliminates the subsequent placement discrepancy:
-ground, all joint origins and body-sphere/push fields match all 2,396 ticks.
-Original head tracking subsequently resolves all world-matrix differences too.
-InputClear now preserves its raw direction value 5 separately from a normal
-neutral pad. All 2,690 captured ticks execute, with all checked categories
-matching through tick 2,487. At tick 2,488/source 2795 the original starts
-victory pose 3432 and freezes the loser; later it restores HP for a new round.
-The bounded native round policy does not reproduce those original transitions,
-so the full replay remains failed rather than truncating that evidence.
+The native original-frame API now runs from one original neutral seed without
+replacing fighter or round state between ticks. All checked categories match
+all 2,916 ticks of the timeout/victory/next-round capture, including the original
+pose 3432 boundary, frozen loser, restored HP and accepted commands after the
+later intro. A separate 5,221-tick neutral capture matches both draws and the
+terminal 2–2 result. Both consume mapped pad IO samples; native round flow owns
+clear/script input. Original ground, body/contact, pose, head tracking and blend
+internals remain checked throughout. Initial screen sides stay explicit.
+The [round-flow contract](PSX_VS_ROUND_FLOW.md) records reproduction and scope.
+KO replay playback still needs its native history ring and state restoration;
+the complete original-frame API is not yet enabled by the playable frontend.
+The historical adapter with round flow disabled still fails at victory and is
+retained as separate legacy evidence.
 
 The corrected order passes the short interactive combat cases and a controlled
 pad encounter through guards, a mid hit, lows and KO. A matching, visibly labeled
@@ -218,10 +213,12 @@ the pinned RoundWins/MatchResult implementation, including points for both
 players on draws, the decreasing round cap and configured tie selection.
 The original's two neutral draws were independently captured and agree with
 the native scorer. The live default timer is now the observed 2,400 ticks.
-Intro/replay/win poses and round-transition sequencing remain provisional.
+The playable frontend still uses the bounded round policy. Its original-flow
+activation and KO replay are the immediate integration gaps.
 
-Remaining execution order: integrate the audited original round-flow controller;
-repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.
+Remaining execution order: implement and audit native KO replay playback;
+activate the original-frame API and compare host/Saturn/PS1 continuously;
+optimize scene/HUD and tick pacing.
 Preserve the verified corrected CD encounter. The 30 Hz render / 60 Hz logic gate
 still fails at approximately 8.4 reported work loops/s and 316 logic ticks per 600 emulator
 frames. The [progress record](NEXT_PLAYABLE_PROGRESS.md) holds scoped evidence.

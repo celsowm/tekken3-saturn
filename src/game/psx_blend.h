@@ -15,13 +15,13 @@ typedef struct {
     int16_t pose_frame,frame_step,entry_frame,previous_event_frame,decoded_root_dy;
     int16_t throw_state;
     uint8_t length,active_first,changed,branch_kind,transition,pending;
-    uint8_t suppressed,no_forward;
+    uint8_t suppressed,no_forward,global_hold;
 } t3_psx_blend_facts_t;
 /* Callback decodes arbitrary row identity/frame with actor-scaled root channels
  * and original FK/IK matrices (18 slots). No blend/head-look is applied here. */
 typedef int (*t3_psx_blend_sample_t)(void*,uint32_t,unsigned,int16_t[3],t3_psx_matrix_t[18]);
-/* Normal live match only; global replay playback/hold are not enabled by this
- * bounded path. Failure may modify state: invoke inside the match transaction. */
+/* Live transition blending and explicit round hold. Replay pose playback is
+ * separate. Failure may modify state: invoke inside the match transaction. */
 int t3_psx_blend_prepare(t3_psx_blend_t* state,const t3_psx_blend_facts_t* facts,
                          t3_psx_blend_sample_t sample,void* user);
 /* RootUpdate sets the matrix weight and displayed Y using truncation toward0.

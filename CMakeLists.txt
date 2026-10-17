@@ -24,7 +24,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         PROPERTIES COMPILE_OPTIONS "-Os")
     # A freestanding GCC 13 SH-2 toolchain has no hosted system stdint.h.
     # Without -ffreestanding, GCC's own stdint.h attempts include_next.
-    target_compile_options(tekken3_fight PRIVATE -m2 -mb -ffreestanding)
+    # The linker already collects unused sections. Keep optional original-flow
+    # entry points independently collectible while the frontend uses mode 1.
+    target_compile_options(tekken3_fight PRIVATE -m2 -mb -ffreestanding -ffunction-sections -fdata-sections)
     find_package(LibSaturn 0.1 CONFIG REQUIRED)
 
     # LibSaturn is an installed runtime dependency. Its uninstalled source

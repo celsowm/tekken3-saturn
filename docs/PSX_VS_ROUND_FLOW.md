@@ -2,8 +2,10 @@
 
 This is the integration contract for `src/game/psx_round_flow.c`, adapted from
 the pinned Tekken3Remake `round_flow.gd`. It is a portable control component;
-the playable application still uses `psx_round.c`'s bounded round wrapper.
-Component agreement does not establish uninterrupted match or Saturn parity.
+the shared original-frame API now applies its timeout/victory/reset actions.
+The playable application still uses `psx_round.c`'s bounded round wrapper.
+Component agreement does not establish uninterrupted match or Saturn parity;
+the continuous host evidence below is a separate gate.
 
 ## Ownership and call order
 
@@ -124,3 +126,45 @@ requires up to 64 bounded compact ranges; both host readers accept that limit.
 Missing stance evidence is an audit error, not an assumption of standing input.
 The earlier `ps1-paul-flow-p2/` capture lacks this chain and cannot support the
 complete P2 flow audit. Keep it as incomplete evidence.
+
+## Continuous integration evidence
+
+`t3_psx_match_step_original` takes external mapped pad inputs plus the original
+frame counter and early physical button latch. It owns RoundFlow and its
+fighter actions, including native clear/script input, timeout replay completion,
+victory, blend hold and selective later-round placement/intro. KO playback
+currently returns unsupported atomically; the ring and restore path remain
+required before activating this API in the Saturn frontend.
+
+The reference explicit start assigns the new pose row before MoveStartOrAdvance
+reads reanchor flags. It differs from a normal queued move. At a later-round
+placement an inactive fighter does not execute MoveStartOrAdvance until its
+active flag has been restored. Its pending stance and prior current slot remain
+distinct in that interval. Preserving these rules resolves the old victory and
+next-round divergences without copying expected snapshots into the simulation.
+
+Use a capture with `--frame-ram --round-flow-ram --pad-ram`, then:
+
+```sh
+python3 scripts/audit_psx_match_replay.py \
+  --capture assets/imported/ps1-paul-flow-pads-continuous \
+  --evaluator build/host/t3_match_replay_eval \
+  --original-round-flow --output assets/imported/local-continuous-audit
+```
+
+The adapter is configured with the existing explicit
+`T3_PRIVATE_REPLAY_ASSET_DIR` option. One full RAM entry seeds fighter and round
+state. Every later snapshot is read only for comparison. The complete captures
+pass 2,916 timeout/victory/next-round ticks and 5,221 two-draw/terminal ticks.
+The initial input sides are retained, so arbitrary camera-side flips and STEP
+key mappings are outside this evidence. Full native KO replay and Saturn
+activation remain open.
+
+The early physical latch is not the live mapped input sample. USA PadRead can
+refresh mapped held/pressed u16 pairs at `0x800A8C48/+2` and `0x800ADC78/+2`
+inside InputSource. A repeated FightFrame with the same source counter can
+therefore consume a newer mapped word while RoundFlow's physical latch stays
+unchanged. `--pad-ram` observes those IO globals separately. Each actor's input
+sample comes from its InputSource exit, while native RoundFlow chooses whether
+to consume, clear or replace it with script input. No fighter command-history
+output is used as an externally injected round policy.

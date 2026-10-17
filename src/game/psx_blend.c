@@ -3,7 +3,7 @@
  * https://polyformproject.org/licenses/noncommercial/1.0.0/
  * Adapted from pinned Tekken3Remake tools/research/fight_sim.py live transition
  * blend, RootUpdate and pose composition. Changes: explicit caller state and
- * sampling callback; replay/hold globals absent in this bounded normal match.
+ * sampling callback and explicit global hold; replay playback remains separate.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "psx_blend.h"
 #include "fixed_shift.h"
@@ -21,6 +21,11 @@ int t3_psx_blend_prepare(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
                          t3_psx_blend_sample_t sample,void* user) {
     int n=0,forward=1,left;
     if(!s || !f || !sample || s->mode>3 || s->frames<0 || s->frames>32767)return 0;
+    if(f->global_hold) {
+        s->mode=0;
+        if(!s->active)s->counter=s->frames=0;
+        goto finish;
+    }
     s->active=0;
     if(!f->suppressed) {
         if(s->mode==T3_BLEND_DECAY && !s->counter)s->mode=0;
@@ -88,6 +93,7 @@ int t3_psx_blend_prepare(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
     } else if(!s->mode)s->counter=s->frames=0;
     else if(s->counter<s->frames)++s->counter;
     else if(s->counter>s->frames)s->counter=s->frames;
+finish:
     s->last_row=f->row;s->last_frame=f->pose_frame;s->previous_root[1]=f->decoded_root_dy;
     return 1;
 }

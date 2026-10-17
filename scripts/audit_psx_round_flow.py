@@ -14,7 +14,7 @@ import subprocess
 from analyze_psx_phases import analyze,verify_checkpoint
 from audit_psx_round_score import Ranges,checked_state
 from extract_psx_pose_tables import mapped
-from prepare_psx_phase_capture import round_descriptors
+from prepare_psx_phase_capture import round_descriptors,pad_descriptors
 from psx_disc_import import US_EXE_SHA
 from psx_ram_oracle import FIGHTER_BASE,FIGHTER_STRIDE
 
@@ -74,7 +74,10 @@ def audit(capture,runner,layout_path):
         raise ValueError('capture must be paused')
     if json.loads((capture/'paused-phase.jsonl').read_text())!=rows[-1]:
         raise ValueError('paused observation differs from final trace row')
-    verify_checkpoint((capture/'paused-ram.bin').read_bytes(),rows[-1],fields)
+    pads=meta.get('pad_fields')
+    if pads is not None and pads!=pad_descriptors(lambda a:points.get(a) or mapped(layout,a,4)):
+        raise ValueError('unverified mapped pad descriptors')
+    verify_checkpoint((capture/'paused-ram.bin').read_bytes(),rows[-1],fields,pads)
     entries={};cases=[];hashes={};edges=Counter();lines=[]
     for row in rows:
         if row['phase'] not in ('RoundFlow:entry','RoundFlow:exit'):continue

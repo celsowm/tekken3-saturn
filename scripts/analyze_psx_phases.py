@@ -43,7 +43,7 @@ def read_fighter(ram, index, names):
     return result
 
 
-def verify_checkpoint(ram, last, round_fields=None):
+def verify_checkpoint(ram, last, round_fields=None,pad_fields=None):
     if len(ram) != RAM_BYTES or last['phase'] != 'FightFrame:exit':
         raise ValueError('requires full paused RAM and a final FightFrame return')
     if read_at(ram,GAME_STATE,'I') != 8 or read_at(ram,GLOBAL_FRAME,'I') != last['source_frame']:
@@ -60,6 +60,14 @@ def verify_checkpoint(ram, last, round_fields=None):
             fmt={(1,False):'B',(1,True):'b',(2,False):'H',(2,True):'h',(4,False):'I',(4,True):'i'}[(field['size'],field['signed'])]
             if read_at(ram,field['address'],fmt)!=last['round'][name]:
                 raise ValueError('paused round RAM disagrees: '+name)
+    if 'pads' in last:
+        if not pad_fields or set(pad_fields)!=set(last['pads']):
+            raise ValueError('pad checkpoint requires matching provenance descriptors')
+        for name,field in pad_fields.items():
+            if field['size']!=2 or field['signed'] is not False:
+                raise ValueError('invalid pad field descriptor')
+            if read_at(ram,field['address'],'H')!=last['pads'][name]:
+                raise ValueError('paused pad RAM disagrees: '+name)
     return True
 
 
@@ -127,7 +135,8 @@ if __name__ == '__main__':
     rows = [json.loads(line) for line in a.trace.read_text().splitlines()]
     result = analyze(rows)
     if a.ram:
-        fields=json.loads(a.provenance.read_text()).get('round_fields') if a.provenance else None
-        result['paused_ram_equal'] = verify_checkpoint(a.ram.read_bytes(),rows[-1],fields)
+        provenance=json.loads(a.provenance.read_text()) if a.provenance else {}
+        result['paused_ram_equal'] = verify_checkpoint(a.ram.read_bytes(),rows[-1],
+            provenance.get('round_fields'),provenance.get('pad_fields'))
     a.output.write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps({k:v for k,v in result.items() if k!='changed_fields'},indent=2))

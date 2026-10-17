@@ -148,6 +148,13 @@ local function emit(phase, call, pc, a0)
         end
         round=',"round":{'..table.concat(values,',')..'}'
     end
+    if cfg.pad_fields then
+        local values={}
+        for _,f in ipairs(cfg.pad_fields) do
+            values[#values+1]=string.format('"%s":%.0f',f[1],unsigned(f[2],f[3]))
+        end
+        round=round..',"pads":{'..table.concat(values,',')..'}'
+    end
     local row=string.format(
         '{"seq":%d,"source_frame":%.0f,"cycles":%.0f,"phase":"%s",'..
         '"call":%d,"pc":%.0f,"a0":%.0f,"fighters":[%s]%s}\n',

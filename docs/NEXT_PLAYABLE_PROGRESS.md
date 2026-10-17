@@ -5,9 +5,75 @@ It is **not complete**. `build/paul` remains the provisional animated preview;
 `build/paul-owned` owns original movement/body/contact queries without live damage.
 The newer `build/paul-combat` activates bounded original high/mid/low damage,
 guard, reactions and USA VS KO collapse, with the temporary round policy below.
-Free-running matched PS1 replay, pose details and performance remain open.
+Continuous timeout/draw comparisons now pass in the native original-frame API;
+KO replay, live activation of that API and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
+
+## Continuous original timeout, victory and next-round integration (2026-10-17)
+
+- `t3_psx_match_step_original` now applies the audited controller before live
+  movement: victory pose start, actor activation, input mode, original global
+  blend hold, camera-phase gates and selective later-round placement/intro.
+  It uses `enable_rounds=2`; the playable frontend still uses bounded mode 1.
+  The original API fails atomically when KO playback needs its unimplemented
+  ring. No original fighter/round return state is supplied per tick.
+- `ps1-paul-flow-pads-continuous/` supplies one full neutral seed and **2,916
+  consecutive FightFrame return snapshots** through source 3200. Every declared
+  fighter/round category agrees with the native core through the entire trace:
+  high/mid/low contact, guards and reactions, timeout, P1 victory 3432, frozen
+  P2, restored HP, the next intro and accepted second-round commands. No
+  reseeding, unsupported frame or mismatching tail is hidden. The native
+  adapter SHA256 is
+  `0550f638e6387ae539734486cf0c86c22ec98cd77f8f30c9a22cf9e9b6bcc9f8`.
+- `ps1-paul-flow-pads-draw/` adds **5,221 consecutive ticks** from the same
+  verified neutral seed through both draws and terminal 2–2/END at source
+  4972. All checked categories agree, including scores, cap, active actors,
+  camera phase, clocks, poses/matrices, health, geometry and blend internals.
+  Each capture is independently paused and its full RAM matches every final
+  fighter, round and mapped-pad observation. These are host-core comparisons;
+  they do not establish the unactivated Saturn original-flow path or KO replay.
+- The first physical-latch comparison failed early because CpuOrPadInput
+  refreshes mapped pad words inside InputSource while the early physical latch
+  remains unchanged. New `--pad-ram` observations record mapped held/pressed
+  u16 pairs at `0x800A8C48/+2` and `0x800ADC78/+2`. The input adapter consumes
+  those external IO words at each actor's InputSource boundary, keeping early
+  physical words for victory selection. Native round flow generates clear and
+  script inputs. Initial screen sides remain explicit; arbitrary camera-side
+  changes and STEP key remapping are not certified by these captures.
+- An explicit RoundFlow move binds the new pose row before the move-start
+  flags are read. Using the previous idle row incorrectly reanchored P1 by
+  three/two units. Reading the new row fixes the complete victory segment.
+  Later-round placement preserves records and pending stance state: inactive
+  P2's queued slot 1 starts only in the next MoveStartAll. It does not zero
+  the whole fighter or hardcode P2's old slot. Global hold suppresses blend
+  selection, and inactive actors keep their original pose/world matrices.
+- The match transaction now stages one full match copy rather than nesting
+  two copies for original flow. Function/data sections make the existing
+  linker collection effective for unused core entry points. The current
+  initialized image is **949,956 bytes** (previous published image 961,780;
+  this implementation without section collection 967,268). High WRAM BSS ends
+  at `0x060F4178`, Low WRAM at `0x002ACEE8`; the 16 KiB stack reserve and all
+  native disc/image checks pass. ELF SHA256:
+  `a3d31d985c27ed6ac7171c11d8b9b1d0fcab15e1c4ba198f2e99e639ba16f7fe`.
+- **40 CTest checks and 100 Python checks pass**, with native adapters supplied.
+  The 2,916-tick private comparison and new round/blend tests also pass under
+  ASan/UBSan. All **20 Ymir combat/round scenarios** pass on the matching live
+  bounded ELF in `paul-flow-owned-final-suite/`. Actual Mednafen CD boot in
+  `paul-flow-owned-mednafen/` exits 0, records 1,427 video frames/23.8518 seconds,
+  and inspected second 22 shows both authored Pauls and readable HUD. This is
+  a neutral boot check, not a new full-encounter recording or activated round-flow
+  parity claim. The suite explicitly retains those scope flags as false.
+- New live 600/1200-frame profiles retain **8.1 submissions/s and 32.4 logic
+  steps/s** over exactly 600 VBlanks. Last work is 125 ms; render/HUD is 65 ms,
+  including 11 ms skin, and command use is 780/2048 with no draw timeouts.
+  The 30 Hz render / 60 Hz logic gate remains failed. No LibSaturn source
+  changes were needed for this checkpoint.
+- Next: implement the original KO replay ring/playback/restore, exercise that
+  branch continuously and activate the complete original-frame path on Saturn.
+  Then repeat the full encounter/CD evidence and close the performance gate.
+  The earlier legacy 2,690-tick adapter still fails at victory when run with
+  round flow disabled; its historical report is not relabeled as passing.
 
 ## Audited original VS round controller (2026-10-17)
 
