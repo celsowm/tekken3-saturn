@@ -83,6 +83,18 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(state['version'],13)
         self.assertNotIn('psx_lifecycle_active',state)
 
+    def test_original_round_and_replay_snapshot(self):
+        raw=bytearray(self.fixture());struct.pack_into('>I',raw,4,20)
+        raw+=bytes(60+36+36+8+76)
+        raw+=struct.pack('>I7i2I',1,4,91,240,1,12,300,-2,2000,3)
+        state=probe.decode(raw)
+        self.assertEqual(state['psx_round_flow_active'],1)
+        self.assertEqual(state['psx_round_state'],4)
+        self.assertEqual(state['psx_replay_play'],300)
+        self.assertEqual(state['psx_replay_mark'],-2)
+        self.assertEqual(state['psx_replay_epoch'],3)
+        with self.assertRaises(ValueError):probe.decode(raw[:-1])
+
     def test_reject_truncated_or_wrong_endian_or_unpublished(self):
         raw = self.fixture()
         for invalid in (raw[:-3], b''.join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4)),

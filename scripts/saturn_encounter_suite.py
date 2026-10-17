@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record a pad-only encounter with two guards, a mid hit and lows to KO.
+"""Record guards, a mid hit and lows through KO/replay/victory/next round.
 
 Approach direction follows the previous observed side; no guest state is written.
 Every iteration reruns its complete input prefix from reset. Requires an explicit
@@ -24,6 +24,7 @@ def execute(args):
         options.device_script.write_text('\n'.join(lines)+'\n')
         result=saturn_probe.run(options);state=result['state']
         assert not state['faces_rejected'] and state['psx_attack_decode_errors']==[0,0]
+        assert state.get('psx_round_flow_active')==1
         print(name,state['sim_ticks'],state['psx_registered_hits'],state['psx_registered_blocks'],
               state['psx_health_q16'],flush=True)
         return result
@@ -45,8 +46,21 @@ def execute(args):
         state=result['state']
         if state['round_done'] and state['wins0']==1:
             assert state['psx_health_q16'][1]==0 and state['psx_ko_collapse'][1]
-            (root/'passed.json').write_text(json.dumps(result,indent=2)+'\n')
             print('KO',state['sim_ticks'],flush=True)
+            ko_end=tick+175
+            result=run('replay',ko_end+240)
+            assert result['state']['psx_round_state']==4 and result['state']['psx_replay_mode'] in (1,3)
+            for offset in range(300,1801,60):
+                result=run('victory-search-'+str(offset),ko_end+offset)
+                if result['state']['psx_round_state']==6:break
+            else:raise AssertionError('no victory after original KO replay')
+            result=run('victory',ko_end+offset)
+            assert result['state']['psx_move_slot'][0] in range(3431,3435)
+            result=run('next-round',ko_end+1600)
+            assert result['state']['round']==2 and result['state']['wins0']==1
+            assert not result['state']['round_done'] and result['state']['psx_round_state']==1
+            assert result['state']['psx_health_q16']==[140*65536]*2
+            (root/'passed.json').write_text(json.dumps(result,indent=2)+'\n')
             return result
     raise AssertionError('no KO within bounded encounter')
 

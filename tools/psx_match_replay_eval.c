@@ -14,6 +14,7 @@
 static t3_psx_match_t game;
 static t3_psx_match_config_t config;
 static t3_divmot_t bank,common;
+static t3_psx_replay_storage_t history;
 static unsigned differences;
 static int original_round_flow;
 static void check(unsigned i,const char* category,const char* field,int64_t got,int64_t expected) {
@@ -40,6 +41,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #endif
     config.enable_body=config.enable_combat=1;config.collapse_on_ko=u8(0x800AFA93u);
     config.enable_rounds=original_round_flow?2:0;
+    config.replay_storage=original_round_flow?&history:0;
     config.chip_enabled=u32(0x800AFA58u)!=0;
     config.reactions=t3_local_combat_reactions;config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
     if(!t3_psx_match_init(&game,&config))return 0;
@@ -47,7 +49,10 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #define READ_FLOW(member,offset,kind) game.flow.member=kind(offset);
         T3_ROUND_FLOW_EVAL_FIELDS(READ_FLOW)
 #undef READ_FLOW
-        game.replay_mode=i32(0x8009BCA8u);
+        game.replay.mode=i32(0x8009BCA8u);
+        game.replay.record=i32(0x8009BCB8u);game.replay.play=i32(0x8009BCBCu);
+        game.replay.mark=i32(0x8009BCC0u);game.replay.skip=i32(0x8009BCC8u);
+        game.replay.recorded=i32(0x8009BCD0u);game.replay_skip=i32(0x80095480u);
         game.fight_clock=u32(0x800AFAB4u);
     }
     for(unsigned i=0;i<2;++i) {
@@ -223,7 +228,13 @@ int main(int argc,char** argv) {
 #define CHECK_FLOW(member,offset,kind) check(0,"round",#member,game.flow.member,kind(offset));
             T3_ROUND_FLOW_EVAL_FIELDS(CHECK_FLOW)
 #undef CHECK_FLOW
-            check(0,"round","replay_mode",game.replay_mode,i32(0x8009BCA8u));
+            check(0,"round","replay_mode",game.replay.mode,i32(0x8009BCA8u));
+            check(0,"replay","record",game.replay.record,i32(0x8009BCB8u));
+            check(0,"replay","play",game.replay.play,i32(0x8009BCBCu));
+            check(0,"replay","mark",game.replay.mark,i32(0x8009BCC0u));
+            check(0,"replay","recorded",game.replay.recorded,i32(0x8009BCD0u));
+            check(0,"replay","skip",game.replay.skip,i32(0x8009BCC8u));
+            check(0,"replay","round_skip",game.replay_skip,i32(0x80095480u));
         }
         printf("],\"passed\":%s}\n",ok && !differences && !bad?"true":"false");++rows;
         if(!ok || bad)break;

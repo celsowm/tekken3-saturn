@@ -1,14 +1,77 @@
 # Paul playable milestone: execution evidence
 
 The objective remains the complete [playable milestone](NEXT_PLAYABLE_MILESTONE.md).
-It is **not complete**. `build/paul` remains the provisional animated preview;
-`build/paul-owned` owns original movement/body/contact queries without live damage.
-The newer `build/paul-combat` activates bounded original high/mid/low damage,
-guard, reactions and USA VS KO collapse, with the temporary round policy below.
-Continuous timeout/draw comparisons now pass in the native original-frame API;
-KO replay, live activation of that API and performance remain open.
-A private, visibly labeled input replay now demonstrates the complete bounded
-encounter and next-round restoration from an actual Mednafen CD boot.
+It is **not complete**. The current private `build/paul-memory` activates the
+original-frame API for movement, high/mid/low damage, guard, reactions, normal-VS
+round flow, native KO replay, victory and later-round initialization. The
+provisional preview and query-only owned configurations remain separate.
+The performance target and strict aligned PS1/Saturn comparison remain open.
+
+## Native KO replay and live original round flow (2026-10-17)
+
+- The new caller-owned history contains 300 pairs of 48-byte portable fighter
+  records plus epoch tags: **30,004 bytes**, in Low WRAM outside the per-tick
+  match copy. It records poses before separation/HitApply, retains original
+  blend endpoints, interpolates roots on half frames and restores the live
+  pose after playback. Ring writes commit only after successful simulation;
+  reset/next-round epochs reject stale slots without clearing the whole ring.
+  The NOLOAD allocation is explicitly zeroed once at application initialization.
+- Three independently captured, paused-RAM-checked original sessions pass the
+  continuous native comparison from one neutral seed each: **5,481 ticks**
+  (P1 timeout then perfect KO), **5,632 ticks** (P2 timeout then perfect KO,
+  victory slots 3432 and 3431), and **5,221 ticks** (two draws, terminal 2–2).
+  That is **16,334 uninterrupted ticks across three captures**, distinct from
+  the earlier independently seeded component audit with the same total.
+  Fighter fields, poses/matrices, geometry, blend, round/actor state and replay
+  cursors all agree; no expected snapshot reseeds a tick. Evaluator SHA256:
+  `c3f72f663b86a6f467116f660a7d147e70792ecf0ca917045f4ae3c8be6d5ee2`.
+  Evidence: `paul-ko-replay-final-p1/`, `paul-ko-replay-p2/`,
+  `paul-ko-replay-final-draw/`. The first P1 failure is retained separately.
+- The playable frontend now uses original mode 2. **24 Ymir cases pass** in
+  `paul-ko-live-full-suite/`, including real replay, advancing winner/frozen
+  loser, full-HP next round, completed terminal victory, reset epoch and draws.
+  Diagnostics v20 adds round/replay state. The suite explicitly leaves strict
+  original/Saturn replay parity false: these are behavioral checkpoints.
+- The complete pad-only encounter records standing/crouching guards, a mid hit,
+  lows to KO, replay, victory and a controllable second round. Its **70 input
+  events** reproduce every compared gameplay/pose/round/replay field at
+  **tick 2,316**, with no state writes (`paul-ko-demo-aligned/1/`). This checks
+  the matched endpoint and input tape, not every intermediate tick.
+- The matching labeled demo boots from actual CD in Mednafen, exits 0 and
+  records **9,563 video frames / 159.846 seconds** in
+  `paul-ko-demo-mednafen/`. Inspected seconds 40/60 show the connected encounter,
+  second 80 the victory with the fallen loser, and second 140 two full-HP
+  actors in round 2. Demo ELF SHA256:
+  `16d5a48764e3736f30edf4378a95974136df2d323a5cf35ca09c44a8904be7ad`;
+  app `10b86d3ce81c971a5b37d22d9e1bc0ca2c0a592040fdf8e8f819d825f0300d97`;
+  disc `6424ec27451789400931b3824cb50df40c15e08185055325e0108eb4616ac95c`.
+- Live image: **959,252 initialized bytes**, below the 983,040-byte loader
+  limit; High WRAM BSS ends `0x060F65C8`, Low WRAM `0x002B44C4`.
+  The 16 KiB stack reserve and native disc/image assertions pass. Recording
+  and demo variants use 959,420 and 960,276 initialized bytes respectively.
+  Live ELF `ca542d805983a495c73ec4d1c9db807ec141aa1a7c16f17b45702a3a10483a8b`.
+- **41/41 CTest and 101 Python checks pass** with native adapters assigned.
+  Replay/match/blend unit cases and the complete 5,481-tick capture also pass
+  ASan/UBSan. No retail files, BIOS, input fixture or video enter Git.
+- Fresh live 600/1200-frame profiles use matching preserved ELF/maps, no frozen
+  benchmark, and LibSaturn `cdc0d53`. Across 600 VBlanks, submissions increase
+  78→159 and simulation ticks 316→640: **8.1 submissions/s, 32.4 logic steps/s**.
+  Last work is 125 ms; rendering/HUD 65 ms includes 11–12 ms skin. Commands
+  are 780/2048, no rejected faces or draw timeouts. At 1,200 sampled PCs,
+  vertex projection accounts for 24%, material validation 7.5%, skin 3.9%.
+  These samples prioritize investigation; they are not precise cycle attribution.
+- Still required: the 30 Hz render / 60 Hz logic budget without dropped time,
+  and a strict aligned original/Saturn input/state oracle. Camera presentation
+  can overlap actors along world Z and needs calibration; exact camera parity,
+  hands/wings, audio/effect logs and first-round intro are not certified. Initial
+  FIGHT and explicit input sides remain documented initialization choices.
+  The terminal port result screen keeps the input tick clock while freezing
+  fighters; the original exits FightFrame there. No new library edits were
+  required for this replay checkpoint. Continue the explicit LibSaturn
+  projection/material/HUD performance workstream next.
+
+The dated sections below retain historical evidence and limitations at those
+checkpoints; they do not override the current activation and replay status.
 
 ## Continuous original timeout, victory and next-round integration (2026-10-17)
 

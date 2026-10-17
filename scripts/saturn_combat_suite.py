@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run bounded original damage/guard/reaction/KO cases in headless Ymir.
+"""Run original damage/guard/reaction/round/replay cases in headless Ymir.
 
 These are Saturn behavior regressions, not aligned PS1 input-replay parity.
 """
@@ -20,6 +20,7 @@ def execute(args):
         a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n'+script)
         r=saturn_probe.run(a);results[name]=r;s=r['state']
         require(s.get('psx_combat_active')==1,'original combat must be active')
+        require(s.get('psx_round_flow_active')==1,'original round controller must be active')
         require(s['first_error']==0 and s['draw_timeouts']==0 and s['psx_attack_decode_errors']==[0,0],
                 name+': runtime or decode error')
         require(s['faces_rejected']==0 and s['commands_used']<=s['commands_capacity'],
@@ -91,7 +92,26 @@ def execute(args):
                 and s['psx_move_slot'][1]==3430,'KO must start the original collapse move')
         require(s['round_done']==1 and s['winner']==0 and s['wins0']==1 and not s['match_done'],
                 'KO must award P1 exactly one round')
-        next_end=end+800
+        replay=case('ko-replay',tape,end+240)
+        require(replay['psx_round_state']==4 and replay['psx_replay_mode'] in (1,3)
+                and replay['wins0']==1 and replay['psx_health_q16'][1]==0,
+                'KO must play the native history before victory')
+        victory=None;victory_end=0
+        for offset in range(300,1801,60):
+            name='victory-search-'+str(offset)
+            observed=case(name,tape,end+offset);results.pop(name)
+            if observed['psx_round_state']==6:
+                victory=observed;victory_end=end+offset;break
+        require(victory is not None,'native replay must restore the live fight and start victory')
+        victory=case('ko-victory',tape,victory_end)
+        require(victory['psx_round_state']==6 and victory['psx_replay_mode']==5 and victory['psx_move_slot'][0] in range(3431,3435)
+                and victory['psx_move_frame'][0]>1,'victory must own an authored pose after replay')
+        held_victory=case('ko-victory-hold',tape,victory_end+60)
+        require(held_victory['psx_round_state']==6
+                and held_victory['psx_move_frame'][0]>victory['psx_move_frame'][0]
+                and held_victory['psx_move_frame'][1]==victory['psx_move_frame'][1],
+                'winner pose must advance while the loser clock stays frozen')
+        next_end=end+1600
         s=case('next-round',tape,next_end)
         require(s['round']==2 and not s['round_done'] and s['wins0']==1 and s['wins1']==0
                 and s['psx_health_q16']==[140*65536]*2 and s['psx_anchor'][::3]==[-1000,1000]
@@ -103,10 +123,16 @@ def execute(args):
         require(s['round']==2 and s['round_done'] and s['match_done'] and s['winner']==0
                 and s['wins0']==2 and s['wins1']==0 and s['psx_health_q16'][1]==0,
                 'second KO must end the first-to-two match exactly once')
+        terminal_end=match_end+1600
+        finished=case('match-finished',match_tape,terminal_end)
+        require(finished['psx_round_state']==9 and finished['psx_replay_mode']==5
+                and finished['match_done'] and finished['wins0']==2 and finished['wins1']==0,
+                'terminal match must complete replay and victory without starting another round')
         s=case('match-reset',match_tape+
-               f'{match_end+40} 1 buttons=START\n{match_end+60} 1 buttons=NONE\n',match_end+200)
+               f'{terminal_end+40} 1 buttons=START\n{terminal_end+60} 1 buttons=NONE\n',terminal_end+200)
         require(s['round']==1 and not s['round_done'] and not s['match_done']
-                and s['wins0']==s['wins1']==0 and s['psx_health_q16']==[140*65536]*2,
+                and s['wins0']==s['wins1']==0 and s['psx_health_q16']==[140*65536]*2
+                and s['psx_replay_epoch']>finished['psx_replay_epoch'],
                 'Start must restore a fresh match after match end')
     if getattr(args,'with_timeout',False):
         # Neutral connected pads, no guest RAM edits or accelerated game clock.
@@ -119,7 +145,8 @@ def execute(args):
                 and s['round_done'] and s['winner']==-1 and s['timer']==0
                 and s['psx_health_q16']==[140*65536]*2,
                 'second neutral draw must finish at 2-2 and report a drawn match')
-    report=dict(passed=True,bounded_round_policy_validated=bool(args.with_ko),
+    report=dict(passed=True,bounded_round_policy_validated=False,
+                native_round_replay_victory_validated=bool(args.with_ko),
                 original_vs_timeout_scoring_validated=bool(getattr(args,'with_timeout',False)),
                 original_round_flow_parity=False,ps1_input_replay_parity=False,cases=results)
     (root/'suite.json').write_text(json.dumps(report,indent=2)+'\n')

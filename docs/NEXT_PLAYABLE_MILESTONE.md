@@ -11,12 +11,11 @@ can hit, be guarded, end a round and restart. Demonstrate it through a real
 Mednafen CD boot and repeatable headless Ymir scenarios. A full roster, menus
 and every Tekken mechanic are outside this milestone.
 
-This is an implementation plan, not a claim that the original combat engine
-is already integrated. The private preview now renders textured original Paul
-models and authored motion over the provisional match from `src/game/fight.c`.
-Owned original-state movement and bounded live combat are now connected in the
-separate private `build/paul-combat` configuration; the continuation plan and
-progress record identify the remaining replay, round and performance gates.
+This is the implementation plan and completion boundary. The current private
+original-combat build activates authored movement, contact/damage/reactions,
+normal-VS rounds, KO replay and next-round restoration. The progress record
+separates verified host/original and Saturn behavioral evidence from the still
+open strict aligned Saturn comparison and 30/60 Hz runtime budget.
 
 ## Starting evidence
 

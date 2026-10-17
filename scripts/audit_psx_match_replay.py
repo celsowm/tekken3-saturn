@@ -127,7 +127,7 @@ def audit(args):
     checked_categories=['ground','move','hit','joint_origin','joint_rotation']
     if native and native[0].get('body_checked'):checked_categories+=['body']
     if native and native[0].get('blend_checked'):checked_categories+=['blend','blend_local']
-    if original_flow:checked_categories+=['round','round_actor']
+    if original_flow:checked_categories+=['round','round_actor','replay']
     committed=sum(bool(frame['supported']) for frame in native)
     for category in checked_categories:matching_prefix.setdefault(category,committed)
     report=dict(passed=not boundary and len(native)==len(cases) and all(r['passed'] for r in native),

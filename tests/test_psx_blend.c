@@ -69,5 +69,15 @@ int main(void) {
     s.active=1;s.frames=4;s.counter=2;
     assert(t3_psx_blend_prepare(&s,&f,sample,0));
     assert(s.active && s.frames==4 && s.counter==2);
+    /* Playback keeps recorded endpoints, bypassing live forward selection. */
+    f.global_hold=0;f.playback=1;f.row=99;
+    s=(t3_psx_blend_t){.mode=T3_BLEND_BRANCH,.active=1,.frames=5,
+        .src_row=1,.dst_row=2,.src_frame=2,.dst_frame=3};
+    assert(t3_psx_blend_prepare(&s,&f,sample,0));
+    assert(s.src_row==1 && s.dst_row==2 && s.src_frame==2 && s.dst_frame==3);
+    assert(!s.counter && s.root_delta[1]==102);
+    s.active=0;assert(t3_psx_blend_prepare(&s,&f,sample,0));assert(s.counter==1 && !s.active);
+    s.mode=T3_BLEND_DECAY;s.active=1;s.previous_root[1]=300;
+    assert(t3_psx_blend_prepare(&s,&f,sample,0));assert(s.counter==4 && s.root_delta[1]==94);
     return 0;
 }

@@ -145,7 +145,12 @@ static void draw_hud(void) {
 #if defined(T3_REPLAY_INPUT_TAPE)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
 #endif
-    if (g_game.match_done)
+    const int replay=t3_move_probe_round_value(4);
+    if(replay>=1 && replay<=4)
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"REPLAY",W/2,85));
+    else if(t3_move_probe_round_value(0) && t3_move_probe_round_value(1)==0)
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"READY",W/2,85));
+    else if (g_game.match_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
             g_game.winner < 0 ? "MATCH DRAW" :
             (g_game.winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!"), W/2, 85));
@@ -296,6 +301,16 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.psx_body_active=t3_move_probe_owned();
     g_t3_diagnostics.psx_contact_active=t3_move_probe_owned();
     g_t3_diagnostics.psx_combat_active=t3_move_probe_combat();
+    g_t3_diagnostics.psx_round_flow_active=(uint32_t)t3_move_probe_round_value(0);
+    g_t3_diagnostics.psx_round_state=t3_move_probe_round_value(1);
+    g_t3_diagnostics.psx_round_counter=t3_move_probe_round_value(2);
+    g_t3_diagnostics.psx_round_hold=t3_move_probe_round_value(3);
+    g_t3_diagnostics.psx_replay_mode=t3_move_probe_round_value(4);
+    g_t3_diagnostics.psx_replay_record=t3_move_probe_round_value(5);
+    g_t3_diagnostics.psx_replay_play=t3_move_probe_round_value(6);
+    g_t3_diagnostics.psx_replay_mark=t3_move_probe_round_value(7);
+    g_t3_diagnostics.psx_replay_recorded=(uint32_t)t3_move_probe_round_value(8);
+    g_t3_diagnostics.psx_replay_epoch=(uint32_t)t3_move_probe_round_value(9);
     for(unsigned fighter=0;fighter<2u;++fighter) {
         g_t3_diagnostics.psx_registered_hits[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,16);
         g_t3_diagnostics.psx_registered_blocks[fighter]=(uint32_t)t3_move_probe_owned_value(fighter,17);

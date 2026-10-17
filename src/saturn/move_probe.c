@@ -27,6 +27,9 @@ static t3_motion_cache_t g_pose_cache[2],g_root_cache[2];
 static t3_psx_match_t g_owned_match __attribute__((section(".wram_l")));
 /* Reset assigns the entire object before match initialization. */
 static t3_psx_match_config_t g_owned_config __attribute__((section(".wram_l")));
+#if defined(T3_ENABLE_PSX_COMBAT)
+static t3_psx_replay_storage_t g_replay_history __attribute__((section(".wram_l")));
+#endif
 #define VM(i) (g_owned_match.fighter[(i)].vm)
 #else
 static t3_move_vm_t g_preview_vms[2];
@@ -89,6 +92,11 @@ sat_result_t t3_move_probe_init(void) {
 #endif
           g_start_slot,&VM(0).move)!=1) g_start_slot=0u;
     g_active=1;
+#if defined(T3_ENABLE_PSX_COMBAT)
+    /* Low WRAM is NOLOAD; only the first initialization clears storage.
+     * Later Start resets invalidate the ring through its monotonic epoch. */
+    __builtin_memset(&g_replay_history,0,sizeof(g_replay_history));
+#endif
     t3_move_probe_reset(1u);
     return g_active?SAT_OK:SAT_ERR_INVALID_ARG;
 }
@@ -108,7 +116,8 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.enable_body=1;
 #if defined(T3_ENABLE_PSX_COMBAT)
     g_owned_config.enable_combat=1;
-    g_owned_config.enable_rounds=1;
+    g_owned_config.enable_rounds=2;
+    g_owned_config.replay_storage=&g_replay_history;
     g_owned_config.collapse_on_ko=1; /* measured USA VS regional policy */
     g_owned_config.reactions=t3_local_combat_reactions;
     g_owned_config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
@@ -666,17 +675,37 @@ int32_t t3_move_probe_world_center(unsigned axis) {
 }
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
-    if(!g_active || !view || !t3_psx_match_step(&g_owned_match,p0,p1))
-        return SAT_ERR_INVALID_ARG;
+    if(!g_active || !view)return SAT_ERR_INVALID_ARG;
+#if defined(T3_ENABLE_PSX_COMBAT)
+    t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1};
+    const t3_input_t pads[2]={p0,p1};
+    for(unsigned i=0;i<2;++i) {
+        /* Physical face buttons choose the win pose. Direction words are
+         * already mapped relative to the rival at the controller boundary. */
+        const unsigned bits[4]={T3_IN_LP,T3_IN_RP,T3_IN_LK,T3_IN_RK};
+        const unsigned original[4]={0x80,0x10,0x40,0x20};
+        for(unsigned b=0;b<4;++b) {
+            if(pads[i].held&bits[b])frame.physical[i]|=(uint16_t)original[b];
+            if(pads[i].pressed&bits[b])frame.pressed[i]|=(uint16_t)original[b];
+        }
+    }
+    if(!t3_psx_match_step_original(&g_owned_match,p0,p1,&frame))return SAT_ERR_INVALID_ARG;
+#else
+    if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
+#endif
     view->total_ticks=g_owned_match.ticks;
     view->hits=(uint16_t)(g_owned_match.fighter[0].registered_hits+g_owned_match.fighter[1].registered_hits);
     view->blocks=(uint16_t)(g_owned_match.fighter[0].registered_blocks+g_owned_match.fighter[1].registered_blocks);
 #if defined(T3_ENABLE_PSX_COMBAT)
-    view->timer=g_owned_match.round.timer;
-    view->round=g_owned_match.round.number;g_round=view->round;
-    view->round_done=g_owned_match.round.done;view->match_done=g_owned_match.round.match_done;
-    view->winner=g_owned_match.round.winner;view->round_pause=g_owned_match.round.hold;
-    view->wins[0]=g_owned_match.round.wins[0];view->wins[1]=g_owned_match.round.wins[1];
+    const t3_psx_round_flow_t* flow=&g_owned_match.flow;
+    view->timer=(uint16_t)flow->timer;
+    view->round=(uint8_t)flow->played;g_round=view->round;
+    view->round_done=(uint8_t)(flow->state>=T3_ROUND_RESULT);view->match_done=(uint8_t)(flow->match_result!=0);
+    view->winner=flow->match_result==3?-1:flow->match_result?(int8_t)flow->match_winner:
+        g_owned_match.round_actor[0].won>0?0:g_owned_match.round_actor[1].won>0?1:-1;
+    view->round_pause=(uint16_t)flow->hold;
+    view->wins[0]=(uint8_t)g_owned_match.round_actor[0].wins;
+    view->wins[1]=(uint8_t)g_owned_match.round_actor[1].wins;
 #else
     /* Query-only presentation timer. */
     view->timer=g_owned_match.ticks<T3_ROUND_TICKS?
@@ -698,4 +727,23 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
 #else
     (void)p0;(void)p1;(void)view;return SAT_ERR_INVALID_ARG;
 #endif
+}
+int32_t t3_move_probe_round_value(unsigned field) {
+#if defined(T3_ENABLE_PSX_COMBAT)
+    switch(field) {
+    case 0:return 1;
+    case 1:return g_owned_match.flow.state;
+    case 2:return g_owned_match.flow.counter;
+    case 3:return g_owned_match.flow.hold;
+    case 4:return g_owned_match.replay.mode;
+    case 5:return g_owned_match.replay.record;
+    case 6:return g_owned_match.replay.play;
+    case 7:return g_owned_match.replay.mark;
+    case 8:return g_owned_match.replay.recorded;
+    case 9:return (int32_t)g_owned_match.replay.epoch;
+    }
+#else
+    (void)field;
+#endif
+    return 0;
 }

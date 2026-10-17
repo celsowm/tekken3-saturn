@@ -7,6 +7,7 @@
 
 enum { B0=64,B1=B0+36,B2=B1+112,B6=B2+4023*4,BYTES=B6+52 };
 static uint8_t bytes[BYTES],trig[0x2800],atan_bytes[1025],push[20];
+static t3_psx_replay_storage_t history,history_before;
 static void p16(uint8_t* p,uint16_t v){p[0]=(uint8_t)v;p[1]=(uint8_t)(v>>8);}
 static void p32(uint8_t* p,uint32_t v){p16(p,(uint16_t)v);p16(p+2,(uint16_t)(v>>16));}
 int main(void) {
@@ -83,7 +84,7 @@ int main(void) {
     for(unsigned i=0;i<90;++i)assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.flow.state==T3_ROUND_REPLAY_DONE && game.flow.replay_request);
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
-    assert(game.flow.state==T3_ROUND_WIN_WAIT && game.replay_mode==5 && game.flow.hold==299);
+    assert(game.flow.state==T3_ROUND_WIN_WAIT && game.replay.mode==5 && game.flow.hold==299);
     game.flow.state=T3_ROUND_END;before=game;
     /* The public synthetic bank initially lacks the required intro slot. */
     assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
@@ -96,8 +97,23 @@ int main(void) {
     assert(game.fighter[0].ground.anchor.x==-1000 && game.fighter[1].ground.anchor.x==1000);
     assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
     assert(game.flow.camera==1 && !game.flow.no_damage);
-    game.flow.state=T3_ROUND_REPLAY_DONE;game.flow.result=10;game.flow.replay_request=1;before=game;
+    game.flow.state=T3_ROUND_REPLAY_DONE;game.flow.result=10;game.flow.replay_request=1;
+    game.replay.mark=0;before=game;
     assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
     assert(!memcmp(&game,&before,sizeof(game)));
+    c.replay_storage=&history;
+    assert(t3_psx_match_init(&game,&c));
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(history.epoch==1 && history.ring[1].epoch==1 && history.ring[1].actor[0].pose_frame==1);
+    game.flow.state=T3_ROUND_REPLAY_DONE;game.flow.replay_request=1;game.replay.mark=0;
+    before=game;history_before=history;
+    assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(!memcmp(&game,&before,sizeof(game)) && !memcmp(&history,&history_before,sizeof(history)));
+    assert(t3_psx_match_init(&game,&c) && history.epoch==2);
+    assert(!t3_psx_replay_at(&history,&game.replay,1));
+    game.flow.state=T3_ROUND_END;game.flow.match_result=3;before=game;
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.ticks==before.ticks+1 && !memcmp(game.fighter,before.fighter,sizeof(game.fighter)));
+    assert(!memcmp(&game.replay,&before.replay,sizeof(game.replay)));
     return 0;
 }

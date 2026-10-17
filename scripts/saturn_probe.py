@@ -56,13 +56,17 @@ COMBAT_FIELDS=[('psx_combat_active','I',1)]+[(name,kind,2) for name,kind in (
     ('psx_registered_hits','I'),('psx_registered_blocks','I'),('psx_unsupported_moves','I'),
     ('psx_damage_last_tick','i'),('psx_reaction_slot','i'),('psx_reaction_transition','i'),
     ('psx_hit_done','I'),('psx_guarded_last_tick','I'),('psx_ko_collapse','I'))]
+ROUND_FIELDS=[('psx_round_flow_active','I',1)]+[(name,'i',1) for name in (
+    'psx_round_state','psx_round_counter','psx_round_hold','psx_replay_mode',
+    'psx_replay_record','psx_replay_play','psx_replay_mark')]+[(name,'I',1) for name in (
+    'psx_replay_recorded','psx_replay_epoch')]
 
 def decode(raw):
     if len(raw) < WORDS * 4:
         raise ValueError('truncated diagnostics')
     values = list(struct.unpack_from('>' + 'I' * WORDS, raw))
     result = dict(zip(PREFIX, values[:len(PREFIX)]))
-    if result['magic'] != 0x54334431 or result['version'] not in (12,13,14,15,16,17,18,19):
+    if result['magic'] != 0x54334431 or result['version'] not in (12,13,14,15,16,17,18,19,20):
         raise ValueError('unsupported diagnostics magic/version')
     at = len(PREFIX)
     for name in PAIRS:
@@ -85,6 +89,7 @@ def decode(raw):
     extended+=CONTACT_FIELDS if result['version']>=17 else []
     extended+=[('psx_gate_frames','I',2)] if result['version']>=18 else []
     extended+=COMBAT_FIELDS if result['version']>=19 else []
+    extended+=ROUND_FIELDS if result['version']>=20 else []
     for name, kind, count in extended:
         alignment = struct.calcsize('>' + kind)
         at = (at + alignment - 1) // alignment * alignment

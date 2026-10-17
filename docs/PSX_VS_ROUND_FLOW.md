@@ -2,8 +2,8 @@
 
 This is the integration contract for `src/game/psx_round_flow.c`, adapted from
 the pinned Tekken3Remake `round_flow.gd`. It is a portable control component;
-the shared original-frame API now applies its timeout/victory/reset actions.
-The playable application still uses `psx_round.c`'s bounded round wrapper.
+the shared original-frame API now applies its replay/victory/reset actions.
+The playable original-combat application uses this API (mode 2).
 Component agreement does not establish uninterrupted match or Saturn parity;
 the continuous host evidence below is a separate gate.
 
@@ -132,9 +132,9 @@ complete P2 flow audit. Keep it as incomplete evidence.
 `t3_psx_match_step_original` takes external mapped pad inputs plus the original
 frame counter and early physical button latch. It owns RoundFlow and its
 fighter actions, including native clear/script input, timeout replay completion,
-victory, blend hold and selective later-round placement/intro. KO playback
-currently returns unsupported atomically; the ring and restore path remain
-required before activating this API in the Saturn frontend.
+victory, blend hold and selective later-round placement/intro. The caller-owned
+30,004-byte Low WRAM ring now supports KO playback and live-pose restoration;
+unavailable/stale history fails atomically. This API is active on Saturn.
 
 The reference explicit start assigns the new pose row before MoveStartOrAdvance
 reads reanchor flags. It differs from a normal queued move. At a later-round
@@ -157,8 +157,10 @@ The adapter is configured with the existing explicit
 state. Every later snapshot is read only for comparison. The complete captures
 pass 2,916 timeout/victory/next-round ticks and 5,221 two-draw/terminal ticks.
 The initial input sides are retained, so arbitrary camera-side flips and STEP
-key mappings are outside this evidence. Full native KO replay and Saturn
-activation remain open.
+key mappings are outside this evidence. New KO sessions additionally pass
+5,481 P1 and 5,632 P2 ticks continuously, including all 300 replay calls and
+terminal victory. The current live Saturn suite passes 24 behavioral cases;
+strict aligned original/Saturn parity remains a separate open gate.
 
 The early physical latch is not the live mapped input sample. USA PadRead can
 refresh mapped held/pressed u16 pairs at `0x800A8C48/+2` and `0x800ADC78/+2`
@@ -168,3 +170,23 @@ unchanged. `--pad-ram` observes those IO globals separately. Each actor's input
 sample comes from its InputSource exit, while native RoundFlow chooses whether
 to consume, clear or replace it with script input. No fighter command-history
 output is used as an externally injected round policy.
+
+## Portable KO history contract
+
+`psx_replay.c` owns cursor transitions; `psx_match.c` owns pose recording,
+playback and restoration. The ring lives outside the transactional match copy,
+is zero-initialized once, and has one match owner. Every successful record
+writes the current epoch; next-round and reset invalidate old slots by epoch.
+A failed tick changes neither ring nor match. Epoch exhaustion is rejected.
+The supported grounded Paul record keeps authored slot, normalized blend-row
+tokens, pose/blend frames, root/anchor, heading and power. Nonzero X/Z tilts
+are rejected; hand/wing, audio and effect logs are outside this subset.
+
+ReplayUpdate precedes RoundFlow. Recording precedes body separation/HitApply.
+The KO mark uses the opponent pose before HitApply. Playback preserves live
+clocks/health/input histories while rebuilding recorded poses and half-speed
+roots, then restores the saved live pose. On replay completion both actors'
+pre-camera animation runs before winner selection. The terminal port UI freezes
+fighter/replay state but increments its input-tape tick clock; the original
+FightMain has left FightFrame by then. First-round intro is not the live boot
+initialization; later-round intro is verified by continuous comparisons.

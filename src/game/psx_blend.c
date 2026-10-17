@@ -26,6 +26,7 @@ int t3_psx_blend_prepare(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
         if(!s->active)s->counter=s->frames=0;
         goto finish;
     }
+    if(f->playback){n=s->frames;goto apply;}
     s->active=0;
     if(!f->suppressed) {
         if(s->mode==T3_BLEND_DECAY && !s->counter)s->mode=0;
@@ -62,25 +63,32 @@ int t3_psx_blend_prepare(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
             }
         } else if(s->mode==T3_BLEND_BRANCH || s->mode==T3_BLEND_STANCE)s->mode=0;
     }
+apply:
     if(s->active) {
         int16_t aroot[3],broot[3];
         t3_psx_matrix_t a[18],b[18];
         s->frames=n;
         if(s->mode==T3_BLEND_DECAY) {
-            s->counter=n-1;s->src_row=s->last_row;s->dst_row=f->row;
-            s->src_frame=(uint8_t)(f->previous_event_frame-1);
-            s->dst_frame=(uint8_t)(f->pose_frame-1);
+            s->counter=n-1;
+            if(!f->playback) {
+                s->src_row=s->last_row;s->dst_row=f->row;
+                s->src_frame=(uint8_t)(f->previous_event_frame-1);
+                s->dst_frame=(uint8_t)(f->pose_frame-1);
+            }
             if(!sample(user,s->dst_row,s->dst_frame,broot,b))return 0;
             for(unsigned k=0;k<3;++k)s->root_delta[k]=wrap16(s->previous_root[k]-broot[k]);
             for(unsigned i=1;i<18;++i)for(unsigned r=0;r<3;++r)for(unsigned c=0;c<3;++c)
                 s->delta[i-1].m[r][c]=wrap16(s->previous[i-1].m[r][c]-b[i].m[r][c]);
         } else {
-            s->counter=0;s->src_row=f->row;
-            if(s->mode==T3_BLEND_BRANCH) {
+            s->counter=0;
+            if(!f->playback) {
+              s->src_row=f->row;
+              if(s->mode==T3_BLEND_BRANCH) {
                 s->src_frame=(uint8_t)f->entry_frame;s->dst_row=f->pending_row;
                 s->dst_frame=(uint8_t)(entry_dst(f->transition)?f->entry_frame:0);
-            } else {
+              } else {
                 s->src_frame=f->frame_step<1?0:f->length;s->dst_row=f->stance_row;s->dst_frame=0;
+              }
             }
             if(!sample(user,s->src_row,s->src_frame,aroot,a) ||
                !sample(user,s->dst_row,s->dst_frame,broot,b))return 0;

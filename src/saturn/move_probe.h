@@ -17,6 +17,7 @@ uint8_t t3_move_probe_combat(void);
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view);
 int32_t t3_move_probe_world_center(unsigned axis);
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
+int32_t t3_move_probe_round_value(unsigned field);
 uint16_t t3_move_probe_slot(unsigned fighter);
 uint16_t t3_move_probe_frame(unsigned fighter);
 uint8_t t3_move_probe_phased(void);

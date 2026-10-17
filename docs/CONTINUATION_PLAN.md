@@ -18,6 +18,31 @@ The implementation reference remains the pinned `third_party/Tekken3Remake`
 submodule. PCSX-Redux observes the original; sibling `../lib-saturn` supplies
 the Saturn runtime and external Ymir harness. Retail data and BIOS stay private.
 
+## Current execution checkpoint (2026-10-17)
+
+Stages A/B and the continuous host portion of C below now pass for the supported
+normal-VS subset, including native KO replay and live Saturn activation.
+The [progress record](NEXT_PLAYABLE_PROGRESS.md) contains the current hashes,
+16,334 continuous compared ticks, 24 live scenarios and full Mednafen encounter.
+The older baseline/gap descriptions below are historical investigation notes.
+
+Next execution order:
+
+1. Close D using the fresh live profile and editable sibling LibSaturn. The
+   measured interval remains 8.1 submissions/s and 32.4 logic steps/s. Investigate
+   vertex projection (24% of sampled PCs), repeated material validation (7.5%)
+   and application pose/command work; preserve visibility, texture and ordering
+   semantics. Verify/install/rebuild any library increment and push both repos.
+2. Finish C's strict original/Saturn alignment at identical initialization and
+   simulation ticks. The current Saturn recording/demo endpoint agrees at
+   tick 2,316; the host/original comparison is continuous. Their combination
+   does not prove continuous original/Saturn parity. Keep those claims distinct.
+3. Calibrate the presentation camera when the pair moves along world Z, without
+   changing authoritative roots or silently changing relative-pad semantics.
+4. Repeat E on the final optimized build with matching hashes, complete encounter
+   and performance evidence. The current 160-second CD movie already reaches
+   KO/victory and round 2; preserve it as the pre-optimization checkpoint.
+
 ## Resume execution plan (2026-10-17)
 
 This section is the next execution order. The older numbered sections below

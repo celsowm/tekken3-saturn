@@ -15,7 +15,7 @@ typedef struct {
     int16_t pose_frame,frame_step,entry_frame,previous_event_frame,decoded_root_dy;
     int16_t throw_state;
     uint8_t length,active_first,changed,branch_kind,transition,pending;
-    uint8_t suppressed,no_forward,global_hold;
+    uint8_t suppressed,no_forward,global_hold,playback;
 } t3_psx_blend_facts_t;
 /* Callback decodes arbitrary row identity/frame with actor-scaled root channels
  * and original FK/IK matrices (18 slots). No blend/head-look is applied here. */
