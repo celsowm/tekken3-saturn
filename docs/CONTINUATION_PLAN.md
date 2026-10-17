@@ -30,7 +30,9 @@ Next execution order:
 
 1. Close D using the fresh live profile and editable sibling LibSaturn. The
    measured interval remains 8.1 submissions/s and 32.4 logic steps/s. Investigate
-   vertex projection (24% of sampled PCs), repeated material validation (7.5%)
+   remaining vertex projection costs (the sparse-matrix increment in LibSaturn
+   `b6d14b5` saves 5.4% of the final-instance projection sample but no cadence),
+   repeated material validation (7.5%)
    and application pose/command work; preserve visibility, texture and ordering
    semantics. Verify/install/rebuild any library increment and push both repos.
 2. Finish C's strict original/Saturn alignment at identical initialization and

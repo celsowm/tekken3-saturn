@@ -7,6 +7,46 @@ round flow, native KO replay, victory and later-round initialization. The
 provisional preview and query-only owned configurations remain separate.
 The performance target and strict aligned PS1/Saturn comparison remain open.
 
+## LibSaturn projection increment (2026-10-17)
+
+Sibling LibSaturn **`b6d14b5`** is committed and pushed. Batch projection now
+classifies the camera once, omits four zero fixed-point products for a camera
+with its right axis along world X, and keeps the existing general-camera path.
+Per-product rounding and behind-camera X/Y behavior are unchanged. A 96-matrix
+× 257-point differential test covers sparse/general camera changes. The library
+also corrects its stale flag-parity test to verify the existing `faces.cpp`-only
+`-O3` exception shared by Make/CMake rather than rejecting the package in CI.
+
+- Supported library native host/tool checks pass; one WRAM mapping ABI test is
+  explicitly unavailable on macOS. Package host CTest passes 3/3, and the actual
+  cross compile database passes flag parity. The SDK builds/installs; the
+  `basic_3d_texture` example builds via GNU Make, executes 240 injected Ymir
+  frames and its textured model is visually inspected. No CD-boot claim is
+  inferred from that injected example run.
+- The fixed-pose projection checkpoint improves **1,017 → 962 FRT ticks** for
+  the final instance (5.4%), with preparation unchanged at 2,561 ticks, identical
+  screenshot RGB pixels, 793 commands and unchanged 66 ms total render sample.
+  This is not a 5.4% whole-frame speedup. Evidence:
+  `paul-projection-bench-before/`, `paul-projection-bench-final/`,
+  `paul-projection-comparison.json`. Their preserved ELFs supply the matching
+  symbol addresses for the counter reads; no addresses are reused across builds.
+- The rebuilt live port passes all **24** scenarios again in
+  `paul-projection-live-suite/`. Live 600/1200-frame profiles still measure
+  **8.1 submissions/s and 32.4 logic steps/s**. Render samples are 64–65 ms,
+  total work 124–125 ms, command use 780/2048, no rejection/timeout. Thus the
+  performance gate remains failed. Updated initialized image: **959,748 bytes**.
+  Live ELF `4fa4f5d782dc1d599a68aa2254a0403535479f1a245d0af35fa8a6b73e137c42`;
+  app `b2e3b2d80bd1de6991eea5df17cea204d21d1c2551a2b0f1d170e612200abddb`.
+- The replay implementation commit `442cd22` passes both published host and
+  Saturn CI jobs. Library Package and Phase 3 CI were launched for `b6d14b5`;
+  their final results remain to be checked. The preceding library Phase 3 run
+  already failed because the bullet-hell example's palette asset was absent;
+  do not describe that broad gate as green from the projection tests.
+- The complete 160-second encounter below remains evidence for its exact
+  pre-projection demo hash. A new live CD boot is recorded separately in
+  `paul-projection-live-mednafen/`; neither a neutral boot nor unchanged frozen
+  pixels replaces a full encounter on the eventual final optimized build.
+
 ## Native KO replay and live original round flow (2026-10-17)
 
 - The new caller-owned history contains 300 pairs of 48-byte portable fighter
