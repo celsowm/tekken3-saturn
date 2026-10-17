@@ -97,6 +97,20 @@ static void compare(unsigned i,uint32_t sx,uint32_t sz) {
 #undef CHECK
     check(i,"ground","step_accum_x",f->ground.step_accum_x,i32(sx+4*i));
     check(i,"ground","step_accum_z",f->ground.step_accum_z,i32(sz+4*i));
+    for(unsigned k=0;k<8;++k) {
+        char name[48];uint32_t p=b+0x324+16*k;
+        const t3_vec3i_t v=f->body.spheres[k].center;
+        const int32_t xyz[3]={v.x,v.y,v.z};
+        for(unsigned axis=0;axis<3;++axis) {
+            snprintf(name,sizeof(name),"sphere%u.center%u",k,axis);
+            check(i,"body",name,xyz[axis],i32(p+4*axis));
+        }
+        snprintf(name,sizeof(name),"sphere%u.radius",k);
+        check(i,"body",name,f->body.spheres[k].radius,u16(p+12));
+    }
+    check(i,"body","push.x",f->body.push.x,i32(b+0x3E8));
+    check(i,"body","push.y",f->body.push.y,i32(b+0x3EC));
+    check(i,"body","push.z",f->body.push.z,i32(b+0x3F0));
 #define VM(field,offset,kind) check(i,"move",#field,f->vm.field,kind(b+offset))
     VM(slot,0xA0,u16);VM(clock.pose_frame,0x58,i16);VM(clock.root_frame,0x50,i16);
     VM(clock.move_frame,0x5C,i16);VM(clock.hit_freeze,0x76,i16);VM(clock.hold_frames,0x6A,i16);
@@ -158,7 +172,7 @@ int main(int argc,char** argv) {
         int ok=t3_psx_match_step(&game,(t3_input_t){(uint16_t)held0,(uint16_t)pressed0},
                                          (t3_input_t){(uint16_t)held1,(uint16_t)pressed1});
         if(!snapshot(path)){fclose(input);return 2;}
-        printf("{\"call\":%u,\"source_frame\":%u,\"native_tick\":%u,\"supported\":%s,\"blend_checked\":%s,\"differences\":[",call,frame,game.ticks,ok?"true":"false",config.rsqrt.data?"true":"false");
+        printf("{\"call\":%u,\"source_frame\":%u,\"native_tick\":%u,\"supported\":%s,\"body_checked\":true,\"blend_checked\":%s,\"differences\":[",call,frame,game.ticks,ok?"true":"false",config.rsqrt.data?"true":"false");
         differences=0;for(unsigned i=0;i<2;++i)compare(i,sx,sz);
         printf("],\"passed\":%s}\n",ok && !differences && !bad?"true":"false");++rows;
         if(!ok || bad)break;

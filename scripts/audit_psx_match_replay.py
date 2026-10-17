@@ -75,6 +75,7 @@ def audit(args):
                 first_difference[category]=dict(tick=index+1,source_frame=frame['source_frame'],differences=[d for d in frame['differences'] if d['category']==category])
                 matching_prefix[category]=index
     checked_categories=['ground','move','hit','joint_origin','joint_rotation']
+    if native and native[0].get('body_checked'):checked_categories+=['body']
     if native and native[0].get('blend_checked'):checked_categories+=['blend','blend_local']
     for category in checked_categories:matching_prefix.setdefault(category,len(native))
     report=dict(passed=not boundary and len(native)==len(cases) and all(r['passed'] for r in native),

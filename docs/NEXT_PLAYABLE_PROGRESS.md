@@ -9,6 +9,40 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Body replay diagnosis and library publication (2026-10-16)
+
+- The continuous evaluator now compares all eight body-sphere XYZ/radius fields
+  and three push components for each actor, in addition to joints and placement.
+  Reports include this category only when the evaluator declares it checked.
+  The new private `paul-body-replay/frame-replay-audit.json` still executes all
+  2,396 ticks from one seed. Move, hit and blend coverage remains matched; overall
+  replay still fails. P1 sphere 4/6 positions differ from the first tick, whereas
+  the first push-X discrepancy occurs at tick 136 with the placement discrepancy.
+- At tick 136/source 663, the deepest overlapping pair is sphere 4 against
+  sphere 4. Original centers differ by `(90,67,-193)` and native centers by
+  `(90,67,-194)`. Using the verified original SquareRoot0 table gives penetration
+  18 versus 16, respectively; native push-X is -9 versus original -10.
+  Re-extracting record 75 from the fingerprinted disc confirms that among all
+  22 skeleton parts, only part 6/slot 15 differs from record 71: file offset Z
+  -99 versus -100 (runtime +99 versus +100). Its full SHA matches the earlier
+  live-model identity audit. This localizes the first separation discrepancy
+  to unequal model geometry; no tolerance or hardcoded coordinate correction
+  has been added. Per-actor model alignment and a new replay remain required.
+- LibSaturn commits `342afd8` and `d377d28` publish the HUD pixel advance fix,
+  native Mach-O/standard-header portability, synchronous animation test linking,
+  explicit unavailable-test reporting, and deterministic GCC/Clang bullet RNG
+  order. Available native tests and Python tool tests pass; the fixed-address
+  parallel ABI test is explicitly unavailable on native macOS, not a pass.
+  Header/manifest CTest passes 3/3 and the SH-2 installed package builds.
+  Rebuilding the port retains the exact previously exercised ELF SHA256
+  `8d08baf600412efba1ee0b1926e56d76028056b2d02dcca4c6945945a03f8b42`.
+- GitHub validates the library's host tests (including the parallel ABI test on
+  Linux), package, skeletal, physics, transform and scene gates. Its broader
+  Phase 3 cross-example gate remains failed: the bullet-hell example references
+  absent `assets/palette_bgr555_be.bin`. This is a separate unresolved example
+  asset dependency; the library publication is not claimed wholly green.
+  The port's published `32cb4fb` host gate and preceding firmware/disc gate pass.
+
 ## Live transition blending and spline endpoint correction (2026-10-16)
 
 - `build/paul-blend` integrates the original normal-match DECAY, BRANCH and
