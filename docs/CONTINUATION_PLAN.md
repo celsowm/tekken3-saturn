@@ -126,6 +126,42 @@ authored models, memory limits, command capacity and zero draw timeouts. If
 this remains unmet, publish the measured shortfall and leave the gate open.
 Emulator measurements do not certify real hardware performance.
 
+#### Explicit sibling LibSaturn workstream
+
+Treat `../lib-saturn` as an editable dependency throughout execution, not only
+after gameplay is finished. Fix a library defect immediately when it blocks
+correctness or evidence collection. Prioritize performance changes using the
+fresh live profile from this application:
+
+- Scene preparation, projection, visibility, sorting and VDP1 emission:
+  inspect `src/graphics/3d/scene/{faces,transform,view_cache,scene}.cpp` for
+  repeated per-instance/per-face work and unnecessary data movement. Preserve
+  clipping, RGB/indexed limits, painter ordering and conservative visibility.
+  Verify any cache's invalidation with two independently animated actors.
+- Skinning and matrix work: inspect `src/graphics/3d/animation/skin.cpp` and
+  its callers for duplicated transforms or copies. Preserve integer rounding,
+  authored blend behavior and output ownership. The port owns Tekken-specific
+  FK/IK and round rules; move only reusable operations into the library.
+- HUD and measurement: attribute glyph/command cost before introducing cached
+  geometry or changing submission. If current counters cannot distinguish
+  preparation, emission and waits in the same completed frame, improve the
+  optional metrics/harness first. Keep profiling overhead out of the final SDK.
+- Timing and parallel support: check library wait/synchronization behavior
+  against measured costs. The accumulator/catch-up policy in this project's
+  `src/saturn/main.c` remains an application responsibility. Existing
+  `scene/parallel.cpp` and `animation/skin_parallel.cpp` are candidates only
+  after profiling justifies Slave work and buffer/cache ownership is defined.
+
+For each library change: reproduce the issue, run affected host/API checks,
+build/install the SDK, run a relevant small Saturn example, then rebuild the
+port and compare both fixed-pose and live evidence. Check visuals, gameplay,
+memory, stack reserve, command peaks and timeouts. Commit/push the passing
+library increment, record its exact revision in the port evidence and check
+both repositories' applicable CI. Separate an unrelated pre-existing CI
+failure from checks actually passed; never report the entire library green
+from this port's tests alone. Keep the sibling harness patches tracked and
+cross-platform build support intact.
+
 ### E. Validate and publish the complete encounter
 
 On the final live build, run the relevant host/Python checks, full Ymir combat
