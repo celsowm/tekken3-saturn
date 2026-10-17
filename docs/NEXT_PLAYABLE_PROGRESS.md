@@ -9,6 +9,64 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Dense scene preparation and controlled render comparison (2026-10-16)
+
+- A separate profiling SDK enables LibSaturn's existing FRT stage counters.
+  The baseline reports 3,152 preparation ticks and 1,017 projection ticks for
+  the last actor, plus 470 painter and 2,088 emission ticks for the scene flush.
+  At NTSC FRT/128 these are approximately 14.1, 4.5, 2.1 and 9.3 ms. These are
+  last-completed-stage observations, not an atomic breakdown of one frame.
+  `render_work_ms` includes skinning and HUD; `skin_work_ms` is a subset and
+  must not be added to it as an independent cost.
+- The new opt-in `T3_RENDER_BENCH_TICK=120` advances the real owned state to
+  tick 120, then freezes simulation while continuing rendering. It visibly
+  labels the image `RENDER BENCHMARK`; default 0 keeps live gameplay. This
+  isolates pose-dependent rendering cost without crediting frozen simulation
+  toward the playable milestone. Every variant submits 793 commands and
+  reaches the same authored pose. Decoded screenshot pixels are identical.
+
+  | Fixed-pose variant | Render/HUD work sample |
+  | --- | --- |
+  | Previous face module at `-O2` | 73 ms |
+  | Face module at `-O3` | 68 ms |
+  | `-O3` plus conservative projected bounds | 66 ms |
+
+- LibSaturn `cdc0d53` computes a projected-bounds proof once for dense meshes.
+  Faces reuse the proof only if all vertices satisfy the original depth and
+  coordinate limits; otherwise the original per-face checks remain. RGB and
+  indexed limits remain separate, unused vertices cannot cull valid faces, and
+  world-normal culling, sorting and clipping fallbacks are preserved. Both
+  build systems apply `-O3` only to this measured module, with Make's variant
+  key updated. No additional caller buffer or public ABI change is required.
+- Forty-eight host boundary cases compare dense instances to individual quad
+  submissions. The face API suite passes at `-O3` and with ASan/UBSan; the
+  skinned-scene test was rebuilt and passes too. Available library host/tool
+  checks, three header/manifest gates, installed SDK and a Make example build
+  pass. Compiler stack usage reports 312 bytes for instance submission and
+  240 for world visibility, excluding callees; this is not a measured total
+  stack high-water mark.
+- The normal `build/paul-memory` uses benchmark 0. Its 600-frame observation
+  reports 65 ms render/HUD (including 11 ms skin), 124 ms last work sample,
+  8.4 reported work loops/s, 316 logic ticks and 780/2048 commands, with zero
+  rejected faces, draw timeouts or runtime errors. Comparing its 600/1200-frame
+  observations across exactly 600 VBlanks gives **8.1 submissions/s and 32.4
+  logic steps/s** at nominal 60 Hz. Submissions are not distinct presented
+  images or hardware FPS. The 30 Hz render / 60 Hz logic gate still fails.
+- All 18 combat/round cases, all 23 procedural input cases and 37 CTest checks
+  pass. Final ELF SHA256 is
+  `f7fd1843fa9900ec832433387ddfc0e3dbe894679c33a27830115ddc28ab1a0c`.
+  Initialized image grows by 8,336 bytes to 960,912; High WRAM BSS ends at
+  `0x060F6C38`, Low WRAM at `0x002ACDF8`, preserving the 16 KiB stack reserve.
+  The same image boots from CD in Mednafen, exit 0, recording 1,429 frames over
+  23.8853 seconds. Inspected second 22 shows both animated Pauls and readable
+  HUD. This remains a neutral boot check, not a new full-encounter video.
+- Private evidence: `paul-scene-split-profile/`, `paul-scene-split-metrics/`,
+  `paul-render-bench-o2/`, `paul-render-bench-o3/`, `paul-render-bench-bounds/`,
+  `paul-scene-fast-profile/`, `paul-scene-fast-long-profile/`,
+  `paul-scene-fast-full-suite/`, `paul-scene-fast-baseline-input/` and
+  `paul-scene-fast-mednafen/`. Physics/replay semantics are unchanged; the
+  original victory/next-round mismatch remains open.
+
 ## InputClear and aligned memory operations (2026-10-16)
 
 - The owned core now consumes `T3_PSX_INPUT_CLEAR` after physics. This source

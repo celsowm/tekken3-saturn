@@ -411,3 +411,11 @@ victory/new-round transitions instead of hiding them behind an input boundary.
 Profiling runs now archive `profile.elf` and an available `profile.map` beside
 the PC samples. Retain those private files: rebuilding the same directory can
 move functions, making later symbol attribution from a new ELF incorrect.
+
+For a controlled render comparison, copy the private build configuration and
+set `T3_RENDER_BENCH_TICK=120`. It advances the actual owned match to that tick,
+then renders the frozen pose with a visible `RENDER BENCHMARK` label. Compare
+command counts, decoded screenshot pixels and render/HUD work at the same pose.
+The skin counter is included in render/HUD work. This benchmark deliberately
+stops simulation, so it cannot establish simulation rate or playable cadence.
+Keep the option at its default 0 for live input/round suites and CD encounters.

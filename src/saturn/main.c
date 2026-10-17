@@ -127,6 +127,9 @@ static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
 }
 
 static void draw_hud(void) {
+#if defined(T3_RENDER_BENCH_TICK)
+    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"RENDER BENCHMARK",80,65));
+#endif
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P2", 288, 5));
     SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, 8, 19, 140, 8,
@@ -388,6 +391,11 @@ int main(void) {
         accumulated += elapsed * T3_HZ;
         ticks = accumulated / hz;
         accumulated %= hz;
+#if defined(T3_RENDER_BENCH_TICK)
+        if(g_game.total_ticks>=T3_RENDER_BENCH_TICK)ticks=0;
+        else if(ticks>T3_RENDER_BENCH_TICK-g_game.total_ticks)
+            ticks=T3_RENDER_BENCH_TICK-g_game.total_ticks;
+#endif
         for (i = 0; i < ticks; ++i) {
             t3_input_t p1 = controller(&pad0, g_game.fighters[0].facing);
             t3_input_t p2 = pad1.connected ?

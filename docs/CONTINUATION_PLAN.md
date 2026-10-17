@@ -55,10 +55,14 @@ handling are omitted.
 Remaining execution order: investigate original round-flow transitions;
 repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.
 Preserve the verified corrected CD encounter. The 30 Hz render / 60 Hz logic gate
-still fails at approximately 7.4 work loops/s and 288 logic ticks per 600 emulator
+still fails at approximately 8.4 reported work loops/s and 316 logic ticks per 600 emulator
 frames. The [progress record](NEXT_PLAYABLE_PROGRESS.md) holds scoped evidence.
-The newest private `build/paul-memory` uses the aligned RAM-copy/fill improvement
-in LibSaturn; it retains the same authored models/tables and original match core.
+The newest private `build/paul-memory` uses aligned RAM-copy/fill and dense
+projected-face preparation improvements in LibSaturn. Its 600/1200-frame
+interval yields 8.1 submissions/s and 32.4 logic steps/s. It retains the same
+authored models/tables and original match core. `render_work_ms` includes skin
+work; do not add the skin counter again. The fixed-pose `T3_RENDER_BENCH_TICK`
+configuration is explicitly labeled and must remain 0 in playable validation.
 
 `T3_LOCAL_ACTOR0_KMD` optionally imports P1's original skeleton independently
 from the shared render archive. The current private configuration uses record

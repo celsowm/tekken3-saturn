@@ -106,6 +106,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     add_executable(tekken3_saturn src/saturn/main.c
         src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c
         "${_t3_gen}/t3_generated_character.c")
+    set(T3_RENDER_BENCH_TICK "0" CACHE STRING "Private fixed-pose render benchmark tick; 0 keeps live gameplay")
+    if(NOT T3_RENDER_BENCH_TICK MATCHES "^(0|[1-9][0-9]*)$" OR T3_RENDER_BENCH_TICK GREATER 3600)
+        message(FATAL_ERROR "T3_RENDER_BENCH_TICK must be 0..3600")
+    endif()
+    if(T3_RENDER_BENCH_TICK GREATER 0)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_RENDER_BENCH_TICK=${T3_RENDER_BENCH_TICK})
+    endif()
     target_include_directories(tekken3_saturn PRIVATE
         "${_t3_gen}" "${CMAKE_SOURCE_DIR}/src/saturn")
     # Deliberate local-only diagnostic: embeds copyrighted authored bank data
