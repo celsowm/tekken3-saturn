@@ -14,8 +14,8 @@ and every Tekken mechanic are outside this milestone.
 This is the implementation plan and completion boundary. The current private
 original-combat build activates authored movement, contact/damage/reactions,
 normal-VS rounds, KO replay and next-round restoration. The progress record
-separates verified host/original and Saturn behavioral evidence from the still
-open strict aligned Saturn comparison and 30/60 Hz runtime budget.
+separates the passing declared PS1/host/Saturn comparison from the remaining
+30/60 Hz runtime budget and presentation-camera work.
 
 ## Starting evidence
 

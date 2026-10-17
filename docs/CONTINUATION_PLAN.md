@@ -20,10 +20,11 @@ the Saturn runtime and external Ymir harness. Retail data and BIOS stay private.
 
 ## Current execution checkpoint (2026-10-17)
 
-Stages A/B and the continuous host portion of C below now pass for the supported
-normal-VS subset, including native KO replay and live Saturn activation.
+Stages A/B and the declared continuous PS1/host/Saturn portion of C below now
+pass for the supported normal-VS subset, including native KO replay and live Saturn activation.
 The [progress record](NEXT_PLAYABLE_PROGRESS.md) contains the current hashes,
-16,334 continuous compared ticks, 24 live scenarios and full Mednafen encounter.
+16,334 continuous PS1/host/Saturn compared ticks, 24 live scenarios and the
+full Mednafen encounter.
 The older baseline/gap descriptions below are historical investigation notes.
 
 Next execution order:
@@ -36,10 +37,11 @@ Next execution order:
    projection improvement. The High/Low WRAM relocation experiment did not
    improve cadence usefully and was removed; do not repeat it without new
    evidence. Verify/install/rebuild any library increment and push both repos.
-2. Finish C's strict original/Saturn alignment at identical initialization and
-   simulation ticks. The current Saturn recording/demo endpoint agrees at
-   tick 2,316; the host/original comparison is continuous. Their combination
-   does not prove continuous original/Saturn parity. Keep those claims distinct.
+2. Preserve the now-passing [continuous reference gate](SATURN_REFERENCE_REPLAY.md)
+   while optimizing. All three original sequences pass on the rendered Saturn
+   diagnostic build (16,334 ticks); do not replace them with endpoint checks.
+   Re-export/rebuild after observation-schema changes. The reference seed/input
+   fixture is local-only and its hash overhead must stay outside live timing.
 3. Calibrate the presentation camera when the pair moves along world Z, without
    changing authoritative roots or silently changing relative-pad semantics.
 4. Repeat E on the final optimized build with matching hashes, complete encounter

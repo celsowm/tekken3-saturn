@@ -5,7 +5,69 @@ It is **not complete**. The current private `build/paul-memory` activates the
 original-frame API for movement, high/mid/low damage, guard, reactions, normal-VS
 round flow, native KO replay, victory and later-round initialization. The
 provisional preview and query-only owned configurations remain separate.
-The performance target and strict aligned PS1/Saturn comparison remain open.
+The declared continuous PS1/host/Saturn comparison now passes. The live
+performance target and presentation-camera calibration remain open.
+
+## Continuous PS1 / host / Saturn state comparison (2026-10-17)
+
+The new [reference replay workflow](SATURN_REFERENCE_REPLAY.md) passes **every
+committed tick** of three original captures on SH-2 under Ymir: P1 timeout/KO
+5,481, P2 timeout/KO 5,632 and two draws 5,221. Total: **16,334 ticks and
+22,041,974 checked scalar values**, with no divergence, reseeding or hidden
+failing tail. The host/original audit passes first; the Saturn then runs the
+same native core with one original neutral seed and identical external mapped
+pad IO, early physical/pressed latches and original source-frame counters.
+Native round flow still owns script/clear input and replay state.
+
+The private build hashes actual declared state after each tick using a shared
+field visitor and portable SHA-256, and records digests/counts in Low WRAM.
+Expected exit states/digests remain on the host. A debugger-visible manifest
+identity binds the fixture/schema; changed exports, incomplete prefixes and
+first differences cannot pass. Normal rendering continues under a visible
+`PS1 REFERENCE REPLAY` label; this instrumentation is not performance evidence.
+The reference workflow documents exact coverage, source/pad timing, memory
+ownership, limitations and reproduction. Its full reports are:
+
+| Local report | Ticks | ELF SHA256 |
+| --- | ---: | --- |
+| `paul-reference-p1-final/reference-comparison.json` | 5,481 | `9a08ca5007a664928364fc2ec899f5c07f423080e8c73dddbc6edbc7f07eccd1` |
+| `paul-reference-p2-final/reference-comparison.json` | 5,632 | `6128e87e327ca26ae484d976a9f46afff5f0a45085e35b079c5b2566aab0559b` |
+| `paul-reference-draw-final/reference-comparison.json` | 5,221 | `0bc65b654c66b0a1704611cb4f64ffa532a1dbe99fa5501a6099c16a0154b055` |
+
+All three retain the normal stock-memory and 16 KiB stack assertions. The
+largest initialized image is **981,112 bytes**, below 983,040; P1 Low WRAM ends
+at `0x002EF838`. SHA, shared observer/export and full host comparison pass
+ASan/UBSan. Public validation passes **42 CTest / 109 Python checks**, including
+synthetic corruption, source gaps, field counts, fixture identity, incomplete
+trace and first-divergence cases. CI also compiles the instrumented frontend
+against synthetic geometry/banks and a synthetic reference fixture.
+
+The ordinary live build contains no reference/SHA code or trace buffers.
+Its rebuilt initialized image is **960,236 bytes** (eight bytes above the
+previous build after diagnostic source-line changes). The fresh live 600/1200
+observations retain exactly the previous gameplay/pose diagnostics and measured
+**8.49 submissions/s / 33.94 logic steps/s**. The 30/60 gate remains failed;
+do not credit the reference build's capture coverage as a performance result.
+Its live ELF is `0bf7bc4844f9c3b50a7244dff4cabbe843a91a3bfe1fc3612207dcc186572170`.
+
+The matching rebuilt live ELF passes all **24** behavioral scenarios again in
+`paul-reference-live-regression/`. The updated labeled input demo boots from
+actual CD in Mednafen, exits 0 and records **9,562 frames / 159.8293 seconds**
+in `paul-reference-demo-mednafen/`. Inspected second 80 shows replay, second 92
+the winner and fallen loser, and the next-round checkpoint is retained in the
+same recording. Demo ELF:
+`5237164722d2ff0c8a1d3b4580c7e9dc8676a26cf6ef8bc59b6eaaf6e4f48d16`;
+app `9df3a3156387fc67e185c6f4e16c17362852c7d7d228825d246bda43a6aff6cb`;
+disc `04678a400d689d74fd9667012190b814b243f1dabe3907c583d441a4f1fce0c9`.
+The same demo ELF reproduces the 70-event input tape and compared state at
+tick 2,316 in `paul-reference-demo-aligned/0/` (emulator frame 3,982). This
+endpoint check remains separate from the continuous original reference gate.
+
+Exact rendering-camera parity, arbitrary side remapping, full engine state,
+first-round intro, hands/wings and audio/effects remain outside this bounded
+comparison. Live Saturn physical controls and normal CD encounter evidence
+remain separate tests. Historical sections below retain their earlier open
+comparison flags; this section supersedes them for the declared reference set.
 
 ## Immutable motion sample cache (2026-10-17)
 

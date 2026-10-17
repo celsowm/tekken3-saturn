@@ -4,7 +4,7 @@
 Seeds once at the first captured entry; expected exit ranges only compare state.
 A matching prefix/category is never presented as complete match parity.
 """
-import argparse,collections,hashlib,json,struct,subprocess
+import argparse,collections,hashlib,json,os,struct,subprocess
 from pathlib import Path
 from analyze_psx_phases import analyze,verify_checkpoint
 from psx_disc_import import US_EXE_SHA
@@ -147,6 +147,18 @@ def audit(args):
                        'One original neutral entry seed, then uninterrupted native owned core with observed inputs; ')+
                       'expected snapshots never reseed the simulation; full parity requires every category')
     (output/'frame-replay-audit.json').write_text(json.dumps(report,indent=2)+'\n')
+    export=os.environ.get('T3_REFERENCE_OUTPUT')
+    if export and report['passed'] and original_flow:
+        target=Path(export)
+        names=('seed.ranges','seed-addresses.json','inputs.tsv','expected.sha256')
+        schema_files=('tools/psx_match_reference.inc','tools/psx_ground_eval_fields.h','tools/psx_round_flow_eval_fields.h')
+        project=Path(__file__).resolve().parents[1]
+        manifest=dict(schema=1,codec='sha256-i64be-v1',ticks=committed,
+            seed_sha256=report['seed_sha256'],trace_sha256=report['trace_sha256'],
+            evaluator_sha256=report['evaluator_sha256'],audit_passed=True,
+            files={n:hashlib.sha256((target/n).read_bytes()).hexdigest() for n in names},
+            observation_schema_sha256=hashlib.sha256(b''.join((project/n).read_bytes() for n in schema_files)).hexdigest())
+        (target/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print(json.dumps({k:v for k,v in report.items() if k not in ('first_difference','first_difference_by_field')},indent=2))
     for category,entry in first_difference.items():print(category,'first mismatch tick',entry['tick'],entry['differences'][:3])
     return report['passed']

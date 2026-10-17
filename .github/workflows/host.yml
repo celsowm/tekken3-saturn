@@ -42,6 +42,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_analyze_psx_phases.py' -v
       - name: Validate original replay input source modes
         run: python3 -m unittest discover -s tests -p 'test_audit_psx_match_replay.py' -v
+      - name: Validate one-seed Saturn reference fixtures and complete trace comparisons
+        run: python3 -m unittest discover -s tests -p 'test_reference_replay.py' -v
       - name: Compile-check PCSX-Redux LuaJIT capture script
         run: |
           command -v luajit || (sudo apt-get update -qq && sudo apt-get install -y -qq luajit)
@@ -210,6 +212,26 @@ jobs:
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
               src/saturn/main.c src/saturn/move_probe.c \
               src/game/psx_shadow_combat.c
+      - name: Compile-check instrumented Saturn reference path using only synthetic data
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path[:0]=['tests','scripts']
+          from test_reference_replay import synthetic_export
+          from build_reference_replay import generate
+          root=Path('build/reference-synthetic')
+          root.mkdir(parents=True,exist_ok=True)
+          synthetic_export(root,[100,101,101,105])
+          generate(root,root/'t3_reference_fixture.h')
+          PY
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
+              -DT3_ENABLE_PSX_MOVE_LIFECYCLE=1 -DT3_ENABLE_PSX_OWNED_MATCH=1 \
+              -DT3_ENABLE_PSX_COMBAT=1 -DT3_REFERENCE_REPLAY=1 \
+              -I .external/libsaturn/include -I src/game -I src/saturn -I tools \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              -I build/reference-synthetic src/saturn/main.c src/saturn/move_probe.c
       - name: Compile-check all Saturn C frontend sources against public LibSaturn headers
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \

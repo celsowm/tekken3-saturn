@@ -66,6 +66,14 @@ static uint8_t g_shadow_valid;
 static uint32_t g_shadow_last_injected_epoch;
 #endif
 
+#if defined(T3_REFERENCE_REPLAY)
+/* Diagnostic field visiting/hash work is outside the live timing gate. Keep
+ * its code bounded so the normal stock-memory/stack assertions still apply. */
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+#include "reference_replay.inc"
+#pragma GCC pop_options
+#endif
 sat_result_t t3_move_probe_init(void) {
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
         return SAT_ERR_INVALID_ARG;
@@ -135,7 +143,14 @@ void t3_move_probe_reset(unsigned round) {
     /* Measured USA Paul mirror round placement; render conversion is separate. */
     g_owned_config.spawn[0]=(t3_psx_spawn_t){{-1000,0,-4},{-1000,-1027,-4},16384u,16384u};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){{1000,0,4},{1000,-1027,4},49151u,49151u};
+#if defined(T3_REFERENCE_REPLAY)
+    if(!reference_prepare_config()){g_active=0u;g_reference_error=1;return;}
+#endif
     if(!t3_psx_match_init(&g_owned_match,&g_owned_config)){g_active=0u;return;}
+#if defined(T3_REFERENCE_REPLAY)
+    if(!reference_seed_state(T3_REFERENCE_STEP_X,T3_REFERENCE_STEP_Z,
+            T3_REFERENCE_PREVIOUS,T3_REFERENCE_RAMP)) {g_active=0u;g_reference_error=2;return;}
+#endif
 #endif
     for (i=0;i<2u;++i) {
 #if !defined(T3_ENABLE_PSX_OWNED_MATCH)
@@ -692,7 +707,22 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
             if(pads[i].pressed&bits[b])frame.pressed[i]|=(uint16_t)original[b];
         }
     }
-    if(!t3_psx_match_step_original(&g_owned_match,p0,p1,&frame))return SAT_ERR_INVALID_ARG;
+#if defined(T3_REFERENCE_REPLAY)
+    if(g_owned_match.ticks>=T3_REFERENCE_TICKS)goto reference_complete;
+    if(!reference_input(g_owned_match.ticks,&p0,&p1,&frame)) {
+        g_reference_error=3;return SAT_ERR_INVALID_ARG;
+    }
+#endif
+    if(!t3_psx_match_step_original(&g_owned_match,p0,p1,&frame)) {
+#if defined(T3_REFERENCE_REPLAY)
+        g_reference_error=4;
+#endif
+        return SAT_ERR_INVALID_ARG;
+    }
+#if defined(T3_REFERENCE_REPLAY)
+    if(!reference_observe()){g_reference_error=5;return SAT_ERR_INVALID_ARG;}
+reference_complete:;
+#endif
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
 #endif

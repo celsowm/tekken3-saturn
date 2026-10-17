@@ -145,6 +145,9 @@ static void draw_hud(void) {
 #if defined(T3_REPLAY_INPUT_TAPE)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
 #endif
+#if defined(T3_REFERENCE_REPLAY)
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PS1 REFERENCE REPLAY",W/2,61));
+#endif
     const int replay=t3_move_probe_round_value(4);
     if(replay>=1 && replay<=4)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"REPLAY",W/2,85));
@@ -369,7 +372,10 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_characters_init());
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
+#if !defined(T3_REFERENCE_REPLAY)
+    /* The reference initializer already applied its single original seed. */
     t3_move_probe_reset(g_game.round);
+#endif
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
     t3_input_tape_reset();
 #endif

@@ -141,6 +141,11 @@ def run(args):
             command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
     if args.device_script:
         command.extend(['--device-script', str(args.device_script.resolve())])
+    for symbol,filename in getattr(args,'symbol_dumps',[]):
+        if symbol not in syms:raise ValueError('missing dump symbol: '+symbol)
+        location,length=syms[symbol]
+        if not length:raise ValueError('dump symbol has no size: '+symbol)
+        command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
     if args.profile:
         # Preserve symbols beside sampled PCs before a later rebuild moves them.
         # These private ELF/map artifacts must remain outside Git.

@@ -1,6 +1,9 @@
 /* Strict reader for private compact CPU snapshots; no guest execution. */
 #ifndef T3_RAM_RANGES_H
 #define T3_RAM_RANGES_H
+#ifndef T3_RAM_READ_OBSERVER
+#define T3_RAM_READ_OBSERVER(address,size) ((void)0)
+#endif
 static uint8_t ram[0x200000];
 static struct {uint32_t address,size;} ranges[64];
 static unsigned range_count;
@@ -11,7 +14,10 @@ static uint32_t load32(const uint8_t* p) {
 static const uint8_t* at(uint32_t address,unsigned size) {
     for(unsigned i=0;i<range_count;++i) {
         if(address>=ranges[i].address && size<=ranges[i].size &&
-           address-ranges[i].address<=ranges[i].size-size)return ram+(address-0x80000000u);
+           address-ranges[i].address<=ranges[i].size-size) {
+            T3_RAM_READ_OBSERVER(address,size);
+            return ram+(address-0x80000000u);
+        }
     }
     bad=1;return ram;
 }

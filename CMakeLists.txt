@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 # Platform-free deterministic core. Only the frontend touches LibSaturn.
-add_library(tekken3_fight STATIC src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/move_clock.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c)
+add_library(tekken3_fight STATIC src/game/sha256.c src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/move_clock.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
@@ -180,6 +180,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     option(T3_ENABLE_PSX_COMBAT "Experimental bounded original damage and reactions" OFF)
     option(T3_CAPTURE_INPUT_TAPE "Record private tick-indexed simulation inputs in Low WRAM" OFF)
     set(T3_LOCAL_INPUT_TAPE "" CACHE FILEPATH "Private captured simulation inputs for a demonstration CD")
+    set(T3_LOCAL_REFERENCE_REPLAY "" CACHE PATH "Private passing host/original export for an instrumented Saturn oracle")
+    if(T3_LOCAL_REFERENCE_REPLAY)
+        if(NOT T3_ENABLE_PSX_COMBAT OR T3_CAPTURE_INPUT_TAPE OR T3_LOCAL_INPUT_TAPE OR T3_RENDER_BENCH_TICK GREATER 0)
+            message(FATAL_ERROR "Reference replay requires live original combat and its own external input fixture")
+        endif()
+        set(_t3_reference "${CMAKE_BINARY_DIR}/generated/private_reference/t3_reference_fixture.h")
+        add_custom_command(OUTPUT "${_t3_reference}"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_reference_replay.py"
+                "${T3_LOCAL_REFERENCE_REPLAY}" "${_t3_reference}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_reference_replay.py"
+                "${T3_LOCAL_REFERENCE_REPLAY}/manifest.json"
+                "${T3_LOCAL_REFERENCE_REPLAY}/inputs.tsv" "${T3_LOCAL_REFERENCE_REPLAY}/seed.ranges"
+                "${T3_LOCAL_REFERENCE_REPLAY}/seed-addresses.json" "${T3_LOCAL_REFERENCE_REPLAY}/expected.sha256"
+                "${CMAKE_SOURCE_DIR}/tools/psx_match_reference.inc"
+                "${CMAKE_SOURCE_DIR}/tools/psx_ground_eval_fields.h"
+                "${CMAKE_SOURCE_DIR}/tools/psx_round_flow_eval_fields.h"
+            VERBATIM)
+        target_sources(tekken3_saturn PRIVATE "${_t3_reference}")
+        target_include_directories(tekken3_saturn PRIVATE "${CMAKE_BINARY_DIR}/generated/private_reference" "${CMAKE_SOURCE_DIR}/tools")
+        target_compile_definitions(tekken3_saturn PRIVATE T3_REFERENCE_REPLAY=1)
+    endif()
     if(T3_CAPTURE_INPUT_TAPE OR T3_LOCAL_INPUT_TAPE)
         if(NOT T3_ENABLE_PSX_COMBAT)
             message(FATAL_ERROR "Input fixture requires original combat mode")
@@ -369,6 +390,9 @@ else()
     endif()
     include(CTest)
     if(BUILD_TESTING)
+        add_executable(test_sha256 tests/test_sha256.c)
+        target_link_libraries(test_sha256 PRIVATE tekken3_fight)
+        add_test(NAME portable_observation_sha256 COMMAND test_sha256)
         add_executable(test_fight tests/test_fight.c)
         target_link_libraries(test_fight PRIVATE tekken3_fight)
         add_test(NAME deterministic_fight COMMAND test_fight)

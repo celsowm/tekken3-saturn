@@ -160,7 +160,10 @@ The initial input sides are retained, so arbitrary camera-side flips and STEP
 key mappings are outside this evidence. New KO sessions additionally pass
 5,481 P1 and 5,632 P2 ticks continuously, including all 300 replay calls and
 terminal victory. The current live Saturn suite passes 24 behavioral cases;
-strict aligned original/Saturn parity remains a separate open gate.
+the separate [continuous Saturn reference replay](SATURN_REFERENCE_REPLAY.md)
+now also passes all 16,334 ticks of those three captures. This closes its
+declared native-state comparison, with exact camera rendering and other
+unsupported mechanics excluded.
 
 The early physical latch is not the live mapped input sample. USA PadRead can
 refresh mapped held/pressed u16 pairs at `0x800A8C48/+2` and `0x800ADC78/+2`

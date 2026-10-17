@@ -1,4 +1,4 @@
-/* USA SLUS_004.02 control fields: fixed fingerprint/layout, host oracle only. */
+/* USA SLUS_004.02 control fields: fixed fingerprint/layout, read-only oracle metadata. */
 #ifndef T3_ROUND_FLOW_EVAL_FIELDS_H
 #define T3_ROUND_FLOW_EVAL_FIELDS_H
 #define T3_ROUND_FLOW_EVAL_FIELDS(X) \
