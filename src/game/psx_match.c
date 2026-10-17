@@ -290,7 +290,7 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1) {
         } else {
             /* Result keeps authored recovery/collapse running with no damage
              * and no new player commands. Match end remains latched for Start. */
-            pads[0]=pads[1]=(t3_input_t){0};
+            pads[0]=pads[1]=(t3_input_t){T3_PSX_INPUT_CLEAR,0};
         }
     }
     for(unsigned i=0;i<2;++i) {
@@ -345,7 +345,10 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1) {
         }
     }
     /* Source input runs AFTER physics, not before the current ground step. */
-    for(unsigned i=0;i<2;++i)t3_history_push(&n.fighter[i].input,pads[i]);
+    for(unsigned i=0;i<2;++i) {
+        if(pads[i].held&T3_PSX_INPUT_CLEAR)t3_history_clear(&n.fighter[i].input);
+        else t3_history_push(&n.fighter[i].input,pads[i]);
+    }
     for(unsigned j=0;j<2;++j) {
         unsigned i=(j+(n.ticks&1u))&1u;
         t3_psx_fighter_t *f=&n.fighter[i],*opp=&n.fighter[1u-i];

@@ -182,7 +182,8 @@ int main(int argc,char** argv) {
     while(fgets(line,sizeof(line),input)) {
         char path[2048];unsigned held0,pressed0,held1,pressed1,call,frame;
         if(sscanf(line,"%2047[^\t] %u %u %u %u %u %u",path,&held0,&pressed0,&held1,&pressed1,&call,&frame)!=7 ||
-           held0>2047 || pressed0>2047 || held1>2047 || pressed1>2047){fclose(input);return 2;}
+           (held0&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed0>2047 ||
+           (held1&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed1>2047){fclose(input);return 2;}
         int ok=t3_psx_match_step(&game,(t3_input_t){(uint16_t)held0,(uint16_t)pressed0},
                                          (t3_input_t){(uint16_t)held1,(uint16_t)pressed1});
         if(!snapshot(path)){fclose(input);return 2;}

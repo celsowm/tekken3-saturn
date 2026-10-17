@@ -50,6 +50,7 @@ typedef struct {
 typedef struct {
     t3_command_frame_t frames[T3_INPUT_HISTORY_FRAMES];
     uint8_t next, count;
+    uint8_t direction_cleared; /* Original InputClear leaves raw in_dir=5. */
 } t3_input_history_t;
 
 /* Attack indices 1..4, 0 = not attacking. */

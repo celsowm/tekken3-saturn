@@ -12,6 +12,10 @@
 #include "psx_blend.h"
 #include "psx_head.h"
 
+/* InputSource control, not a physical pad button. The owned core consumes it
+ * after physics at the original input phase. All pad bits are ignored on clear. */
+enum { T3_PSX_INPUT_CLEAR = 1u << 15 };
+
 typedef struct {
     t3_vec3i_t anchor,root;
     uint16_t facing,heading;

@@ -8,6 +8,9 @@
 /* Neutral numpad=5, toward rival=6, away=4; high/low=8/2.
  * Button bits 0..3 match original PS1 command words. */
 void t3_history_reset(t3_input_history_t* h);
+/* Original InputClear: replace every retained entry with neutral, discarding
+ * prior presses and motion sequences rather than appending one neutral tick. */
+void t3_history_clear(t3_input_history_t* h);
 void t3_history_push(t3_input_history_t* h, t3_input_t input);
 t3_command_frame_t t3_history_at(const t3_input_history_t* h, unsigned age);
 

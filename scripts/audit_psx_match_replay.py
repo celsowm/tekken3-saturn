@@ -12,6 +12,8 @@ from psx_disc_import import US_EXE_SHA
 
 def words(fighter):
     if fighter['held']&~15 or fighter['pressed']&~15:raise ValueError('unrepresentable original button bits')
+    if fighter['direction']==5 and not fighter['held'] and not fighter['pressed']:
+        return 0x8000,0 # Original InputClear, not an ordinary neutral pad sample.
     onehot=fighter['direction'];d=onehot.bit_length()-5
     if d not in range(1,10) or onehot!=1<<(d+4):raise ValueError('invalid original input direction')
     x=(d-1)%3-1;y=(d-1)//3-1
@@ -47,7 +49,7 @@ def audit(args):
             try:pair=(*words(inputs[0]),*words(inputs[1]))
             except ValueError:
                 boundary=dict(call=row['call'],source_frame=row['source_frame'],
-                              reason='Original InputSource emitted a clear/scripted non-one-hot direction; owned pad adapter lacks that input mode')
+                              reason='Original InputSource emitted an unsupported direction/button combination')
                 break
             cases.append((expected[row['call']],*pair,row['call'],row['source_frame']))
     if not cases or not seed_entry:raise ValueError('missing frame boundary')
@@ -81,6 +83,7 @@ def audit(args):
     report=dict(passed=not boundary and len(native)==len(cases) and all(r['passed'] for r in native),
                 frames_available=len(files),input_mode_boundary=boundary,
                 frames_requested=len(cases),frames_executed=len(native),seed_count=1,
+                clear_input_frames=[sum(bool(c[1+2*i]&0x8000) for c in cases) for i in range(2)],
                 unsupported=[r['native_tick'] for r in native if not r['supported']],
                 differences_by_category=dict(categories),matching_prefix_frames=matching_prefix,
                 first_difference=first_difference,first_difference_by_field=field_first,

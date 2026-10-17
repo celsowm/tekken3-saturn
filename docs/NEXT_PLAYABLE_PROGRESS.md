@@ -9,6 +9,55 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## InputClear and aligned memory operations (2026-10-16)
+
+- The owned core now consumes `T3_PSX_INPUT_CLEAR` after physics. This source
+  control clears all 60 input-history entries and pressed/held state. It keeps
+  original raw `in_dir=5` distinct from normal neutral's `1 << 9`, so a neutral
+  return branch cannot fire on the clear tick. A subsequent pad update restores
+  normal command matching. The provisional round-result hold also uses clear,
+  discarding prior button/motion history instead of appending neutral samples.
+- `paul-clear-direction-replay/frame-replay-audit.json` executes **all 2,690
+  captured ticks**, including 205 clear-input frames per actor, from one seed.
+  Every checked category matches for the first **2,487 ticks**. First divergence
+  is tick 2,488/source 2795: the original starts P1 victory pose 3432 and holds
+  P2's pose clock. At tick 2,605 it restores next-round HP. Those original
+  RoundFlow transitions are absent from the bounded native policy. Full replay
+  therefore remains **failed**, with all later differences retained; the new
+  input support does not redefine the capture boundary to claim a pass.
+- A matched-ELF 600-frame PC sample attributes 56 samples (9.3%) to the previous
+  byte-at-a-time `memcpy`. This is sampled-PC attribution, not exclusive cycle
+  accounting. LibSaturn `749424f` uses aligned 32-bit copy/fill blocks, with
+  byte handling for incompatible alignment, leading bytes and tails. Host
+  comparisons cover 65,600 copy and 32,800 fill cases against libc, with guards
+  around the written span. ASan/UBSan, available native/tool tests and the SH-2
+  installed package pass. The rebuilt jukebox also passes all four SCSP tests
+  over 1,100 seek/pause frames.
+- The new private `build/paul-memory` preserves the authored data and owned
+  match configuration. Neutral profiling improves from a 128 ms work sample/
+  7.0 loops/s to 120 ms/7.4 loops/s, with 71 ms scene/HUD, 11 ms skin and 288
+  logic ticks per 600 emulator frames. Command use is 766/2048, with no rejected
+  faces, draw timeouts or runtime errors. A second run reproduces the complete
+  diagnostic state. Pose-dependent samples are not isolated kernel benchmarks;
+  **30 Hz rendering / 60 Hz logic still fails**.
+- Both the clear-only image and the final memory-optimized image pass all 18
+  combat/round cases. The procedural build passes all 23 input scenarios after
+  the shared library change. All 37 CTest and 86 Python tests pass, including
+  clear-history, branch discrimination, phase order and adapter rejection cases.
+  Public CI includes the new synthetic adapter checks.
+- Final ELF SHA256:
+  `79648cd304b418aecc4bf74da873dde3e1cf7f1664ef33a1b65700755ec8f9a7`;
+  initialized image 952,576 bytes, High WRAM BSS end `0x060F4BA8`, Low WRAM end
+  `0x002ACDF8`, with the unchanged 16 KiB stack reserve. Its actual Mednafen CD
+  boot exits 0 and records 1,428 frames/23.8685 seconds; inspected second 22
+  shows both animated Paul instances and readable HUD. It is a neutral boot
+  check, not a new full-encounter video.
+- Private evidence: `paul-clear-full-suite/`, `paul-memory-full-suite/`,
+  `paul-memory-baseline-input/`, `paul-memory-profile/`,
+  `paul-memory-profile-repeat/`, `paul-memory-mednafen/` and
+  `libsaturn-memory-check/`. Profiling now retains the matching ELF/map beside
+  samples, preventing later builds from invalidating symbol attribution.
+
 ## Procedural head tracking (2026-10-16)
 
 - The normal Paul match now applies original head look-at after retaining the

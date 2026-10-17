@@ -28,9 +28,9 @@ call provisional `t3_match_step` in this mode.
 
 The native owned core now also runs from one original neutral seed without
 replacing fighter state between ticks. Its checked move/clock/queued-branch and
-hit fields match for 2,396 ticks, including eight HP changes. This exposed and
+hit fields match for 2,487 ticks, including eight HP changes. This exposed and
 fixed a KMD mesh-order versus original joint-slot mismatch in body/contact
-integration. Overall replay is still incomplete at the clear-input boundary.
+integration. Overall replay is still incomplete at the original victory-pose boundary.
 The newer `build/paul-blend` ports
 all three normal transition blends and fixes a 32-bit spline endpoint coefficient
 that had been truncated to 16 bits. All checked blend scalars, previous local
@@ -38,8 +38,12 @@ matrices and matrix deltas now match for both actors across all 2,396 ticks.
 Per-actor skeleton selection now eliminates the subsequent placement discrepancy:
 ground, all joint origins and body-sphere/push fields match all 2,396 ticks.
 Original head tracking subsequently resolves all world-matrix differences too.
-All checked categories match those 2,396 ticks. Clear/scripted input
-mode at source frame 2704 stops the requested comparison explicitly.
+InputClear now preserves its raw direction value 5 separately from a normal
+neutral pad. All 2,690 captured ticks execute, with all checked categories
+matching through tick 2,487. At tick 2,488/source 2795 the original starts
+victory pose 3432 and freezes the loser; later it restores HP for a new round.
+The bounded native round policy does not reproduce those original transitions,
+so the full replay remains failed rather than truncating that evidence.
 
 The corrected order passes the short interactive combat cases and a controlled
 pad encounter through guards, a mid hit, lows and KO. A matching, visibly labeled
@@ -48,11 +52,13 @@ Its ELF/app hashes match the aligned Ymir replay. The earlier first-to-two round
 policy remains explicitly provisional; original intro/replay/win poses and draw
 handling are omitted.
 
-Remaining execution order: implement original input clear mode;
+Remaining execution order: investigate original round-flow transitions;
 repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.
 Preserve the verified corrected CD encounter. The 30 Hz render / 60 Hz logic gate
-still fails at approximately 7.0 work loops/s and 280 logic ticks per 600 emulator
+still fails at approximately 7.4 work loops/s and 288 logic ticks per 600 emulator
 frames. The [progress record](NEXT_PLAYABLE_PROGRESS.md) holds scoped evidence.
+The newest private `build/paul-memory` uses the aligned RAM-copy/fill improvement
+in LibSaturn; it retains the same authored models/tables and original match core.
 
 `T3_LOCAL_ACTOR0_KMD` optionally imports P1's original skeleton independently
 from the shared render archive. The current private configuration uses record

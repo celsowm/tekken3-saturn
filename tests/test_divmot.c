@@ -143,6 +143,17 @@ static void test_commands(void) {
     assert(!t3_command_matches(0xC00D,&h)); /* branch RETURN, not an input */
     assert(!t3_command_matches(0xC017,&h)); /* no fake DP matcher */
     assert(!t3_command_matches(2,&h)); /* RP not pressed */
+    t3_history_clear(&h);
+    assert(h.count==T3_INPUT_HISTORY_FRAMES);
+    for(unsigned i=0;i<T3_INPUT_HISTORY_FRAMES;++i) {
+        t3_command_frame_t f=t3_history_at(&h,i);
+        assert(f.direction==5 && !f.held_buttons && !f.pressed_buttons);
+    }
+    assert(!t3_command_matches(1,&h));
+    assert(!t3_command_matches(0xC001,&h));
+    assert(!t3_command_matches(1u<<9,&h)); /* raw in_dir=5, not neutral one-hot */
+    t3_history_push(&h,input(0,0));
+    assert(t3_command_matches(1u<<9,&h));
     /* Quarter-circle: down (2), down-forward (3), forward+LP (6+LP). */
     t3_history_reset(&h);
     t3_history_push(&h,input(T3_IN_RIGHT,0));

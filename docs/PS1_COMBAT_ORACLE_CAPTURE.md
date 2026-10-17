@@ -396,3 +396,18 @@ therefore observe P1's newly composed joints, as in the original sequential
 actor order. World matrices are compared in every subsequent exit snapshot.
 The older capture does not contain per-frame head globals, so this establishes
 matrix-result parity rather than a separate scalar-head-state comparison.
+
+The input adapter distinguishes an ordinary neutral direction mask (`1 << 9`)
+from InputClear's raw `in_dir=5` with zero held/pressed buttons. The latter
+requests `T3_PSX_INPUT_CLEAR`, an owned-core source-control flag, not a physical
+button. It clears all 60 history entries at the post-physics input phase and
+retains the raw-direction distinction until the next normal pad update. Thus a
+neutral-direction branch cannot fire prematurely on the clear tick. The native
+round-result hold uses the same path. `clear_input_frames` reports observed
+clear requests per actor; other non-one-hot/button combinations still fail
+closed. With this path the full 2,690-frame dataset executes, exposing original
+victory/new-round transitions instead of hiding them behind an input boundary.
+
+Profiling runs now archive `profile.elf` and an available `profile.map` beside
+the PC samples. Retain those private files: rebuilding the same directory can
+move functions, making later symbol attribution from a new ELF incorrect.

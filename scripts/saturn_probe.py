@@ -137,6 +137,11 @@ def run(args):
     if args.device_script:
         command.extend(['--device-script', str(args.device_script.resolve())])
     if args.profile:
+        # Preserve symbols beside sampled PCs before a later rebuild moves them.
+        # These private ELF/map artifacts must remain outside Git.
+        shutil.copyfile(elf,out/'profile.elf')
+        map_path=elf.with_suffix('.elf.map')
+        if map_path.exists():shutil.copyfile(map_path,out/'profile.map')
         for kind in ('pc', 'cycles', 'instructions', 'transfers'):
             command.extend(['--profile-' + kind, str(out / (kind + '.csv'))])
     with (out / 'probe.log').open('w') as log:

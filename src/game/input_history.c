@@ -4,6 +4,12 @@
 void t3_history_reset(t3_input_history_t* h) {
     if (h) __builtin_memset(h, 0, sizeof(*h));
 }
+void t3_history_clear(t3_input_history_t* h) {
+    if(!h)return;
+    *h=(t3_input_history_t){0};
+    for(unsigned i=0;i<T3_INPUT_HISTORY_FRAMES;++i)h->frames[i].direction=5u;
+    h->count=T3_INPUT_HISTORY_FRAMES;h->next=1u;h->direction_cleared=1u;
+}
 
 static uint8_t buttons(uint16_t bits) {
     uint8_t b = 0;
@@ -25,6 +31,7 @@ void t3_history_push(t3_input_history_t* h, t3_input_t input) {
     t3_command_frame_t* frame;
     if (!h) return;
     frame = &h->frames[h->next];
+    h->direction_cleared=0u;
     frame->direction = direction(input.held);
     frame->held_buttons = buttons(input.held | input.pressed);
     frame->pressed_buttons = buttons(input.pressed);
@@ -68,7 +75,7 @@ int t3_command_matches(uint16_t cmd, const t3_input_history_t* h) {
     if (cmd == 0xC002u) return double_tap(h, 4u);
     if (cmd >= 0xC000u) return 0;
     dir_mask = cmd & 0x3FE0u;
-    if (dir_mask && !(dir_mask & (uint16_t)(1u << (f.direction + 4u))))
+    if (dir_mask && !(dir_mask & (h->direction_cleared?5u:(uint16_t)(1u << (f.direction + 4u)))))
         return 0;
     mask = (uint8_t)(cmd & 15u);
     if (cmd & 16u) return mask ? !!(f.pressed_buttons & mask) : 1;

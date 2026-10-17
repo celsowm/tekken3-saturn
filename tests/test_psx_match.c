@@ -49,6 +49,13 @@ int main(void) {
     before=game;
     assert(!t3_psx_match_step(&game,forward,neutral));
     assert(!memcmp(&game,&before,sizeof(game)));
+    assert(t3_psx_match_init(&game,&c));
+    assert(t3_psx_match_step(&game,forward,neutral));
+    assert(t3_psx_match_step(&game,(t3_input_t){T3_PSX_INPUT_CLEAR|T3_IN_LP,T3_IN_LP},neutral));
+    assert(game.fighter[0].ground.root.x==-99); /* physics used the preceding input */
+    assert(game.fighter[0].input.direction_cleared);
+    assert(!t3_history_at(&game.fighter[0].input,0).pressed_buttons);
+    assert(!game.fighter[0].vm.pending_valid); /* raw clear isn't a neutral return */
     c.enable_rounds=1;
     assert(t3_psx_match_init(&game,&c));
     game.fighter[1].health_q16=0;
@@ -56,6 +63,7 @@ int main(void) {
     assert(game.round.done && game.round.wins[0]==1 && game.round.hold==240);
     for(unsigned i=0;i<239;++i)assert(t3_psx_match_step(&game,forward,neutral));
     assert(game.round.done && game.fighter[1].health_q16==0);
+    assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
     assert(t3_psx_match_step(&game,neutral,neutral));
     assert(!game.round.done && game.round.number==2 && game.round.wins[0]==1);
     assert(game.fighter[1].health_q16==140*65536 && game.ticks==241);
