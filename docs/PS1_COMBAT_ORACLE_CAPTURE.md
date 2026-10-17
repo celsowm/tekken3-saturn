@@ -1,5 +1,8 @@
 # Tekken 3 USA: private PS1 combat oracle capture
 
+For the new round-control component, replay/physical-pad observations and
+capture through victory/END, see the [normal-VS round-flow contract](PSX_VS_ROUND_FLOW.md).
+
 Original USA Paul mirror captures now exist privately, including high/mid/low
 hits, guards, health depletion and round results. This document describes
 their capture and its timing limits. The repository does not bundle a PS1 disc,

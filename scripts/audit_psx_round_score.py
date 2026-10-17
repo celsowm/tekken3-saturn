@@ -23,7 +23,7 @@ class Ranges:
         if len(raw)<12 or len(raw)>8*1024*1024 or raw[:8]!=b'T3RANGES':
             raise ValueError('invalid compact RAM header/size')
         count=struct.unpack_from('<I',raw,8)[0]
-        if not 1<=count<=32:raise ValueError('invalid compact range count')
+        if not 1<=count<=64:raise ValueError('invalid compact range count')
         self.ranges=[]
         cursor=12
         for _ in range(count):
@@ -68,7 +68,7 @@ def audit(capture,runner,layout_path):
     if provenance['exe_sha256']!=US_EXE_SHA or provenance['layout_sha256']!=hashlib.sha256(layout_raw).hexdigest():
         raise ValueError('unverified capture executable/layout')
     layout=json.loads(layout_raw)['blocks']['exe'];points=dict(layout['points'])
-    fields=round_descriptors(lambda a:points.get(a) or mapped(layout,a,4))
+    fields=round_descriptors(lambda a:points.get(a) or mapped(layout,a,4),provenance.get('round_flow_capture',False))
     if fields!=provenance['round_fields']:raise ValueError('obsolete/unverified round field mapping')
     trace=(capture/'phases.jsonl').read_bytes()
     rows=[json.loads(line) for line in trace.splitlines()]

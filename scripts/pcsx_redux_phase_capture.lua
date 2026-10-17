@@ -66,9 +66,29 @@ local function ground_ram(invocation,edge,prefix)
         if reaction~=0 and not seen[reaction] then
             ranges[#ranges+1]={reaction,42};seen[reaction]=true
         end
+        if cfg.round_move_banks and unsigned(cfg.round_state,4)==2 and
+           signed(base+0x3F4,4)>0 and signed(base+0x46,2)>=0 and
+           (unsigned(cfg.round_result,2)%2==1 or unsigned(base+0xC5,1)~=0) and
+           signed(base+0x16,2)~=18 and unsigned(base+0x1A4,4)==0 then
+            local pose=unsigned(base+0x54,4)
+            local stance=signed(pose+16,2)
+            if stance~=signed(base+0xA0,2) then
+                local player=signed(base+0x12,2)
+                assert(player>=0 and player<=1 and stance>=0 and stance<4023,'invalid stance lookup')
+                local lookup=cfg.round_move_banks+player*4
+                local bank=unsigned(lookup,4)
+                local slot=unsigned(bank+12,4)+stance*4
+                local row=unsigned(slot,4)
+                assert(row~=0,'empty original stance row')
+                for _,r in ipairs({{lookup,4},{bank+12,4},{slot,4},{row,56}}) do
+                    if not seen[r[1]] then ranges[#ranges+1]=r;seen[r[1]]=true end
+                end
+            end
+        end
     end
     local snapshot=Support.File.open(path,'TRUNCATE')
     assert(snapshot and not snapshot:failed(),'unable to open ground ranges')
+    assert(#ranges<=64,'too many compact RAM ranges')
     local header='T3RANGES'..le32(#ranges)
     assert(snapshot:write(header)==#header,'short range header')
     for _,r in ipairs(ranges) do
@@ -219,9 +239,13 @@ for name, address in pairs(cfg.functions) do
                     if pending.hit_ram then hit_ram(pending,'after') end
                     if pending.ground_ram then ground_ram(pending,'after',pending.ground_ram) end
                     if name=='RoundWins' then obs.round_results=(obs.round_results or 0)+1 end
+                    if name=='FightFrame' and cfg.round_state and unsigned(cfg.round_state,4)==9 then
+                        obs.round_ends=(obs.round_ends or 0)+1
+                    end
                     obs.pending[name]=nil
                     if name=='FightFrame' and (unsigned(0x800AFA4C,4)>=cfg.last or
-                        ((cfg.stop_round_results or 0)>0 and (obs.round_results or 0)>=cfg.stop_round_results)) then
+                        ((cfg.stop_round_results or 0)>0 and (obs.round_results or 0)>=cfg.stop_round_results) or
+                        ((cfg.stop_round_ends or 0)>0 and (obs.round_ends or 0)>=cfg.stop_round_ends)) then
                         obs.stop('final FightFrame return'); PCSX.pauseEmulator()
                     end
                 end

@@ -29,10 +29,24 @@ ROUND_FIELDS = {
     'draw_wins':(0x800AFF58,1,False),'match_result':(0x800AFF71,1,False),
     'match_winner':(0x800AFF72,1,False),'match_loser':(0x800AFF73,1,False),
 }
+ROUND_FLOW_FIELDS = {
+    'replay_mode':(0x8009C050,4,True),'replay_skip':(0x800958A4,4,True),
+    'win_done0':(0x8009E9A0,4,True),'win_done1':(0x8009E9A4,4,True),
+    'frame_counter':(0x800AFF14,4,False),
+    'physical0':(0x800AE230,2,False),'physical1':(0x800AE232,2,False),
+    'pressed0':(0x800AE3D0,2,False),'pressed1':(0x800AE3D2,2,False),
+}
 
 
-def round_descriptors(point):
+def round_descriptors(point,flow=False):
     fields={name:dict(address=point(a),size=n,signed=s) for name,(a,n,s) in ROUND_FIELDS.items()}
+    if flow:
+        fields.update({name:dict(address=point(a),size=n,signed=s)
+                       for name,(a,n,s) in ROUND_FLOW_FIELDS.items()})
+        # USA PadRead 0x80029F88/8C stores u16; P2 is base+2, also
+        # consumed by StartPressed at 0x8002BA18/1C, not two u32s.
+        fields['physical1']['address']=fields['physical0']['address']+2
+        fields['pressed1']['address']=fields['pressed0']['address']+2
     # USA MatchResult (0x8003E800) stores bytes at base+0x21/22/23.
     # The pinned layout's isolated winner/loser points conflict with this struct.
     base=point(0x800AFF50)
@@ -41,7 +55,8 @@ def round_descriptors(point):
     return fields
 
 
-def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=False,body_ram=False,contact_ram=False,frame_ram=False,round_ram=False,stop_round_results=0):
+def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=False,body_ram=False,contact_ram=False,frame_ram=False,round_ram=False,stop_round_results=0,round_flow_ram=False,stop_round_ends=0):
+    if round_flow_ram:round_ram=True
     raw = exe.read_bytes()
     layout = json.loads(layout_path.read_text())['blocks']['exe']
     if (hashlib.sha256(raw).hexdigest() != US_EXE_SHA or
@@ -51,6 +66,8 @@ def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=Fals
         raise ValueError('capture requires 0 <= first < last <= 60000')
     if not 0<=stop_round_results<=9 or (stop_round_results and not round_ram):
         raise ValueError('round result stop requires round capture and count 1..9')
+    if not 0<=stop_round_ends<=9 or (stop_round_ends and not round_ram):
+        raise ValueError('round end stop requires round capture and count 1..9')
     addresses = {name: mapped(layout, address, 4)
                  for name, address in FUNCTIONS.items()}
     if ground_ram:
@@ -78,12 +95,22 @@ def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=Fals
     extra_ranges=[]
     round_fields={}
     if round_ram:
-        round_fields=round_descriptors(point)
+        round_fields=round_descriptors(point,round_flow_ram)
         config+='stop_round_results=%d,round_prefix=%s,round_fields={' % (stop_round_results,json.dumps(str(output/'round-')))
         config+=','.join('{%s,%d,%d,%s}'%(json.dumps(name),f['address'],f['size'],str(f['signed']).lower()) for name,f in round_fields.items())+'},'
+        config+='stop_round_ends=%d,round_state=%d,'%(stop_round_ends,round_fields['state']['address'])
+        if round_flow_ram:
+            # USA FighterMoveForSlot 0x8002D178: global bank pointer table,
+            # fighter.player_index * 4, then bank+0x0C and stance_slot * 4.
+            config+='round_move_banks=%d,round_result=%d,'%(point(0x800AE0E8),round_fields['result']['address'])
         canonical_spans=[(0x80097350,20),(0x80095884,0x54),
             (0x800AE090,12),(0x800AE330,0x20),(0x800AE2C4,4),(0x800AE404,4),
             (0x800A9234,4),(0x800AE3D8,4),(0x800AFF50,0x24)]
+        if round_flow_ram:
+            canonical_spans += [(0x8009C040,0x40),(0x8009E9A0,8),
+                                (0x800AE230,4),(0x800AE3D0,4)]
+            # The frame-counter span is already emitted by the observer.
+            canonical_spans += [(0x800AFF14,4)]
         spans=[(point(a),n) for a,n in canonical_spans]
         if any(not any(a<=f['address'] and f['address']+f['size']<=a+n for a,n in spans) for f in round_fields.values()):
             raise ValueError('round field mapping lies outside captured ranges')
@@ -118,6 +145,9 @@ def prepare(exe, layout_path, output, first, last, hit_ram=False,ground_ram=Fals
             [('previous_root',0x8009EAA0),('pair_distance',0x8009EA08),('ramp',0x80097E68)]}
     if round_ram:manifest.update(round_fields=round_fields,stop_round_results=stop_round_results,
         match_field_basis='USA MatchResult 0x8003E800: mapped AFF50 struct + offsets 0x21/0x22/0x23; isolated winner/loser layout points overridden')
+    if round_flow_ram:
+        manifest.update(round_flow_capture=True,round_move_banks=point(0x800AE0E8))
+    if stop_round_ends:manifest['stop_round_ends']=stop_round_ends
     if contact_ram:
         manifest['segment_addresses']={name:point(address) for name,address in
             [('anchor',0x800A0920),('end0',0x800A08D0),('end1',0x800A08F4),('mode',0x800A0950),('trig',0x800A0960)]}
@@ -140,6 +170,8 @@ if __name__ == '__main__':
     p.add_argument('--contact-ram',action='store_true',help='Capture original world shapes and HitTest gates')
     p.add_argument('--frame-ram',action='store_true',help='One neutral full-RAM seed and consecutive FightFrame exit ranges')
     p.add_argument('--round-ram',action='store_true',help='Read-only round globals and RoundFlow/result/win-pose phases')
+    p.add_argument('--round-flow-ram',action='store_true',help='Also capture replay controls, physical pads and win-pose completion flags')
     p.add_argument('--stop-round-results',type=int,default=0,help='Pause at the FightFrame return after this many observed RoundWins calls')
+    p.add_argument('--stop-round-ends',type=int,default=0,help='Pause after this many FightFrame returns in END, including victory/replay')
     a = p.parse_args()
-    print(prepare(a.exe, a.layout, a.output, a.first, a.last,a.hit_ram,a.ground_ram,a.body_ram,a.contact_ram,a.frame_ram,a.round_ram,a.stop_round_results))
+    print(prepare(a.exe, a.layout, a.output, a.first, a.last,a.hit_ram,a.ground_ram,a.body_ram,a.contact_ram,a.frame_ram,a.round_ram,a.stop_round_results,a.round_flow_ram,a.stop_round_ends))

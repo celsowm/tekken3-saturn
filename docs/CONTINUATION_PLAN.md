@@ -29,6 +29,10 @@ No gameplay implementation is part of this planning update.
 
 ### A. Establish the round-transition contract
 
+The initial [normal-VS contract](PSX_VS_ROUND_FLOW.md) and portable controller
+now exist, with paired original-call audits. They do not replace stages B/C:
+the live wrapper and uninterrupted replay still require integration.
+
 Start with the corrected `ps1-paul-score-verified/` and
 `ps1-paul-draw-verified/` captures. Check which transition edges their valid
 compact snapshots actually cover before launching another original session.
@@ -216,7 +220,7 @@ The original's two neutral draws were independently captured and agree with
 the native scorer. The live default timer is now the observed 2,400 ticks.
 Intro/replay/win poses and round-transition sequencing remain provisional.
 
-Remaining execution order: investigate original round-flow transitions;
+Remaining execution order: integrate the audited original round-flow controller;
 repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.
 Preserve the verified corrected CD encounter. The 30 Hz render / 60 Hz logic gate
 still fails at approximately 8.4 reported work loops/s and 316 logic ticks per 600 emulator

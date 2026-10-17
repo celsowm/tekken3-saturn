@@ -9,6 +9,51 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Audited original VS round controller (2026-10-17)
+
+- `psx_round_flow.c` now ports the normal-VS control transitions, with explicit
+  caller-supplied replay/pad facts and actions for victory moves, grounded
+  placement, blend clearing and fight-clock advancement. It reuses the verified
+  scorer and owns normalized/carried health, script input and active/pose
+  markers. The [integration contract](PSX_VS_ROUND_FLOW.md) records call order,
+  original edges and remaining ownership. This component is **not yet wired
+  into the playable match**; the existing live hold/reset wrapper remains.
+- Three read-only original captures run through both END states. Full paused
+  RAM independently matches every final Lua fighter/round observation. The
+  portable C adapter agrees on every declared output for **16,334 paired
+  RoundFlow calls**: 5,481 in `ps1-paul-flow-complete/` (P1 timeout then KO),
+  5,221 in `ps1-paul-flow-draw/` (two neutral draws) and 5,632 in
+  `ps1-paul-flow-p2-stance/` (P2 timeout then KO). All reports use adapter SHA256
+  `3d8c53e355f4c0d206fcaff3361c579de904d309be34edce04d29209f30e6708`.
+  P2's victories select slots 3432 and 3431 on their observed parity, exercising
+  different animation lengths. Each call is seeded independently: this is
+  component parity, not continuous match or Saturn round-flow parity.
+- `--round-flow-ram` adds replay mode/skip, completion flags and original
+  physical/pressed pad words. `--stop-round-ends 2` pauses at the final
+  FightFrame return after victory, rather than at score award. Session option
+  `attacker=2` mirrors the pad-only encounter while retaining UI navigation.
+  USA PadRead and StartPressed instructions establish adjacent u16 pad words,
+  overriding the incorrect inference of two four-byte array elements.
+- The first P2 audit correctly refused missing stance-row evidence. New
+  snapshots follow the original bank-table/player/stance-slot pointer chain;
+  the independent reader verifies it before supplying HoldInput's row state.
+  Both compact readers now allow up to 64 bounded ranges. The earlier
+  `ps1-paul-flow-p2/` remains incomplete evidence and is not counted as passing.
+- Public validation passes **40/40 CTest checks and 97 Python checks**, with
+  the native adapters assigned. ASan/UBSan passes the new state-machine cases.
+  Cross compilation and native disc/image checks pass. The playable ELF stays
+  byte-identical to the preceding checkpoint (`b91558de...65993d`, 961,780
+  initialized bytes), so the preceding matching-ELF Ymir/CD evidence still
+  describes that bounded runtime; this update does not claim a new encounter.
+- Next: apply the audited actions in the shared match core before MoveStartAll,
+  implement replay playback and selective original next-round initialization,
+  then extend the one-seed continuous host/Saturn comparison. Replay/camera
+  execution, blend/ground action effects, cumulative fight-clock storage,
+  audio/effects and outer round reset are excluded from the component audit.
+  The full 2,690-tick replay still diverges at tick 2,488, and the 30 Hz render /
+  60 Hz logic gate remains open. No sibling LibSaturn source changes are
+  required for this control-component checkpoint.
+
 ## Original VS scoring and round observation (2026-10-17)
 
 - The owned normal-VS scorer now implements the pinned `RoundWins` and

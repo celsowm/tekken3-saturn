@@ -22,6 +22,12 @@ def blob(ranges):
 
 
 class RoundScoreAuditTests(unittest.TestCase):
+    def test_sixty_four_range_stance_capture_limit(self):
+        spans=[(0x80000000+i*2,bytes([i])) for i in range(64)]
+        ram=Ranges(blob(spans));self.assertEqual(ram.read(0x8000007E,1),63)
+        with self.assertRaisesRegex(ValueError,'count'):
+            Ranges(blob(spans+[(0x80000100,b'a')]))
+
     def test_compact_reader_rejects_truncation_trailing_and_conflicts(self):
         raw=blob([(0x80000000,b'\xff\xff')])
         self.assertEqual(Ranges(raw).read(0x80000000,2,True),-1)

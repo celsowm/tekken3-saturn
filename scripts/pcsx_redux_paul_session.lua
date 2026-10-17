@@ -92,6 +92,16 @@ local function frame()
         if T3_PAUL_SESSION_OPTIONS and T3_PAUL_SESSION_OPTIONS.neutral then
             release(1);release(2);return
         end
+        local attacker=(T3_PAUL_SESSION_OPTIONS and T3_PAUL_SESSION_OPTIONS.attacker==2) and 2 or 1
+        local defender=3-attacker
+        local function encounter_down(player,buttons)
+            if attacker==1 then down(player,buttons);return end
+            local mirrored={}
+            for _,button in ipairs(buttons) do
+                mirrored[#mirrored+1]=button==5 and 7 or button==7 and 5 or button
+            end
+            down(player,mirrored)
+        end
         local a, b = u16(0x800A9240), u16(0x800AAACC) -- fighter charId +0x18
         if a ~= 0 or b ~= 0 or u32(0x800AFA88) ~= 1 then return end
         if u32(0x800A9288) == 0 or u32(0x800AAB14) == 0 then return end
@@ -111,18 +121,18 @@ local function frame()
             local dz=s32(0x800A9230)-s32(0x800AAABC)
             -- Observed body separation is 817..853 units depending on both
             -- fighters' movement. Stop above that contact boundary.
-            if dx*dx+dz*dz > 900*900 then down(1, {5}); release(2)
+            if dx*dx+dz*dz > 900*900 then encounter_down(attacker, {5}); release(defender)
             else
                 attack_start=tick
-                down(1, scenario.buttons); down(2, {7})
+                encounter_down(attacker, scenario.buttons); encounter_down(defender, {7})
                 print(string.format('PAUL_SCENARIO guest=%d name=%s',tick,scenario.name))
             end
         end
         if attack_start ~= nil then
             local elapsed = tick-attack_start
-            if elapsed == 3 and scenario.guard then down(2, scenario.guard)
-            elseif elapsed == 6 then release(1)
-            elseif elapsed == 30 then release(2)
+            if elapsed == 3 and scenario.guard then encounter_down(defender, scenario.guard)
+            elseif elapsed == 6 then release(attacker)
+            elseif elapsed == 30 then release(defender)
             elseif elapsed >= 90 then
                 release(1); release(2); attack_start=nil
                 scenario_index=math.min(scenario_index+1,#scenarios)

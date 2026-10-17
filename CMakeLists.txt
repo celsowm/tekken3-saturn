@@ -12,7 +12,7 @@ target_include_directories(tekken3_fight PUBLIC
 target_compile_options(tekken3_fight PRIVATE -Wall -Wextra -Wpedantic)
 target_sources(tekken3_fight PRIVATE src/game/move_lifecycle.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ground.c src/game/psx_body.c src/game/psx_exact_contact.c src/game/psx_hit_transaction.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_match.c src/game/psx_round.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_match.c src/game/psx_round.c src/game/psx_round_flow.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c)
 
@@ -497,6 +497,13 @@ else()
         target_compile_options(t3_round_score_eval PRIVATE -Wall -Wextra -Werror)
         target_link_libraries(test_psx_round PRIVATE tekken3_fight)
         add_test(NAME ps1_result_and_bounded_round_restart COMMAND test_psx_round)
+        add_executable(test_psx_round_flow tests/test_psx_round_flow.c)
+        target_link_libraries(test_psx_round_flow PRIVATE tekken3_fight)
+        target_compile_options(test_psx_round_flow PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_original_vs_round_flow COMMAND test_psx_round_flow)
+        add_executable(t3_round_flow_eval tools/psx_round_flow_eval.c)
+        target_link_libraries(t3_round_flow_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_round_flow_eval PRIVATE -Wall -Wextra -Werror)
         add_executable(test_psx_match tests/test_psx_match.c)
         target_link_libraries(test_psx_match PRIVATE tekken3_fight)
         add_test(NAME ps1_owned_ground_match_tick_order COMMAND test_psx_match)
@@ -508,6 +515,9 @@ else()
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME ps1_round_flow_snapshot_audit
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_psx_round_flow.py"
+                --runner "$<TARGET_FILE:t3_round_flow_eval>")
         add_test(NAME ps1_round_score_snapshot_audit
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_psx_round_score.py"
                 --runner "$<TARGET_FILE:t3_round_score_eval>")

@@ -2,7 +2,7 @@
 #ifndef T3_RAM_RANGES_H
 #define T3_RAM_RANGES_H
 static uint8_t ram[0x200000];
-static struct {uint32_t address,size;} ranges[32];
+static struct {uint32_t address,size;} ranges[64];
 static unsigned range_count;
 static int bad;
 static uint32_t load32(const uint8_t* p) {
@@ -28,7 +28,7 @@ static inline int snapshot(const char* path) {
     uint8_t header[12],entry[8];FILE* f=fopen(path,"rb");
     if(!f)return 0;
     if(fread(header,1,12,f)!=12 || memcmp(header,"T3RANGES",8)!=0)goto fail;
-    range_count=load32(header+8);if(range_count>32 || !range_count)goto fail;
+    range_count=load32(header+8);if(range_count>64 || !range_count)goto fail;
     for(unsigned i=0;i<range_count;++i) {
         uint32_t a,n;
         if(fread(entry,1,8,f)!=8)goto fail;
