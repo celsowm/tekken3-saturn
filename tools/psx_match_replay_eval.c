@@ -15,6 +15,7 @@ static t3_psx_match_t game;
 static t3_psx_match_config_t config;
 static t3_divmot_t bank,common;
 static t3_psx_replay_storage_t history;
+static t3_motion_sample_cache_t samples;
 static unsigned differences;
 static int original_round_flow;
 static void check(unsigned i,const char* category,const char* field,int64_t got,int64_t expected) {
@@ -28,6 +29,8 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
        !t3_divmot_set_common_branches(&bank,t3_local_common_branches,T3_LOCAL_COMMON_BRANCH_BYTES) ||
        !t3_divmot_set_common_branches(&common,t3_local_common_branches,T3_LOCAL_COMMON_BRANCH_BYTES))return 0;
     config.bank=&bank;config.common=&common;
+    config.sample_cache=getenv("T3_DISABLE_SAMPLE_CACHE")?NULL:&samples;
+    t3_motion_sample_cache_reset(config.sample_cache);
     config.ground_tables=(t3_psx_ground_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},
         t3_local_ground_blob,1025,t3_local_ground_blob+1025,T3_LOCAL_GROUND_BYTES-1025};
     config.spline=(t3_motion_tables_t){t3_local_spline_blob,T3_LOCAL_SPLINE_BYTES};

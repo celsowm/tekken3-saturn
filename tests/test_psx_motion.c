@@ -117,6 +117,51 @@ static void cache_ownership(void) {
     bytes[134]=0;
     assert(t3_motion_open_cached(&cache,&bank,&common,2,&view)==-1 && !view);
 }
+static void decoded_sample_cache(void) {
+    static t3_motion_sample_cache_t cache;
+    static uint8_t table[T3_PSX_SPLINE_TABLE_BYTES];
+    t3_motion_tables_t tables={table,sizeof(table)};
+    t3_divmot_t bank={0};t3_motion_stream_t stream;
+    int16_t expected[T3_PSX_POSE_CHANNELS],actual[T3_PSX_POSE_CHANNELS];
+    size_t size=make(bytes,99);
+    assert(t3_divmot_open(&bank,bytes,size));
+    assert(t3_motion_open(&bank,NULL,2,&stream)==1);
+    t3_motion_sample_cache_reset(&cache);
+    for(unsigned pass=0;pass<2;++pass)for(unsigned frame=0;frame<12;++frame) {
+        assert(t3_motion_sample(&stream,frame,&tables,expected)==1);
+        assert(t3_motion_sample_cached(&cache,&stream,frame,&tables,actual)==1);
+        assert(!memcmp(expected,actual,sizeof(actual)));
+    }
+    assert(cache.hits==12 && cache.misses==12);
+    assert(t3_motion_sample_cached(&cache,&stream,1000,&tables,actual)==1);
+    assert(cache.hits==13 && !memcmp(expected,actual,sizeof(actual)));
+    // Different streams in one bank may share frame count and bank pointer.
+    // Their first key locations identify them, even when all keys are zero.
+    t3_motion_stream_t other=stream;
+    for(unsigned ch=0;ch<T3_PSX_POSE_CHANNELS;++ch)other.counts[ch]=0;
+    other.key_offset[0]=stream.key_offset[0]+128;
+    assert(t3_motion_sample_cached(&cache,&other,11,&tables,actual)==1);
+    for(unsigned ch=0;ch<T3_PSX_POSE_CHANNELS;++ch)assert(actual[ch]==0);
+    assert(t3_motion_sample_cached(&cache,&stream,11,&tables,actual)==1);
+    assert(!memcmp(expected,actual,sizeof(actual)));
+    // An unavailable table must not reuse a successful spline sample.
+    memset(actual,0x42,sizeof(actual));memcpy(expected,actual,sizeof(actual));
+    assert(t3_motion_sample_cached(&cache,&stream,0,NULL,actual)==0);
+    assert(t3_motion_sample_cached(&cache,&stream,0,NULL,actual)==0);
+    assert(!cache.hits && cache.misses==2 && !memcmp(expected,actual,sizeof(actual)));
+    assert(t3_motion_sample_cached(&cache,&stream,0,&tables,actual)==1);
+    tables.length=0;
+    assert(t3_motion_sample_cached(&cache,&stream,0,&tables,actual)==0);
+    tables.length=sizeof(table);
+    // Reloaded bytes at the same address require explicit invalidation.
+    make(bytes,99);put16(bytes+184,321);
+    t3_motion_sample_cache_reset(&cache);
+    assert(t3_motion_sample_cached(&cache,&stream,0,&tables,actual)==1 && actual[0]==642);
+    assert(t3_motion_sample_cached(NULL,&stream,0,&tables,expected)==1);
+    assert(!memcmp(expected,actual,sizeof(actual)));
+    assert(t3_motion_sample_cached(&cache,NULL,0,&tables,actual)==-1);
+    assert(t3_motion_sample_cached(&cache,&stream,0,&tables,NULL)==-1);
+}
 static void malformed_streams(void) {
     t3_divmot_t bank={0};
     t3_motion_stream_t stream={0};
@@ -141,6 +186,7 @@ int main(void) {
     open_and_sample();
     malformed_streams();
     cache_ownership();
+    decoded_sample_cache();
     puts("PS1 49-channel motion layout and sparse spline sample: passed");
     return 0;
 }

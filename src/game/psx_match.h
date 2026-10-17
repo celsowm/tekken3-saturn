@@ -40,6 +40,7 @@ typedef struct {
     uint8_t chip_enabled,collapse_on_ko;
     uint8_t enable_rounds; /* 0 none, 1 bounded slice, 2 original frame API. */
     t3_psx_replay_storage_t* replay_storage;
+    t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
 } t3_psx_match_config_t;
 typedef struct {
     t3_move_vm_t vm;

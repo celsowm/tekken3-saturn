@@ -62,6 +62,29 @@ int t3_motion_sample(const t3_motion_stream_t* stream, unsigned frame,
                      const t3_motion_tables_t* tables,
                      int16_t pose[T3_PSX_POSE_CHANNELS]);
 
+enum {T3_MOTION_SAMPLE_CACHE_SLOTS=512};
+typedef struct {
+    const uint8_t* stream;
+    uint16_t frame;
+    uint8_t frames,valid;
+    int16_t pose[T3_PSX_POSE_CHANNELS];
+} t3_motion_sample_entry_t;
+typedef struct {
+    const uint8_t* table;
+    size_t table_length;
+    uint32_t hits,misses;
+    t3_motion_sample_entry_t entries[T3_MOTION_SAMPLE_CACHE_SLOTS];
+} t3_motion_sample_cache_t;
+/* Optional caller-owned derived-data cache, outside the match transaction.
+ * Reset before first use and after reloading/modifying bank bytes, stream
+ * descriptors or table bytes. All are immutable while cached. Changing the
+ * table pointer/length invalidates automatically. Failed samples never cache
+ * an unavailable/invalid result. Cache counters are not simulation state. */
+void t3_motion_sample_cache_reset(t3_motion_sample_cache_t* cache);
+int t3_motion_sample_cached(t3_motion_sample_cache_t* cache,
+    const t3_motion_stream_t* stream,unsigned frame,
+    const t3_motion_tables_t* tables,int16_t pose[T3_PSX_POSE_CHANNELS]);
+
 /* Sample only channels 0..2. If they are simple/non-spline, the original
  * EXE spline tables are not needed; otherwise returns 0. */
 int t3_motion_sample_root(const t3_motion_stream_t* stream, unsigned frame,

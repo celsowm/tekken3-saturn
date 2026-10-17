@@ -27,6 +27,8 @@ static t3_motion_cache_t g_pose_cache[2],g_root_cache[2];
 static t3_psx_match_t g_owned_match __attribute__((section(".wram_l")));
 /* Reset assigns the entire object before match initialization. */
 static t3_psx_match_config_t g_owned_config __attribute__((section(".wram_l")));
+/* Shared immutable motion samples; no live matrices or actor state. */
+static t3_motion_sample_cache_t g_sample_cache __attribute__((section(".wram_l")));
 #if defined(T3_ENABLE_PSX_COMBAT)
 static t3_psx_replay_storage_t g_replay_history __attribute__((section(".wram_l")));
 #endif
@@ -108,6 +110,7 @@ void t3_move_probe_reset(unsigned round) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
+    g_owned_config.sample_cache=&g_sample_cache;
     g_owned_config.ground_tables=(t3_psx_ground_tables_t){
         {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ground_blob,1025u,
         t3_local_ground_blob+1025u,T3_LOCAL_GROUND_BYTES-1025u};

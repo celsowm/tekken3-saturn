@@ -29,12 +29,13 @@ The older baseline/gap descriptions below are historical investigation notes.
 Next execution order:
 
 1. Close D using the fresh live profile and editable sibling LibSaturn. The
-   measured interval remains 8.1 submissions/s and 32.4 logic steps/s. Investigate
-   remaining vertex projection costs (the sparse-matrix increment in LibSaturn
-   `b6d14b5` saves 5.4% of the final-instance projection sample but no cadence),
-   repeated material validation (7.5%)
-   and application pose/command work; preserve visibility, texture and ordering
-   semantics. Verify/install/rebuild any library increment and push both repos.
+   decoded-motion cache improves the measured interval to **8.49 submissions/s
+   and 33.94 logic steps/s** (601 VBlanks), still far below 30/60. It does not
+   skip live simulation or render work. Continue measured pose/matrix, scene
+   preparation/emission and HUD optimization. Retain LibSaturn `b6d14b5`'s sparse
+   projection improvement. The High/Low WRAM relocation experiment did not
+   improve cadence usefully and was removed; do not repeat it without new
+   evidence. Verify/install/rebuild any library increment and push both repos.
 2. Finish C's strict original/Saturn alignment at identical initialization and
    simulation ticks. The current Saturn recording/demo endpoint agrees at
    tick 2,316; the host/original comparison is continuous. Their combination

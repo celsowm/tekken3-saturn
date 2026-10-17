@@ -7,6 +7,71 @@ round flow, native KO replay, victory and later-round initialization. The
 provisional preview and query-only owned configurations remain separate.
 The performance target and strict aligned PS1/Saturn comparison remain open.
 
+## Immutable motion sample cache (2026-10-17)
+
+- The owned core now optionally caches **decoded 49-channel pose samples**.
+  It still evaluates every live tick's FK/IK, blending, root/world placement,
+  body/contact, damage and round state. Entries identify the opened animation
+  by its first key address, frame and frame count, rather than the shared bank
+  pointer. This distinguishes streams with equal length inside one bank.
+  Successful samples only are cached; missing spline tables cannot reuse a
+  prior success. Table pointer/length changes invalidate automatically. Bank,
+  descriptor or table edits require explicit reset. Match initialization resets
+  the cache, including the first use of the NOLOAD Low WRAM allocation.
+- The caller-owned 512-slot cache is **55,312 bytes on SH-2**, outside the match
+  transaction and authoritative state. A failed tick may warm derived entries
+  but still leaves the match and replay history unchanged. At the 1,200-frame
+  neutral checkpoint it records **1,338 hits / 54 misses**. Host synthetic tests
+  cover frame clamping, same-bank stream identity, unavailable tables, explicit
+  reload invalidation, null fallback and cached/uncached equality.
+- All **41 CTest and 101 Python checks pass**. The default cached native adapter
+  agrees with every declared field in all three continuous original captures:
+  **5,481 P1 ticks, 5,632 P2 ticks, 5,221 draw ticks**, with no reseeding or
+  truncated mismatch. Reports: `paul-sample-cache-{p1,p2,draw}/`; adapter SHA256
+  `26ab31962f52b417bb21d04ecc716da0ca260de6b606ef3e3a4b9012ec74c584`.
+  ASan/UBSan passes the motion/match cases and complete 5,481-tick P1 audit.
+- The exact live ELF passes all **24 Ymir combat/round/replay scenarios** in
+  `paul-sample-cache-live-suite/`. Across its 600/1200-frame checkpoints,
+  submissions increase 81→166 and logic ticks 328→668 over **601 VBlanks**:
+  **8.49 submissions/s and 33.94 logic steps/s** at nominal 60 Hz, versus the
+  previous 8.1/32.4. Last completed work samples are 108/103 ms, including
+  65/64 ms render/HUD. The four-tick recovery cap still discards accumulated
+  time, so fixed-60-Hz behavior and the 30 Hz rendering gate remain failed.
+- Initialized live image is **960,228 bytes**, High WRAM BSS ends `0x060F6998`,
+  Low WRAM `0x002C1CD8`. Linker, 16 KiB stack reserve and native disc/image
+  checks pass without a RAM cart. Live ELF:
+  `67add3ba2a14a29c6f33bc972bbcc9e6b8894067081a4ebff986238d92fbc995`.
+  The labeled frozen-pose benchmark retains identical RGB pixels and 793
+  commands, with 66 ms render work; this change improves decoding work in live
+  simulation and does not claim a frozen-render speedup.
+- The updated labeled demo reproduces all 70 recorded input events and checked
+  gameplay/pose/round/replay fields at **tick 2,316**, reached at emulator frame
+  3,982 in `paul-sample-cache-demo-aligned/2/`. The comparison remains an endpoint
+  and input-tape check, not a continuous PS1/Saturn state oracle.
+  Its matching actual-CD Mednafen recording exits 0 and contains **9,510 video
+  frames / 158.9601 seconds**, in `paul-sample-cache-demo-mednafen/`.
+  Inspected second 70 shows the last hit sequence, second 80 native replay,
+  and second 100 full-HP round 2 with READY.
+  Demo ELF `500030c98343f48a2c884f916d50d863e73ad532e589eb2e4ab1d36350e5b5cb`;
+  app `735078274e8cdf956b05558236af27da0393342e22f6439c386e5fca96596040`;
+  disc `62a6c14f6a31738c44baf6c1546468a49212f0dbbcb0bb0a898c11bb0f29f32b`.
+  A separate 24-second interactive CD boot is recorded and visually inspected
+  in `paul-sample-cache-mednafen/`.
+- A measured relocation experiment put the scene and both actors' mutable
+  geometry in reclaimed High WRAM after copying the common bank to Low WRAM.
+  It did not improve cadence enough to justify its ownership/init complexity;
+  **the experiment was removed**, not enabled or counted as a passing runtime
+  change. Private patch/measurements remain in `paul-reclaim-experiment/` and
+  `paul-reclaim-geometry-600/`. Its interrupted mixed-build suite is discarded.
+- LibSaturn remains `b6d14b5`, with no additional source edit for this cache.
+  Package CI passes all five jobs. Phase 3 is now confirmed failed in the
+  broad cross-build because `bullet_hell_stress`'s vendored palette file is
+  absent, matching the previous revision's failure. The affected projection,
+  host/package and small-example checks are separate passing evidence.
+  Remaining priorities: substantial render/logic optimization, strict aligned
+  original/Saturn state comparison, presentation-camera calibration, then
+  final matched-build encounter/performance verification.
+
 ## LibSaturn projection increment (2026-10-17)
 
 Sibling LibSaturn **`b6d14b5`** is committed and pushed. Batch projection now

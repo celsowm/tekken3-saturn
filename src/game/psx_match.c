@@ -26,7 +26,7 @@ static int blend_sample(void* user,uint32_t row,unsigned frame,int16_t root[3],t
     int16_t pose[T3_PSX_POSE_CHANNELS];t3_psx_matrix_t fk[18];uint32_t mask;
     if(!t3_divmot_move(bank,row&0x3FFFFFFFu,&move) ||
        t3_motion_open(bank,c->common,move.animation_offset,&stream)!=1 ||
-       t3_motion_sample(&stream,frame,&c->spline,pose)!=1 ||
+       t3_motion_sample_cached(c->sample_cache,&stream,frame,&c->spline,pose)!=1 ||
        !t3_psx_pose_fk(pose,&c->ground_tables.trig,fk,&mask) ||
        t3_psx_pose_ik(pose,&c->ik,fk,mask,out,&mask)!=1)return 0;
     for(unsigned i=0;i<3;++i) {
@@ -129,7 +129,7 @@ static int compose(t3_psx_match_t* match,unsigned index) {
     uint32_t fk=0,mask=0;
     if(t3_motion_open_cached(&f->pose_cache,f->vm.active_bank,f->vm.common,
                              f->vm.move.animation_offset,&stream)!=1 ||
-       t3_motion_sample(stream,(unsigned)f->vm.clock.pose_frame-1u,&c->spline,f->pose)!=1)return 0;
+       t3_motion_sample_cached(c->sample_cache,stream,(unsigned)f->vm.clock.pose_frame-1u,&c->spline,f->pose)!=1)return 0;
     /* FK/IK consumes the pose stream's own root channels. World placement
      * separately uses root_move, which can differ during transition4/5. */
     f->pose_frames=stream->frames;
@@ -294,6 +294,9 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     if(config->enable_combat && (!config->enable_body || !config->reactions ||
        !config->reactions_size || config->reactions_size%44u || config->chip_enabled>1u))return 0;
     if(config->rsqrt.data && (!config->enable_body || config->rsqrt.size!=T3_PSX_RSQRT_BYTES))return 0;
+    /* Derived immutable samples may populate even if a later tick fails.
+     * Match/fighter/replay-history state remains transactional. */
+    t3_motion_sample_cache_reset(config->sample_cache);
     n.config=config;
     t3_psx_round_init(&n.round);
     n.flow=(t3_psx_round_flow_t){.state=T3_ROUND_FIGHT,.played=1,.timer=2400,

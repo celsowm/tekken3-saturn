@@ -213,3 +213,35 @@ int t3_motion_sample_root(const t3_motion_stream_t* s,unsigned frame,
     for(i=0;i<3u;++i)xyz[i]=tmp[i];
     return 1;
 }
+void t3_motion_sample_cache_reset(t3_motion_sample_cache_t* cache) {
+    if(cache)__builtin_memset(cache,0,sizeof(*cache));
+}
+int t3_motion_sample_cached(t3_motion_sample_cache_t* cache,
+    const t3_motion_stream_t* s,unsigned frame,const t3_motion_tables_t* tables,
+    int16_t pose[T3_PSX_POSE_CHANNELS]) {
+    if(!cache)return t3_motion_sample(s,frame,tables,pose);
+    if(!s || !pose || !s->data || !s->frames)return -1;
+    const uint8_t* table=tables?tables->blob:0;
+    size_t length=tables?tables->length:0;
+    if(cache->table!=table || cache->table_length!=length) {
+        t3_motion_sample_cache_reset(cache);
+        cache->table=table;cache->table_length=length;
+    }
+    if(frame>=s->frames)frame=s->frames-1u;
+    /* data is the whole bank; the first key offset uniquely identifies the
+     * opened animation header within it, including all-zero channels. */
+    const uint8_t* identity=s->data+s->key_offset[0];
+    uint32_t hash=(uint32_t)((uintptr_t)identity>>2)*0x9E3779B1u;
+    unsigned index=(hash^frame)&(T3_MOTION_SAMPLE_CACHE_SLOTS-1u);
+    t3_motion_sample_entry_t* e=&cache->entries[index];
+    if(e->valid && e->stream==identity && e->frame==frame && e->frames==s->frames) {
+        __builtin_memcpy(pose,e->pose,sizeof(e->pose));
+        ++cache->hits;return 1;
+    }
+    ++cache->misses;
+    int result=t3_motion_sample(s,frame,tables,pose);
+    if(result!=1)return result;
+    __builtin_memcpy(e->pose,pose,sizeof(e->pose));
+    e->stream=identity;e->frame=(uint16_t)frame;e->frames=s->frames;e->valid=1;
+    return 1;
+}
