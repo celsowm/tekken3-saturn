@@ -29,6 +29,10 @@ The older baseline/gap descriptions below are historical investigation notes.
 
 Next execution order:
 
+The [harness-led performance plan](SATURN_PERFORMANCE_PLAN.md) now governs
+performance investigation and measurement. It supersedes optimization choices
+based only on the older cache-off, once-per-field PC samples below.
+
 1. Close D using the fresh live profile and editable sibling LibSaturn. The
    decoded-motion cache improves the measured interval to **8.49 submissions/s
    and 33.94 logic steps/s** (601 VBlanks), still far below 30/60. It does not

@@ -32,6 +32,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_extract_psx_ik_tables.py' -v
       - name: Validate big-endian Saturn gameplay diagnostics
         run: python3 -m unittest discover -s tests -p 'test_saturn_probe.py' -v
+      - name: Validate per-CPU profile attribution and ELF boundaries
+        run: python3 -m unittest discover -s tests -p 'test_saturn_profile.py' -v
       - name: Validate private texture importer with synthetic ARC and TIM data
         run: python3 -m unittest discover -s tests -p 'test_psx_character_textures.py' -v
       - name: Analyze synthetic PS1 combat oracle event timeline

@@ -141,19 +141,34 @@ def run(args):
             command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
     if args.device_script:
         command.extend(['--device-script', str(args.device_script.resolve())])
+    if getattr(args,'wram_low_fill',None) is not None:
+        if not 0<=args.wram_low_fill<=255:raise ValueError('Low WRAM fill must be a byte')
+        command.extend(['--wram-low-fill',str(args.wram_low_fill)])
+    if getattr(args,'sh2_cache',None) is not None:
+        command.extend(['--sh2-cache',args.sh2_cache])
+    if getattr(args,'debug_profile',False):
+        command.extend(['--debug-profile',str(out/'debug'),
+                        '--trace-from',str(args.trace_from),
+                        '--trace-frames',str(args.trace_frames),
+                        '--trace-capacity',str(args.trace_capacity)])
+        for name in args.snapshot_symbol:
+            symbol=name if name in syms else '_'+name
+            if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
+            command.extend(['--snapshot-pc',hex(syms[symbol][0])])
     for symbol,filename in getattr(args,'symbol_dumps',[]):
         if symbol not in syms:raise ValueError('missing dump symbol: '+symbol)
         location,length=syms[symbol]
         if not length:raise ValueError('dump symbol has no size: '+symbol)
         command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
-    if args.profile:
+    if args.profile or getattr(args,'debug_profile',False):
         # Preserve symbols beside sampled PCs before a later rebuild moves them.
         # These private ELF/map artifacts must remain outside Git.
         shutil.copyfile(elf,out/'profile.elf')
         map_path=elf.with_suffix('.elf.map')
         if map_path.exists():shutil.copyfile(map_path,out/'profile.map')
-        for kind in ('pc', 'cycles', 'instructions', 'transfers'):
-            command.extend(['--profile-' + kind, str(out / (kind + '.csv'))])
+        if args.profile:
+            for kind in ('pc', 'cycles', 'instructions', 'transfers'):
+                command.extend(['--profile-' + kind, str(out / (kind + '.csv'))])
     with (out / 'probe.log').open('w') as log:
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True,
                        timeout=args.timeout)
@@ -185,6 +200,13 @@ def run(args):
                   elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
                   diagnostics_address=address, provenance=provenance, command=command, state=state)
     (out / 'observation.json').write_text(json.dumps(result, indent=2) + '\n')
+    if getattr(args,'debug_profile',False):
+        import analyze_saturn_profile
+        analysis=analyze_saturn_profile.analyze(out/'debug',out/'profile.elf',args.nm)
+        (out/'profile-summary.json').write_text(json.dumps(analysis,indent=2)+'\n')
+        if args.snapshot_symbol:
+            analyze_saturn_profile.disassemble_snapshots(out/'debug',
+                Path(args.nm).with_name('sh2eb-elf-objdump'))
     return result
 
 
@@ -204,6 +226,13 @@ def parser():
     p.add_argument('--device-script', type=Path)
     p.add_argument('--capture-inputs',action='store_true',help='dump an explicitly instrumented input recording build')
     p.add_argument('--profile', action='store_true', help='capture PC, cycle, instruction and transfer profiles')
+    p.add_argument('--wram-low-fill',type=lambda s:int(s,0),help='injected boot with Low WRAM initialized to this byte')
+    p.add_argument('--sh2-cache',choices=('on','off'),help='explicit Ymir cache emulation; separate from guest CCR')
+    p.add_argument('--debug-profile',action='store_true',help='bounded per-CPU execution costs, events and registers')
+    p.add_argument('--trace-from',type=int,default=0)
+    p.add_argument('--trace-frames',type=int,default=30)
+    p.add_argument('--trace-capacity',type=int,default=262144)
+    p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
     return p
 
 
