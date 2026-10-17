@@ -48,9 +48,12 @@ so the full replay remains failed rather than truncating that evidence.
 The corrected order passes the short interactive combat cases and a controlled
 pad encounter through guards, a mid hit, lows and KO. A matching, visibly labeled
 input replay boots from CD in Mednafen through result and next-round restoration.
-Its ELF/app hashes match the aligned Ymir replay. The earlier first-to-two round
-policy remains explicitly provisional; original intro/replay/win poses and draw
-handling are omitted.
+Its ELF/app hashes match the aligned Ymir replay. Normal VS scoring now follows
+the pinned RoundWins/MatchResult implementation, including points for both
+players on draws, the decreasing round cap and configured tie selection.
+The original's two neutral draws were independently captured and agree with
+the native scorer. The live default timer is now the observed 2,400 ticks.
+Intro/replay/win poses and round-transition sequencing remain provisional.
 
 Remaining execution order: investigate original round-flow transitions;
 repeat continuous host/Saturn/PS1 comparisons; optimize scene/HUD and tick pacing.

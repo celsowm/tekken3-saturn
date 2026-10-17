@@ -19,6 +19,7 @@ CLOCK_FIELDS = dict(root_frame=(0x50,'h'),frame_step=(0x6E,'h'),hold_frames=(0x6
                     pending_move=(0x1A4,'I'),entry_frame=(0x198,'h'),branch_window=(0x6C,'h'),
                     branch_kind=(0x8B,'B'),transition=(0x19A,'h'),current_transition=(0xA2,'h'),
                     hit_freeze_in=(0xEE,'h'),pose_move=(0x54,'I'),root_move=(0x4C,'I'))
+CLOCK_FIELDS.update(round_wins=(0x44,'h'),round_won=(0x46,'h'),win_pose=(0x48,'h'),health_left=(0x400,'h'))
 
 
 def read_fighter(ram, index, names):
@@ -42,7 +43,7 @@ def read_fighter(ram, index, names):
     return result
 
 
-def verify_checkpoint(ram, last):
+def verify_checkpoint(ram, last, round_fields=None):
     if len(ram) != RAM_BYTES or last['phase'] != 'FightFrame:exit':
         raise ValueError('requires full paused RAM and a final FightFrame return')
     if read_at(ram,GAME_STATE,'I') != 8 or read_at(ram,GLOBAL_FRAME,'I') != last['source_frame']:
@@ -50,6 +51,15 @@ def verify_checkpoint(ram, last):
     pair = [read_fighter(ram,i,last['fighters'][i].keys()) for i in range(2)]
     if pair != last['fighters']:
         raise ValueError('paused RAM disagrees with final phase observation')
+    if 'round' in last:
+        if not round_fields or set(round_fields)!=set(last['round']):
+            raise ValueError('round checkpoint requires matching provenance descriptors')
+        for name,field in round_fields.items():
+            if field['size'] not in (1,2,4) or type(field['signed']) is not bool:
+                raise ValueError('invalid round field descriptor: '+name)
+            fmt={(1,False):'B',(1,True):'b',(2,False):'H',(2,True):'h',(4,False):'I',(4,True):'i'}[(field['size'],field['signed'])]
+            if read_at(ram,field['address'],fmt)!=last['round'][name]:
+                raise ValueError('paused round RAM disagrees: '+name)
     return True
 
 
@@ -112,10 +122,12 @@ if __name__ == '__main__':
     p.add_argument('trace', type=Path)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--ram', type=Path, help='Optional paused 2 MiB RAM cross-check')
+    p.add_argument('--provenance',type=Path,help='Round-global descriptors from the fingerprinted capture launcher')
     a = p.parse_args()
     rows = [json.loads(line) for line in a.trace.read_text().splitlines()]
     result = analyze(rows)
     if a.ram:
-        result['paused_ram_equal'] = verify_checkpoint(a.ram.read_bytes(),rows[-1])
+        fields=json.loads(a.provenance.read_text()).get('round_fields') if a.provenance else None
+        result['paused_ram_equal'] = verify_checkpoint(a.ram.read_bytes(),rows[-1],fields)
     a.output.write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps({k:v for k,v in result.items() if k!='changed_fields'},indent=2))

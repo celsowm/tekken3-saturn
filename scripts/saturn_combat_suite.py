@@ -108,7 +108,19 @@ def execute(args):
         require(s['round']==1 and not s['round_done'] and not s['match_done']
                 and s['wins0']==s['wins1']==0 and s['psx_health_q16']==[140*65536]*2,
                 'Start must restore a fresh match after match end')
+    if getattr(args,'with_timeout',False):
+        # Neutral connected pads, no guest RAM edits or accelerated game clock.
+        s=case('timeout-next-round','',6000)
+        require(s['round']==2 and s['wins0']==s['wins1']==1 and not s['match_done']
+                and s['psx_health_q16']==[140*65536]*2,
+                'first neutral draw must award both players and restart')
+        s=case('timeout-drawn-match','',12000)
+        require(s['round']==2 and s['wins0']==s['wins1']==2 and s['match_done']
+                and s['round_done'] and s['winner']==-1 and s['timer']==0
+                and s['psx_health_q16']==[140*65536]*2,
+                'second neutral draw must finish at 2-2 and report a drawn match')
     report=dict(passed=True,bounded_round_policy_validated=bool(args.with_ko),
+                original_vs_timeout_scoring_validated=bool(getattr(args,'with_timeout',False)),
                 original_round_flow_parity=False,ps1_input_replay_parity=False,cases=results)
     (root/'suite.json').write_text(json.dumps(report,indent=2)+'\n')
     print(f'{len(results)} live original-combat cases passed; {root / "suite.json"}')
@@ -116,6 +128,7 @@ def execute(args):
 
 if __name__=='__main__':
     parser=saturn_probe.parser();parser.add_argument('--with-ko',action='store_true')
+    parser.add_argument('--with-timeout',action='store_true',help='Run two neutral timeout scoring/restart checkpoints')
     parser.set_defaults(build=saturn_probe.ROOT/'build/paul-combat',
                         out=saturn_probe.ROOT/'assets/imported/saturn-original-combat-suite')
     execute(parser.parse_args())

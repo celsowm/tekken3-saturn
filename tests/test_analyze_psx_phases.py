@@ -75,5 +75,19 @@ class PhaseAuditTests(unittest.TestCase):
         self.assertEqual(result['root_is_pose'],1)
         self.assertEqual(result['hold_frames'],-1)
 
+    def test_round_globals_require_typed_provenance_and_equal_ram(self):
+        ram=bytearray(RAM_BYTES)
+        struct.pack_into('<I',ram,GAME_STATE-0x80000000,8)
+        struct.pack_into('<I',ram,GLOBAL_FRAME-0x80000000,701)
+        ram[0x100]=255
+        last=dict(phase='FightFrame:exit',source_frame=701,fighters=[{},{}],round={'signed_byte':-1})
+        fields={'signed_byte':dict(address=0x80000100,size=1,signed=True)}
+        self.assertTrue(verify_checkpoint(ram,last,fields))
+        with self.assertRaisesRegex(ValueError,'provenance'):verify_checkpoint(ram,last)
+        fields['signed_byte']['signed']=False
+        with self.assertRaisesRegex(ValueError,'disagrees'):verify_checkpoint(ram,last,fields)
+        fields['signed_byte']['size']=3
+        with self.assertRaisesRegex(ValueError,'descriptor'):verify_checkpoint(ram,last,fields)
+
 
 if __name__=='__main__':unittest.main()

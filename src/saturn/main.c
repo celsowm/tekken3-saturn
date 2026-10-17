@@ -147,7 +147,8 @@ static void draw_hud(void) {
 #endif
     if (g_game.match_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            g_game.winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!", W/2, 85));
+            g_game.winner < 0 ? "MATCH DRAW" :
+            (g_game.winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!"), W/2, 85));
     else if (g_game.round_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
             g_game.winner < 0 ? "DRAW" :

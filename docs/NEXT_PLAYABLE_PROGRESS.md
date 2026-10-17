@@ -9,6 +9,71 @@ Free-running matched PS1 replay, pose details and performance remain open.
 A private, visibly labeled input replay now demonstrates the complete bounded
 encounter and next-round restoration from an actual Mednafen CD boot.
 
+## Original VS scoring and round observation (2026-10-17)
+
+- The owned normal-VS scorer now implements the pinned `RoundWins` and
+  `MatchResult` rules: normalized health comparison, configured draw points,
+  draw-dependent round cap, human/tie selection and terminal match result.
+  Nonterminal calls preserve the original match-result bytes. The live path
+  uses the observed two-human defaults (first to two, both receive draw points,
+  tie choice P1) and a 2,400-tick timer. A drawn match displays `MATCH DRAW`;
+  the pure scorer retains the original internal winner/loser selection too.
+- The read-only observer records round globals and saves compact pre/post RAM
+  at `RoundFlow`, `RoundWins` and `WinPoseStart`. An optional stop count pauses
+  only at the enclosing `FightFrame` return. Neutral pad mode still navigates
+  the original menus, then releases both pads throughout the encounter.
+- The USA executable proves that `MatchResult` at `0x8003E800` writes the
+  result/winner/loser bytes at mapped context `0x800AFA88 + 0x21/0x22/0x23`.
+  Two isolated winner/loser points in the pinned layout disagree with those
+  struct offsets. The preparer records this verified local override without
+  changing the upstream submodule. It also uses the instruction widths for
+  human mask, first-to threshold and tie choice. Regression coverage checks
+  that compact ranges are mapped exactly once and contain every descriptor.
+- Older private `ps1-paul-round-flow/` and `ps1-paul-draw-rounds/` captures
+  have invalid round compact-range mapping; the latter also labels unrelated
+  bytes as match winner/loser. They are retained as historical observations,
+  excluded from the score audit, and must not support semantic parity claims.
+  Their paused full RAM is separate evidence; it does not repair the old
+  descriptors or compact ranges retroactively.
+- Corrected `ps1-paul-draw-verified/` contains 106,199 observations, ending at
+  source frame 4806. Independently fetched full paused RAM agrees with every
+  final fighter/round JSON field. Original RoundWins calls at source frames
+  2550 and 4806 award 1–1, then 2–2; the round cap changes 3→2→1 and the final
+  match result is 3, with internal winner 0 / loser 1. The new
+  `audit_psx_round_score.py` checks both call edges against compact RAM and
+  invokes `t3_round_score_eval`, linked to the same scorer as the game. Both
+  original draw awards match all checked outputs. Reports hash the trace,
+  adapter and paired RAM snapshots; all retail evidence remains private.
+- A second corrected capture, `ps1-paul-score-verified/`, ends at source frame
+  5008 with 104,490 observations. Its independently fetched paused RAM agrees
+  too. A timeout at source 2704 compares normalized health 4096 versus 1990
+  and awards P1 one point; a KO at source 5008 compares 4096 versus 0 and ends
+  the match 2–0. Both complete native pre/post scoring comparisons pass.
+- Public validation passes 38/38 CTest checks and 91 Python checks with native
+  adapters assigned. ASan/UBSan also passes the scorer's draw/tie/cap/atomic
+  failure tests. These synthetic checks supplement the four original calls;
+  they do not expand original observed coverage to every configurable policy.
+- The current Saturn image has 961,780 initialized bytes; High WRAM BSS ends
+  at `0x060F6FA8`, Low WRAM at `0x002ACDFC`, and the 16 KiB stack-reserve link
+  assertion passes. Its ELF SHA256 is
+  `b91558de9dfe82c5b63bc492ffc9400073c939f2b1ff27ab3c0bd7f68365993d`.
+  `paul-vs-round-score-final-mednafen/` records an actual CD boot, exit 0,
+  1,428 video frames over 23.8685 seconds. Inspected second 22 shows both
+  animated Pauls and readable HUD. This is a neutral boot check; the earlier
+  complete encounter recording remains a separate build's evidence.
+- All 20 final Ymir combat cases pass with that same ELF in
+  `paul-vs-round-score-final-suite/`. The existing 18 attack/guard/reaction,
+  two-pad, KO, restart and reset cases remain passing. Two additional neutral
+  pad cases run without RAM edits: at 6,000 emulator frames the match is in
+  round 2 with 1–1 points and full HP; at 12,000 frames it has ended at 2–2,
+  timer 0 and display winner −1. The inspected final screenshot shows
+  `MATCH DRAW`. These frame checkpoints certify bounded runtime behavior,
+  not original round-transition timing or hardware performance.
+- Scoring agreement does **not** establish original round-flow parity. The
+  live wrapper still omits intros, replay, victory poses and original timing
+  of next-round restoration. The full continuous replay and the 30 Hz render /
+  60 Hz logic performance gate remain open.
+
 ## Dense scene preparation and controlled render comparison (2026-10-16)
 
 - A separate profiling SDK enables LibSaturn's existing FRT stage counters.

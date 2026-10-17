@@ -314,6 +314,50 @@ passes. This is seeded component parity, not a free-running Saturn fight.
 with scripted pads. Its contact/gate frame counts do not reserve hit slots or
 change HP; live damage and reactions require the complete hit transaction.
 
+## Normal VS round scoring
+
+`--round-ram` adds read-only `RoundFlow`, `RoundWins` and `WinPoseStart`
+entry/return observations, typed round globals and compact RAM snapshots.
+`--stop-round-results 2` pauses at the enclosing FightFrame return after two
+RoundWins calls. To collect neutral draws, set
+`T3_PAUL_SESSION_OPTIONS={neutral=true}` before loading
+`pcsx_redux_paul_session.lua`, then load the generated capture launcher.
+Both pads still navigate the original UI and select Paul; only fight input
+is neutral. No guest RAM or register is edited.
+
+```sh
+python3 scripts/prepare_psx_phase_capture.py \
+  --exe assets/imported/tekken3-usa/SLUS_004.02 \
+  --output assets/imported/ps1-paul-draw-verified \
+  --first 550 --last 6000 --round-ram --stop-round-results 2
+# Run the session and capture launcher in PCSX-Redux as above, then fetch
+# paused full RAM independently from /api/v1/cpu/ram/raw.
+python3 scripts/analyze_psx_phases.py \
+  assets/imported/ps1-paul-draw-verified/phases.jsonl \
+  --ram assets/imported/ps1-paul-draw-verified/paused-ram.bin \
+  --provenance assets/imported/ps1-paul-draw-verified/provenance.json \
+  --output assets/imported/ps1-paul-draw-verified/audit.json
+cmake --build build/host-public --target t3_round_score_eval
+python3 scripts/audit_psx_round_score.py \
+  --capture assets/imported/ps1-paul-draw-verified \
+  --runner build/host-public/t3_round_score_eval \
+  --out assets/imported/ps1-paul-draw-verified/native-score-audit.json
+```
+
+The audit checks normal VS mode 1, both fighter scores/health-left fractions,
+all captured round descriptors, and both RAM edges before comparing the native
+scorer's output. Missing fields, conflicting overlaps, truncated snapshots,
+obsolete mapping descriptors and mismatched outputs fail the audit. The
+preparer uses verified USA MatchResult struct offsets for winner/loser in
+place of two incorrect isolated points in the pinned upstream layout. This
+override is recorded in capture provenance. Older round captures without
+this correction must be recaptured, not relabeled as verified.
+
+The two neutral draws and the separate unequal-health timeout/KO encounter
+pass four pre/post comparisons. This establishes the observed scoring
+component; original intro, replay, victory pose and next-round sequencing
+remain separate work. Retail observations stay ignored and private.
+
 ## Continuous owned-match replay from one original seed
 
 Use `prepare_psx_phase_capture.py --frame-ram` for a separate private capture.

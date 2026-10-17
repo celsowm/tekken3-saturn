@@ -89,6 +89,9 @@ local function frame()
             end
         elseif age % 20 == 7 then release(1); release(2) end
     elseif state == 8 then
+        if T3_PAUL_SESSION_OPTIONS and T3_PAUL_SESSION_OPTIONS.neutral then
+            release(1);release(2);return
+        end
         local a, b = u16(0x800A9240), u16(0x800AAACC) -- fighter charId +0x18
         if a ~= 0 or b ~= 0 or u32(0x800AFA88) ~= 1 then return end
         if u32(0x800A9288) == 0 or u32(0x800AAB14) == 0 then return end

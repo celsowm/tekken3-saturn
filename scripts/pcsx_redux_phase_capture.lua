@@ -32,6 +32,10 @@ local fields = {
     {'current_transition',0xA2,2,true}, {'hit_freeze_in',0xEE,2,true},
     {'pose_move',0x54,4}, {'root_move',0x4C,4},
 }
+if cfg.round_fields then
+    for _,f in ipairs({{'round_wins',0x44,2,true},{'round_won',0x46,2,true},
+                       {'win_pose',0x48,2,true},{'health_left',0x400,2,true}}) do fields[#fields+1]=f end
+end
 local obs={active=true, hooks={}, returns={}, pending={}, seq=0, calls=0}
 T3_PHASE_CAPTURE=obs
 local file=nil
@@ -116,11 +120,19 @@ local function emit(phase, call, pc, a0)
         values[#values+1]=table.concat(pending_values,',')
         pair[#pair+1]='{'..table.concat(values,',')..'}'
     end
+    local round=''
+    if cfg.round_fields then
+        local values={}
+        for _,f in ipairs(cfg.round_fields) do
+            values[#values+1]=string.format('"%s":%.0f',f[1],f[4] and signed(f[2],f[3]) or unsigned(f[2],f[3]))
+        end
+        round=',"round":{'..table.concat(values,',')..'}'
+    end
     local row=string.format(
         '{"seq":%d,"source_frame":%.0f,"cycles":%.0f,"phase":"%s",'..
-        '"call":%d,"pc":%.0f,"a0":%.0f,"fighters":[%s]}\n',
+        '"call":%d,"pc":%.0f,"a0":%.0f,"fighters":[%s]%s}\n',
         obs.seq,frame,tonumber(PCSX.getCPUCycles()),phase,call,pc,a0,
-        table.concat(pair,','))
+        table.concat(pair,','),round)
     assert(file:write(row)==#row,'short phase capture write')
     obs.latest=row
     obs.seq=obs.seq+1
@@ -184,6 +196,9 @@ for name, address in pairs(cfg.functions) do
            unsigned(invocation.a0+0x1A4,4)~=0 then
             invocation.ground_ram=cfg.start_prefix;ground_ram(invocation,'before',cfg.start_prefix)
         end
+        if cfg.round_prefix and (name=='RoundFlow' or name=='RoundWins' or name=='WinPoseStart') then
+            invocation.ground_ram=cfg.round_prefix;ground_ram(invocation,'before',cfg.round_prefix)
+        end
         if (name=='BodySeparate' and cfg.body_prefix) or (name=='ArenaBounds' and cfg.arena_prefix) then
             invocation.ground_ram=name=='BodySeparate' and cfg.body_prefix or cfg.arena_prefix
             ground_ram(invocation,'before',invocation.ground_ram)
@@ -203,8 +218,10 @@ for name, address in pairs(cfg.functions) do
                     if pending.frame_ram then ground_ram(pending,'after',cfg.frame_prefix) end
                     if pending.hit_ram then hit_ram(pending,'after') end
                     if pending.ground_ram then ground_ram(pending,'after',pending.ground_ram) end
+                    if name=='RoundWins' then obs.round_results=(obs.round_results or 0)+1 end
                     obs.pending[name]=nil
-                    if name=='FightFrame' and unsigned(0x800AFA4C,4)>=cfg.last then
+                    if name=='FightFrame' and (unsigned(0x800AFA4C,4)>=cfg.last or
+                        ((cfg.stop_round_results or 0)>0 and (obs.round_results or 0)>=cfg.stop_round_results)) then
                         obs.stop('final FightFrame return'); PCSX.pauseEmulator()
                     end
                 end
