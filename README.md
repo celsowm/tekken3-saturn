@@ -271,7 +271,19 @@ The playable build has **no external ROM requirement** and must never ship copyr
 
 Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x10, scene faces, VDP1 command usage, frame work time). The ELF also exports a fixed-layout `g_t3_diagnostics` record defined in `src/saturn/diagnostics.h` for emulator memory inspection. It includes VBlank count, simulation ticks, VDP1 command count/capacity, culled/rejected faces, late swaps and draw timeouts.
 
-These are instrumented counters only: **no emulator/real-console FPS measurement has been reported**. Rendering frame rate and presentation rate differ when the VDP1 spends longer than one display field drawing.
+The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
+actual application submissions, logic ticks and VDP lifecycle events. The
+current cache-on paired experiment measures 8.43 submissions/s and 33.72 logic
+ticks/s in a neutral interval; the 30/60 performance gate remains open. These
+are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
+establish distinct-picture cadence.
+
+With LibSaturn `e2fbf76781227862da991b960735bd5830ad1775` installed, configure
+`-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
+`-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
+preparation; this adds diagnostic overhead and must stay off for timing.
+Both modes preserve the original model and global painter order. The generic
+serial path remains available with the first option off.
 
 ## FK/IK differential oracle
 

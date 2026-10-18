@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: 54379fd27f7baba087d223c4a822aea60fd0f863
+          ref: e2fbf76781227862da991b960735bd5830ad1775
           path: .external/libsaturn
           persist-credentials: false
       - uses: actions/setup-python@v5
@@ -202,6 +202,14 @@ jobs:
               -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
               -DT3_ENABLE_PSX_MOVE_LIFECYCLE=1 \
               -DT3_ENABLE_PSX_OWNED_MATCH=1 -DT3_ENABLE_PSX_COMBAT=1 \
+              -I .external/libsaturn/include -I src/game -I src/saturn \
+              -I build/asset-kmd/generated -I build/asset-divmot/generated \
+              src/saturn/main.c src/saturn/move_probe.c src/saturn/characters.c
+          # Both SH-2 preparation and its serial verifier compile without retail data.
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+              -DT3_LOCAL_DIVMOT_ENABLED=1 -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
+              -DT3_ENABLE_PSX_OWNED_MATCH=1 -DT3_ENABLE_PSX_COMBAT=1 \
+              -DT3_PARALLEL_GEOMETRY=1 -DT3_VERIFY_PARALLEL_GEOMETRY=1 \
               -I .external/libsaturn/include -I src/game -I src/saturn \
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
               src/saturn/main.c src/saturn/move_probe.c src/saturn/characters.c

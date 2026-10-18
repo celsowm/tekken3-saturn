@@ -65,17 +65,46 @@ Private artifacts: `harness-port-profile-final/` and
 
 ## 3. Use Virtua Fighter 2 as an observed reference
 
-The private USA V1.005 archive has its CUE and all 34 BIN tracks. Boot the CUE
-through the BIOS, automate initial language/clock configuration, then reach an
-actual fight. A game-code memory-capacity warning has been observed; that is
-not yet a fight or a measured frame-rate result. Use a private formatted backup
-image and retain the exact input script.
+The private USA V1.005 archive has its CUE and all 34 BIN tracks. Actual
+BIOS boot now reaches an Akira/Lau fight: screenshots at fields 4800 and
+5400 establish gameplay, beyond the earlier memory-capacity warning.
+`capture_saturn_reference.py` creates a fresh private backup image, hashes
+all CUE tracks, BIOS, probe and input script, and records the exact command.
+It neither injects an executable nor edits fighter state. The versioned
+`inputs/vf2_usa_reference.pad` schedule handles BIOS language/clock setup
+and arcade entry. `--pad-script` supplies P1 itself; overriding its callback
+with a separate P1 device specification loses those inputs in this harness.
 
-Compare native modes on the same pinned Ymir with explicit cache emulation and
-normal clock factor. Record resolution, interlace, CPU work, command flow and
-VDP2 use. Do not equate interlaced fields to completed full pictures, assume
-how AM2 divides its work, or treat different games as equal geometry workloads.
-If optical boot blocks, document that boundary and continue port profiling.
+A cache-on, clock-factor-1/1, synchronous 120-field fight window observed
+704×448 video, TVMD 33219, BGON 23 and CCR 1 on both CPUs. Master executed
+32,792,873 instructions / 57,329,999 interpreter execution cycles; Slave
+executed 32,500,489 / 57,330,001. These are model costs, not hardware timing.
+There were 600 Master DMAC-start events and none on Slave. The 119 endpoint
+intervals had 119 draw starts, ends, swaps and visible completed generations.
+Automatic redraw and interlace prevent interpreting that as 60 unique full
+pictures per second.
+
+A separate complete one-field checkpoint window retains actual register
+values and eight instruction words per hit. Disassembly identifies a Master
+memory-polling loop, a Slave decrement delay loop, and a shared `MAC.L`
+geometry kernel. In the longer window the two waiting loops account for
+about 50% of Master and 57.53% of Slave execution cost respectively.
+This demonstrates why busy CPU cycle totals alone do not identify productive
+work. Retail bytes and disassembly stay private; no game code is copied into
+this repository. Artifacts: `harness-vf2-fight/` and
+`harness-vf2-registers/` under ignored imported assets.
+
+Reproduce with the sibling probe built at the pinned Ymir revision:
+
+```sh
+python3 scripts/capture_saturn_reference.py \
+  --disc "$PRIVATE_VF2_CUE" --bios "$PRIVATE_US_BIOS" \
+  --out assets/imported/vf2-new-reference
+```
+
+Compare resolution, interlace, useful CPU work, command flow and VDP2 use on
+the same emulator configuration. Do not assume how AM2 divides its work or
+treat different games as equal geometry workloads.
 
 ## 4. Optimize the demonstrated critical path
 
@@ -100,3 +129,78 @@ without growing debt. Confirm the complete CD encounter in Mednafen. Keep
 60/60 open until demonstrated. Each coherent passing increment gets a commit,
 push and applicable CI review in both repositories; private assets stay outside
 Git. Interrupted checks from the previous pause remain pending until completed.
+
+
+## Executed paired-geometry increment
+
+LibSaturn `e2fbf76781227862da991b960735bd5830ad1775` enables function/data
+section collection in both build systems and explicitly retains both BIOS
+entry points. Its installed-package gates pass. The private serial initialized
+image is 824,124 bytes versus 960,252 before collection; adding the existing
+Slave executor and geometry buffers gives 835,892 bytes. These are initialized
+image sizes, not total RAM consumption. Linker checks include the stock RAM
+regions and stack reserves; no expansion cartridge or CD asset streaming is
+required by this increment.
+
+`T3_PARALLEL_GEOMETRY` prepares P2 with the existing runtime worker while Master
+prepares P1. Both actors' skin/world inputs are stable until the join. Only
+Master merges into the scene and emits VDP commands, preserving P1/P2 painter
+ordering. `T3_VERIFY_PARALLEL_GEOMETRY` additionally recomputes P2 serially and
+checks consumed face/material/coordinate fields, keys and cull/clip counts.
+It excludes padding and unspecified world coordinates. The diagnostic build
+verified 213 paired frames with movement, attacks, reactions and reset, with
+zero serial fallbacks or mismatches. Its overhead is excluded from performance.
+
+A fixed original pose at tick 120, cache on and tracing off, gives:
+
+| Path | Render/HUD | Commands | RGB SHA-256 |
+| --- | ---: | ---: | --- |
+| GC SDK, serial | 70 ms | 793 | `3ae675c90aecd46785bbef131800b959f21939fe052f38834edf6be088529f34` |
+| GC SDK, paired | 59 ms | 793 | same |
+
+The neutral 600/1200 endpoints with that same SDK are serial
+(584/1181 VBlanks, 312/636 logic ticks, 77/158 submissions) and paired
+(582/1187, 324/664, 80/165). At nominal 60 Hz the intervals are **8.14 → 8.43
+submissions/s** and **32.56 → 33.72 logic ticks/s**. This is a small whole-path
+gain, not the 30/60 gate. The scene is preserved; no mesh, texture or pose
+reduction is used. Fixed-pose and live endpoint artifacts are
+`final-paul-{gc,paired}-bench-600/` and
+`final-paul-{gc,paired}-live-{600,1200}/`.
+
+The original-pose presentation also skips the generic base skeleton when the
+PS1 bridge supplies every referenced skin joint. Accessory/invalid-pose paths
+retain full generic evaluation. The authoritative gameplay core is unchanged.
+The continuous reference gate remains the published 16,334-tick checkpoint;
+new changes to that core must rerun it, rather than reusing this render-only
+qualification.
+
+
+The fixed-pose 64 KiB VDP1 command tables are byte-identical as well
+(SHA-256 `fbd7804ff945dabf7ae5c8bdd1ff1e0aab8e04c271880f82fa6b9e188013fa21`).
+A complete ten-field paired trace at fields 900–909 reconciles both CPU totals
+without drops. Most Slave cost in that short window is mailbox polling; the
+worker is not yet used for skinning or authoritative logic. Avoid claiming
+balanced useful work from equal elapsed cycle totals.
+
+A fresh 160-second **actual Mednafen CD boot** of the paired recorded-input
+build passed: the 80-second capture shows KO replay, 92 seconds shows the
+winner's authored victory with the loser down, and 100 seconds shows round 2
+with reset health and score 1–0. This is a recorded-input fixture, not physical
+pad coverage. Movie/ELF/disc hashes are retained in
+`assets/imported/final-paired-demo-cd/run.json`; the ELF SHA-256 is
+`775320fd142cb1848f1d1e2adee4d4a23e04561306d18465abd72fb598aadb38`.
+The paired live build has a different input configuration and is qualified by
+the headless controls/combat suite separately. The generic SDK textured-model
+example also reaches its model from a real Mednafen CD boot at 30 seconds.
+
+The paired live build passed 22 headless control/combat/KO/replay/victory and
+match-reset cases, plus two independently run neutral timeout checkpoints
+(next round and drawn match). The reports remain separate in
+`final-paired-combat-suite/suite.json` and `final-paired-timeout-suite/suite.json`.
+A real BIOS boot of that live disc also recorded 11 parallel preparations and
+zero serial fallbacks. Host CTest passed all 42 checks.
+
+The pinned SDK package, native-boot and host gates passed on GitHub. Its wider
+Phase 3 workflow failed while packing the unrelated `bullet_hell_stress`
+example: the checkout lacks `assets/palette_bgr555_be.bin`. This is an open
+SDK asset-packaging issue; do not describe the complete SDK CI as green.

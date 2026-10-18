@@ -155,17 +155,24 @@ def run(args):
             symbol=name if name in syms else '_'+name
             if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
             command.extend(['--snapshot-pc',hex(syms[symbol][0])])
-    for symbol,filename in getattr(args,'symbol_dumps',[]):
+    dump_requests=list(getattr(args,'symbol_dumps',[]))
+    for i,name in enumerate(getattr(args,'dump_symbol',[])):
+        symbol=name if name in syms else '_'+name
+        dump_requests.append((symbol,'symbol-'+str(i)+'.bin'))
+    dump_manifest={}
+    for symbol,filename in dump_requests:
         if symbol not in syms:raise ValueError('missing dump symbol: '+symbol)
         location,length=syms[symbol]
         if not length:raise ValueError('dump symbol has no size: '+symbol)
         command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
+        dump_manifest[symbol]=dict(file=filename,address=location,bytes=length,byte_order='big')
     if args.profile or getattr(args,'debug_profile',False):
         # Preserve symbols beside sampled PCs before a later rebuild moves them.
         # These private ELF/map artifacts must remain outside Git.
         shutil.copyfile(elf,out/'profile.elf')
         map_path=elf.with_suffix('.elf.map')
         if map_path.exists():shutil.copyfile(map_path,out/'profile.map')
+        shutil.copyfile(build/'CMakeCache.txt',out/'profile.CMakeCache.txt')
         if args.profile:
             for kind in ('pc', 'cycles', 'instructions', 'transfers'):
                 command.extend(['--profile-' + kind, str(out / (kind + '.csv'))])
@@ -173,6 +180,7 @@ def run(args):
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True,
                        timeout=args.timeout)
     report = json.loads((out / 'ymir.json').read_text())
+    if dump_manifest:(out/'symbol-dumps.json').write_text(json.dumps(dump_manifest,indent=2)+'\n')
     boot = report['boot']
     if not boot.get('injected') or not start <= boot['pc_after_run'] < start + binary.stat().st_size:
         raise ValueError('probe did not finish executing inside application')
@@ -233,6 +241,7 @@ def parser():
     p.add_argument('--trace-frames',type=int,default=30)
     p.add_argument('--trace-capacity',type=int,default=262144)
     p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
+    p.add_argument('--dump-symbol',action='append',default=[],help='dump a variable using this ELF; write a byte-order/address manifest')
     return p
 
 

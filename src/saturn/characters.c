@@ -13,6 +13,9 @@
 #include "saturn/skeleton3d.h"
 #include "saturn/skin3d.h"
 #include "saturn/time.h"
+#if defined(T3_PARALLEL_GEOMETRY)
+#include "saturn/parallel.h"
+#endif
 
 #define DT_Q16 (SAT_FX16_ONE / T3_HZ)
 #define FADE_Q16 (SAT_FX16_ONE / 10)
@@ -55,6 +58,33 @@ static actor_t g_actors[2];
 static uint8_t g_initialized;
 static uint8_t g_skin_preview_applied[2];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
+#if defined(T3_PARALLEL_GEOMETRY)
+static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section(".wram_l")));
+static uint32_t g_geometry_keys[T3_FACE_COUNT] __attribute__((section(".wram_l")));
+static sat_scene3d_prepare_item_t g_geometry_item __attribute__((section(".wram_l")));
+static sat_scene3d_prepare_batch_t g_geometry_batch __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_geometry_pairs __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
+#if defined(T3_VERIFY_PARALLEL_GEOMETRY)
+volatile uint32_t g_t3_geometry_verified __attribute__((section(".wram_l")));
+static int same_face(const sat_scene3d_face_t* a,const sat_scene3d_face_t* b) {
+    if(a->projected_safe!=b->projected_safe || a->cached_projected!=b->cached_projected ||
+       a->gouraud_valid!=b->gouraud_valid || a->material.kind!=b->material.kind ||
+       a->material.rgb555!=b->material.rgb555 || a->material.texture!=b->material.texture ||
+       a->material.tiled!=b->material.tiled || a->material.color_calc_slot!=b->material.color_calc_slot ||
+       a->material.vertex_gouraud!=b->material.vertex_gouraud ||
+       a->material.sprite_flags!=b->material.sprite_flags)return 0;
+    for(unsigned c=0;c<4;++c) {
+        if(a->projected.x[c]!=b->projected.x[c] || a->projected.y[c]!=b->projected.y[c] ||
+           (a->gouraud_valid && a->gouraud[c]!=b->gouraud[c]))return 0;
+        if(!a->projected_safe && (a->world.v[c].x!=b->world.v[c].x ||
+           a->world.v[c].y!=b->world.v[c].y || a->world.v[c].z!=b->world.v[c].z))return 0;
+    }
+    return 1;
+}
+#endif
+#define GEOMETRY_TIMEOUT_TICKS 60000u
+#endif
 
 static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
 #if T3_CLIP_COUNT == 1
@@ -88,6 +118,10 @@ sat_result_t t3_characters_init(void) {
     unsigned i;
     sat_result_t st;
     if (g_initialized) return SAT_OK;
+#if defined(T3_PARALLEL_GEOMETRY)
+    const sat_parallel_config_t parallel={SAT_PARALLEL_AUTO,NULL,0,0,GEOMETRY_TIMEOUT_TICKS};
+    if((st=sat_parallel_init(&parallel))!=SAT_OK)return st;
+#endif
     if ((st = sat_character_asset_decode(
         t3_archive.bytes, T3_ARCHIVE_BYTES, g_clips, T3_CLIP_COUNT,
         g_texture_tables, T3_TEXTURE_COUNT, &g_asset)) != SAT_OK)
@@ -210,30 +244,41 @@ sat_result_t t3_characters_tick(const t3_match_t* game) {
 
 /* Skinning is presentation work: run once for the final pose submitted to
  * VDP1, rather than again for every catch-up simulation tick. */
+static sat_result_t prepare_base_skeleton(actor_t* a) {
+    sat_result_t st;
+    if ((st = sat_skel_clip_player_sample(&a->clip_player,
+            a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
+    if ((st = sat_pose_fade_apply(&a->fade,a->pose)) != SAT_OK) return st;
+    if ((st = sat_skeleton_evaluate(&a->skeleton,
+            a->pose,T3_JOINT_COUNT)) != SAT_OK) return st;
+    return sat_skeleton_world_matrices(&a->skeleton,a->joints,T3_JOINT_COUNT);
+}
 static sat_result_t prepare_actors(void) {
     sat_result_t st;
     const uint32_t started=sat_time_ms();
     for (unsigned i = 0; i < 2u; ++i) {
         actor_t* a = &g_actors[i];
-        if ((st = sat_skel_clip_player_sample(&a->clip_player,
-                a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
-        if ((st = sat_pose_fade_apply(&a->fade, a->pose)) != SAT_OK) return st;
-        if ((st = sat_skeleton_evaluate(&a->skeleton,
-                a->pose, T3_JOINT_COUNT)) != SAT_OK) return st;
-        if ((st = sat_skeleton_world_matrices(&a->skeleton,
-                a->joints, T3_JOINT_COUNT)) != SAT_OK) return st;
         g_skin_preview_applied[i]=0u;
 #if defined(T3_ENABLE_PSX_SKIN_PREVIEW) && defined(T3_LOCAL_KMD_BIND)
         {
             t3_psx_joint_t originals[T3_PSX_DRAW_PARTS];
             uint32_t parts_mask=0u;
-            /* A fully valid original 18-part world pose replaces the
-             * corresponding bind joints. Missing/unsafe geometry leaves
-             * ALL skin matrices in their existing LibSaturn path. */
-            if(t3_move_probe_copy_world(i,originals,&parts_mask) &&
-               t3_psx_skin_bridge(originals,parts_mask,a->joints))
+            int available=t3_move_probe_copy_world(i,originals,&parts_mask);
+            /* Skip the base skeleton only when the bridge can supply every
+             * joint referenced by this immutable skin. Accessory joints keep
+             * their generic evaluation; an invalid original pose keeps the
+             * complete existing fallback path. */
+            if(T3_CLIP_COUNT==1 && available && g_asset.skin.max_joint<T3_PSX_VISIBLE_PARTS &&
+               t3_psx_skin_bridge(originals,parts_mask,a->joints)) {
                 g_skin_preview_applied[i]=1u;
+            } else {
+                if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
+                if(available && t3_psx_skin_bridge(originals,parts_mask,a->joints))
+                    g_skin_preview_applied[i]=1u;
+            }
         }
+#else
+        if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
 #endif
         if ((st = sat_skin_update_mesh(&g_asset.skin,
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
@@ -283,9 +328,54 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
                     != SAT_OK) return st;
             a->instance.world=&a->world;
         }
-        if ((st = sat_scene_submit_instance(scene, &a->instance,
-                SAT_SCENE3D_SLOT_INHERIT, a->projected, a->world_vertices))
-                != SAT_OK) return st;
+    }
+#if defined(T3_PARALLEL_GEOMETRY)
+    if(sat_parallel_slave_available()) {
+        actor_t* slave=&g_actors[1];
+        g_geometry_item=(sat_scene3d_prepare_item_t){&slave->instance,
+            slave->projected,slave->world_vertices,SAT_SCENE3D_SLOT_INHERIT,0};
+        if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
+                g_geometry_faces,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
+        g_geometry_batch.dispatch=SAT_SCENE3D_PREPARE_DISPATCH_RUNTIME;
+        sat_parallel_handle_t handle=0;
+        if((st=sat_scene_prepare_batch_async(scene,&g_geometry_batch,&handle))!=SAT_OK)return st;
+        actor_t* master=&g_actors[0];
+        const sat_result_t master_result=sat_scene_submit_instance(scene,&master->instance,
+            SAT_SCENE3D_SLOT_INHERIT,master->projected,master->world_vertices);
+        if((st=sat_parallel_wait(handle,GEOMETRY_TIMEOUT_TICKS))!=SAT_OK)return st;
+        if(master_result!=SAT_OK)return master_result;
+#if defined(T3_VERIFY_PARALLEL_GEOMETRY)
+        const sat_scene3d_faces_t prefix=scene->faces;
+#endif
+        if((st=sat_scene_merge_prepared_batch(scene,&g_geometry_batch,handle))!=SAT_OK)return st;
+#if defined(T3_VERIFY_PARALLEL_GEOMETRY)
+        /* Join/merge consume worker output and keys before comparison. Reuse
+         * canonical queue storage for the reference; no extra face buffer.
+         * Compare only fields that merge/emission consume, never padding or
+         * the unspecified world coordinates of projected-safe faces. */
+        sat_scene3d_faces_t reference=prefix;
+        if((st=sat_scene3d_faces_submit_instance(&reference,&slave->instance,
+                SAT_SCENE3D_SLOT_INHERIT,slave->projected,slave->world_vertices))!=SAT_OK)return st;
+        if(reference.count-prefix.count!=g_geometry_batch.metrics.prepared_faces ||
+           reference.culled_faces-prefix.culled_faces!=g_geometry_batch.metrics.culled_faces ||
+           reference.clipped_faces-prefix.clipped_faces!=g_geometry_batch.metrics.clipped_faces)
+            return SAT_ERR_VERIFY_FAILED;
+        for(unsigned f=0;f<g_geometry_batch.metrics.prepared_faces;++f) {
+            if(scene->faces.keys[prefix.count+f]!=g_geometry_keys[f] ||
+               !same_face(&scene->faces.entries[prefix.count+f],&g_geometry_faces[f]))return SAT_ERR_VERIFY_FAILED;
+        }
+        ++g_t3_geometry_verified;
+#endif
+        if((st=sat_scene_prepare_batch_release(scene,&g_geometry_batch,handle))!=SAT_OK)return st;
+        ++g_t3_geometry_pairs;
+        return SAT_OK;
+    }
+    ++g_t3_geometry_serial;
+#endif
+    for(i=0;i<2u;++i) {
+        actor_t* a=&g_actors[i];
+        if((st=sat_scene_submit_instance(scene,&a->instance,
+            SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK)return st;
     }
     return SAT_OK;
 }

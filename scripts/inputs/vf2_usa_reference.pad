@@ -1,0 +1,22 @@
+# Headless BIOS setup and VF2 USA V1.005 arcade entry.
+# Program-field schedule, not simulation ticks. Use a fresh private backup RAM.
+# --pad-script connects P1; do not override it with --port-device 1:pad.
+0 NONE
+600 A
+630 NONE
+720 A
+750 NONE
+900 LEFT
+930 NONE
+1020 A
+1050 NONE
+1800 START
+1830 NONE
+2400 START
+2430 NONE
+3000 START
+3030 NONE
+3600 A
+3630 NONE
+4200 A
+4230 NONE
