@@ -3,6 +3,9 @@
 This implements the first diagnostic step of
 [the recovery plan](PAUL_PERFORMANCE_RECOVERY.md) and a camera correction.
 The intermediate 60 Hz logic / 30 Hz presentation gate is still open.
+Subsequent experiments and the retained Q15 conversion are recorded in
+[the runtime experiment report](PAUL_RUNTIME_EXPERIMENTS.md); full-game cadence
+remains effectively unchanged.
 
 ## Measurement method
 

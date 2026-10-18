@@ -5,7 +5,34 @@ These are Saturn behavior regressions, not aligned PS1 input-replay parity.
 """
 import copy
 import json
+import shutil
 import saturn_probe
+
+
+def coherent_case(args,runner=saturn_probe.run):
+    """Retry only torn debugger publications, retaining the rejected artifacts.
+
+    Run assertions still inspect the actual later endpoint; gameplay failures,
+    native panic, malformed diagnostics and process errors are never retried.
+    """
+    requested=args.frames
+    for extra in range(3):
+        attempt=copy.copy(args);attempt.frames=requested+extra
+        try:
+            result=runner(attempt)
+        except saturn_probe.IncompleteSnapshotError:
+            archive=args.out/f'incomplete-{attempt.frames}'
+            archive.mkdir()
+            for path in list(args.out.iterdir()):
+                if path.is_file():
+                    if path==args.device_script:shutil.copyfile(path,archive/path.name)
+                    else:shutil.move(str(path),archive/path.name)
+            if extra==2:raise
+            continue
+        result['requested_emulator_frames']=requested
+        result['publication_retry_fields']=extra
+        (args.out/'observation.json').write_text(json.dumps(result,indent=2)+'\n')
+        return result
 
 
 def execute(args):
@@ -18,7 +45,7 @@ def execute(args):
         a=copy.copy(args);a.out=root/name;a.out.mkdir(parents=True,exist_ok=True)
         a.frames=frames;a.port2='pad';a.device_script=a.out/'input.devices'
         a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n'+script)
-        r=saturn_probe.run(a);results[name]=r;s=r['state']
+        r=coherent_case(a);results[name]=r;s=r['state']
         require(s.get('psx_combat_active')==1,'original combat must be active')
         require(s.get('psx_round_flow_active')==1,'original round controller must be active')
         require(s['first_error']==0 and s['draw_timeouts']==0 and s['psx_attack_decode_errors']==[0,0],

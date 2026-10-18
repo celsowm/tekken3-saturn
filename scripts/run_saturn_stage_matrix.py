@@ -7,6 +7,12 @@ from analyze_saturn_stages import decode,summarize
 ROOT=Path(__file__).resolve().parents[1]
 CASES={'full':(0,0),'simulation':(1,0),'render-one':(2,120),'render-two':(0,120)}
 
+def project_overrides(options):
+    if any(not re.match(r'^-DT3_[A-Z0-9_]+(?::(?:BOOL|STRING|PATH|FILEPATH))?=',option)
+           for option in options):
+        raise ValueError('variant overrides must be -DT3_NAME=value')
+    return options
+
 def cache_options(path):
     entries={}
     for line in path.read_text().splitlines():
@@ -36,6 +42,7 @@ def cache_options(path):
 
 def run(a):
     options,compiler_dir=cache_options(a.baseline.resolve()/'CMakeCache.txt')
+    options+=project_overrides(a.cmake_option)
     out=a.out.resolve()
     if out.exists() and any(out.iterdir()):raise FileExistsError('use a fresh empty output directory')
     out.mkdir(parents=True,exist_ok=True)
@@ -79,6 +86,7 @@ if __name__=='__main__':
     p.add_argument('--frames',type=int,default=1200);p.add_argument('--after-field',type=int,default=300)
     p.add_argument('--timeout',type=int,default=300)
     p.add_argument('--device-script',type=Path,help='retain and replay this input schedule in every case')
+    p.add_argument('--cmake-option',action='append',default=[],help='explicit variant override, e.g. --cmake-option=-DT3_CLOSE_CAMERA=OFF')
     p.add_argument('--cases',choices=tuple(CASES),nargs='+',default=list(CASES))
     a=p.parse_args()
     if a.frames<=a.after_field or a.after_field<0 or a.timeout<=0:p.error('require frames > warmup >= 0 and positive timeout')

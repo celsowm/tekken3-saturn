@@ -279,7 +279,7 @@ in its neutral interval; the 30/60 performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `35647ed13af594f74f74a2c9d194b513b558ad31` installed, configure
+With LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
@@ -306,7 +306,9 @@ These diagnostic modes remove work and cannot qualify playable performance.
 `scripts/run_saturn_stage_matrix.py --baseline <optimized-build> --bios <bios> --out <fresh-private-directory>`
 builds and captures all four diagnostic cases, preserving compiler optimization
 settings. See the [stage measurements](docs/PAUL_STAGE_MEASUREMENTS.md) for
-results and limits.
+results and limits. The [subsequent runtime experiments](docs/PAUL_RUNTIME_EXPERIMENTS.md)
+retain a 20% skin-stage reduction but measure effectively unchanged full-game
+cadence (8.18 submissions/s, 32.73 logic ticks/s).
 
 ## FK/IK differential oracle
 

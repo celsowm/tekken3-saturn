@@ -2,9 +2,15 @@ import struct,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from analyze_saturn_stages import CAPACITY,FIELDS,decode,summarize
-from run_saturn_stage_matrix import cache_options
+from run_saturn_stage_matrix import cache_options,project_overrides
 
 class StageRingTests(unittest.TestCase):
+    def test_variant_cannot_override_compiler_optimization(self):
+        valid=['-DT3_CLOSE_CAMERA:BOOL=OFF','-DT3_RENDER_BENCH_TICK=120']
+        self.assertEqual(project_overrides(valid),valid)
+        for option in ('-DCMAKE_C_FLAGS_RELEASE=-O0','-DT3_BAD-NAME=ON','-DT3_NO_VALUE'):
+            with self.assertRaises(ValueError):project_overrides([option])
+
     def ring(self,count):
         raw=bytearray(12+CAPACITY*len(FIELDS)*4)
         struct.pack_into('>III',raw,0,1,count,count%CAPACITY)

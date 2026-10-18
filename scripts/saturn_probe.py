@@ -61,6 +61,10 @@ ROUND_FIELDS=[('psx_round_flow_active','I',1)]+[(name,'i',1) for name in (
     'psx_replay_record','psx_replay_play','psx_replay_mark')]+[(name,'I',1) for name in (
     'psx_replay_recorded','psx_replay_epoch')]
 
+class IncompleteSnapshotError(ValueError):
+    """Guest was stopped while publishing its diagnostic snapshot."""
+
+
 def decode(raw):
     if len(raw) < WORDS * 4:
         raise ValueError('truncated diagnostics')
@@ -99,7 +103,7 @@ def decode(raw):
         result[name] = data[0] if count == 1 else data
         at += alignment * count
     if result['snapshot_epoch'] & 1:
-        raise ValueError('emulator stopped during diagnostic publication; choose a later checkpoint')
+        raise IncompleteSnapshotError('emulator stopped during diagnostic publication; choose a later checkpoint')
     return result
 
 

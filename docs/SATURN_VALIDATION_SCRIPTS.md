@@ -60,3 +60,36 @@ branch names and abbreviated revisions are resolved using the local checkout.
 The script includes queue time in its timeout, reports status changes with run
 URLs, and exits nonzero for unsuccessful workflows, missing runs at timeout or
 `gh` errors. The latest run for each workflow on the exact commit is used.
+
+## Build and measure an isolated variant
+
+Clone an existing optimized Release configuration into a fresh directory,
+retaining its compiler, package and private asset options. Override project
+options explicitly; commands and build logs stay beside the resulting ELF.
+The builder refuses populated output directories and non-project overrides.
+
+```sh
+python3 scripts/build_saturn_variant.py \
+  --baseline build/recovery-framed-live --out build/q15-live \
+  --cmake-option=-DT3_PERF_SAMPLES=OFF \
+  --cmake-option=-DT3_RENDER_BENCH_TICK=0
+
+python3 scripts/run_saturn_stage_matrix.py \
+  --baseline build/recovery-framed-live \
+  --bios assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin \
+  --out assets/imported/isolated-old-camera --cases render-two full \
+  --cmake-option=-DT3_CLOSE_CAMERA=OFF
+```
+
+The stage runner still forces its case-specific instrumentation/mode options
+after overrides. Its diagnostic timing is separate from uninstrumented cadence.
+
+## Torn diagnostic publications
+
+The combat suite can stop exactly while the guest is publishing its snapshot.
+Only `IncompleteSnapshotError` triggers a bounded replay at one additional
+field, at most twice. The pad schedule and all gameplay assertions stay intact.
+Rejected raw artifacts remain under `incomplete-N/`; the successful observation
+records requested fields, actual fields and `publication_retry_fields`.
+Native panic, malformed data and gameplay errors fail immediately. Standalone
+`saturn_probe.py` retains exact-endpoint behavior and never retries implicitly.
