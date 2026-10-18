@@ -9,6 +9,12 @@ import saturn_probe as probe
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_native_panic_cannot_hide_behind_stale_diagnostics(self):
+        raw=struct.pack('>Iii32s',0x50414E43,-8,193,b'main.c\0')
+        self.assertEqual(probe.decode_panic(raw),dict(code=-8,line=193,file='main.c'))
+        self.assertIsNone(probe.decode_panic(bytes(44)))
+        with self.assertRaises(ValueError):probe.decode_panic(raw[:-1])
+
     def fixture(self):
         fields = probe.PREFIX + [f'{name}{i}' for name in probe.PAIRS for i in range(2)] + probe.TAIL
         values = dict.fromkeys(fields, 0)

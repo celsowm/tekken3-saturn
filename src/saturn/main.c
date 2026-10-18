@@ -24,6 +24,7 @@
 #include "saturn/time.h"
 #include "diagnostics.h"
 #include "move_probe.h"
+#include "perf.h"
 
 enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
@@ -169,13 +170,31 @@ static void draw_hud(void) {
 
 static void draw_scene(void) {
     sat_fx16_t center = from_q8((g_game.fighters[0].x + g_game.fighters[1].x) / 2);
+#if defined(T3_CLOSE_CAMERA)
+    sat_fx16_t separation=from_q8(g_game.fighters[0].x-g_game.fighters[1].x);
+    if(separation<0)separation=-separation;
+    /* FOV 45 and a world-space margin leave room for limbs at both edges.
+     * Change camera distance, never the authored model or contact scale. */
+    sat_fx16_t distance=separation+Q(260);
+    if(distance<Q(560))distance=Q(560);
+    /* A fallen fighter extends across the floor towards the camera. Leave
+     * room for that pose and the winner without putting the body under HUD. */
+    if(g_game.round_done && distance<FX(7))distance=FX(7);
+    g_camera.eye=vec(center,Q(200),-distance);
+    g_camera.target=vec(center,g_game.round_done?Q(120):Q(150),0);
+#else
     g_camera.eye = vec(center, Q(390), -FX(9));
     g_camera.target = vec(center, FX(1), 0);
+#endif
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
-    floor_tiles();
-    SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
+    if(T3_PERF_MODE!=1) {
+        floor_tiles();
+        SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
+    }
+    T3_PERF_START(flush_started);
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
+    T3_PERF_ADD(flush,flush_started);
 }
 
 
@@ -364,11 +383,17 @@ int main(void) {
     g_t3_diagnostics=(t3_diagnostics_t){
         .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
+    t3_perf_init();
     g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
-        FX(60), (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
+#if defined(T3_CLOSE_CAMERA)
+        FX(45),
+#else
+        FX(60),
+#endif
+        (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
     SAT_PANIC_IF_ERROR(t3_characters_init());
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
@@ -393,9 +418,12 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_set_clear_color(SAT_RGB555(2,3,8)));
         SAT_PANIC_IF_ERROR(sat_begin_frame());
         work_started_ms = sat_time_ms();
+        t3_perf_begin();
+        T3_PERF_START(input_started);
         SAT_PANIC_IF_ERROR(sat_input_poll());
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
+        T3_PERF_ADD(input,input_started);
         if (pad0.pressed & SAT_PAD_Z) g_show_profiler ^= 1u;
         if (pad0.pressed & SAT_PAD_START) {
             t3_match_reset(&g_game);
@@ -407,6 +435,10 @@ int main(void) {
         }
         now = sat_frame_count();
         elapsed = now - prev_frame;
+#if defined(T3_PERF_SAMPLES)
+        g_t3_perf_current.field=now;
+        g_t3_perf_current.elapsed=elapsed;
+#endif
         prev_frame = now;
         if (elapsed > 4u) elapsed = 4u; /* bounded recovery after a stall */
         hz = sat_video_refresh_hz();
@@ -418,6 +450,7 @@ int main(void) {
         else if(ticks>T3_RENDER_BENCH_TICK-g_game.total_ticks)
             ticks=T3_RENDER_BENCH_TICK-g_game.total_ticks;
 #endif
+        T3_PERF_START(simulation_started);
         for (i = 0; i < ticks; ++i) {
             t3_input_t p1 = controller(&pad0, g_game.fighters[0].facing);
             t3_input_t p2 = pad1.connected ?
@@ -436,16 +469,26 @@ int main(void) {
             t3_move_probe_tick(&g_game);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
         }
+        T3_PERF_ADD(simulation,simulation_started);
+#if defined(T3_PERF_SAMPLES)
+        g_t3_perf_current.ticks=ticks;
+#endif
         const uint32_t render_started_ms=sat_time_ms();
         draw_scene();
-        draw_hud();
-        if (g_show_profiler) draw_profiler();
+        T3_PERF_START(hud_started);
+        if(T3_PERF_MODE!=1)draw_hud();
+        if (T3_PERF_MODE!=1 && g_show_profiler) draw_profiler();
+        T3_PERF_ADD(hud,hud_started);
         g_render_work_ms=sat_time_ms()-render_started_ms;
         {
             const sat_pad_state_t pads[2] = {pad0, pad1};
             publish_diagnostics(work_started_ms, ticks, pads);
         }
+        T3_PERF_START(present_started);
         SAT_PANIC_IF_ERROR(sat_end_frame());
+        T3_PERF_ADD(present,present_started);
+        T3_PERF_ADD(work,work_started_ms);
+        t3_perf_end();
         ++g_render_submissions;
     }
 }

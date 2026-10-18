@@ -7,6 +7,7 @@
 #include "characters.h"
 #include "move_probe.h"
 #include "psx_skin_bridge.h"
+#include "perf.h"
 
 #include "saturn/character3d.h"
 #include "saturn/math3d.h"
@@ -256,8 +257,9 @@ static sat_result_t prepare_base_skeleton(actor_t* a) {
 static sat_result_t prepare_actors(void) {
     sat_result_t st;
     const uint32_t started=sat_time_ms();
-    for (unsigned i = 0; i < 2u; ++i) {
+    for (unsigned i = 0; i < T3_DRAW_ACTORS; ++i) {
         actor_t* a = &g_actors[i];
+        T3_PERF_START(skeleton_started);
         g_skin_preview_applied[i]=0u;
 #if defined(T3_ENABLE_PSX_SKIN_PREVIEW) && defined(T3_LOCAL_KMD_BIND)
         {
@@ -280,9 +282,12 @@ static sat_result_t prepare_actors(void) {
 #else
         if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
 #endif
+        T3_PERF_ADD(skeleton,skeleton_started);
+        T3_PERF_START(skin_started);
         if ((st = sat_skin_update_mesh(&g_asset.skin,
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
             return st;
+        T3_PERF_ADD(skin,skin_started);
     }
     g_skin_work_ms=sat_time_ms()-started;
     return SAT_OK;
@@ -293,7 +298,8 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
     sat_result_t st;
     if (!scene || !game || !g_initialized) return SAT_ERR_INVALID_ARG;
     if ((st = prepare_actors()) != SAT_OK) return st;
-    for (i = 0; i < 2u; ++i) {
+    T3_PERF_START(placement_started);
+    for (i = 0; i < T3_DRAW_ACTORS; ++i) {
         actor_t* a = &g_actors[i];
         const t3_fighter_t* fighter = &game->fighters[i];
         sat_model_transform3d_t transform;
@@ -329,8 +335,10 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
             a->instance.world=&a->world;
         }
     }
+    T3_PERF_ADD(placement,placement_started);
+    T3_PERF_START(geometry_started);
 #if defined(T3_PARALLEL_GEOMETRY)
-    if(sat_parallel_slave_available()) {
+    if(T3_DRAW_ACTORS==2 && sat_parallel_slave_available()) {
         actor_t* slave=&g_actors[1];
         g_geometry_item=(sat_scene3d_prepare_item_t){&slave->instance,
             slave->projected,slave->world_vertices,SAT_SCENE3D_SLOT_INHERIT,0};
@@ -368,15 +376,17 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #endif
         if((st=sat_scene_prepare_batch_release(scene,&g_geometry_batch,handle))!=SAT_OK)return st;
         ++g_t3_geometry_pairs;
+        T3_PERF_ADD(geometry,geometry_started);
         return SAT_OK;
     }
     ++g_t3_geometry_serial;
 #endif
-    for(i=0;i<2u;++i) {
+    for(i=0;i<T3_DRAW_ACTORS;++i) {
         actor_t* a=&g_actors[i];
         if((st=sat_scene_submit_instance(scene,&a->instance,
             SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK)return st;
     }
+    T3_PERF_ADD(geometry,geometry_started);
     return SAT_OK;
 }
 

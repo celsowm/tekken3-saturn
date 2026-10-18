@@ -115,6 +115,12 @@ def symbols(elf, nm):
     return result
 
 
+def decode_panic(raw):
+    if len(raw)!=44:raise ValueError('truncated native panic record')
+    magic,code,line,filename=struct.unpack('>Iii32s',raw)
+    if magic!=0x50414E43:return None
+    return dict(code=code,line=line,file=filename.split(b'\0',1)[0].decode('utf-8',errors='replace'))
+
 def run(args):
     build, out = args.build.resolve(), args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -156,6 +162,8 @@ def run(args):
             if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
             command.extend(['--snapshot-pc',hex(syms[symbol][0])])
     dump_requests=list(getattr(args,'symbol_dumps',[]))
+    if '_g_sat_last_panic' in syms:
+        dump_requests.append(('_g_sat_last_panic','native-panic.bin'))
     for i,name in enumerate(getattr(args,'dump_symbol',[])):
         symbol=name if name in syms else '_'+name
         dump_requests.append((symbol,'symbol-'+str(i)+'.bin'))
@@ -166,6 +174,8 @@ def run(args):
         if not length:raise ValueError('dump symbol has no size: '+symbol)
         command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
         dump_manifest[symbol]=dict(file=filename,address=location,bytes=length,byte_order='big')
+    if dump_requests:
+        shutil.copyfile(build/'CMakeCache.txt',out/'capture.CMakeCache.txt')
     if args.profile or getattr(args,'debug_profile',False):
         # Preserve symbols beside sampled PCs before a later rebuild moves them.
         # These private ELF/map artifacts must remain outside Git.
@@ -181,6 +191,11 @@ def run(args):
                        timeout=args.timeout)
     report = json.loads((out / 'ymir.json').read_text())
     if dump_manifest:(out/'symbol-dumps.json').write_text(json.dumps(dump_manifest,indent=2)+'\n')
+    if (out/'native-panic.bin').exists():
+        panic=decode_panic((out/'native-panic.bin').read_bytes())
+        if panic:
+            (out/'native-panic.json').write_text(json.dumps(panic,indent=2)+'\n')
+            raise ValueError(f'native guest panic: {panic}')
     boot = report['boot']
     if not boot.get('injected') or not start <= boot['pc_after_run'] < start + binary.stat().st_size:
         raise ValueError('probe did not finish executing inside application')

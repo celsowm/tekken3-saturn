@@ -3,6 +3,8 @@
 Next execution order: [Paul presentation and runtime recovery](PAUL_PERFORMANCE_RECOVERY.md).
 That plan prioritizes cost isolation, visual comparison and whole-path gains
 after the paired increment below proved insufficient.
+The first [stage-isolation results and camera correction](PAUL_STAGE_MEASUREMENTS.md)
+now establish separate simulation and rendering costs.
 
 This is the remaining performance execution plan for the
 [playable milestone](NEXT_PLAYABLE_MILESTONE.md). Preserve Paul's geometry,

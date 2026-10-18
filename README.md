@@ -273,17 +273,34 @@ Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x1
 
 The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
 actual application submissions, logic ticks and VDP lifecycle events. The
-current cache-on paired experiment measures 8.43 submissions/s and 33.72 logic
-ticks/s in a neutral interval; the 30/60 performance gate remains open. These
+earlier wide-camera paired experiment measured 8.43 submissions/s and 33.72 logic
+ticks/s. The closer camera measures 8.17 submissions/s and 32.69 logic ticks/s
+in its neutral interval; the 30/60 performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `e2fbf76781227862da991b960735bd5830ad1775` installed, configure
+With LibSaturn `35647ed13af594f74f74a2c9d194b513b558ad31` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
 Both modes preserve the original model and global painter order. The generic
 serial path remains available with the first option off.
+
+The default camera now moves with the fighter midpoint and increases its
+distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide
+view for comparisons. This changes presentation only; gameplay scale is fixed.
+
+For cost isolation, `-DT3_PERF_MODE=1` keeps simulation but omits scene/HUD
+drawing; mode `2` renders one actor and mode `0` is the normal two-actor game.
+Combine mode 0 or 2 with `-DT3_RENDER_BENCH_TICK=120` for frozen-pose rendering.
+`-DT3_PERF_SAMPLES=ON` adds a bounded stage timing ring (diagnostic overhead).
+Capture it with `saturn_probe.py --dump-symbol g_t3_perf`, then decode the
+result with `python3 scripts/analyze_saturn_stages.py <capture>/symbol-0.bin`.
+These diagnostic modes remove work and cannot qualify playable performance.
+`scripts/run_saturn_stage_matrix.py --baseline <optimized-build> --bios <bios> --out <fresh-private-directory>`
+builds and captures all four diagnostic cases, preserving compiler optimization
+settings. See the [stage measurements](docs/PAUL_STAGE_MEASUREMENTS.md) for
+results and limits.
 
 ## FK/IK differential oracle
 
