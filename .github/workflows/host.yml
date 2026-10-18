@@ -36,6 +36,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p 'test_saturn_profile.py' -v
       - name: Validate bounded Saturn stage timing rings
         run: python3 -m unittest discover -s tests -p 'test_saturn_stages.py' -v
+      - name: Validate saved Saturn run reports and cadence comparisons
+        run: python3 -m unittest discover -s tests -p 'test_report_saturn_runs.py' -v
       - name: Validate private texture importer with synthetic ARC and TIM data
         run: python3 -m unittest discover -s tests -p 'test_psx_character_textures.py' -v
       - name: Analyze synthetic PS1 combat oracle event timeline

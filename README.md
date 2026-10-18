@@ -293,6 +293,8 @@ view for comparisons. This changes presentation only; gameplay scale is fixed.
 The HUD always shows `FRAME <number>` between the win counters. This is the
 one-based render submission serial (the diagnostic `frame_serial`), independent
 of VBlanks and simulation ticks; START does not reset it.
+See [reusable validation commands](docs/SATURN_VALIDATION_SCRIPTS.md) to inspect
+saved runs, compare cadence and wait for CI on the exact commit.
 
 For cost isolation, `-DT3_PERF_MODE=1` keeps simulation but omits scene/HUD
 drawing; mode `2` renders one actor and mode `0` is the normal two-actor game.
