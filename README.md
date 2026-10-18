@@ -290,6 +290,10 @@ The default camera now moves with the fighter midpoint and increases its
 distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide
 view for comparisons. This changes presentation only; gameplay scale is fixed.
 
+The HUD always shows `FRAME <number>` between the win counters. This is the
+one-based render submission serial (the diagnostic `frame_serial`), independent
+of VBlanks and simulation ticks; START does not reset it.
+
 For cost isolation, `-DT3_PERF_MODE=1` keeps simulation but omits scene/HUD
 drawing; mode `2` renders one actor and mode `0` is the normal two-actor game.
 Combine mode 0 or 2 with `-DT3_RENDER_BENCH_TICK=120` for frozen-pose rendering.
