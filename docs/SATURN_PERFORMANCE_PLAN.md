@@ -1,5 +1,9 @@
 # Harness-led Saturn performance work
 
+Next execution order: [Paul presentation and runtime recovery](PAUL_PERFORMANCE_RECOVERY.md).
+That plan prioritizes cost isolation, visual comparison and whole-path gains
+after the paired increment below proved insufficient.
+
 This is the remaining performance execution plan for the
 [playable milestone](NEXT_PLAYABLE_MILESTONE.md). Preserve Paul's geometry,
 textures, authored poses and the verified original combat state. Target 60 Hz
