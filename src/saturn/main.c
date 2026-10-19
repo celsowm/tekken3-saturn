@@ -28,8 +28,35 @@
 #include "diagnostics.h"
 #include "move_probe.h"
 #include "perf.h"
+#if defined(T3_CPU_DIAGNOSTICS)
+#include <saturn/sh2.h>
+#include <saturn/parallel.h>
+volatile uint32_t g_t3_boot_master_entry;
+uint32_t g_t3_boot_cache[2] __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_boot_slave_verified;
+static void capture_cpu_cache(void* context,uint32_t first,uint32_t last) {
+    uint32_t* out=context;
+    for(uint32_t i=first;i<last;++i)out[i]=sat_sh2_cache_control();
+}
+static void capture_boot_cache(void) {
+    g_t3_boot_cache[0]=sat_sh2_cache_control();g_t3_boot_cache[1]=UINT32_MAX;
+    g_t3_boot_slave_verified=0;
+    sat_parallel_stats_t before={0},after={0};
+    if(!sat_parallel_initialized() || !sat_parallel_slave_available() ||
+       sat_parallel_stats(&before)!=SAT_OK || before.queued ||
+       before.submitted!=before.completed || before.failed || before.cancelled)return;
+    if(sat_parallel_for(0,2,1,capture_cpu_cache,g_t3_boot_cache,
+            g_t3_boot_cache,sizeof(g_t3_boot_cache))==SAT_OK &&
+       sat_parallel_stats(&after)==SAT_OK &&
+       after.submitted==before.submitted+1 && after.completed==before.completed+1 &&
+       after.slave_tasks==before.slave_tasks+1 && !after.failed && !after.cancelled)
+        g_t3_boot_slave_verified=1;
+    else g_t3_boot_cache[1]=UINT32_MAX;
+}
+#endif
 
-enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
+enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192,
+       HUD_FRAME_Y=47,HUD_CPU_Y=3,HUD_MASTER_CACHE_X=88,HUD_SLAVE_CACHE_X=168 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
 
@@ -46,7 +73,11 @@ static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
 static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
 static sat_camera3d_t g_camera;
+#if defined(T3_STAGE_HUD)
+static uint8_t g_show_profiler=1;
+#else
 static uint8_t g_show_profiler;
+#endif
 static uint32_t g_render_work_ms, g_render_submissions;
 static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 
@@ -167,7 +198,12 @@ static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
 
 static void draw_hud(void) {
 #if defined(T3_RENDER_BENCH_TICK)
+#if defined(T3_STAGE_HUD)
+    enum { BENCH_STATUS_Y=183 };
+    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"RENDER BENCHMARK",80,BENCH_STATUS_Y));
+#else
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"RENDER BENCHMARK",80,65));
+#endif
 #endif
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P2", 288, 5));
@@ -182,7 +218,12 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[0], 8, 47));
     /* One-based render submission serial, independent of logic ticks and
      * VBlanks. Keep it visible even when the optional profiler is hidden. */
-    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, 47));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, HUD_FRAME_Y));
+#if defined(T3_CPU_DIAGNOSTICS)
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MCCR ",g_t3_boot_cache[0],HUD_MASTER_CACHE_X,HUD_CPU_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SCCR ",g_t3_boot_slave_verified?(int32_t)g_t3_boot_cache[1]:-1,
+        HUD_SLAVE_CACHE_X,HUD_CPU_Y));
+#endif
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[1], 248, 47));
 #if defined(T3_REPLAY_INPUT_TAPE)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
@@ -252,6 +293,19 @@ static void draw_profiler(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 1", t3_move_probe_slot(0), 4, 114));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 2", t3_move_probe_slot(1), 4, 126));
     }
+#if defined(T3_STAGE_HUD)
+    enum { COLUMN_X=176,FIRST_Y=66,ROW_HEIGHT=12 };
+    t3_perf_sample_t completed={0};
+    if(g_t3_perf.count) {
+        const uint32_t at=(g_t3_perf.cursor+T3_PERF_CAPACITY-1u)%T3_PERF_CAPACITY;
+        completed=g_t3_perf.samples[at];
+    }
+    const char* const labels[]={"SIM ","SKEL ","SKIN ","PLACE ","GEOM ","FLUSH ","PRES ","WORK ","TICKS "};
+    const uint32_t values[]={completed.simulation,completed.skeleton,completed.skin,
+        completed.placement,completed.geometry,completed.flush,completed.present,completed.work,completed.ticks};
+    for(unsigned i=0;i<sizeof(values)/sizeof(values[0]);++i)
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,labels[i],values[i],COLUMN_X,FIRST_Y+ROW_HEIGHT*i));
+#endif
 }
 
 static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
@@ -426,6 +480,9 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
 }
 
 int main(void) {
+#if defined(T3_CPU_DIAGNOSTICS)
+    g_t3_boot_master_entry=sat_sh2_cache_control();
+#endif
     sat_video_config_t video = {W, H, SAT_VIDEO_AUTO, 0};
     sat_vec3_t eye = {0, Q(390), -FX(9)};
     sat_vec3_t target = {0, FX(1), 0};
@@ -463,6 +520,9 @@ int main(void) {
     loading_frame(BOOT_POSES, "FIGHTER POSES");
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
+#if defined(T3_CPU_DIAGNOSTICS)
+    capture_boot_cache();
+#endif
     loading_frame(BOOT_READY, "READY");
     prev_frame = sat_frame_count();
     g_rate_sample_vblank = prev_frame;

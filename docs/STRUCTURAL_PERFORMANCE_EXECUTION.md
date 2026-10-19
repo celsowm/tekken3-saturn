@@ -97,3 +97,9 @@ The shared SDK harness now measures exact composited video changes. Its
 existing ON_SUBMIT policy already used by Dino, eliminating excess image
 transitions without claiming a speed gain. The frozen renderer still needs
 49 ms median. CPU scheduling, retained debt and the final milestone remain open.
+
+The [native CPU/memory budget](NATIVE_CPU_MEMORY_BUDGET.md) now confirms enabled
+caches on both CPUs during actual CD boot. Its frozen renderer diagnostic
+shows a substantially larger Mednafen cost than Ymir injection, especially
+in flush and placement. Memory experiments must retain native controls;
+these observations do not qualify a renderer optimization.
