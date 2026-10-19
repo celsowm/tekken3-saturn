@@ -1,124 +1,204 @@
-# Paul presentation and runtime recovery
+# Paul performance recovery: execution plan
 
-This is the next execution sequence after commit `1574098`, superseding the
-broad optimization order in [the performance record](SATURN_PERFORMANCE_PLAN.md).
-The current image and speed are both below acceptance. A 3.6% submission gain
-does not qualify this milestone.
+Updated 2026-10-19. This is the next execution sequence after port `5204aec`
+and LibSaturn `0bf5556`. It supersedes the older optimization order in
+[SATURN_PERFORMANCE_PLAN.md](SATURN_PERFORMANCE_PLAN.md). Measurements and
+rejected experiments remain in [PAUL_RUNTIME_EXPERIMENTS.md](PAUL_RUNTIME_EXPERIMENTS.md).
+This document plans work; none of its new gates is claimed complete.
 
-## Starting point and outcome
+## Baseline and budget
 
-The paired cache-on neutral interval measured 8.43 application submissions/s
-and 33.72 simulation ticks/s. A fixed-pose sample spent 59 ms in render/HUD;
-this is one sample, not a percentile or a sustained budget. The reviewed
-320x224 screenshot makes both Paul models small and their details difficult
-to read. It does not establish a palette, UV or pose-conversion defect.
+| Current observation | Result and scope |
+| --- | --- |
+| Uninstrumented neutral, fields 600–1800 | 9.76 submissions/s; 39.03 logic ticks/s |
+| Full neutral simulation | 43 ms median per submission; several ticks per submission |
+| Simulation normalized per tick | 11.562 ms aggregate in the instrumented window |
+| Frozen two-actor complete work | Approximately 49 ms in the preceding renderer qualification |
+| Full neutral complete work | 92 ms median; 102 ms p95 |
+| Short complete CPU trace | Slave polling/control exceeds 70% of its modeled cost |
 
-Deliver recognizable Paul models at an appropriate fighting-game camera scale,
-with authored poses and the existing verified combat behavior. The intermediate
-runtime gate is sustained 60 simulation ticks/s and at least 30 presentations/s.
-Keep 60 presentations/s as a later measured target. Preserve original geometry
-and texture content during these experiments.
+The frozen renderer already exceeds the 33.33 ms available for 30 submissions/s.
+Simulation optimization alone cannot close the target. At 60 ticks/s, the
+observed single-tick simulation cost would consume roughly 694 ms of CPU time
+per second before drawing. These are planning constraints, not additive frame
+predictions: stages overlap, workloads differ, and instrumented medians must
+not be summed into synthetic FPS. Measure the actual critical path.
 
-## 1. Split the cost before selecting another optimization
+The intermediate acceptance target is sustained 60 logic ticks/s and at least
+30 submissions/s, followed by verification of distinct displayed pictures.
+Physical timing remains unqualified. Ymir's pinned immediate-result DIVU model
+must stay visible in every timing report. Keep geometry, textures, authored
+poses, camera, combat rules and stock-RAM configuration fixed during experiments.
 
-Use one frozen private asset set and record ELF, SDK, input and harness hashes.
-Run the same five cases: idle, approach, repeated supported attacks, simultaneous
-contact, and KO/replay. Keep serial and paired configurations comparable.
+## 1. Establish a qualified baseline and measure the missing stages
 
-Add bounded diagnostic modes for these experiments:
+First verify the applicable CI for the two pinned commits and preserve their
+binaries. Requalify current authoritative math against the existing continuous
+[original/host/Saturn comparison](SATURN_REFERENCE_REPLAY.md): all three sequences,
+16,334 committed ticks. The latest increment passed 42 host checks, 14 basic live
+cases, 247 serial/worker geometry comparisons and a Mednafen boot; it did not
+repeat the complete continuous gate or all 24 live cases. Close that evidence
+gap before using this revision as the correctness oracle for another core change.
 
-1. Simulation and required contact geometry, with character drawing disabled.
-2. Frozen authored pose, full two-character rendering, no simulation updates.
-3. One rendered actor, then two, with identical camera and pose.
-4. Full gameplay, including input, arena, HUD and presentation.
+Extend the existing bounded stage ring and profile analyzer; keep it optional
+and outside release timing builds. Record raw FRT ticks and frequency, call
+counts and explicit units for:
 
-Mark simulation, pose/FK/IK, skin/world conversion, projection/face preparation,
-sorting/emission, input, and frame waits separately. Record per-submission work
-and costs normalized per simulated tick; four catch-up ticks are not one tick.
-Use cycle samples to explain costs and untraced runs to confirm cadence.
-Report median, p95, maximum, late swaps, rejected faces and draw timeouts over
-at least 600 fields per case, with warmup and measurement windows identified.
-Bound instrumentation storage and keep expensive collection out of timed builds.
+- Move begin/ground update and root sampling/placement.
+- Motion decoding, FK, IK, blend, head tracking and part composition separately.
+- Body/contact queries, hit resolution and branch/command evaluation.
+- Match-state copying and diagnostic/presentation bridging.
+- Skin/world conversion, projection, admission, merge, painter and emission.
+- Worker dispatch/publication, useful work, join and idle intervals.
 
-**Decision:** if simulation alone misses 60 Hz, optimize it before adding
-render work. If frozen rendering misses 30 Hz, isolate its dominant stage.
-Use the measurements to allocate Master/Slave work and the frame budget.
-Do not assume the short profile's exclusive PC percentages are stage timings.
+Account for nested intervals without double-counting. Record per-tick and
+per-submission distributions separately; label actor, normal/replay state and
+number of catch-up ticks. Bound storage, detect dropped/overflowed records and
+retain a separate uninstrumented build. Instrumentation must not enable Slave
+cache experiments or change release scheduling.
 
-## 2. Correct the visible Paul presentation
+Use deterministic idle, approach, repeated supported attacks, simultaneous
+contact and KO/replay. Separate simulation-only, frozen one/two-actor rendering
+and full gameplay. Use matching simulation checkpoints for behavior; fixed
+VBlank input scripts alone are insufficient when a faster build advances more
+ticks. Retain hashes, warmup, video mode, camera, CCR policy and memory layout.
 
-Capture original PS1 Paul and Saturn Paul in idle, a supported attack and a
-reaction at matching authored move/frame checkpoints. Use the existing
-PCSX-Redux capture and pose comparison tools. Normalize comparison crops;
-retain the complete screenshots so crop scaling cannot hide camera differences.
+**Deliverable:** a reusable script producing a critical-path report, inclusive
+stage costs, calls/bytes and a defensible upper bound for each proposed saving.
+Select the next experiment from this report. Do not treat short exclusive PC
+percentages as recoverable frame-time percentages.
 
-Check model/part selection, silhouette, proportions, orientation, feet/ground,
-palette and transparency, face UVs, two-sided flags, seams and depth order.
-Fix demonstrated importer or rendering defects individually. Compare a nearer
-camera with distance-based framing that keeps both fighters and their feet
-visible during approach, retreat, attacks and knockdown. Set its dimensions
-from the reference captures rather than guessing a new model scale.
+## 2. Run one bounded simulation experiment at a time
 
-**Acceptance:** reviewed before/after captures show readable faces, hair and
-costume at normal output size; limbs remain intact in all selected poses and
-both fighters remain framed. Remeasure the larger on-screen model because it
-can increase VDP1 fill cost. Do not claim asset fidelity from numerical pose
-parity alone.
+Two candidates are justified for measurement, not automatic implementation:
 
-## 3. Remove the dominant measured work
+### Immutable branch data
 
-Choose the first experiment from step 1, rather than implementing all of these:
+Measure rows visited, repeated little-endian decoding and command matching
+separately. If decoding is material, compile a bounded native representation at
+bank initialization, with explicit memory cost and immutable-bank lifetime.
+Keep dynamic input, frame windows, restrictions and opponent facts live.
+Preserve traversal order, common call/return (`C00C`/`C00D`), terminators,
+conditional skip flags `0x2C`, malformed-input rejection and walk limits.
 
-- Simulation: check repeated branch scans, copies and repeated pose/FK/IK
-  evaluation within one tick. Cache immutable decoded move data where its
-  measured benefit justifies RAM. Preserve head tracking, blend, roots and
-  contact dependencies; do not reuse a stale pose across gameplay changes.
-- Rendering: inspect repeated skin/world/view transforms, face/material copies
-  and generic per-vertex arithmetic. Evaluate a rigid single-joint path only
-  after confirming imported weights qualify. Specialize its arithmetic without
-  changing rounding, clipping or depth order.
-- Memory: compare placement of hot code, matrices and vertex buffers in High
-  and Low WRAM. Check Slave cache visibility and contention; moving data must
-  fit stock RAM and retain stack reserves.
-- Parallelism: move a larger independent unit, such as a complete actor's
-  presentation preparation, only if its inputs can remain immutable until
-  join. Keep VDP emission on Master. Measure useful worker work and join time.
+Compare chosen branches and next VM state against the existing walker at every
+tested tick, including missing matches and malformed banks. Keep original data
+and an independent reference available for differential testing. Merely delaying
+target decoding was already tried with insufficient return; do not repeat it.
+Tekken-specific branch formats remain in this repository.
 
-Put reusable runtime changes in sibling `../lib-saturn`; rebuild its installed
-package before benchmarking the game. Keep each experiment separately
-switchable. Compare output and full-game cadence against the same baseline.
-Aim for at least 20% improvement in the dominant stage per retained performance
-experiment, then verify its whole-path benefit. Treat small changes as minor
-cleanup; abandon an approach that cannot plausibly meet the measured budget.
+### Exact matrix/pose arithmetic
 
-## 4. Preserve elapsed time and prove runtime pacing
+Only proceed if inclusive FK/IK/composition time provides a useful saving
+ceiling. Prototype a procedural generic signed-16-bit dot/matrix benchmark in
+LibSaturn, starting with three-term products and then a parent chain. Compare
+current C with SH-2 multiply/accumulate alternatives using the local SH-1/SH-2
+programming manual. Account for SR.S saturation behavior, MACH/MACL clobbers,
+alignment, register constraints and interrupt preservation. Preserve full-width
+sums, negative-floor rounding, saturation, aliases and failure behavior.
 
-The current `elapsed > 4` clamp discards elapsed fields. Add explicit accumulated
-logic debt and overload diagnostics; a bounded amount of catch-up work may
-leave debt for later rather than silently erase it. Test recovery after a
-finite injected stall. If work cannot keep pace, expose persistent overload;
-raising the catch-up bound cannot be reported as a speed improvement.
+Run independent wide references on signed extrema, cancellation and randomized
+inputs; execute the same procedural cases in Ymir and Mednafen. Measure code
+size, High/Low WRAM placement, cache behavior and complete caller cost. Only
+promote a generic primitive to the SDK after target correctness and measured
+benefit. Keep GTE-specific rules in the port. The recently rejected guarded
+32-bit matrix kernel grew code and did not help; do not restore it.
 
-Select render scheduling from the measured simulation budget. Preserve input
-edge semantics and replay tick order. Prove sustained 60 Hz simulation without
-growing debt and >=30 Hz presentations over a 60-second gameplay window,
-including a fight and round transition. Derive rates from actual elapsed
-fields/time and application submissions, not automatic VDP redraws.
+**Decision gate:** aim for at least 20% reduction in the selected dominant
+stage and at least 5% improvement in the complete workload/cadence. A smaller
+reusable cleanup can ship with honest labeling, but does not close a performance
+milestone. If the measured upper bound is too small, move to the next candidate.
 
-## 5. Qualify and publish the result
+## 3. Extract independent work before changing Slave scheduling
 
-After authoritative core changes, rerun the complete 16,334-tick source/host/
-Saturn gate. For presentation changes, compare consumed face data, command
-order and selected screenshots; intentional camera changes require reference
-review rather than an identical-pixel expectation. Run the affected host gates
-and all 24 current combat/KO/replay/reset/timeout cases on the final build.
+Do not assign one authoritative fighter to each CPU. `advance_core` currently
+places/composes actor 0 before actor 1; `compose` reads the opponent's world
+pose through head tracking. Configuration also holds a mutable shared motion
+sample cache, and placement can update shared round blend hold. Running those
+functions concurrently would change order or introduce races.
 
-Boot the final disc in Mednafen, retaining a complete encounter recording.
-Check stock RAM, stack reserve, texture residency, command peaks and zero
-render errors. Keep private game data outside Git. Commit and push each coherent
-passing increment, then check applicable CI in both repositories. The unrelated
-SDK Phase 3 missing-palette issue remains tracked separately; do not call that
-workflow green until repaired.
+Map exact read/write ownership and failure/commit boundaries. A possible first
+unit is raw local FK/IK from already-decoded immutable pose channels. Keep root
+placement, blending, head tracking, contacts and authoritative publication in
+original order until independence is proven. Evaluate input preparation,
+publication, task overhead and the first actual join point before building an
+adapter. Avoid publishing the complete match or sharing mutable scratch/cache.
 
-Each delivery must state the actual visual improvement, before/after full-path
-rates, configuration and evidence, and which acceptance gates remain open.
+Require an unchanged serial extraction to pass the full continuous gate first.
+Then use caller-owned inputs/outputs and existing SDK task/cache APIs; preserve
+atomic failure and serial fallback. Register no new scheduler and expose no
+Tekken-specific task in the SDK. Put any missing generic primitive there.
+Compare every worker result with serial output and test repeated dispatch,
+reset and failure paths. Measure a net critical-path reduction after dispatch,
+cache publication and join, not worker occupancy alone.
+
+The earlier bundled skinning/geometry experiment and High-WRAM/cache/split
+experiments gave limited or negative returns. Revisit only with a new measured
+ownership boundary or bottleneck; enabling Slave cache alone is not the plan.
+
+## 4. Reduce the renderer's independent 49 ms limit
+
+Use the existing procedural cube benchmark rather than starting another
+unrelated demo. Extend its workload matrix to isolate transformation/projection,
+visibility/admission, painter, command construction and transfer. Compare plain
+RGB and indexed materials, one/two actors, visible/culled/near-clipped faces and
+increasing counts with stable on-screen coverage. Include command-only and
+preprojected controls where they isolate a measured cost.
+
+Choose one kernel or pipeline boundary from these measurements. Verify byte
+commands, painter order, clipping and residency before testing Dino, procedural
+humanoids and the unchanged Paul pair. Inspect draw-completion/wait counters
+and coverage-dependent cost separately from CPU preparation. Reuse existing
+comparison/capture scripts. A cube result cannot establish Paul or VF2 parity.
+
+Use the supplied local VF2 disc as a separate reference capture in the same
+emulator configuration: inspect useful work on each SH-2, VDP1 command counts,
+draw completion and VDP2 usage over a repeatable encounter. Compare architecture
+and work budgets, not raw model appearance or mismatched camera/fill conditions.
+Do not infer its implementation from its visual FPS. Keep all disc bytes private.
+
+Qualify SDK changes across these consumers. Record and investigate the existing
+roughly 2% dense-RGB regression from the material-program work. Do not accept a
+large generic regression for a favorable Paul-only result. Moving geometry,
+skinning or publication to Slave must beat the complete current pipeline,
+including memory contention and synchronization.
+
+For cycle-sensitive conclusions, reuse the procedural DIVU-latency probe and
+independent Mednafen comparison. Do not add 39 cycles per observed divide to
+estimate hardware cost: independent instructions can overlap division latency.
+Fixing the emulator's timing model is a separate validated change, not an
+assumption hidden inside a renderer result.
+
+## 5. Repair pacing and qualify the complete result
+
+First add explicit pending/deleted logic-tick and overload diagnostics. Replace
+the silent four-field clamp with retained debt in a separately measured change:
+bound work per iteration while carrying unfinished ticks forward. Preserve input
+press-edge semantics, reset, replay ordering and rendering progress. Test a
+finite injected stall and recovery, plus sustained overload with visible growing
+debt. The diagnostic can land before speed improves; an accumulating debt queue
+is never a claim of 60 Hz simulation.
+
+After reducing measured CPU costs, select the presentation cadence from the
+actual remaining budget. Run at least 60 seconds of neutral, active combat and
+round transitions with no growing debt, 60 logic ticks/s and at least 30
+submissions/s. Establish distinct displayed pictures separately. Keep 60 visual
+FPS as a later measured objective, not a promised consequence of these steps.
+
+For each authoritative optimization, pass the complete continuous 16,334-tick
+gate; for final integration, rerun all 24 live combat/KO/replay/reset/timeout
+cases, serial/worker comparisons and an actual Mednafen CD encounter. Check
+image/load bounds, stock High/Low WRAM, both stacks, command peaks and zero
+runtime errors. Preserve visual comparisons at matching poses and camera.
+
+Commit and push each coherent passing increment, then inspect applicable CI.
+SDK changes are installed and consumed by a separately rebuilt port before
+measurement. Keep retail data/BIOS private. Keep the unrelated SDK Phase 3
+missing-palette failure explicit; do not weaken gates to turn it green.
+
+## Immediate next action
+
+Complete baseline correctness qualification, then add the bounded simulation
+substage report in step 1. Its result determines whether immutable branch
+compilation or pose kernels deserve the next implementation. Slave scheduling
+and pacing are separate changes after their dependencies and costs are known.
