@@ -124,7 +124,7 @@ static sat_result_t select_clip(actor_t* actor, uint8_t next) {
     return st;
 }
 
-sat_result_t t3_characters_init(void) {
+sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* context) {
     unsigned i;
     sat_result_t st;
     if (g_initialized) return SAT_OK;
@@ -138,6 +138,7 @@ sat_result_t t3_characters_init(void) {
         return st;
     if ((st = sat_skin_validate(&g_asset.skin)) != SAT_OK) return st;
     if ((st = sat_model_validate(&g_asset.model)) != SAT_OK) return st;
+    if (progress) progress(context, T3_CHARACTER_LOAD_MODEL_READY);
 
     for (i = 0; i < 2u; ++i) {
         actor_t* a = &g_actors[i];
@@ -213,6 +214,8 @@ sat_result_t t3_characters_init(void) {
 #else
         a->instance.cull_backfaces = 1u;
 #endif
+        if (progress) progress(context, i == 0u ?
+            T3_CHARACTER_LOAD_PLAYER1_READY : T3_CHARACTER_LOAD_PLAYER2_READY);
     }
 #if defined(T3_PARALLEL_GEOMETRY)
     /* Texture descriptors, materials and topology live for the application.

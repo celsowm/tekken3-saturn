@@ -17,6 +17,7 @@
 #include "saturn/font.h"
 #include "saturn/hud.h"
 #include "saturn/input.h"
+#include "saturn/loader.h"
 #include "saturn/render3d.h"
 #include "saturn/scene.h"
 #include "saturn/scene3d.h"
@@ -50,6 +51,40 @@ static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
  * frame_serial is written last: it marks a complete snapshot. */
 volatile t3_diagnostics_t g_t3_diagnostics __attribute__((section(".wram_l")));
+
+enum {
+    BOOT_MODEL, BOOT_PLAYER1, BOOT_PLAYER2, BOOT_MOVES, BOOT_POSES, BOOT_READY,
+    LOADING_TITLE_Y = 64, LOADING_LABEL_Y = 100, LOADING_STAGE_Y = 124,
+    LOADING_BAR_Y = 160, LOADING_PERCENT_MAX = 100,
+    FRAME_BACKGROUND = SAT_RGB555(2,3,8), LOADING_FILL = SAT_RGB555(28,5,4)
+};
+
+static void loading_frame(unsigned completed, const char* stage) {
+    sat_loading_screen_t screen;
+    sat_loading_screen_default(&screen);
+    screen.background = FRAME_BACKGROUND;
+    screen.fill = LOADING_FILL;
+    screen.y = LOADING_BAR_Y;
+    SAT_PANIC_IF_ERROR(sat_wait_vblank());
+    SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
+    SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
+    SAT_PANIC_IF_ERROR(sat_begin_frame());
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
+    SAT_PANIC_IF_ERROR(sat_loading_screen_draw_bar(&screen,
+        (uint16_t)(completed * LOADING_PERCENT_MAX / BOOT_READY)));
+    SAT_PANIC_IF_ERROR(sat_end_frame());
+}
+
+static void character_loading_progress(void* context, t3_character_load_stage_t stage) {
+    (void)context;
+    switch (stage) {
+    case T3_CHARACTER_LOAD_MODEL_READY: loading_frame(BOOT_PLAYER1, "PLAYER 1"); break;
+    case T3_CHARACTER_LOAD_PLAYER1_READY: loading_frame(BOOT_PLAYER2, "PLAYER 2"); break;
+    case T3_CHARACTER_LOAD_PLAYER2_READY: loading_frame(BOOT_MOVES, "MOVE DATA"); break;
+    }
+}
 
 static sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
     sat_vec3_t v = {x, y, z};
@@ -391,6 +426,7 @@ int main(void) {
     t3_sim_init();
     g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
+    loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
 #if defined(T3_CLOSE_CAMERA)
@@ -399,7 +435,7 @@ int main(void) {
         FX(60),
 #endif
         (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
-    SAT_PANIC_IF_ERROR(t3_characters_init());
+    SAT_PANIC_IF_ERROR(t3_characters_init(character_loading_progress, NULL));
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
 #if !defined(T3_REFERENCE_REPLAY)
@@ -409,8 +445,10 @@ int main(void) {
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
     t3_input_tape_reset();
 #endif
+    loading_frame(BOOT_POSES, "FIGHTER POSES");
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
+    loading_frame(BOOT_READY, "READY");
     prev_frame = sat_frame_count();
     g_rate_sample_vblank = prev_frame;
     for (;;) {
@@ -419,8 +457,8 @@ int main(void) {
         /* Both pads are sampled by ONE SMPC transaction. Using the generic
          * app helper followed by a second port poll wasted one transaction. */
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
-        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_RGB555(2,3,8)));
-        SAT_PANIC_IF_ERROR(sat_set_clear_color(SAT_RGB555(2,3,8)));
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
+        SAT_PANIC_IF_ERROR(sat_set_clear_color(FRAME_BACKGROUND));
         SAT_PANIC_IF_ERROR(sat_begin_frame());
         work_started_ms = sat_time_ms();
         t3_perf_begin();

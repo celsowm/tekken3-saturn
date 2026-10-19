@@ -31,6 +31,7 @@ still uses the provisional match below; original combat parity is pending.
 - Two fighters, four distinct limb attacks, hit/guard stun, spacing, sidesteps, collision, health, a timer, and best-of-three rounds.
 - Controller 1 versus simple deterministic CPU; controller 2 can take over P2.
 - Sega Saturn frontend using LibSaturn's VDP1 scene-wide 3D painter, two independently skinned original low-poly fighters, a floor, and a HUD.
+- Boot loading screen showing actual model, player and move-data initialization progress through LibSaturn's shared loading bar.
 - 24-joint SKA1 source archive, nine authored animation clips, red/blue costume palettes, and shared geometry.
 - Native host tests with no emulator, ROM, Godot, or Saturn toolchain required.
 

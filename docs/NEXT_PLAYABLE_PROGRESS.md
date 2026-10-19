@@ -8,6 +8,23 @@ provisional preview and query-only owned configurations remain separate.
 The declared continuous PS1/host/Saturn comparison now passes. The live
 performance target and presentation-camera calibration remain open.
 
+## Boot loading screen (2026-10-19)
+
+The Saturn frontend presents `TEKKEN 3 / LOADING` with the shared LibSaturn
+bar during model validation, setup of each actor, move-data initialization and
+the first fighter pose. Character setup reports completed stages through an
+optional callback. The existing HUD font is reused. Gameplay clock sampling
+starts after initialization, so loading time is excluded from simulation
+catch-up; no artificial loading delay is added.
+
+Both public and private stock-RAM disc builds pass. The 43 host CTests and
+14 live combat regressions pass after the boot change. A 35-second Mednafen
+native CD recording shows the loading stages followed by the live fight;
+reviewed artifacts are `loading-native-cd/loading-contact.png` and
+`loading-native-cd/frame-34.png`. Early injected-field screenshots also show
+the progress transitions (`loading-boot-fields/`). Recorded private app SHA256:
+`3df6bd86d37630df64c75793cb07093eb06d2b20c19c71830e927ecacc7d7b28`.
+
 ## Projection divider overlap (2026-10-19)
 
 The game now pins LibSaturn `10f995605e80a3903b345d1de029837168475a87` in its
