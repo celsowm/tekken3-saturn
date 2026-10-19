@@ -340,8 +340,12 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #if defined(T3_PARALLEL_GEOMETRY)
     if(T3_DRAW_ACTORS==2 && sat_parallel_slave_available()) {
         actor_t* slave=&g_actors[1];
-        g_geometry_item=(sat_scene3d_prepare_item_t){&slave->instance,
-            slave->projected,slave->world_vertices,SAT_SCENE3D_SLOT_INHERIT,0};
+        g_geometry_item=(sat_scene3d_prepare_item_t){
+            .instance=&slave->instance,
+            .screen_scratch=slave->projected,
+            .world_scratch=slave->world_vertices,
+            .color_calc_slot=SAT_SCENE3D_SLOT_INHERIT,
+            .source_plan=NULL};
         if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
                 g_geometry_faces,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
         g_geometry_batch.dispatch=SAT_SCENE3D_PREPARE_DISPATCH_RUNTIME;
