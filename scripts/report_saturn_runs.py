@@ -22,6 +22,8 @@ def probe_summary(data, directory):
     fields = ('frame_serial', 'submitted_frames', 'vblanks', 'sim_ticks',
               'first_error', 'draw_timeouts', 'commands_used', 'commands_capacity')
     result = {key: state[key] for key in fields}
+    result.update({key:state[key] for key in (
+        'observed_fields','discarded_fields','scheduled_ticks') if key in state})
     panic_file = directory / 'native-panic.bin'
     panic = decode_panic(panic_file.read_bytes()) if panic_file.exists() else None
     result['native_panic'] = panic
@@ -63,7 +65,18 @@ def cadence(start, end, hz):
     delta = {k: b[k] - a[k] for k in ('vblanks', 'submitted_frames', 'sim_ticks')}
     if delta['vblanks'] <= 0 or any(v < 0 for v in delta.values()):
         raise ValueError('cadence endpoints must advance without counter resets')
-    return dict(refresh_hz=hz, interval=delta,
+    scheduling=None
+    if all(key in run for run in (a,b) for key in (
+            'observed_fields','discarded_fields','scheduled_ticks')):
+        scheduling={key:b[key]-a[key] for key in (
+            'observed_fields','discarded_fields','scheduled_ticks')}
+        if (scheduling['observed_fields']<=0 or
+                not 0<=scheduling['discarded_fields']<=scheduling['observed_fields'] or
+                scheduling['scheduled_ticks']<0):
+            raise ValueError('scheduling counters must advance without resets/wrap')
+        scheduling['discarded_percent']=100*scheduling['discarded_fields']/scheduling['observed_fields']
+        scheduling['discarded_seconds']=scheduling['discarded_fields']/hz
+    return dict(refresh_hz=hz, interval=delta, scheduling=scheduling,
                 submissions_per_second=delta['submitted_frames'] * hz / delta['vblanks'],
                 logic_ticks_per_second=delta['sim_ticks'] * hz / delta['vblanks'],
                 scope='Uninstrumented endpoints are required for gameplay cadence; submitted frames are not verified display swaps.')

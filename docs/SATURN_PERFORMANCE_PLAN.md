@@ -7,7 +7,9 @@ but short release cadence only changes from 9.884 to 10.000 submissions/s.
 The 30-render/60-logic target remains open. Investigate owned-match copies and
 joint composition next, preserving the authoritative per-tick state.
 
-Next execution order: [Paul presentation and runtime recovery](PAUL_PERFORMANCE_RECOVERY.md).
+Current execution order: [structural performance recovery](STRUCTURAL_PERFORMANCE_EXECUTION.md).
+The [earlier recovery plan](PAUL_PERFORMANCE_RECOVERY.md) retains the history
+and detailed qualification constraints.
 That plan prioritizes cost isolation, visual comparison and whole-path gains
 after the paired increment below proved insufficient.
 The first [stage-isolation results and camera correction](PAUL_STAGE_MEASUREMENTS.md)

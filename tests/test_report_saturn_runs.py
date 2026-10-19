@@ -37,6 +37,18 @@ class RunReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'advance'):
             cadence(b, a, 60)
 
+    def test_discarded_time_is_reported_separately_from_committed_ticks(self):
+        paths=[self.probe('start',600,100,400),self.probe('end',1800,300,1200)]
+        for path,observed,discarded,scheduled in zip(paths,(598,1798),(198,598),(400,1200)):
+            file=path/'observation.json';data=json.loads(file.read_text())
+            data['state'].update(observed_fields=observed,discarded_fields=discarded,
+                                 scheduled_ticks=scheduled)
+            file.write_text(json.dumps(data))
+        result=cadence(*paths,60)
+        self.assertEqual(result['logic_ticks_per_second'],40)
+        self.assertAlmostEqual(result['scheduling']['discarded_percent'],100/3)
+        self.assertAlmostEqual(result['scheduling']['discarded_seconds'],400/60)
+
     def test_native_panic_overrides_stale_success(self):
         path = self.probe('panic', 100, 12, 48)
         (path / 'native-panic.bin').write_bytes(struct.pack('>Iii32s', 0x50414E43, -7, 193, b'main.c'))

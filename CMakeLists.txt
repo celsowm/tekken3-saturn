@@ -17,6 +17,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_match.c src/game/psx_round.c s
 target_sources(tekken3_fight PRIVATE src/game/psx_replay.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c)
+target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # These new blend routines otherwise exceed High WRAM's stack boundary.
@@ -437,6 +438,9 @@ else()
     endif()
     include(CTest)
     if(BUILD_TESTING)
+        add_executable(test_tick_clock tests/test_tick_clock.c)
+        target_link_libraries(test_tick_clock PRIVATE tekken3_fight)
+        add_test(NAME scheduling_time_accounting COMMAND test_tick_clock)
         add_executable(test_sha256 tests/test_sha256.c)
         target_link_libraries(test_sha256 PRIVATE tekken3_fight)
         add_test(NAME portable_observation_sha256 COMMAND test_sha256)

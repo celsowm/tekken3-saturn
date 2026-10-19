@@ -100,6 +100,12 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(state['psx_replay_mark'],-2)
         self.assertEqual(state['psx_replay_epoch'],3)
         with self.assertRaises(ValueError):probe.decode(raw[:-1])
+        struct.pack_into('>I',raw,4,21)
+        raw+=struct.pack('>4I',6,1200,400,800)
+        state=probe.decode(raw)
+        self.assertEqual(state['discarded_fields'],400)
+        self.assertEqual(state['scheduled_ticks'],800)
+        with self.assertRaises(ValueError):probe.decode(raw[:-1])
 
     def test_reject_truncated_or_wrong_endian_or_unpublished(self):
         raw = self.fixture()

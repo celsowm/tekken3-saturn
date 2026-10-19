@@ -8,6 +8,7 @@
 
 #include "fight.h"
 #include "sim_profile.h"
+#include "tick_clock.h"
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
 #include "input_tape.h"
 #endif
@@ -34,6 +35,7 @@ enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192 };
 
 /* Fully initialized by t3_match_reset before any read. */
 static t3_match_t g_game __attribute__((section(".wram_l")));
+static t3_tick_clock_t g_tick_clock;
 static sat_scene_t g_scene;
 /* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
  * and hot actor data in High WRAM; the linker checks both memory budgets. */
@@ -260,6 +262,10 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     uint32_t now = sat_frame_count();
     uint32_t span = now - g_rate_sample_vblank;
     ++g_t3_diagnostics.snapshot_epoch;
+    g_t3_diagnostics.elapsed_fields_last=g_tick_clock.elapsed_last;
+    g_t3_diagnostics.observed_fields=g_tick_clock.observed_fields;
+    g_t3_diagnostics.discarded_fields=g_tick_clock.discarded_fields;
+    g_t3_diagnostics.scheduled_ticks=g_tick_clock.scheduled_ticks;
     SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
     SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
@@ -421,7 +427,7 @@ int main(void) {
     sat_vec3_t eye = {0, Q(390), -FX(9)};
     sat_vec3_t target = {0, FX(1), 0};
     sat_vec3_t up = {0, SAT_FX16_ONE, 0};
-    uint32_t prev_frame, accumulated = 0;
+    uint32_t prev_frame;
     g_t3_diagnostics=(t3_diagnostics_t){
         .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
@@ -486,11 +492,8 @@ int main(void) {
         g_t3_perf_current.elapsed=elapsed;
 #endif
         prev_frame = now;
-        if (elapsed > 4u) elapsed = 4u; /* bounded recovery after a stall */
         hz = sat_video_refresh_hz();
-        accumulated += elapsed * T3_HZ;
-        ticks = accumulated / hz;
-        accumulated %= hz;
+        ticks = t3_tick_clock_advance(&g_tick_clock,elapsed,hz,T3_HZ);
 #if defined(T3_RENDER_BENCH_TICK)
         if(g_game.total_ticks>=T3_RENDER_BENCH_TICK)ticks=0;
         else if(ticks>T3_RENDER_BENCH_TICK-g_game.total_ticks)
