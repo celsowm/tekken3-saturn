@@ -318,7 +318,9 @@ frozen two-actor work from 64 to 49 ms. Full-game cadence improves from 8.18 to
 9.76 submissions/s and from 32.73 to 39.03 logic ticks/s in the neutral interval.
 The [nested simulation profiler](docs/SIMULATION_PROFILING.md) now separates
 pose, movement, contact and branch costs by tick, with reusable capture scripts
-and explicit instrumentation limits.
+and explicit instrumentation limits. The [branch and matrix experiments](docs/BRANCH_AND_MATRIX_EXPERIMENTS.md)
+record the rejected native-row cache and the reusable SH-2 MAC benchmark; neither
+changes the retained gameplay rate.
 
 ## FK/IK differential oracle
 

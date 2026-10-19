@@ -154,3 +154,8 @@ ceiling is insufficient, proceed to generic exact SH-2 matrix kernels, then
 extract only proven independent pose work for Slave. Preserve opponent head
 tracking, shared cache ownership and round blend state. Renderer work remains
 independently above the 30 Hz budget; this instrumentation closes no FPS gate.
+
+For validated before/after reporting, use `compare_simulation_profiles.py`;
+the [branch and matrix experiment record](BRANCH_AND_MATRIX_EXPERIMENTS.md)
+contains reproduction and limits. It keeps instrumented stage differences and
+separate release cadence observations distinct.

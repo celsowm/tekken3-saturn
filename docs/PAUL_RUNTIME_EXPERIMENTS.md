@@ -324,3 +324,12 @@ authoritative arithmetic are unchanged. The continuous 16334-tick gate passes,
 and disabled release cadence remains 9.758 submissions/s / 39.033 logic ticks/s.
 The next experiment is selected from measured branch/pose work, not from an
 assumption that filling Slave idle time automatically shortens the frame.
+
+## Native branches and SH-2 matrix control
+
+The [next controlled experiments](BRANCH_AND_MATRIX_EXPERIMENTS.md) reject a
+48 KiB native branch cache after only 1.88% release cadence improvement. The
+reusable SDK MAC.W benchmark passes 33792 checks in Ymir and Mednafen but its
+best 11.43% procedural gain does not justify a gameplay arithmetic replacement.
+Release behavior, cadence and SDK runtime stay unchanged. The next measured
+boundary is dynamic renderer geometry/face preparation.

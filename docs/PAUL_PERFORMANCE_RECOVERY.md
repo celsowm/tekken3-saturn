@@ -9,6 +9,12 @@ Later implementation gates remain planned; current qualifications are listed bel
 Execution update: the baseline continuous comparison and first bounded
 simulation report now pass; see [SIMULATION_PROFILING.md](SIMULATION_PROFILING.md).
 The diagnostic build also passes all 24 live combat cases and a Mednafen boot.
+The next experiments are now recorded in
+[BRANCH_AND_MATRIX_EXPERIMENTS.md](BRANCH_AND_MATRIX_EXPERIMENTS.md): the native
+branch cache is rejected (1.88% release cadence for 48 KiB), and the reusable
+SDK matrix control passes 33792 checks with an 11.43% best procedural gain.
+Neither is promoted to gameplay. The next selected boundary is renderer
+transform/projection/face admission; recovery and scheduling gates remain open.
 This completes the first measurement increment, not the later optimization,
 scheduling or pacing gates. Historical instructions below describe the entry
 requirements; do not rerun passed captures without a relevant source change.

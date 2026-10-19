@@ -5,8 +5,22 @@ from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from analyze_simulation_profile import STAGES,CAPACITY,decode,summarize,IncompleteProfileError
 from run_simulation_profile import run
+from compare_simulation_profiles import compare
 
 class ProfileTests(unittest.TestCase):
+    def test_comparison_preserves_units_and_rejects_incompatible_provenance(self):
+        a=summarize(decode(self.fixture(2)))
+        b=summarize(decode(self.fixture(4)))
+        a['provenance']={'bios_sha256':'bios','probe_sha256':'probe'}
+        b['provenance']=dict(a['provenance'])
+        result=compare(a,b)
+        self.assertEqual(result['stages']['branch']['inclusive']['reduction_percent'],0)
+        self.assertEqual(result['stages']['command_calls']['before_calls_per_tick'],10)
+        self.assertIsNone(result['stages']['command_calls']['inclusive']['reduction_percent'])
+        b['provenance']['probe_sha256']='different'
+        with self.assertRaisesRegex(ValueError,'provenance'):compare(a,b)
+        b['provenance']=dict(a['provenance']);b['after_field']+=1
+        with self.assertRaisesRegex(ValueError,'warmup'):compare(a,b)
     def test_stage_ids_match_the_native_wire_contract(self):
         header=(Path(__file__).resolve().parents[1]/'src/game/sim_profile.h').read_text()
         native=re.search(r'enum\s*\{([^}]+)\}',header).group(1)
