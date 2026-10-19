@@ -2,8 +2,9 @@
 
 The intermediate 30-render/60-logic gate remains open. None of these experiments
 establishes a substantial full-game speed gain or a physical hardware result.
-The final retained library change is LibSaturn
-`a46598b24ddd386ee73cadbd3eebf42a811ea082`.
+The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
+subsequent renderer, memory and publication experiments are recorded below.
+The current retained package is `2285c4d327ffafae6ae85f63d9d0ef5874a7bf55`.
 
 ## Selection and rejected changes
 
@@ -144,3 +145,56 @@ The final live combat suite passes all 24 cases, including KO/replay/victory,
 match reset and both neutral timeout checkpoints
 (`recovery-sdk-cull-combat-suite`). All cases check native panic and runtime
 health; this is Saturn behavior regression coverage, not aligned PS1 parity.
+
+
+## Copy alignment and immutable material publication
+
+The retained SDK copy kernel uses aligned halfwords when source/destination
+parity matches but their modulo-four alignments differ. The six-field entry
+capture records 828 memcpy calls, including 401 that could use halfwords but
+previously used bytes. Most small copies carry 18-byte rotation matrices.
+The SDK's guarded 512-case target matrix and native-disc Mednafen HUD confirm
+correct content and improvement independently; its renderer study records the
+measurements. For the selected High-to-High 18-byte case, Mednafen falls from
+7.245 to 4.683 us/call after calibration. This is not a physical hardware result.
+
+The game now also compiles a source-publication plan for the second actor's
+application-lifetime topology, material table and texture descriptors after
+upload and binding validation. Each batch borrows that plan. Pose vertices,
+world matrices, face masks and scratch remain in the dynamic publication path;
+receiver invalidation and frame-time texture residency checks remain active.
+The array lives in Low Work RAM and the build retains stock RAM limits.
+
+| Diagnostic median | Renderer baseline | Halfword copy | Copy + publication plan |
+| --- | ---: | ---: | ---: |
+| Frozen geometry ms | 24 | 24 | 21 |
+| Frozen complete work ms | 57 | 57 | 53 |
+| Full neutral complete work ms | 100 | 99 | 96 |
+| Full neutral work p95 ms | 113 | 112 | 108 |
+
+The three retained matrices are `recovery-sdk-cull-matrix`,
+`recovery-halfword-v2-matrix` and `recovery-source-plan-matrix`. The copy-only
+full neutral simulation interval is 11.727 ms/tick versus 12.021 previously.
+A separate uninstrumented copy-only interval gives 9.42 submissions/s and
+37.66 logic ticks/s. The final copy+publication interval gives **9.47
+submissions/s and 37.87 logic ticks/s** (`recovery-source-plan-live-{600,1200}`).
+The former 8.18/32.73 baseline and all subsequent results remain below the
+30-render/60-logic target; submission counters do not certify display swaps.
+
+The final source-plan build passes all 24 live combat cases, including
+KO/replay/victory, reset and both timeouts (`recovery-source-plan-combat-suite`).
+An independent 1800-field scripted serial verifier matches 233 worker results
+(`recovery-source-plan-verified`). The 42 host CTests and strict C11 frontend
+syntax check pass. Native Mednafen CD boot exits successfully with both actors
+and the FRAME counter (`recovery-source-plan-cd`). Copy-only combat qualification
+also passes all 24 cases (`recovery-halfword-v2-combat-suite`).
+
+The investigation exposed a harness limit: pinned Ymir computes DIVU results
+immediately instead of modeling the SH7604's 39-cycle normal latency and result
+access waiting. A new native diagnostic exhibits early-NOP overlap in Mednafen
+and a linear NOP cost in Ymir while both return correct quotients. The harness
+now labels its division timing model explicitly. Existing Ymir timing/cadence
+numbers describe that model and cannot qualify hardware division overlap.
+The SDK also retains reproducible cache/work-split experiments: reducing worker
+cost alone did not shorten the frame, and a 50/50 face split regressed it.
+No experimental Slave-cache policy is enabled in this game package.

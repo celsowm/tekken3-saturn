@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: e9e88927a20531c5d0ef94d0fa189a58668762fd
+          ref: 2285c4d327ffafae6ae85f63d9d0ef5874a7bf55
           path: .external/libsaturn
           persist-credentials: false
       - uses: actions/setup-python@v5

@@ -64,6 +64,10 @@ static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section
 static uint32_t g_geometry_keys[T3_FACE_COUNT] __attribute__((section(".wram_l")));
 static sat_scene3d_prepare_item_t g_geometry_item __attribute__((section(".wram_l")));
 static sat_scene3d_prepare_batch_t g_geometry_batch __attribute__((section(".wram_l")));
+static sat_scene3d_source_plan_t g_geometry_sources __attribute__((section(".wram_l")));
+/* Materials have no vertex-Gouraud pointers; descriptor ranges plus topology. */
+static sat_scene3d_source_range_t g_geometry_source_ranges[T3_TEXTURE_COUNT+3u]
+    __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_pairs __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
 #if defined(T3_VERIFY_PARALLEL_GEOMETRY)
@@ -201,6 +205,12 @@ sat_result_t t3_characters_init(void) {
         a->instance.cull_backfaces = 1u;
 #endif
     }
+#if defined(T3_PARALLEL_GEOMETRY)
+    /* Texture descriptors, materials and topology live for the application.
+     * Pose vertices/world/masks remain dynamic in the SDK publication path. */
+    if ((st=sat_scene3d_source_plan_init(&g_geometry_sources,&g_actors[1].instance,
+            g_geometry_source_ranges,T3_TEXTURE_COUNT+3u))!=SAT_OK) return st;
+#endif
     g_initialized = 1u;
     return SAT_OK;
 }
@@ -345,7 +355,7 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
             .screen_scratch=slave->projected,
             .world_scratch=slave->world_vertices,
             .color_calc_slot=SAT_SCENE3D_SLOT_INHERIT,
-            .source_plan=NULL};
+            .source_plan=&g_geometry_sources};
         if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
                 g_geometry_faces,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
         g_geometry_batch.dispatch=SAT_SCENE3D_PREPARE_DISPATCH_RUNTIME;
