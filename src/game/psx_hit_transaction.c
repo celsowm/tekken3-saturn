@@ -7,6 +7,7 @@
  * Includes immediate USA VS KO collapse. Air reactions, reversals and throw
  * pairing remain unsupported by this bounded transaction.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
+#include "sim_profile.h"
 #include "psx_match.h"
 
 typedef struct {
@@ -20,7 +21,7 @@ static int16_t abs_damage(int16_t n) {
     int32_t v=n<0?-(int32_t)n:n;
     return (int16_t)(v<32768?v:v-65536);
 }
-int t3_psx_match_apply_hits(t3_psx_match_t* match) {
+int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     staged_t staged[2];
     const t3_psx_match_config_t* c;
     if(!match || !match->config || !match->config->enable_combat)return 0;
@@ -103,3 +104,6 @@ int t3_psx_match_apply_hits(t3_psx_match_t* match) {
     }
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_match_apply_hits,T3_SIM_HITS,
+    (t3_psx_match_t* match),
+    (match))

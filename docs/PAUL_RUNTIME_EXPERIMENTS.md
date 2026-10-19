@@ -4,7 +4,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current retained package is `0bf55566a9fa046c8f1e142f7fa536f58574b6de`.
+The current retained package is `f11b277bed2ddda963fa3dba0da08656baf08322`.
 
 ## Selection and rejected changes
 
@@ -314,3 +314,13 @@ The 1800-field scripted target verifier matches 247 serial/worker results
 timeout flows. An actual 30-second Mednafen CD boot exits normally and reviewed
 frame 29 shows both actors and FRAME 102 (`recovery-shared-int-cd`). Slave task
 scheduling and authoritative match order are unchanged.
+
+## Nested simulation diagnostics
+
+The opt-in profiler and its first controlled results are documented in
+[SIMULATION_PROFILING.md](SIMULATION_PROFILING.md). Its generic accumulator is
+part of LibSaturn `f11b277bed2ddda963fa3dba0da08656baf08322`; release timing and
+authoritative arithmetic are unchanged. The continuous 16334-tick gate passes,
+and disabled release cadence remains 9.758 submissions/s / 39.033 logic ticks/s.
+The next experiment is selected from measured branch/pose work, not from an
+assumption that filling Slave idle time automatically shortens the frame.

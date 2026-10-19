@@ -1,3 +1,4 @@
+#include "sim_profile.h"
 #include "psx_ik.h"
 #include <saturn/int_math.h>
 #include <stdint.h>
@@ -228,7 +229,7 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
     lower->m[2][2]=ONE;
     return 1;
 }
-int t3_psx_pose_ik(const int16_t pose[T3_PSX_POSE_CHANNELS],
+int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
                    const t3_psx_ik_tables_t* table,
                    const t3_psx_matrix_t input[T3_PSX_ROTATION_SLOTS],
                    uint32_t input_mask,
@@ -284,6 +285,15 @@ int t3_psx_pose_ik(const int16_t pose[T3_PSX_POSE_CHANNELS],
     *output_mask=mask;
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_pose_ik,T3_SIM_IK,
+    (const int16_t pose[T3_PSX_POSE_CHANNELS],
+                   const t3_psx_ik_tables_t* table,
+                   const t3_psx_matrix_t input[T3_PSX_ROTATION_SLOTS],
+                   uint32_t input_mask,
+                   t3_psx_matrix_t output[T3_PSX_ROTATION_SLOTS],
+                   uint32_t* output_mask),
+    (pose,table,input,input_mask,output,output_mask))
+
 int t3_psx_pose_full(const int16_t pose[T3_PSX_POSE_CHANNELS],
                      const t3_psx_ik_tables_t* table,
                      t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],

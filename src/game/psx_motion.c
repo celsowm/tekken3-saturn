@@ -1,3 +1,4 @@
+#include "sim_profile.h"
 #include "psx_motion.h"
 #include <saturn/int_math.h>
 #include <limits.h>
@@ -202,7 +203,7 @@ int t3_motion_sample(const t3_motion_stream_t* s, unsigned frame,
     for(i=0;i<T3_PSX_POSE_CHANNELS;++i)out[i]=v[i];
     return 1;
 }
-int t3_motion_sample_root(const t3_motion_stream_t* s,unsigned frame,
+int T3_SIM_IMPL(t3_motion_sample_root)(const t3_motion_stream_t* s,unsigned frame,
                           const t3_motion_tables_t* tables,int16_t xyz[3]) {
     int16_t tmp[3];unsigned i;int rc;
     if(!s || !xyz || !s->data || !s->frames)return -1;
@@ -213,10 +214,15 @@ int t3_motion_sample_root(const t3_motion_stream_t* s,unsigned frame,
     for(i=0;i<3u;++i)xyz[i]=tmp[i];
     return 1;
 }
+T3_SIM_WRAP(int,t3_motion_sample_root,T3_SIM_MOTION,
+    (const t3_motion_stream_t* s,unsigned frame,
+                          const t3_motion_tables_t* tables,int16_t xyz[3]),
+    (s,frame,tables,xyz))
+
 void t3_motion_sample_cache_reset(t3_motion_sample_cache_t* cache) {
     if(cache)__builtin_memset(cache,0,sizeof(*cache));
 }
-int t3_motion_sample_cached(t3_motion_sample_cache_t* cache,
+int T3_SIM_IMPL(t3_motion_sample_cached)(t3_motion_sample_cache_t* cache,
     const t3_motion_stream_t* s,unsigned frame,const t3_motion_tables_t* tables,
     int16_t pose[T3_PSX_POSE_CHANNELS]) {
     if(!cache)return t3_motion_sample(s,frame,tables,pose);
@@ -236,8 +242,10 @@ int t3_motion_sample_cached(t3_motion_sample_cache_t* cache,
     t3_motion_sample_entry_t* e=&cache->entries[index];
     if(e->valid && e->stream==identity && e->frame==frame && e->frames==s->frames) {
         __builtin_memcpy(pose,e->pose,sizeof(e->pose));
+        t3_sim_count(T3_SIM_CACHE_HIT);
         ++cache->hits;return 1;
     }
+    t3_sim_count(T3_SIM_CACHE_MISS);
     ++cache->misses;
     int result=t3_motion_sample(s,frame,tables,pose);
     if(result!=1)return result;
@@ -245,3 +253,8 @@ int t3_motion_sample_cached(t3_motion_sample_cache_t* cache,
     e->stream=identity;e->frame=(uint16_t)frame;e->frames=s->frames;e->valid=1;
     return 1;
 }
+T3_SIM_WRAP(int,t3_motion_sample_cached,T3_SIM_MOTION,
+    (t3_motion_sample_cache_t* cache,
+    const t3_motion_stream_t* s,unsigned frame,const t3_motion_tables_t* tables,
+    int16_t pose[T3_PSX_POSE_CHANNELS]),
+    (cache,s,frame,tables,pose))

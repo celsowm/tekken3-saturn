@@ -1,3 +1,4 @@
+#include "sim_profile.h"
 #include "input_history.h"
 #include <stddef.h>
 
@@ -123,6 +124,7 @@ int t3_sequence_matches(const t3_input_history_t* h,
 
 int t3_command_matches_table(uint16_t command, const t3_input_history_t* h,
                              const t3_command_sequence_t* table, size_t count) {
+    t3_sim_count(T3_SIM_COMMAND);
     size_t i;
     if (command < 0xC00Eu) return t3_command_matches(command,h);
     if (!((command >= 0xC00Eu && command <= 0xC04Cu) ||

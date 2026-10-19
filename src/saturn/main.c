@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "fight.h"
+#include "sim_profile.h"
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
 #include "input_tape.h"
 #endif
@@ -387,6 +388,7 @@ int main(void) {
         .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
     t3_perf_init();
+    t3_sim_init();
     g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
@@ -466,11 +468,15 @@ int main(void) {
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
             t3_input_tape_step(g_game.total_ticks,&p1,&p2);
 #endif
+            t3_sim_tick_begin(now,g_game.total_ticks);
             if(t3_move_probe_owned()) {
                 SAT_PANIC_IF_ERROR(t3_move_probe_owned_step(p1,p2,&g_game));
             } else t3_match_step(&g_game,p1,p2);
+            T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
             t3_move_probe_tick(&g_game);
+            T3_SIM_END(bridge_started);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
+            t3_sim_tick_end();
         }
         T3_PERF_ADD(simulation,simulation_started);
 #if defined(T3_PERF_SAMPLES)

@@ -4,7 +4,14 @@ Updated 2026-10-19. This is the next execution sequence after port `5204aec`
 and LibSaturn `0bf5556`. It supersedes the older optimization order in
 [SATURN_PERFORMANCE_PLAN.md](SATURN_PERFORMANCE_PLAN.md). Measurements and
 rejected experiments remain in [PAUL_RUNTIME_EXPERIMENTS.md](PAUL_RUNTIME_EXPERIMENTS.md).
-This document plans work; none of its new gates is claimed complete.
+Later implementation gates remain planned; current qualifications are listed below.
+
+Execution update: the baseline continuous comparison and first bounded
+simulation report now pass; see [SIMULATION_PROFILING.md](SIMULATION_PROFILING.md).
+The diagnostic build also passes all 24 live combat cases and a Mednafen boot.
+This completes the first measurement increment, not the later optimization,
+scheduling or pacing gates. Historical instructions below describe the entry
+requirements; do not rerun passed captures without a relevant source change.
 
 ## Baseline and budget
 
@@ -198,7 +205,12 @@ missing-palette failure explicit; do not weaken gates to turn it green.
 
 ## Immediate next action
 
-Complete baseline correctness qualification, then add the bounded simulation
-substage report in step 1. Its result determines whether immutable branch
-compilation or pose kernels deserve the next implementation. Slave scheduling
-and pacing are separate changes after their dependencies and costs are known.
+Baseline qualification and the first bounded simulation report are complete.
+The next controlled experiment measures a bounded immutable branch-data
+representation against the current walker: neutral repeats 280 decoded rows
+and roughly 144 command queries per tick. Preserve every dynamic condition and
+traversal rule, budget image/RAM cost first, and judge the result in release
+builds. The diagnostic branch interval includes hooks and command eligibility;
+it is not a promised decoding saving. If its measured ceiling is insufficient,
+move to generic exact matrix kernels. Slave scheduling and pacing remain
+separate changes after their dependencies and costs are known.

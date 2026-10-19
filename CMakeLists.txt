@@ -110,10 +110,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         )
     endif()
     add_executable(tekken3_saturn src/saturn/main.c
-        src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c src/saturn/perf.c
+        src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c src/saturn/perf.c src/saturn/sim_profile.c
         "${_t3_gen}/t3_generated_character.c")
     option(T3_PARALLEL_GEOMETRY "Prepare the second actor using the existing Slave executor" OFF)
     option(T3_PERF_SAMPLES "Retain a bounded ring of stage timings (diagnostic overhead)" OFF)
+    option(T3_SIM_PROFILE "Record nested per-tick simulation FRT costs (diagnostic overhead)" OFF)
+    if(T3_SIM_PROFILE)
+        target_compile_definitions(tekken3_fight PRIVATE T3_SIM_PROFILE=1)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_SIM_PROFILE=1)
+    endif()
     option(T3_CLOSE_CAMERA "Frame fighters at a readable distance with separation-based zoom" ON)
     if(T3_CLOSE_CAMERA)
         target_compile_definitions(tekken3_saturn PRIVATE T3_CLOSE_CAMERA=1)
@@ -581,6 +586,8 @@ else()
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME simulation_profile_accounting
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_simulation_profile.py")
         add_test(NAME ps1_round_flow_snapshot_audit
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_psx_round_flow.py"
                 --runner "$<TARGET_FILE:t3_round_flow_eval>")

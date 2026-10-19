@@ -6,6 +6,7 @@
  * Changes: portable typed state, bounded tables, explicit wrap, atomic writes.
  * Unsupported launch/throw/mode-specific behavior is not approximated.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
+#include "sim_profile.h"
 #include "psx_ground.h"
 #include <saturn/int_math.h>
 
@@ -173,7 +174,7 @@ static int load_push(t3_psx_ground_state_t* n,const t3_psx_ground_tables_t* t,in
     n->push_cursor=(uint16_t)(offset+4u);n->push_table_frames=8;
     return 1;
 }
-int t3_psx_ground_start(t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
+int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
                         const t3_move_vm_t* vm,const t3_move_record_t* previous,
                         const t3_psx_ground_tables_t* t,uint8_t flags,uint8_t end_turn,
                         t3_move_start_facts_t facts,const t3_psx_reaction_pick_t* reaction,uint8_t segments) {
@@ -263,7 +264,14 @@ int t3_psx_ground_start(t3_psx_ground_state_t* state,const t3_psx_ground_state_t
     if(code!=17u)n.throw_state=0;
     *state=n;return 1;
 }
-int t3_psx_ground_step(t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
+T3_SIM_WRAP(int,t3_psx_ground_start,T3_SIM_GROUND,
+    (t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
+                        const t3_move_vm_t* vm,const t3_move_record_t* previous,
+                        const t3_psx_ground_tables_t* t,uint8_t flags,uint8_t end_turn,
+                        t3_move_start_facts_t facts,const t3_psx_reaction_pick_t* reaction,uint8_t segments),
+    (state,opp,vm,previous,t,flags,end_turn,facts,reaction,segments))
+
+int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
                        const t3_move_vm_t* vm,const t3_move_vm_t* opponent_vm,
                        const t3_psx_ground_tables_t* t,uint8_t direction,uint8_t pressed) {
     t3_psx_ground_state_t n;
@@ -338,3 +346,8 @@ int t3_psx_ground_step(t3_psx_ground_state_t* state,const t3_psx_ground_state_t*
     if(!n.push_repeat_timer)n.push_repeat=0;
     *state=n;return 1;
 }
+T3_SIM_WRAP(int,t3_psx_ground_step,T3_SIM_GROUND,
+    (t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
+                       const t3_move_vm_t* vm,const t3_move_vm_t* opponent_vm,
+                       const t3_psx_ground_tables_t* t,uint8_t direction,uint8_t pressed),
+    (state,opp,vm,opponent_vm,t,direction,pressed))

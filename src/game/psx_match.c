@@ -5,6 +5,7 @@
  * and RootReanchor. Changes: caller-owned portable state/tables and atomic
  * failure; no prototype physics/health policy is called or copied.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
+#include "sim_profile.h"
 #include "psx_match.h"
 #include "attack_records.h"
 #include "psx_contact.h"
@@ -59,7 +60,7 @@ static int root_pose(const t3_psx_match_t* match,t3_psx_fighter_t* fighter,unsig
                                  vm->root_move.animation_offset,&stream)==1 &&
            t3_motion_sample_root(stream,frame,&match->config->spline,root)==1;
 }
-static int place(t3_psx_match_t* match,t3_psx_fighter_t* f) {
+static int T3_SIM_IMPL(place)(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     int16_t xyz[3],pose[T3_PSX_POSE_CHANNELS]={0};
     t3_psx_joint_t result;
     const t3_psx_match_config_t* c=match->config;
@@ -119,7 +120,11 @@ static int place(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     f->ground.root=result.origin;
     return 1;
 }
-static int compose(t3_psx_match_t* match,unsigned index) {
+T3_SIM_WRAP_ACTOR(static int,place,T3_SIM_ROOT,
+    (t3_psx_match_t* match,t3_psx_fighter_t* f),
+    (match,f),(unsigned)(f-match->fighter))
+
+static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     t3_psx_fighter_t* f=&match->fighter[index];
     const t3_psx_match_config_t* c=match->config;
     const t3_psx_part_t* parts=c->parts[index];
@@ -154,6 +159,10 @@ static int compose(t3_psx_match_t* match,unsigned index) {
     return t3_psx_body_shapes(&f->body,f->world,f->parts_mask,c->body_tables+384,
                  &f->vm.move,f->vm.clock.pose_frame,f->ground.in_air,f->ground.was_hit_this_move);
 }
+T3_SIM_WRAP_ACTOR(static int,compose,T3_SIM_COMPOSE,
+    (t3_psx_match_t* match,unsigned index),
+    (match,index),index)
+
 static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     t3_attack_sample_t sample;t3_world_attack_t result;
     const t3_move_vm_t* vm=&f->vm;
@@ -181,7 +190,7 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     }
     return 1;
 }
-static int contacts(t3_psx_match_t* match) {
+static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[2][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<2;++i)if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                               match->fighter[i].parts_mask,0,hurt[i]))return 0;
@@ -213,7 +222,11 @@ static int contacts(t3_psx_match_t* match) {
     }
     return 1;
 }
-static int bodies(t3_psx_match_t* match) {
+T3_SIM_WRAP(static int,contacts,T3_SIM_CONTACT,
+    (t3_psx_match_t* match),
+    (match))
+
+static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
     const t3_psx_match_config_t* c=match->config;
     t3_psx_body_tables_t tables={c->ground_tables,c->body_tables,384u};
     t3_psx_body_actor_t pair[2];
@@ -250,6 +263,10 @@ static int bodies(t3_psx_match_t* match) {
     }
     return 1;
 }
+T3_SIM_WRAP(static int,bodies,T3_SIM_BODIES,
+    (t3_psx_match_t* match),
+    (match))
+
 static int reset_fighters(t3_psx_match_t* n) {
     const t3_psx_match_config_t* config=n->config;
     for(unsigned i=0;i<2;++i)n->fighter[i]=(t3_psx_fighter_t){0};
@@ -437,7 +454,9 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1) {
     if(!match || !match->config || match->config->enable_rounds==2)return 0;
     t3_psx_match_t n=*match;
     if(!advance_core(&n,p0,p1,0))return 0;
-    *match=n;return 1;
+    T3_SIM_START(copy_out,T3_SIM_COPY);
+    *match=n;
+    T3_SIM_END(copy_out);return 1;
 }
 /* Normal VS's later-round FighterPlace. Records persist across rounds; a
  * fighter inactive at placement keeps its pending stance until MoveStartAll. */
@@ -527,20 +546,27 @@ static int replay_render(t3_psx_match_t* n) {
     }
     return 1;
 }
-int t3_psx_match_step_original(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1,
+int T3_SIM_IMPL(t3_psx_match_step_original)(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1,
                                const t3_psx_match_frame_t* frame) {
     t3_psx_match_t n;
     t3_psx_round_flow_facts_t facts={0};
     t3_psx_round_flow_actions_t actions;
     t3_psx_replay_frame_t record[2]={{0}};
     if(!match || !match->config || match->config->enable_rounds!=2 || !frame)return 0;
+    T3_SIM_START(copy_in,T3_SIM_COPY);
     n=*match;
+    T3_SIM_END(copy_in);
+    t3_sim_context((uint32_t)n.flow.state,(uint32_t)n.replay.mode,
+        (uint32_t)n.fighter[0].body.active|((uint32_t)n.fighter[1].body.active<<1));
     if(n.config->replay_storage && n.config->replay_storage->epoch!=n.replay.epoch)return 0;
     if(n.flow.state==T3_ROUND_END && n.flow.match_result) {
         /* Port result screen: preserve the terminal fight while its input
          * event clock continues. Original FightMain has left FightFrame. */
         if(n.ticks==UINT32_MAX)return 0;
-        ++n.ticks;*match=n;return 1;
+        ++n.ticks;
+        T3_SIM_START(copy_out,T3_SIM_COPY);
+        *match=n;
+        T3_SIM_END(copy_out);return 1;
     }
     if(n.flow.state==T3_ROUND_END && !next_original_round(&n))return 0;
     if(n.flow.replay_request) {
@@ -613,7 +639,10 @@ int t3_psx_match_step_original(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1
         for(unsigned i=0;i<2;++i)if((n.flow.human_mask&(1u<<i)) && (frame->pressed[i]&0x800u))
             n.replay.skip=n.replay_skip=1;
         if(n.ticks==UINT32_MAX || !replay_render(&n))return 0;
-        ++n.ticks;*match=n;return 1;
+        ++n.ticks;
+        T3_SIM_START(copy_out,T3_SIM_COPY);
+        *match=n;
+        T3_SIM_END(copy_out);return 1;
     }
     /* Original camera setup advances winner phase 3/4 to phase 5 during the
      * following live frame; exact view/projection is a separate owner. */
@@ -636,5 +665,11 @@ int t3_psx_match_step_original(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1
             slot->actor[0]=record[0];slot->actor[1]=record[1];slot->epoch=n.replay.epoch;
         }
     }
-    *match=n;return 1;
+    T3_SIM_START(copy_out,T3_SIM_COPY);
+    *match=n;
+    T3_SIM_END(copy_out);return 1;
 }
+T3_SIM_WRAP(int,t3_psx_match_step_original,T3_SIM_MATCH,
+    (t3_psx_match_t* match,t3_input_t p0,t3_input_t p1,
+                               const t3_psx_match_frame_t* frame),
+    (match,p0,p1,frame))

@@ -8,6 +8,7 @@
  * Look-ahead input branches use the supplied branch facts; original end-turn
  * orientation refresh, input-buffer mutation and throw/launch remain pending.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
+#include "sim_profile.h"
 #include "move_vm.h"
 #include "psx_motion.h"
 
@@ -50,7 +51,7 @@ static int same_animation(const t3_move_vm_t* vm) {
     return a==b && vm->active_bank==vm->pending_bank &&
            vm->move.animation_offset==vm->pending_move.animation_offset;
 }
-int t3_move_vm_begin(t3_move_vm_t* vm,t3_move_start_facts_t facts) {
+int T3_SIM_IMPL(t3_move_vm_begin)(t3_move_vm_t* vm,t3_move_start_facts_t facts) {
     t3_move_vm_t next;
     int ready=0,bind,same;
     if(!vm || !vm->phased || facts.got_hit>1u || facts.alive>1u)return -1;
@@ -84,6 +85,10 @@ int t3_move_vm_begin(t3_move_vm_t* vm,t3_move_start_facts_t facts) {
     }
     *vm=next;return ready;
 }
+T3_SIM_WRAP(int,t3_move_vm_begin,T3_SIM_MOVE_BEGIN,
+    (t3_move_vm_t* vm,t3_move_start_facts_t facts),
+    (vm,facts))
+
 int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
                             const struct t3_branch_context* facts,
                             const t3_command_sequence_t* sequences,size_t sequence_count) {

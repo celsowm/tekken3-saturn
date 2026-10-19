@@ -1,3 +1,4 @@
+#include "sim_profile.h"
 #include "psx_pose.h"
 #include <saturn/int_math.h>
 #include <stdint.h>
@@ -54,7 +55,7 @@ int t3_psx_euler_matrix(int16_t x,int16_t y,int16_t z,
     out->m[2][2]=c3;
     return 1;
 }
-int t3_psx_pose_fk(const int16_t pose[T3_PSX_POSE_CHANNELS],
+int T3_SIM_IMPL(t3_psx_pose_fk)(const int16_t pose[T3_PSX_POSE_CHANNELS],
                    const t3_psx_trig_t* table,
                    t3_psx_matrix_t out[T3_PSX_ROTATION_SLOTS],
                    uint32_t* valid_slots) {
@@ -71,6 +72,13 @@ int t3_psx_pose_fk(const int16_t pose[T3_PSX_POSE_CHANNELS],
     *valid_slots=mask;
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_pose_fk,T3_SIM_FK,
+    (const int16_t pose[T3_PSX_POSE_CHANNELS],
+                   const t3_psx_trig_t* table,
+                   t3_psx_matrix_t out[T3_PSX_ROTATION_SLOTS],
+                   uint32_t* valid_slots),
+    (pose,table,out,valid_slots))
+
 int t3_psx_mul_rot(const t3_psx_matrix_t* a,const t3_psx_matrix_t* b,
                    t3_psx_matrix_t* out) {
     t3_psx_matrix_t r={0};
@@ -108,7 +116,7 @@ static int place(const t3_psx_joint_t* parent,const t3_vec3i_t* delta,
     out->z=(int32_t)coords[2];
     return 1;
 }
-int t3_psx_compose_parts(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
+int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          const t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],
                          uint32_t valid_slots,const t3_psx_joint_t* root,
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
@@ -140,6 +148,14 @@ int t3_psx_compose_parts(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
     *valid_parts=mask;
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_compose_parts,T3_SIM_PARTS,
+    (const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
+                         const t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],
+                         uint32_t valid_slots,const t3_psx_joint_t* root,
+                         t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
+                         uint32_t* valid_parts),
+    (parts,slots,valid_slots,root,out,valid_parts))
+
 int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          const t3_psx_joint_t in[T3_PSX_DRAW_PARTS],uint32_t valid_parts,
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],uint32_t* valid_slots) {

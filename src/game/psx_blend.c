@@ -5,6 +5,7 @@
  * blend, RootUpdate and pose composition. Changes: explicit caller state and
  * sampling callback and explicit global hold; replay playback remains separate.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
+#include "sim_profile.h"
 #include "psx_blend.h"
 #include <saturn/int_math.h>
 static int16_t wrap16(int32_t v) {
@@ -17,7 +18,7 @@ static int entry_dst(unsigned code) {
     switch(code){case 2:case 0x12:case 0x13:case 0x14:case 0x15:case 0x16:
     case 0x19:case 0x1A:case 0x1D:case 0x2C:return 1;default:return 0;}
 }
-int t3_psx_blend_prepare(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
+int T3_SIM_IMPL(t3_psx_blend_prepare)(t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
                          t3_psx_blend_sample_t sample,void* user) {
     int n=0,forward=1,left;
     if(!s || !f || !sample || s->mode>3 || s->frames<0 || s->frames>32767)return 0;
@@ -105,6 +106,11 @@ finish:
     s->last_row=f->row;s->last_frame=f->pose_frame;s->previous_root[1]=f->decoded_root_dy;
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_blend_prepare,T3_SIM_BLEND,
+    (t3_psx_blend_t* s,const t3_psx_blend_facts_t* f,
+                         t3_psx_blend_sample_t sample,void* user),
+    (s,f,sample,user))
+
 int16_t t3_psx_blend_root_y(t3_psx_blend_t* s,int16_t y) {
     if(!s->mode || !s->frames)s->weight=4096;
     else {
@@ -115,7 +121,7 @@ int16_t t3_psx_blend_root_y(t3_psx_blend_t* s,int16_t y) {
     }
     s->previous_root[1]=y;return y;
 }
-int t3_psx_blend_locals(t3_psx_blend_t* s,const t3_psx_rsqrt_t* table,t3_psx_matrix_t slots[18]) {
+int T3_SIM_IMPL(t3_psx_blend_locals)(t3_psx_blend_t* s,const t3_psx_rsqrt_t* table,t3_psx_matrix_t slots[18]) {
     if(!s || !slots || s->mode>3)return 0;
     for(unsigned i=1;i<18;++i) {
         if(s->mode && (!t3_psx_matrix_add_scaled(&s->delta[i-1],&slots[i],s->weight,&slots[i]) ||
@@ -124,3 +130,6 @@ int t3_psx_blend_locals(t3_psx_blend_t* s,const t3_psx_rsqrt_t* table,t3_psx_mat
     }
     return 1;
 }
+T3_SIM_WRAP(int,t3_psx_blend_locals,T3_SIM_BLEND,
+    (t3_psx_blend_t* s,const t3_psx_rsqrt_t* table,t3_psx_matrix_t slots[18]),
+    (s,table,slots))

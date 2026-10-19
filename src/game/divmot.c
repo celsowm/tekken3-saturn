@@ -1,3 +1,4 @@
+#include "sim_profile.h"
 #include "divmot.h"
 #include "branch_rules.h"
 #include <stddef.h>
@@ -84,6 +85,7 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
 }
 
 static void decode_branch(const uint8_t* p, t3_branch_record_t* out) {
+    t3_sim_count(T3_SIM_BRANCH_DECODE);
     out->command = le16(p);
     out->restriction = p[2];
     out->condition = p[3];
@@ -129,7 +131,7 @@ int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
     return t3_divmot_slot_resolve(bank,common,slot,out,NULL);
 }
 
-static int branch_find(const t3_divmot_t* bank, t3_move_record_t current,
+static int T3_SIM_IMPL(branch_find)(const t3_divmot_t* bank, t3_move_record_t current,
                              const t3_input_history_t* input, unsigned frame,
                              uint8_t own_bank, const t3_branch_context_t* facts,
                              const t3_command_sequence_t* sequences,
@@ -186,6 +188,15 @@ static int branch_find(const t3_divmot_t* bank, t3_move_record_t current,
     }
     return 0;
 }
+T3_SIM_WRAP(static int,branch_find,T3_SIM_BRANCH,
+    (const t3_divmot_t* bank, t3_move_record_t current,
+                             const t3_input_history_t* input, unsigned frame,
+                             uint8_t own_bank, const t3_branch_context_t* facts,
+                             const t3_command_sequence_t* sequences,
+                             size_t sequence_count,
+                             t3_branch_record_t* picked,int return_end),
+    (bank,current,input,frame,own_bank,facts,sequences,sequence_count,picked,return_end))
+
 
 int t3_divmot_branch_pick_ex(const t3_divmot_t* bank,t3_move_record_t current,
                              const t3_input_history_t* input,unsigned frame,

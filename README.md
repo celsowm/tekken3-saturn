@@ -285,7 +285,7 @@ performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `0bf55566a9fa046c8f1e142f7fa536f58574b6de` installed, configure
+With LibSaturn `f11b277bed2ddda963fa3dba0da08656baf08322` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
@@ -316,6 +316,9 @@ results and limits. The [subsequent runtime experiments](docs/PAUL_RUNTIME_EXPER
 retain a 20% skin-stage reduction and the accumulated renderer update reduces
 frozen two-actor work from 64 to 49 ms. Full-game cadence improves from 8.18 to
 9.76 submissions/s and from 32.73 to 39.03 logic ticks/s in the neutral interval.
+The [nested simulation profiler](docs/SIMULATION_PROFILING.md) now separates
+pose, movement, contact and branch costs by tick, with reusable capture scripts
+and explicit instrumentation limits.
 
 ## FK/IK differential oracle
 

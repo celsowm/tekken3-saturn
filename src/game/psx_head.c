@@ -5,6 +5,7 @@
  * remake/core/fighter/fighter_animation.gd. Changes: caller-owned state,
  * bounded normal Paul camera path, explicit arithmetic and atomic outputs.
  * Gon eye tracking and non-fight camera modes are outside this path. */
+#include "sim_profile.h"
 #include "psx_head.h"
 #include <saturn/int_math.h>
 static int16_t s16(int32_t x) {
@@ -41,7 +42,7 @@ static int head_angles(const t3_psx_body_tables_t* t,const t3_psx_matrix_t* m,in
     out[0]=s16(a26-16384);out[1]=s16(a24);out[2]=s16(a28);out[3]=0;
     return 1;
 }
-int t3_psx_head_look(t3_psx_head_t* state,const t3_psx_body_tables_t* t,
+int T3_SIM_IMPL(t3_psx_head_look)(t3_psx_head_t* state,const t3_psx_body_tables_t* t,
                      const t3_psx_joint_t own[T3_PSX_DRAW_PARTS],
                      const t3_psx_joint_t opponent[T3_PSX_DRAW_PARTS],
                      const t3_move_record_t* move,int frame,uint8_t disabled,
@@ -102,3 +103,10 @@ int t3_psx_head_look(t3_psx_head_t* state,const t3_psx_body_tables_t* t,
        !t3_psx_mul_rot(&base,&rot,&result))return 0;
     *state=n;*head_local=result;return 1;
 }
+T3_SIM_WRAP(int,t3_psx_head_look,T3_SIM_HEAD,
+    (t3_psx_head_t* state,const t3_psx_body_tables_t* t,
+                     const t3_psx_joint_t own[T3_PSX_DRAW_PARTS],
+                     const t3_psx_joint_t opponent[T3_PSX_DRAW_PARTS],
+                     const t3_move_record_t* move,int frame,uint8_t disabled,
+                     t3_psx_matrix_t* head_local),
+    (state,t,own,opponent,move,frame,disabled,head_local))
