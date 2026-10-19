@@ -130,6 +130,7 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     const t3_psx_part_t* parts=c->parts[index];
     const t3_motion_stream_t* stream;
     t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],complete[T3_PSX_ROTATION_SLOTS];
+    int16_t root_xx;
     t3_psx_joint_t root;
     uint32_t fk=0,mask=0;
     if(t3_motion_open_cached(&f->pose_cache,f->vm.active_bank,f->vm.common,
@@ -138,9 +139,15 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     /* FK/IK consumes the pose stream's own root channels. World placement
      * separately uses root_move, which can differ during transition4/5. */
     f->pose_frames=stream->frames;
-    if(!t3_psx_pose_fk(f->pose,&c->ground_tables.trig,slots,&fk) ||
-       t3_psx_pose_ik(f->pose,&c->ik,slots,fk,complete,&mask)!=1 ||
-       !t3_psx_pose_world_root(f->pose,c->scale_percent,f->ground.anchor,f->ground.facing,
+    if(c->local_pose_cache) {
+        if(!t3_psx_local_pose(f->pose,&c->ground_tables.trig,&c->ik,
+               c->local_pose_cache,complete,&fk,&mask,&root_xx))return 0;
+    } else {
+        if(!t3_psx_pose_fk(f->pose,&c->ground_tables.trig,slots,&fk) ||
+           t3_psx_pose_ik(f->pose,&c->ik,slots,fk,complete,&mask)!=1)return 0;
+        root_xx=slots[0].m[0][0];
+    }
+    if(!t3_psx_pose_world_root(f->pose,c->scale_percent,f->ground.anchor,f->ground.facing,
                                f->ground.heading,&c->ground_tables.trig,&root))return 0;
     root.origin=f->ground.root;
     if(c->rsqrt.data && !t3_psx_blend_locals(&f->blend,&c->rsqrt,complete))return 0;
@@ -154,7 +161,7 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
        (f->parts_mask&0x3FFFFu)!=0x3FFFFu ||
        !t3_psx_parts_to_slots(parts,f->world,f->parts_mask,f->world,&f->parts_mask) ||
        (f->parts_mask&0x3FFFFu)!=0x3FFFFu)return 0;
-    f->fk_mask=fk;f->ik_mask=mask&~fk;f->fk_root_xx=slots[0].m[0][0];
+    f->fk_mask=fk;f->ik_mask=mask&~fk;f->fk_root_xx=root_xx;
     if(replay_playing(match))return 1;
     return t3_psx_body_shapes(&f->body,f->world,f->parts_mask,c->body_tables+384,
                  &f->vm.move,f->vm.clock.pose_frame,f->ground.in_air,f->ground.was_hit_this_move);

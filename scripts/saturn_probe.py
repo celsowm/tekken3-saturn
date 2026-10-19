@@ -72,7 +72,7 @@ def decode(raw):
         raise ValueError('truncated diagnostics')
     values = list(struct.unpack_from('>' + 'I' * WORDS, raw))
     result = dict(zip(PREFIX, values[:len(PREFIX)]))
-    if result['magic'] != 0x54334431 or result['version'] not in range(12,22):
+    if result['magic'] != 0x54334431 or result['version'] not in range(12,23):
         raise ValueError('unsupported diagnostics magic/version')
     at = len(PREFIX)
     for name in PAIRS:
@@ -97,6 +97,7 @@ def decode(raw):
     extended+=COMBAT_FIELDS if result['version']>=19 else []
     extended+=ROUND_FIELDS if result['version']>=20 else []
     extended+=SCHEDULE_FIELDS if result['version']>=21 else []
+    extended+=[('local_pose_cache','I',4)] if result['version']>=22 else []
     for name, kind, count in extended:
         alignment = struct.calcsize('>' + kind)
         at = (at + alignment - 1) // alignment * alignment

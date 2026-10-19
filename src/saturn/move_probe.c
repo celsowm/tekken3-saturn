@@ -31,6 +31,11 @@ static t3_psx_match_t g_owned_match __attribute__((section(".wram_l")));
 static t3_psx_match_config_t g_owned_config __attribute__((section(".wram_l")));
 /* Shared immutable motion samples; no live matrices or actor state. */
 static t3_motion_sample_cache_t g_sample_cache __attribute__((section(".wram_l")));
+#if T3_LOCAL_POSE_CACHE_ENTRIES > 0
+static t3_psx_local_pose_cache_t g_local_pose_cache __attribute__((section(".wram_l")));
+static t3_psx_local_pose_entry_t g_local_pose_entries[T3_LOCAL_POSE_CACHE_ENTRIES]
+    __attribute__((section(".wram_l")));
+#endif
 #if defined(T3_ENABLE_PSX_COMBAT)
 static t3_psx_replay_storage_t g_replay_history __attribute__((section(".wram_l")));
 #endif
@@ -121,6 +126,10 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
     g_owned_config.sample_cache=&g_sample_cache;
+#if T3_LOCAL_POSE_CACHE_ENTRIES > 0
+    t3_psx_local_pose_cache_init(&g_local_pose_cache,g_local_pose_entries,T3_LOCAL_POSE_CACHE_ENTRIES);
+    g_owned_config.local_pose_cache=&g_local_pose_cache;
+#endif
     g_owned_config.ground_tables=(t3_psx_ground_tables_t){
         {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ground_blob,1025u,
         t3_local_ground_blob+1025u,T3_LOCAL_GROUND_BYTES-1025u};
@@ -798,4 +807,12 @@ int32_t t3_move_probe_round_value(unsigned field) {
     (void)field;
 #endif
     return 0;
+}
+void t3_move_probe_pose_cache_stats(uint32_t out[4]) {
+#if defined(T3_ENABLE_PSX_OWNED_MATCH) && T3_LOCAL_POSE_CACHE_ENTRIES > 0
+    out[0]=g_local_pose_cache.capacity;out[1]=g_local_pose_cache.hits;
+    out[2]=g_local_pose_cache.misses;out[3]=g_local_pose_cache.evictions;
+#else
+    for(unsigned i=0;i<4;++i)out[i]=0;
+#endif
 }

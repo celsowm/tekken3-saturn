@@ -49,6 +49,20 @@ class RunReportTests(unittest.TestCase):
         self.assertAlmostEqual(result['scheduling']['discarded_percent'],100/3)
         self.assertAlmostEqual(result['scheduling']['discarded_seconds'],400/60)
 
+    def test_pose_reuse_interval_and_fight_reset(self):
+        a=self.probe('a',600,100,400);b=self.probe('b',1800,300,1200)
+        def update(path,values):
+            f=path/'observation.json';data=json.loads(f.read_text())
+            data['state']['local_pose_cache']=values;f.write_text(json.dumps(data))
+        update(a,[128,500,100,0]);update(b,[128,2100,100,0])
+        result=cadence(a,b,60)
+        self.assertEqual(result['local_pose_cache']['hit_percent'],100)
+        self.assertEqual(result['local_pose_cache']['hits'],1600)
+        update(b,[128,20,10,0])
+        result=cadence(a,b,60)
+        self.assertEqual(result['logic_ticks_per_second'],40)
+        self.assertFalse(result['local_pose_cache']['interval_available'])
+
     def test_native_panic_overrides_stale_success(self):
         path = self.probe('panic', 100, 12, 48)
         (path / 'native-panic.bin').write_bytes(struct.pack('>Iii32s', 0x50414E43, -7, 193, b'main.c'))

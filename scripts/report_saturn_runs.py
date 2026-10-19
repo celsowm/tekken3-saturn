@@ -23,7 +23,7 @@ def probe_summary(data, directory):
               'first_error', 'draw_timeouts', 'commands_used', 'commands_capacity')
     result = {key: state[key] for key in fields}
     result.update({key:state[key] for key in (
-        'observed_fields','discarded_fields','scheduled_ticks') if key in state})
+        'observed_fields','discarded_fields','scheduled_ticks','local_pose_cache') if key in state})
     panic_file = directory / 'native-panic.bin'
     panic = decode_panic(panic_file.read_bytes()) if panic_file.exists() else None
     result['native_panic'] = panic
@@ -76,7 +76,17 @@ def cadence(start, end, hz):
             raise ValueError('scheduling counters must advance without resets/wrap')
         scheduling['discarded_percent']=100*scheduling['discarded_fields']/scheduling['observed_fields']
         scheduling['discarded_seconds']=scheduling['discarded_fields']/hz
-    return dict(refresh_hz=hz, interval=delta, scheduling=scheduling,
+    pose_cache=None
+    if 'local_pose_cache' in a and 'local_pose_cache' in b:
+        ca,cb=a['local_pose_cache'],b['local_pose_cache']
+        if len(ca)!=4 or len(cb)!=4:raise ValueError('invalid local pose counters')
+        if ca[0]!=cb[0] or any(y<x for x,y in zip(ca[1:],cb[1:])):
+            pose_cache=dict(interval_available=False,reason='pose cache reset/wrap; gameplay clock can still advance')
+        else:
+            hits,misses,evictions=(y-x for x,y in zip(ca[1:],cb[1:]))
+            pose_cache=dict(capacity=cb[0],hits=hits,misses=misses,evictions=evictions,
+                hit_percent=100*hits/(hits+misses) if hits+misses else None)
+    return dict(refresh_hz=hz, interval=delta, scheduling=scheduling, local_pose_cache=pose_cache,
                 submissions_per_second=delta['submitted_frames'] * hz / delta['vblanks'],
                 logic_ticks_per_second=delta['sim_ticks'] * hz / delta['vblanks'],
                 scope='Uninstrumented endpoints are required for gameplay cadence; submitted frames are not verified display swaps.')

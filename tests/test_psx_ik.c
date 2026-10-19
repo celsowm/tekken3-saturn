@@ -1,4 +1,5 @@
 #include "psx_ik.h"
+#include "psx_local_pose.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -119,9 +120,57 @@ static void failure_contract(void) {
     assert(t3_psx_pose_ik(pose,&table,slots,0u,slots,&mask)==-1);
     assert(mask==12345u);
 }
+static void local_pose_cache(void) {
+    t3_psx_ik_tables_t table={{sine,sizeof(sine)},ik,sizeof(ik)};
+    t3_psx_local_pose_entry_t entries[2];t3_psx_local_pose_cache_t cache;
+    t3_psx_matrix_t expected[T3_PSX_ROTATION_SLOTS],actual[T3_PSX_ROTATION_SLOTS];
+    int16_t pose[T3_PSX_POSE_CHANNELS]={0},root;
+    uint32_t expected_mask,mask,fk;
+    fixtures();pose[3]=600;pose[6]=600;pose[9]=960;pose[12]=960;
+    t3_psx_local_pose_cache_init(&cache,entries,2);
+    assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.misses==1 && !cache.hits && mask==expected_mask);
+    assert(fk==0x24CCFu && root==4096 && !memcmp(expected,actual,sizeof(actual)));
+    /* Mutating the returned buffer cannot corrupt the retained local pose. */
+    memset(actual,0,sizeof(actual));
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.hits==1 && !memcmp(expected,actual,sizeof(actual)));
+    pose[3]=0; /* Singular limb: incomplete masks are retained exactly. */
+    assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.misses==2 && mask==expected_mask && !memcmp(expected,actual,sizeof(actual)));
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.hits==2 && mask==expected_mask);
+    pose[3]=300;
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.evictions==1);
+    /* A matching fingerprint alone must never return another pose's data. */
+    entries[1].fingerprint=entries[0].fingerprint;entries[0].valid=0;
+    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(cache.misses==4 && cache.hits==2);
+    /* Changing table bounds invalidates a previous hit and fails atomically. */
+    memcpy(expected,actual,sizeof(expected));table.ik_size=0;fk=123;mask=456;root=789;
+    assert(!t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+    assert(fk==123 && mask==456 && root==789 && !memcmp(expected,actual,sizeof(actual)));
+    table.ik_size=sizeof(ik);
+    t3_psx_local_pose_cache_init(&cache,entries,2); /* Same-address table reload. */
+    assert(!cache.hits && !cache.misses && !entries[0].valid && !entries[1].valid);
+    assert(t3_psx_local_pose(pose,&table.trig,&table,NULL,actual,&fk,&mask,&root));
+    assert(!memcmp(expected,actual,sizeof(actual)));
+    for(unsigned i=0;i<200;++i) {
+        pose[0]=(int16_t)((int)i-100);pose[3]=(int16_t)(300+i);
+        assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
+        for(unsigned repeat=0;repeat<2;++repeat) {
+            assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
+            assert(mask==expected_mask && !memcmp(expected,actual,sizeof(actual)));
+        }
+    }
+}
 int main(void) {
     end_to_end();
     failure_contract();
+    local_pose_cache();
     puts("PS1 four-limb integer IK / 18-slot matrix completion: passed");
     return 0;
 }

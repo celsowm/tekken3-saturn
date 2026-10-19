@@ -282,7 +282,7 @@ Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x1
 The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
 actual application submissions, logic ticks and VDP lifecycle events. The
 earlier wide-camera paired experiment measured 8.43 submissions/s and 33.72 logic
-ticks/s. With the current renderer package, the closer camera measures 9.84
+ticks/s. A subsequent closer-camera renderer qualification measured 9.84
 submissions/s and 39.38 logic ticks/s in its longer neutral interval;
 see the [controlled renderer results](docs/PAUL_RUNTIME_EXPERIMENTS.md#signed-16-bit-world-culling). The 30/60
 performance gate remains open. These
@@ -295,6 +295,15 @@ With LibSaturn `10f995605e80a3903b345d1de029837168475a87` installed, configure
 preparation; this adds diagnostic overhead and must stay off for timing.
 Both modes preserve the original model and global painter order. The generic
 serial path remains available with the first option off.
+
+New private owned-match configurations default to 128 entries of exact local
+FK/IK reuse (56,368 Low-WRAM bytes); public configurations keep it disabled.
+Existing CMake caches retain their choice: set `-DT3_LOCAL_POSE_CACHE_ENTRIES=128`
+to enable or `=0` for the uncached control. The latest neutral interval measures
+44.87 logic ticks/s and 11.22 submissions/s; the instrumented complete-work
+median is 79 ms. Combat/world state remains evaluated per tick. See
+[the local-pose results and limits](docs/LOCAL_POSE_REUSE_PERFORMANCE.md).
+Diagnostics now expose discarded scheduling time and pose-cache statistics.
 
 The default camera now moves with the fighter midpoint and increases its
 distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide

@@ -13,6 +13,7 @@
 #include "psx_move_events.h"
 #include "psx_blend.h"
 #include "psx_head.h"
+#include "psx_local_pose.h"
 
 /* InputSource control, not a physical pad button. The owned core consumes it
  * after physics at the original input phase. All pad bits are ignored on clear. */
@@ -41,6 +42,7 @@ typedef struct {
     uint8_t enable_rounds; /* 0 none, 1 bounded slice, 2 original frame API. */
     t3_psx_replay_storage_t* replay_storage;
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
+    t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */
 } t3_psx_match_config_t;
 typedef struct {
     t3_move_vm_t vm;

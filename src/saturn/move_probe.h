@@ -76,4 +76,6 @@ extern volatile t3_psx_root_t g_t3_shadow_external_roots[2];
 extern volatile uint32_t g_t3_pose_trace_epoch;
 extern volatile uint8_t g_t3_pose_trace[2][T3_PSX_TRACE_BYTES];
 #endif
+/* Capacity/hits/misses/evictions; derived counters reset with the fight. */
+void t3_move_probe_pose_cache_stats(uint32_t out[4]);
 #endif

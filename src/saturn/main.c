@@ -266,6 +266,9 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.observed_fields=g_tick_clock.observed_fields;
     g_t3_diagnostics.discarded_fields=g_tick_clock.discarded_fields;
     g_t3_diagnostics.scheduled_ticks=g_tick_clock.scheduled_ticks;
+    uint32_t pose_cache[4];
+    t3_move_probe_pose_cache_stats(pose_cache);
+    for(unsigned i=0;i<4;++i)g_t3_diagnostics.local_pose_cache[i]=pose_cache[i];
     SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
     SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));

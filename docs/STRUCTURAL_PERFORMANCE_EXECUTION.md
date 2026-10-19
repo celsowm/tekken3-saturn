@@ -81,3 +81,13 @@ version-20 parsing and reject a truncated version-21 extension.
   `assets/imported/budget-accounting-mednafen/`.
 - Remaining sequence: execution evidence is recorded as experiments complete;
   the items above are not implicitly satisfied by this first diagnostic.
+
+The first structural candidate is qualified in
+[bounded local FK/IK reuse](LOCAL_POSE_REUSE_PERFORMANCE.md). Small-cache active
+regressions are explicit; the selected 128-entry cache passes all 16,334
+continuous ticks, all 24 live combat cases, matched-pose pixels and actual
+Mednafen CD boot. Complete measured median work falls 87 to 79 ms; neutral
+release cadence rises 40.100 to 44.867 ticks/s over roughly 60 seconds.
+Vertex influence distribution and repeated-list VDP1 behavior are recorded
+there to constrain the following renderer/harness work. Scheduling, retained
+debt and the final integrated milestone remain open.

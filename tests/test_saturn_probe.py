@@ -106,6 +106,10 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(state['discarded_fields'],400)
         self.assertEqual(state['scheduled_ticks'],800)
         with self.assertRaises(ValueError):probe.decode(raw[:-1])
+        struct.pack_into('>I',raw,4,22)
+        raw+=struct.pack('>4I',8,800,800,792)
+        self.assertEqual(probe.decode(raw)['local_pose_cache'],[8,800,800,792])
+        with self.assertRaises(ValueError):probe.decode(raw[:-1])
 
     def test_reject_truncated_or_wrong_endian_or_unpublished(self):
         raw = self.fixture()

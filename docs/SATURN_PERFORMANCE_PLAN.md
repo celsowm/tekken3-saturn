@@ -1,11 +1,13 @@
 # Harness-led Saturn performance work
 
-Latest increment: [simulation-to-presentation bridge](PRESENTATION_BRIDGE_PERFORMANCE.md).
-Trace writes are now explicit opt-in, and owned visual poses publish once per
-image. Matching cache-on controls improve median measured work from 91 to 87 ms,
-but short release cadence only changes from 9.884 to 10.000 submissions/s.
-The 30-render/60-logic target remains open. Investigate owned-match copies and
-joint composition next, preserving the authoritative per-tick state.
+Latest increment: [bounded local FK/IK reuse](LOCAL_POSE_REUSE_PERFORMANCE.md).
+The selected 128-entry cache retains exact locals before dynamic blend/tracking.
+Matching cache-on controls reduce median measured work from 87 to 79 ms;
+roughly 60-second neutral release cadence improves 40.100 to 44.867 logic ticks/s
+and 10.025 to 11.217 submissions/s. All 16,334 continuous ticks and 24 live cases
+pass. The 30-render/60-logic target remains open. Next: distinguish actual image
+changes from VDP1 redraws and reduce the independent renderer budget. The earlier
+[presentation boundary](PRESENTATION_BRIDGE_PERFORMANCE.md) remains in place.
 
 Current execution order: [structural performance recovery](STRUCTURAL_PERFORMANCE_EXECUTION.md).
 The [earlier recovery plan](PAUL_PERFORMANCE_RECOVERY.md) retains the history
