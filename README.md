@@ -67,9 +67,11 @@ and 3×3 Q12 rotation differences. Strict matching is the default;
 optional tolerances are for diagnosing numerical divergences. The
 binary format and synthetic tests are documented in
 [the pose-oracle workflow](docs/DIVMOT_LOGIC.md).
-A private Saturn ELF now exposes debugger symbols
+A private Saturn ELF configured with `-DT3_POSE_TRACE=ON` exposes debugger symbols
 `g_t3_pose_trace` and `g_t3_pose_trace_epoch` for recording both
 fighter traces at every simulation tick (with an even/odd write guard).
+Tracing defaults to OFF. Normal owned-match builds publish the visual pose once
+per submitted image; see the [bridge measurements](docs/PRESENTATION_BRIDGE_PERFORMANCE.md).
 Private original combat traces are now captured and independently RAM-checked;
 complete paired Saturn/PS1 joint-trace parity remains pending.
 

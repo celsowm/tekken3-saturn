@@ -42,6 +42,23 @@ python3 scripts/report_saturn_runs.py --cadence \
 This pair yields approximately 8.17 submissions/s and 32.69 logic ticks/s.
 Submission rate does not certify actual display swaps.
 
+## Compare frozen presentation
+
+With Pillow installed, compare two `T3_RENDER_BENCH_TICK` captures at the same
+committed tick. The comparator requires matching BIOS, probe, cache policy,
+refresh rate, CPU clock and divider model. It checks all stable diagnostic
+fields and exact model-region RGB pixels, allowing timing counters and HUD
+pixels to differ. This does not establish continuous state or timing parity.
+
+```sh
+python3 scripts/compare_saturn_presentation.py \
+  assets/imported/presentation-baseline-frozen \
+  assets/imported/presentation-per-frame-frozen
+```
+
+See the [bridge study](PRESENTATION_BRIDGE_PERFORMANCE.md) for the measured
+controls and trace opt-in configuration.
+
 ## Wait for CI on a specific commit
 
 ```sh

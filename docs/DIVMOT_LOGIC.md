@@ -613,7 +613,8 @@ Original PS1 oracle records must be captured independently on a local
 emulator; no original game traces or disc assets are included in Git.
 ### Capturing Saturn binary snapshots
 
-In a PRIVATE `T3_LOCAL_DIVMOT` build, the native SH-2 ELF now exports:
+In a PRIVATE `T3_LOCAL_DIVMOT` build configured with `-DT3_POSE_TRACE=ON`,
+the native SH-2 ELF exports:
 
 - `g_t3_pose_trace[2][564]`: two consecutive standardized binary
   records, fighter 0 then fighter 1, updated every simulation tick
@@ -629,8 +630,12 @@ both epochs match. Retry on change. Capturing only one frame from a
 running emulator cannot reconstruct missed frames, so do not infer
 parity if tick numbers skip.
 
-The binary memory buffer is intentionally **not exported in default
-public/procedural builds**. If original KMD matrices are incomplete,
+Tracing defaults to OFF, including private release builds. Enabling it retains
+the pose publication and trace write at every simulation tick, including ticks
+between submitted images. Normal owned-match builds publish their visual pose
+once per submitted image; authoritative collision and combat still run each tick.
+The binary memory buffer is **not exported when tracing is OFF**, or in
+public/procedural builds. If original KMD matrices are incomplete,
 the header still contains the move/frame/tick, but the joint mask is
 zero: the tool cannot interpret an old pose as valid. A user-provided
 PS1 oracle should use the **same animation tick/input stream**, fighter

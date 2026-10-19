@@ -10,6 +10,9 @@
 sat_result_t t3_move_probe_init(void);
 void t3_move_probe_reset(unsigned round);
 void t3_move_probe_tick(const t3_match_t* match);
+/* Snapshot the final owned pose once per submitted image. Legacy preview
+ * modes still advance their own pose in tick; this call leaves them alone. */
+void t3_move_probe_present(void);
 uint8_t t3_move_probe_active(void);
 /* Original-state mode: view is presentation only, never a second simulation. */
 uint8_t t3_move_probe_owned(void);
@@ -68,8 +71,8 @@ extern volatile t3_psx_root_t g_t3_shadow_external_roots[2];
 #endif
 /* Private debugger ABI: each record is LE and 564 bytes.
  * Read the even epoch before/after 2 records; reject changes/odd epochs.
- * Symbol exists ONLY in explicit local DIVMOT builds. */
-#if defined(T3_LOCAL_DIVMOT_ENABLED)
+ * Symbol exists ONLY with T3_POSE_TRACE in local DIVMOT builds. */
+#if defined(T3_LOCAL_DIVMOT_ENABLED) && defined(T3_POSE_TRACE)
 extern volatile uint32_t g_t3_pose_trace_epoch;
 extern volatile uint8_t g_t3_pose_trace[2][T3_PSX_TRACE_BYTES];
 #endif

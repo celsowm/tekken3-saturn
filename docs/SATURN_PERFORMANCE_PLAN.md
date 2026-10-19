@@ -1,5 +1,12 @@
 # Harness-led Saturn performance work
 
+Latest increment: [simulation-to-presentation bridge](PRESENTATION_BRIDGE_PERFORMANCE.md).
+Trace writes are now explicit opt-in, and owned visual poses publish once per
+image. Matching cache-on controls improve median measured work from 91 to 87 ms,
+but short release cadence only changes from 9.884 to 10.000 submissions/s.
+The 30-render/60-logic target remains open. Investigate owned-match copies and
+joint composition next, preserving the authoritative per-tick state.
+
 Next execution order: [Paul presentation and runtime recovery](PAUL_PERFORMANCE_RECOVERY.md).
 That plan prioritizes cost isolation, visual comparison and whole-path gains
 after the paired increment below proved insufficient.

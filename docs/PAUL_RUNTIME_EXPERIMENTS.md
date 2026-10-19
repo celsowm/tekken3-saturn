@@ -1,5 +1,11 @@
 # Runtime experiments after stage isolation
 
+Latest game-side increment: [simulation-to-presentation bridge](PRESENTATION_BRIDGE_PERFORMANCE.md).
+Owned pose publication now occurs once per submitted image, and per-tick binary
+tracing requires `T3_POSE_TRACE=ON`. Median measured work improves 91 to 87 ms;
+short uninstrumented cadence improves only 1.18%. This is a boundary cleanup,
+not the pending 30-render/60-logic milestone.
+
 The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;

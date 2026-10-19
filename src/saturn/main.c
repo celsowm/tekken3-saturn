@@ -208,6 +208,9 @@ static void draw_hud(void) {
 }
 
 static void draw_scene(void) {
+    T3_PERF_START(pose_publication_started);
+    t3_move_probe_present();
+    T3_PERF_ADD(placement,pose_publication_started);
     sat_fx16_t center = from_q8((g_game.fighters[0].x + g_game.fighters[1].x) / 2);
 #if defined(T3_CLOSE_CAMERA)
     sat_fx16_t separation=from_q8(g_game.fighters[0].x-g_game.fighters[1].x);

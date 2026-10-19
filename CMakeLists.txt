@@ -115,6 +115,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     option(T3_PARALLEL_GEOMETRY "Prepare the second actor using the existing Slave executor" OFF)
     option(T3_PERF_SAMPLES "Retain a bounded ring of stage timings (diagnostic overhead)" OFF)
     option(T3_SIM_PROFILE "Record nested per-tick simulation FRT costs (diagnostic overhead)" OFF)
+    option(T3_POSE_TRACE "Publish paired debugger pose records every simulation tick" OFF)
     if(T3_SIM_PROFILE)
         target_compile_definitions(tekken3_fight PRIVATE T3_SIM_PROFILE=1)
         target_compile_definitions(tekken3_saturn PRIVATE T3_SIM_PROFILE=1)
@@ -154,6 +155,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # ONLY when a developer passes a local filename. Public CI never sets it.
     set(T3_LOCAL_DIVMOT "" CACHE FILEPATH
         "Private compact character DIVMOT bank (.t3logic), never for distribution")
+    if(T3_POSE_TRACE)
+        if(NOT T3_LOCAL_DIVMOT)
+            message(FATAL_ERROR "T3_POSE_TRACE requires a private T3_LOCAL_DIVMOT bank")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE T3_POSE_TRACE=1)
+    endif()
     set(T3_LOCAL_COMMON_DIVMOT "" CACHE FILEPATH
         "Private compact divmot99 bank (optional)")
     set(T3_LOCAL_PSX_SEQUENCES "" CACHE FILEPATH

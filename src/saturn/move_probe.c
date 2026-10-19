@@ -1,11 +1,13 @@
 #include "move_probe.h"
 #if defined(T3_LOCAL_DIVMOT_ENABLED)
 #include "t3_local_divmot.h"
+#if defined(T3_POSE_TRACE)
 /* Read by a debugger after each simulation tick, not disk I/O/VDP1.
  * Epoch odd = write in progress; even and unchanged = stable pair. */
 volatile uint32_t g_t3_pose_trace_epoch;
 volatile uint8_t g_t3_pose_trace[2][T3_PSX_TRACE_BYTES] __attribute__((section(".wram_l")));
 static uint32_t g_t3_pose_trace_tick;
+#endif
 #include "divmot.h"
 #include "move_vm.h"
 #include "attack_records.h"
@@ -200,6 +202,23 @@ void t3_move_probe_reset(unsigned round) {
 #endif
 }
 
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+/* This snapshot has no authoritative consumers. Preserve collision slot
+ * order in the core and map to skin order only for the submitted image. */
+static void publish_owned_pose(unsigned i) {
+    const t3_psx_fighter_t* f=&g_owned_match.fighter[i];
+    t3_hurt_cylinder_t zones[T3_PSX_HURT_ZONES];
+    g_pose_status[i]=1;g_pose_frames[i]=f->pose_frames;
+    g_fk_mask[i]=f->fk_mask;g_fk_parts[i]=f->parts_mask;
+    g_ik_mask[i]=f->ik_mask;g_fk_root_xx[i]=f->fk_root_xx;
+    for(unsigned axis=0;axis<3;++axis)g_root_pose[i][axis]=f->pose[axis];
+    for(unsigned part=0;part<T3_PSX_DRAW_PARTS;++part)
+        g_world_pose[i][part]=f->world[t3_private_kmd_parts[part].slot];
+    g_hurt_ready[i]=(uint8_t)t3_psx_hurt_from_parts(f->world,f->parts_mask,0,zones);
+    g_hurt_head_y[i]=g_hurt_ready[i]?zones[0].center.y:0;
+}
+#endif
+
 void t3_move_probe_tick(const t3_match_t* match) {
     unsigned i;
     if (!g_active || !match) return;
@@ -246,20 +265,10 @@ void t3_move_probe_tick(const t3_match_t* match) {
         g_segments[i]=decoded==1?sampled.segment_count:0u;
         if(decoded<0) ++g_decode_errors[i];
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
-        {
-            const t3_psx_fighter_t* f=&g_owned_match.fighter[i];
-            t3_hurt_cylinder_t zones[T3_PSX_HURT_ZONES];
-            g_pose_status[i]=1;g_pose_frames[i]=f->pose_frames;
-            g_fk_mask[i]=f->fk_mask;g_fk_parts[i]=f->parts_mask;
-            g_ik_mask[i]=f->ik_mask;g_fk_root_xx[i]=f->fk_root_xx;
-            for(unsigned axis=0;axis<3;++axis)g_root_pose[i][axis]=f->pose[axis];
-            /* Skin geometry is KMD mesh order. Collision state is original
-             * joint-slot order; use the model's explicit map at this boundary. */
-            for(unsigned part=0;part<T3_PSX_DRAW_PARTS;++part)
-                g_world_pose[i][part]=f->world[t3_private_kmd_parts[part].slot];
-            g_hurt_ready[i]=(uint8_t)t3_psx_hurt_from_parts(f->world,f->parts_mask,0,zones);
-            g_hurt_head_y[i]=g_hurt_ready[i]?zones[0].center.y:0;
-        }
+#if defined(T3_POSE_TRACE)
+        /* Explicit oracle captures retain every intermediate tick's pose. */
+        publish_owned_pose(i);
+#endif
 #else
         {
             const t3_motion_stream_t* motion;
@@ -477,6 +486,7 @@ void t3_move_probe_tick(const t3_match_t* match) {
         }
     }
 #endif
+#if defined(T3_POSE_TRACE)
     {
         unsigned fighter, byte;
         ++g_t3_pose_trace_epoch; /* start write; odd */
@@ -506,6 +516,14 @@ void t3_move_probe_tick(const t3_match_t* match) {
         ++g_t3_pose_trace_epoch; /* release stable paired records */
         ++g_t3_pose_trace_tick;
     }
+#endif
+}
+
+void t3_move_probe_present(void) {
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+    if(!g_active)return;
+    for(unsigned i=0;i<2u;++i)publish_owned_pose(i);
+#endif
 }
 
 uint8_t t3_move_probe_active(void) {return g_active;}
@@ -596,6 +614,7 @@ int16_t t3_move_probe_fk_root_xx(unsigned i) {return i<2u && g_active?g_fk_root_
 sat_result_t t3_move_probe_init(void) {return SAT_OK;}
 void t3_move_probe_reset(unsigned round) {(void)round;}
 void t3_move_probe_tick(const t3_match_t* match) {(void)match;}
+void t3_move_probe_present(void) {}
 uint8_t t3_move_probe_active(void) {return 0u;}
 uint16_t t3_move_probe_slot(unsigned i) {(void)i;return 0u;}
 uint16_t t3_move_probe_frame(unsigned i) {(void)i;return 0u;}
