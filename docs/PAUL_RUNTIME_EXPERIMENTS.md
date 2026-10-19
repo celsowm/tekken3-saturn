@@ -430,5 +430,9 @@ Private evidence: `build/recovery-cull16{,-final,-verified}` and
 `assets/imported/recovery-cull16-{600,6000,verified,cd,long-cadence.json}`.
 SDK numeric evidence and edge-register counts are public under
 `harness/studies/renderer-cull16/`. This increment retains stock RAM and all
-simulation/input/scheduling behavior. Next investigate the shared skinning
-arithmetic using a matching Q16 procedural control, then qualify whole paths.
+simulation/input/scheduling behavior. The matching Q16 skinning `MAC.L` control
+is complete: 7,544 exact comparisons passed, but its full-range timing was
+38.60% slower than the current SDK API. See the sibling SDK's
+[`SKINNING_MAC_BENCH.md`](https://github.com/celsowm/libsaturn/blob/main/docs/SKINNING_MAC_BENCH.md).
+The next isolated target is projection, followed by the existing whole-path
+controls before any candidate is retained.

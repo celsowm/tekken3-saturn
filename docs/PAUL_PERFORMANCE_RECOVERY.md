@@ -241,14 +241,18 @@ The six-field neutral Paul profile still places shared skin deformation at
 submission at 5.08%. These include only the observed window; waits and
 overlapping Slave work must not be added to fabricate an FPS ceiling.
 
-Next isolate the shared skinning transform with its actual Q16 accumulation,
-rounding and rigid/blended inputs in a procedural SH-2 control. The earlier
-matrix MAC control is useful evidence, but its gain cannot be applied directly
-to skinning or PS1 per-product truncation. Preserve exact results with an
-independent wide oracle, inspect generated instructions and measure full Dino
-and uninstrumented Paul before retaining a specialization. Use named constants
-for fixed-point widths, masks, offsets and range proofs. Keep projection as
-the next separate target if the complete skin path does not improve.
+The exact Q16 skinning control is complete and documented in the sibling SDK's
+[`SKINNING_MAC_BENCH.md`](https://github.com/celsowm/libsaturn/blob/main/docs/SKINNING_MAC_BENCH.md).
+Its procedural SH-2 `MAC.L` path matched 7,544 comparisons but took **38.60%
+more Ymir ticks** than the current C API for the full 943-vertex range, even
+with prevalidated input and one SR.S save/restore per range. It is rejected;
+production skinning and the Paul build stay unchanged. The earlier matrix MAC
+gain does not transfer to skinning.
+
+Return to projection as the next isolated geometry target. Keep the exact
+fixed-point contract, check the generated SH-2 instructions, then qualify any
+candidate with the existing cube and whole-Paul cadence controls. Continue to
+name fixed-point widths, masks, offsets and range bounds in shared code.
 
 Slave scheduling and pacing remain separate changes after their dependencies
 and critical-path costs are known.
