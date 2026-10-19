@@ -145,6 +145,9 @@ def run(args):
                '--dump-mem', f'{address:#x}:{size}:{out / "diagnostics.bin"}',
                '--screenshot', f'{args.frames - 1}:{out / "screen.png"}',
                '--port-device', '1:pad', '--port-device', f'2:{args.port2}']
+    for field in getattr(args,'screenshot_frame',[]):
+        if not 0<=field<args.frames:raise ValueError('screenshot frame must be inside the program run')
+        command.extend(['--screenshot',f'{field}:{out / ("frame-"+str(field)+".png")}'])
     if getattr(args,'capture_inputs',False):
         for name,filename in [('_g_t3_input_tape_count','input-count.bin'),
                               ('_g_t3_input_tape_overflow','input-overflow.bin'),
@@ -160,6 +163,11 @@ def run(args):
         command.extend(['--wram-low-fill',str(args.wram_low_fill)])
     if getattr(args,'sh2_cache',None) is not None:
         command.extend(['--sh2-cache',args.sh2_cache])
+    if getattr(args,'video_crop',None) and not getattr(args,'video_observations',False):
+        raise ValueError('--video-crop requires --video-observations')
+    if getattr(args,'video_observations',False):
+        command.extend(['--video-observations',str(out/'video.csv')])
+        if getattr(args,'video_crop',None):command.extend(['--video-crop',args.video_crop])
     if getattr(args,'debug_profile',False):
         command.extend(['--debug-profile',str(out/'debug'),
                         '--trace-from',str(args.trace_from),
@@ -259,6 +267,9 @@ def parser():
     p.add_argument('--profile', action='store_true', help='capture PC, cycle, instruction and transfer profiles')
     p.add_argument('--wram-low-fill',type=lambda s:int(s,0),help='injected boot with Low WRAM initialized to this byte')
     p.add_argument('--sh2-cache',choices=('on','off'),help='explicit Ymir cache emulation; separate from guest CCR')
+    p.add_argument('--video-observations',action='store_true',help='record exact composited RGB changes per field; requires updated external harness')
+    p.add_argument('--video-crop',help='X:Y:WIDTH:HEIGHT region for video observations, excluding HUD if desired')
+    p.add_argument('--screenshot-frame',action='append',type=int,default=[],help='retain an additional screenshot at this program field')
     p.add_argument('--debug-profile',action='store_true',help='bounded per-CPU execution costs, events and registers')
     p.add_argument('--trace-from',type=int,default=0)
     p.add_argument('--trace-frames',type=int,default=30)

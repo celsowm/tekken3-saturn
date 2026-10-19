@@ -289,7 +289,7 @@ performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `10f995605e80a3903b345d1de029837168475a87` installed, configure
+With LibSaturn `1ae028365208b54595832253655537c4891e1840` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
@@ -304,6 +304,12 @@ to enable or `=0` for the uncached control. The latest neutral interval measures
 median is 79 ms. Combat/world state remains evaluated per tick. See
 [the local-pose results and limits](docs/LOCAL_POSE_REUSE_PERFORMANCE.md).
 Diagnostics now expose discarded scheduling time and pose-cache statistics.
+
+VDP1 now uses `T3_FRAME_ON_SUBMIT=ON` by default, showing completed lists
+through the existing SDK policy used by Dino. `=OFF` retains the automatic
+redraw control. The opt-in probe `--video-observations --video-crop 0:61:320:135`
+records actual composited RGB changes below the HUD; this requires the updated
+external harness. See [presentation qualification](docs/VDP1_PRESENTATION.md).
 
 The default camera now moves with the fighter midpoint and increases its
 distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide

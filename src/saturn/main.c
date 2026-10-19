@@ -434,6 +434,9 @@ int main(void) {
     g_t3_diagnostics=(t3_diagnostics_t){
         .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
+#if defined(T3_FRAME_ON_SUBMIT)
+    SAT_PANIC_IF_ERROR(sat_vdp1_set_frame_mode(SAT_VDP1_FRAME_ON_SUBMIT));
+#endif
     t3_perf_init();
     t3_sim_init();
     g_font=(sat_ascii_font_t){0};

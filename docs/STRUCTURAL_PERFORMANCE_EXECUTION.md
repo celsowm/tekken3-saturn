@@ -89,5 +89,11 @@ continuous ticks, all 24 live combat cases, matched-pose pixels and actual
 Mednafen CD boot. Complete measured median work falls 87 to 79 ms; neutral
 release cadence rises 40.100 to 44.867 ticks/s over roughly 60 seconds.
 Vertex influence distribution and repeated-list VDP1 behavior are recorded
-there to constrain the following renderer/harness work. Scheduling, retained
-debt and the final integrated milestone remain open.
+there to constrain the following renderer/harness work.
+
+The shared SDK harness now measures exact composited video changes. Its
+`1ae0283` commit and CI pass. The port's following
+[complete-list presentation](VDP1_PRESENTATION.md) experiment selects the
+existing ON_SUBMIT policy already used by Dino, eliminating excess image
+transitions without claiming a speed gain. The frozen renderer still needs
+49 ms median. CPU scheduling, retained debt and the final milestone remain open.

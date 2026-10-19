@@ -5,8 +5,10 @@ The selected 128-entry cache retains exact locals before dynamic blend/tracking.
 Matching cache-on controls reduce median measured work from 87 to 79 ms;
 roughly 60-second neutral release cadence improves 40.100 to 44.867 logic ticks/s
 and 10.025 to 11.217 submissions/s. All 16,334 continuous ticks and 24 live cases
-pass. The 30-render/60-logic target remains open. Next: distinguish actual image
-changes from VDP1 redraws and reduce the independent renderer budget. The earlier
+pass. The 30-render/60-logic target remains open. The following
+[complete-list presentation](VDP1_PRESENTATION.md) now uses ON_SUBMIT, removes
+excess image transitions and preserves the same cadence. Next: capture actual
+CD-boot cache state and reduce the independent 49 ms renderer budget. The earlier
 [presentation boundary](PRESENTATION_BRIDGE_PERFORMANCE.md) remains in place.
 
 Current execution order: [structural performance recovery](STRUCTURAL_PERFORMANCE_EXECUTION.md).
