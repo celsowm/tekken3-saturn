@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: 454ebc4e0f3d291569884dbfacd8814f9510c461
+          ref: 10f995605e80a3903b345d1de029837168475a87
           path: .external/libsaturn
           persist-credentials: false
       - name: Configure portable core
@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: 454ebc4e0f3d291569884dbfacd8814f9510c461
+          ref: 10f995605e80a3903b345d1de029837168475a87
           path: .external/libsaturn
           persist-credentials: false
       - uses: actions/setup-python@v5

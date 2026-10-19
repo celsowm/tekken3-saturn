@@ -286,7 +286,7 @@ performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `454ebc4e0f3d291569884dbfacd8814f9510c461` installed, configure
+With LibSaturn `10f995605e80a3903b345d1de029837168475a87` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.

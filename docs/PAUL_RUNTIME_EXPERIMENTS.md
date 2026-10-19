@@ -4,7 +4,45 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current retained package is `4cf7c09224ed57929d831b5c0b2a8fee82a9604c`.
+The current game package is LibSaturn `10f995605e80a3903b345d1de029837168475a87`;
+the earlier `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` package remains the
+historical base for the experiments below.
+
+## SH-2 projection divider overlap (2026-10-19)
+
+LibSaturn now starts the X-axis DIVU, prepares the Y clip coordinate and
+bounded numerator while the divider runs, then consumes X and starts Y. The
+existing clamp and exact signed quotient remain unchanged. The port's fixed
+camera selects this sparse-axis path.
+
+The isolated two-cube projection stage uses 866 vertices per actor. Two
+independent Mednafen CD captures per build measured geometry at **4,960/4,961
+FRT ticks before** and **4,666/4,666 after** (5.94% lower). The model-region
+pixel crop is identical. The reusable cube runner now has `--timing-hud` to
+show this interval in a native CD capture. Public measurements and image hashes
+are recorded in the [LibSaturn report](https://github.com/celsowm/libsaturn/blob/a73d0c82f57dfd3dd668195f085cc51eeb44a90c/harness/studies/projection-divider-overlap/mednafen.json).
+
+Ymir reports the isolated interval **5.9% slower** (13.637 to 14.444 ms) and
+complete stage work 3.0% slower. The pinned Ymir core returns DIVU results
+immediately and does not model the SH-2's 39-cycle division latency or early
+result-read waits; this is the added instruction cost without the latency being
+hidden. The Mednafen control matches the manual-backed division probe but does
+not replace hardware qualification. The 5.94% result is for this projection
+workload, not a whole-frame speedup; the 30-render/60-logic target remains open.
+
+The installed package builds the private live port and passes all **24** combat
+cases, including KO/replay/victory, match reset and both timeout checkpoints
+(`projection-divider-full-suite/suite.json`). A 35-second actual Mednafen CD
+boot exits successfully; reviewed second 34 shows both actors and `FRAME 132`
+(`projection-divider-live-cd/`). The follow-up SDK constants cleanup centralizes
+the DIVU register addresses and produces the identical application binary:
+`6af4363d7134c0e2fd002bb7ac404c1fd982a417f2af24797473b979fc460686`.
+
+SDK host/tool tests and all five package CTests pass locally. Package, Harness
+and Cube pipeline CI pass for the projection implementation. The broad Phase 3
+cross-build still fails because `bullet_hell_stress` lacks
+`assets/palette_bgr555_be.bin`; this is an open repository gate, separate from
+the passing projection and consumer checks.
 
 ## Selection and rejected changes
 

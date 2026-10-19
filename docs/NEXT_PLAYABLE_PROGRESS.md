@@ -8,6 +8,25 @@ provisional preview and query-only owned configurations remain separate.
 The declared continuous PS1/host/Saturn comparison now passes. The live
 performance target and presentation-camera calibration remain open.
 
+## Projection divider overlap (2026-10-19)
+
+The game now pins LibSaturn `10f995605e80a3903b345d1de029837168475a87` in its
+host and Saturn workflows. On the two-cube projection-only control, which
+projects 866 vertices for each of two actors, Mednafen's native-disc HUD reads
+4,960/4,961 FRT ticks before and 4,666/4,666 after (5.94% lower). The model
+crop is pixel-identical. This qualifies the projection kernel for the port's
+sparse camera; it does not measure a whole-frame gain. Ymir reports the stage
+5.9% slower because it omits the SH-2 DIVU latency and access waits, as
+documented in [the runtime experiment](PAUL_RUNTIME_EXPERIMENTS.md#sh-2-projection-divider-overlap-2026-10-19).
+The 30-render/60-logic gate remains open.
+
+The rebuilt private live port passes all 24 combat scenarios, including
+KO/replay/victory, match reset and both timeout checkpoints. Its actual Mednafen
+CD boot also passes; reviewed second 34 shows both actors and `FRAME 132`.
+The DIVU constants follow-up leaves the qualified application binary identical.
+See the runtime experiment above for artifacts, hashes and the separate missing
+bullet-hell asset failure in the SDK's broad Phase 3 gate.
+
 ## Continuous PS1 / host / Saturn state comparison (2026-10-17)
 
 The new [reference replay workflow](SATURN_REFERENCE_REPLAY.md) passes **every

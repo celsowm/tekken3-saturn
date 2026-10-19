@@ -32,6 +32,15 @@ These renderer increments leave the later optimization, scheduling and pacing
 gates open. Historical instructions below describe the entry
 requirements; do not rerun passed captures without a relevant source change.
 
+Execution update (2026-10-19): the port now pins LibSaturn
+`10f995605e80a3903b345d1de029837168475a87`, which overlaps the two sparse-camera
+axis projections with SH-2 DIVU latency. The two-cube native-disc control drops
+from 4,960.5 to 4,666 FRT ticks for geometry (5.94%) with identical model
+pixels. Ymir's immediate-result divider shows a 5.9% regression for this
+kernel, so its timings do not qualify the intended latency hiding. This is an
+isolated renderer gain; full gameplay cadence and the 30-render/60-logic gate
+still need qualification. See the [measurement details](PAUL_RUNTIME_EXPERIMENTS.md#sh-2-projection-divider-overlap-2026-10-19).
+
 ## Baseline and budget
 
 | Current observation | Result and scope |
