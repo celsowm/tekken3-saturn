@@ -1,10 +1,10 @@
 # Runtime experiments after stage isolation
 
 The intermediate 30-render/60-logic gate remains open. None of these experiments
-establishes a substantial full-game speed gain or a physical hardware result.
+meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current retained package is `2285c4d327ffafae6ae85f63d9d0ef5874a7bf55`.
+The current retained package is `32fb84dbf0a8e03efa036c914f36d35cfc3dba7f`.
 
 ## Selection and rejected changes
 
@@ -198,3 +198,63 @@ numbers describe that model and cannot qualify hardware division overlap.
 The SDK also retains reproducible cache/work-split experiments: reducing worker
 cost alone did not shorten the frame, and a 50/50 face split regressed it.
 No experimental Slave-cache policy is enabled in this game package.
+
+## Immutable native material programs
+
+The port now compiles one opaque command prefix per uploaded material and actor
+through LibSaturn `32fb84dbf0a8e03efa036c914f36d35cfc3dba7f`. The table is attached
+before compiling the second actor's immutable-source publication plan. Materials
+and descriptors stay resident and immutable for the application lifetime;
+projected corners, poses, world transforms and face masks remain dynamic. The
+serial verifier compares the active face union member, including the borrowed
+program pointer. Native command assembly and cache publication live in the SDK.
+
+The controlled stage matrix compares the previous source-plan package with this
+change, using the same camera, imported assets, optimized configuration, 1200
+fields and field-300 warmup:
+
+| Median interval | Source plan | Compiled materials |
+| --- | ---: | ---: |
+| Frozen two-actor geometry | 21 ms | 20 ms |
+| Frozen two-actor flush | 14 ms | 10 ms |
+| Frozen two-actor work | 53 ms | 49 ms |
+| Full neutral simulation | 43 ms | 43 ms |
+| Full neutral work | 96 ms | 91 ms |
+| Full neutral work p95 | 108 ms | 104 ms |
+
+Evidence: `recovery-source-plan-matrix` and
+`recovery-material-program-split-matrix`. These instrumented millisecond
+intervals isolate work and must not be summed as a synthetic frame. The fresh
+uninstrumented endpoints `recovery-material-program-split-live-{600,1200}` give
+95 submissions and 380 logic ticks over 602 VBlanks: **9.47 submissions/s and
+37.87 logic ticks/s**, unchanged. Reducing emission has not crossed enough
+field boundaries to improve this full-game interval.
+
+The 1800-field scripted verifier matches 246 serial/worker results
+(`recovery-material-program-split-verified`). All 42 host CTests and the strict
+C11 SH-2 frontend check pass. The native CD runs for 30 seconds in Mednafen;
+reviewed frame 29 shows both actors and FRAME 102
+(`recovery-material-program-split-cd`). All 24 live combat cases pass, including
+KO, replay, victory animation, next-round restoration, match completion, reset
+and both timeout cases (`recovery-material-program-split-combat-suite`). This
+validates the port's current behavior, not PS1 input-replay or round-flow parity.
+The SDK separately qualifies painter
+order, command bytes, mixed fallback materials, clipping, invalid residency,
+stale owners, command capacity and publication to receiving CPUs.
+
+This is an opt-in indexed-material optimization. The SDK study reports a
+remaining roughly 2% work regression for non-compiling dense RGB cubes, along
+with the Dino 36.709-to-34.236 ms improvement and unchanged 20/s cadence. No
+Slave-cache experiment, rendering shortcut or simulation rule change ships.
+The known Ymir immediate DIVU model still limits timing interpretation.
+
+A fresh complete trace of the retained build at fields 1160-1171 has no dropped
+frames, PC observations, events or snapshots (`recovery-material-program-hotspots`).
+Master exclusive modeled costs include skinning 8.00%, branch search 6.13%,
+projection 5.59%, compiled instance preparation 5.07%, matrix multiplication
+3.83%, part composition 3.61%, visibility 3.49% and prepared command writing
+3.02%. More than 70% of Slave costs remain executor polling/control. These are
+exclusive shares of the observed CPU window, not inclusive simulation stage
+costs or additive recoverable frame-time gains. Prioritize controlled
+simulation/pose experiments and useful Slave work; profile evidence does not
+justify a blanket renderer or VDP1 performance explanation.

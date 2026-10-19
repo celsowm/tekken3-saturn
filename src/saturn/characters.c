@@ -37,6 +37,8 @@ typedef struct {
     sat_vdp1_texture_t textures[T3_TEXTURE_COUNT];
     sat_texture_t owners[T3_TEXTURE_COUNT];
     sat_scene3d_material_t materials[T3_TEXTURE_COUNT];
+    sat_scene3d_material_program_t material_commands[T3_TEXTURE_COUNT];
+    sat_scene3d_material_programs_t material_programs;
     sat_projected_vertex_t projected[T3_VERTEX_COUNT];
     sat_vec3_t world_vertices[T3_VERTEX_COUNT];
     sat_scene3d_instance_t instance;
@@ -66,7 +68,7 @@ static sat_scene3d_prepare_item_t g_geometry_item __attribute__((section(".wram_
 static sat_scene3d_prepare_batch_t g_geometry_batch __attribute__((section(".wram_l")));
 static sat_scene3d_source_plan_t g_geometry_sources __attribute__((section(".wram_l")));
 /* Materials have no vertex-Gouraud pointers; descriptor ranges plus topology. */
-static sat_scene3d_source_range_t g_geometry_source_ranges[T3_TEXTURE_COUNT+3u]
+static sat_scene3d_source_range_t g_geometry_source_ranges[T3_TEXTURE_COUNT+5u]
     __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_pairs __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
@@ -74,7 +76,10 @@ volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_verified __attribute__((section(".wram_l")));
 static int same_face(const sat_scene3d_face_t* a,const sat_scene3d_face_t* b) {
     if(a->projected_safe!=b->projected_safe || a->cached_projected!=b->cached_projected ||
-       a->gouraud_valid!=b->gouraud_valid || a->material.kind!=b->material.kind ||
+       a->gouraud_valid!=b->gouraud_valid || a->program_valid!=b->program_valid)return 0;
+    if(a->program_valid) {
+        if(a->program!=b->program)return 0;
+    } else if(a->material.kind!=b->material.kind ||
        a->material.rgb555!=b->material.rgb555 || a->material.texture!=b->material.texture ||
        a->material.tiled!=b->material.tiled || a->material.color_calc_slot!=b->material.color_calc_slot ||
        a->material.vertex_gouraud!=b->material.vertex_gouraud ||
@@ -196,6 +201,10 @@ sat_result_t t3_characters_init(void) {
         if ((st = sat_scene3d_instance_binding_init(&a->binding, &a->mesh,
                 a->materials, T3_TEXTURE_COUNT, a->face_materials)) != SAT_OK)
             return st;
+        if ((st = sat_scene3d_material_programs_init(&a->material_programs,
+                a->materials, T3_TEXTURE_COUNT, a->material_commands,
+                T3_TEXTURE_COUNT)) != SAT_OK) return st;
+        a->binding.programs = &a->material_programs;
         a->instance.validated_binding = &a->binding;
         /* Preserve the original per-face two-sided flag when culling. */
 #if T3_CLIP_COUNT == 1
@@ -209,7 +218,7 @@ sat_result_t t3_characters_init(void) {
     /* Texture descriptors, materials and topology live for the application.
      * Pose vertices/world/masks remain dynamic in the SDK publication path. */
     if ((st=sat_scene3d_source_plan_init(&g_geometry_sources,&g_actors[1].instance,
-            g_geometry_source_ranges,T3_TEXTURE_COUNT+3u))!=SAT_OK) return st;
+            g_geometry_source_ranges,T3_TEXTURE_COUNT+5u))!=SAT_OK) return st;
 #endif
     g_initialized = 1u;
     return SAT_OK;
