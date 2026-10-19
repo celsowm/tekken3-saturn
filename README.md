@@ -274,12 +274,13 @@ Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x1
 The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
 actual application submissions, logic ticks and VDP lifecycle events. The
 earlier wide-camera paired experiment measured 8.43 submissions/s and 33.72 logic
-ticks/s. The closer camera measures 8.17 submissions/s and 32.69 logic ticks/s
-in its neutral interval; the 30/60 performance gate remains open. These
+ticks/s. With the current renderer package, the closer camera measures 9.23
+submissions/s and 36.92 logic ticks/s in its neutral interval; the 30/60
+performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082` installed, configure
+With LibSaturn `e9e88927a20531c5d0ef94d0fa189a58668762fd` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
@@ -307,8 +308,9 @@ These diagnostic modes remove work and cannot qualify playable performance.
 builds and captures all four diagnostic cases, preserving compiler optimization
 settings. See the [stage measurements](docs/PAUL_STAGE_MEASUREMENTS.md) for
 results and limits. The [subsequent runtime experiments](docs/PAUL_RUNTIME_EXPERIMENTS.md)
-retain a 20% skin-stage reduction but measure effectively unchanged full-game
-cadence (8.18 submissions/s, 32.73 logic ticks/s).
+retain a 20% skin-stage reduction and the accumulated renderer update reduces
+frozen two-actor work from 64 to 57 ms. Full-game cadence improves from 8.18 to
+9.23 submissions/s and from 32.73 to 36.92 logic ticks/s in the neutral interval.
 
 ## FK/IK differential oracle
 

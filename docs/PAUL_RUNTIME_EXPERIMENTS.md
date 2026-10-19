@@ -71,3 +71,76 @@ Further work must reduce the larger projection/visibility/emission costs and
 the approximately 12 ms authoritative tick. This increment does not justify a
 claim that the current generic renderer can reach the target through scheduling
 alone.
+
+## Accumulated renderer update and bounded admission
+
+The game now pins LibSaturn `e9e88927a20531c5d0ef94d0fa189a58668762fd` in
+both CI workflows. This brings the exact visibility/projection optimizations,
+fused opaque projected-sprite command writer and specialized proven-admission
+kernel into the installed package consumed by the port. The SDK's optional
+immutable-source publication plan is exercised by Dino; the game has not opted
+its geometry items into that plan. All gains below include the accumulated
+renderer changes since the previous `a46598b` package, rather than attributing
+them to the final admission specialization alone.
+
+A fresh run of the existing matrix script uses the previous optimized private
+configuration, the same camera and imports, 1200 fields and the usual field-300
+warmup (`recovery-sdk-cull-matrix`). Diagnostic stage times retain millisecond
+resolution and overlapping stage distributions must not be summed.
+
+| Case / median interval | Previous ms | Updated ms |
+| --- | ---: | ---: |
+| Frozen two-actor geometry | 27 | 24 |
+| Frozen two-actor flush | 17 | 14 |
+| Frozen two-actor complete work | 64 | 57 |
+| Full neutral geometry | 27 | 24 |
+| Full neutral flush | 17 | 13 |
+| Full neutral complete work | 108 | 100 |
+
+Frozen work improves by 10.9%; full work improves by 7.4%. Skin remains 8 ms.
+Full neutral work p95 falls from 121 to 113 ms; simulation remains approximately
+12 ms/tick. The updated neutral diagnostic window contains 520 ticks over 889
+elapsed fields, so the four-field clamp still discards substantial elapsed
+time. This does not meet the 60 Hz logic or 30 Hz presentation target.
+
+Separate uninstrumented captures of the same updated ELF at 600 and 1200 fields
+retain endpoints (586 VBlanks, 356 ticks, 88 submissions) and (1184, 724, 180).
+The interval gives **9.23 submissions/s and 36.92 logic ticks/s**, versus the
+previous 8.18 and 32.73. These are nominal 60 Hz Ymir counter differences, not
+physical-hardware measurements or verified distinct display swaps. Evidence:
+`recovery-sdk-cull-live-{600,1200}`. Reproduce the cadence calculation with:
+
+```sh
+python3 scripts/report_saturn_runs.py --cadence \
+  assets/imported/recovery-sdk-cull-live-600 \
+  assets/imported/recovery-sdk-cull-live-1200
+```
+
+An independent verification build checks Slave output against serial admission
+over 1800 scripted fields: 226 preparations agree, with no native panic or
+rendering failure (`recovery-sdk-cull-verified`). The 42 host CTests and the
+SDK's complete local suite and five package CTests pass. A 35-second actual
+Mednafen CD boot exits successfully; the reviewed frame at second 34 shows both
+actors and the FRAME counter (`recovery-sdk-cull-cd`).
+
+The SDK also rejected two arithmetic/layout experiments after measuring them:
+an 88-byte union face record saved memory but increased complete Dino work, and
+a 32-bit exact mean increased geometry cost. The retained face ABI is still
+104 bytes on Saturn. Its renderer study records those results and the smaller
+admission/culling code that was retained. Further work should target the
+remaining geometry and authoritative tick costs, using these captures as the
+new baseline.
+
+A fresh six-field debugger capture at fields 360..365 has no dropped frames or
+PC observations (`recovery-sdk-cull-hotspots/cpu-profile.json`). Exclusive
+modeled Master execution costs include skin 8.00%, projection 5.59%, projected
+sprite writing 4.97%, branch search 4.60% and `memcpy` 4.52%. Slave cost is still
+dominated by polling/executor bookkeeping. These are a bounded workload sample,
+not inclusive call times or percentages automatically recoverable as speedup.
+The next experiments should attribute the copies and skin/projection work
+before moving more data or changing dispatch policy.
+
+The final live combat suite passes all 24 cases, including KO/replay/victory,
+match reset and both neutral timeout checkpoints
+(`recovery-sdk-cull-combat-suite`). All cases check native panic and runtime
+health; this is Saturn behavior regression coverage, not aligned PS1 parity.
