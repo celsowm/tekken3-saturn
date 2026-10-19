@@ -15,6 +15,13 @@ branch cache is rejected (1.88% release cadence for 48 KiB), and the reusable
 SDK matrix control passes 33792 checks with an 11.43% best procedural gain.
 Neither is promoted to gameplay. The next selected boundary is renderer
 transform/projection/face admission; recovery and scheduling gates remain open.
+The first renderer increment now uses the shared scene-wide emission dispatch;
+see [the runtime results](PAUL_RUNTIME_EXPERIMENTS.md#scene-wide-emission-dispatch).
+It saves 4.04% of Dino emission but only 0.44% of its whole work. Paul neutral
+cadence over the longer interval is 9.842 submissions/s / 39.370 ticks/s,
+about 0.57% better. The large
+dynamic geometry and simulation budgets remain open; this does not meet the
+recovery milestone.
 This completes the first measurement increment, not the later optimization,
 scheduling or pacing gates. Historical instructions below describe the entry
 requirements; do not rerun passed captures without a relevant source change.
@@ -211,12 +218,31 @@ missing-palette failure explicit; do not weaken gates to turn it green.
 
 ## Immediate next action
 
-Baseline qualification and the first bounded simulation report are complete.
-The next controlled experiment measures a bounded immutable branch-data
-representation against the current walker: neutral repeats 280 decoded rows
-and roughly 144 command queries per tick. Preserve every dynamic condition and
-traversal rule, budget image/RAM cost first, and judge the result in release
-builds. The diagnostic branch interval includes hooks and command eligibility;
-it is not a promised decoding saving. If its measured ceiling is insufficient,
-move to generic exact matrix kernels. Slave scheduling and pacing remain
-separate changes after their dependencies and costs are known.
+Baseline qualification, branch/matrix controls and the first renderer increment
+are complete. Return to the larger dynamic geometry budget using the refreshed
+cube ladder and Dino phase captures; projection, world visibility and face
+admission still dominate over the small retained emission improvement. Read the
+SDK pipeline study's rejected-experiment sections before choosing another
+kernel. Keep the new static cube comparator as a configuration/pixel gate and
+measure complete release Paul cadence after each candidate. A smaller record,
+an assembly instruction or a faster isolated stage is insufficient evidence.
+
+The next bounded geometry candidate is the small-face world-visibility guard.
+It currently accepts edge components only in [-16384,16383]. Investigate the
+full signed-16-bit box [-32768,32767] without reducing normal precision. Each
+cross component stays within +/-2147450880. The maximum normal L1 norm over
+the 64 edge-box corners is 4294967295; convexity in each edge coordinate bounds
+the interior too. Multiplying that norm by the largest int32 eye-offset
+magnitude bounds every dot partial sum by 9223372034707292160, below INT64_MAX.
+This is a tighter shared bound than independently maximizing three components.
+
+Before widening the production guard, add an independent 128-bit oracle for
+all extreme edge/view combinations, near-edge-on cancellation, warped and
+collapsed faces. Confirm target arithmetic and compare both guard ranges in a
+procedural SH-2 control. Retain the existing large/degenerate fallback and
+per-corner center rounding. Measure how often Dino and Paul actually enter the
+new range, then compare their full paths and fixed-pose pixels. The arithmetic
+bound establishes safety headroom, not a measured performance benefit.
+
+Slave scheduling and pacing remain separate changes after their dependencies
+and critical-path costs are known.

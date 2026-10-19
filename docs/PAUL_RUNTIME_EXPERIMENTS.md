@@ -4,7 +4,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current retained package is `f11b277bed2ddda963fa3dba0da08656baf08322`.
+The current retained package is `4cf7c09224ed57929d831b5c0b2a8fee82a9604c`.
 
 ## Selection and rejected changes
 
@@ -331,5 +331,51 @@ The [next controlled experiments](BRANCH_AND_MATRIX_EXPERIMENTS.md) reject a
 48 KiB native branch cache after only 1.88% release cadence improvement. The
 reusable SDK MAC.W benchmark passes 33792 checks in Ymir and Mednafen but its
 best 11.43% procedural gain does not justify a gameplay arithmetic replacement.
-Release behavior, cadence and SDK runtime stay unchanged. The next measured
-boundary is dynamic renderer geometry/face preparation.
+Release behavior, cadence and SDK runtime stayed unchanged in that increment.
+
+## Scene-wide emission dispatch
+
+LibSaturn `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` specializes the emission
+loop after the existing complete-queue residency preflight. Ordinary queues
+omit compiled-program dispatch; mixed/compiled queues preserve the general
+path. Owner/material validation still precedes every draw. Face layout remains
+104 bytes and no simulation, pose, visibility or scheduling policy changes.
+The [SDK report](https://github.com/celsowm/libsaturn/blob/4cf7c09224ed57929d831b5c0b2a8fee82a9604c/docs/SHARED_RENDERER_PERFORMANCE.md#classify-emission-once-per-complete-queue)
+records measured benefits and rejected controls.
+
+The same-density procedural RGB cube work falls from 61.838 to 61.311 ms;
+textured work falls from 62.578 to 62.080 ms. Animated Dino emission improves
+4.04% (4.938 to 4.739 ms), while complete work improves only 0.44% (34.236 to
+34.084 ms). Cube cadence stays 15/s; Dino stays 20/s in all three scenarios.
+Static cube and paused Dino crops are identical, and a fresh Dino native disc
+boots in Mednafen. These are modest emulator CPU-work gains, not hardware or
+distinct-picture qualification.
+
+The installed Release SDK is consumed by a fresh `build/recovery-flush-dispatch`
+port. Uninstrumented neutral endpoints at 600/1800 fields give 196 submissions
+and 784 logic ticks over 1197 VBlanks: **9.825 submissions/s and 39.298 ticks/s**,
+versus 9.758/39.033 before. The submission gain is only about **0.68%**.
+A longer 600/6000-field comparison confirms a small gain: the baseline submits
+881 frames / 3524 ticks over 5401 VBlanks (9.787 / 39.148 per nominal second),
+versus 885 / 3540 over 5395 VBlanks (9.842 / 39.370). This is **0.57%** more
+submissions, still far below the recovery target. This longer interval avoids
+judging the result from one additional submission in the short window.
+The scripted 1800-field verifier matches 245 serial/worker geometry results.
+A fresh 30-second native Mednafen boot exits normally; reviewed frame 29 shows
+both actors and `FRAME 113`. Host regressions remain 43/43 passing.
+All 24 live combat/KO/replay/victory/reset/timeout cases pass on this release
+(`recovery-flush-dispatch-combat-suite/suite.json`). SDK supported host/tool
+checks and all five installed-package CTests pass locally. Remote CI was still
+queued at publication; the earlier unrelated Phase 3 missing-palette failure
+has not been silently waived or labeled fixed.
+
+The authoritative core and arithmetic are unchanged; these renderer checks do
+not repeat the preceding 16,334-tick continuous PS1 comparison.
+
+Private evidence: `recovery-flush-dispatch-{600,1800,6000,verified,cd}`,
+`recovery-flush-baseline-6000`, `recovery-flush-dispatch-cadence.json` and the
+two `recovery-flush-*-long-cadence.json` reports. The four-corner mean, bounded painter
+conversion and 88-byte face union experiments are discarded. The union had
+already been rejected in the SDK pipeline study and its repeated measurement
+does not justify an ABI refactor. No claimed Paul speedup comes from that build.
+The next measured boundary remains dynamic renderer geometry/face preparation.
