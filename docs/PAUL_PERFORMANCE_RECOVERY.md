@@ -22,8 +22,14 @@ cadence over the longer interval is 9.842 submissions/s / 39.370 ticks/s,
 about 0.57% better. The large
 dynamic geometry and simulation budgets remain open; this does not meet the
 recovery milestone.
-This completes the first measurement increment, not the later optimization,
-scheduling or pacing gates. Historical instructions below describe the entry
+The follow-up exact signed-16-bit visibility guard is now qualified in the
+installed SDK `454ebc4`: Dino's animated release cadence improves from 20 to
+23.6 submissions/s, but Paul remains effectively unchanged at 9.844 / 39.378.
+Register checkpoints find only 30 newly eligible Paul faces among 698 observed
+calls, versus 427 among 1614 for Dino. See the
+[culling qualification](PAUL_RUNTIME_EXPERIMENTS.md#signed-16-bit-world-culling).
+These renderer increments leave the later optimization, scheduling and pacing
+gates open. Historical instructions below describe the entry
 requirements; do not rerun passed captures without a relevant source change.
 
 ## Baseline and budget
@@ -227,22 +233,22 @@ kernel. Keep the new static cube comparator as a configuration/pixel gate and
 measure complete release Paul cadence after each candidate. A smaller record,
 an assembly instruction or a faster isolated stage is insufficient evidence.
 
-The next bounded geometry candidate is the small-face world-visibility guard.
-It currently accepts edge components only in [-16384,16383]. Investigate the
-full signed-16-bit box [-32768,32767] without reducing normal precision. Each
-cross component stays within +/-2147450880. The maximum normal L1 norm over
-the 64 edge-box corners is 4294967295; convexity in each edge coordinate bounds
-the interior too. Multiplying that norm by the largest int32 eye-offset
-magnitude bounds every dot partial sum by 9223372034707292160, below INT64_MAX.
-This is a tighter shared bound than independently maximizing three components.
+The signed-16-bit culling candidate is complete; do not repeat it as an open
+experiment or attribute Dino's gain to Paul. Its host oracle, target assembly,
+exact register eligibility, cube controls and full consumer runs are retained.
+The six-field neutral Paul profile still places shared skin deformation at
+8.00% of exclusive Master execution cost, projection at 5.58% and instance
+submission at 5.08%. These include only the observed window; waits and
+overlapping Slave work must not be added to fabricate an FPS ceiling.
 
-Before widening the production guard, add an independent 128-bit oracle for
-all extreme edge/view combinations, near-edge-on cancellation, warped and
-collapsed faces. Confirm target arithmetic and compare both guard ranges in a
-procedural SH-2 control. Retain the existing large/degenerate fallback and
-per-corner center rounding. Measure how often Dino and Paul actually enter the
-new range, then compare their full paths and fixed-pose pixels. The arithmetic
-bound establishes safety headroom, not a measured performance benefit.
+Next isolate the shared skinning transform with its actual Q16 accumulation,
+rounding and rigid/blended inputs in a procedural SH-2 control. The earlier
+matrix MAC control is useful evidence, but its gain cannot be applied directly
+to skinning or PS1 per-product truncation. Preserve exact results with an
+independent wide oracle, inspect generated instructions and measure full Dino
+and uninstrumented Paul before retaining a specialization. Use named constants
+for fixed-point widths, masks, offsets and range proofs. Keep projection as
+the next separate target if the complete skin path does not improve.
 
 Slave scheduling and pacing remain separate changes after their dependencies
 and critical-path costs are known.

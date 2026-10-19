@@ -379,3 +379,56 @@ conversion and 88-byte face union experiments are discarded. The union had
 already been rejected in the SDK pipeline study and its repeated measurement
 does not justify an ABI refactor. No claimed Paul speedup comes from that build.
 The next measured boundary remains dynamic renderer geometry/face preparation.
+
+## Signed-16-bit world culling
+
+LibSaturn `454ebc4e0f3d291569884dbfacd8814f9510c461` widens the exact small-face
+visibility guard from signed 15-bit to signed 16-bit edge differences. It keeps
+normal precision, centre truncation, collapsed-corner fallback, global painter
+order and the 104-byte face ABI. Named constants derive the repeated guard
+bias/span and the wide kernel's split/mask. The SDK includes an independent
+128-bit oracle and a reusable `visibility_ranges.py` register-checkpoint
+analyzer. See its
+[arithmetic proof and measurements](https://github.com/celsowm/libsaturn/blob/454ebc4e0f3d291569884dbfacd8814f9510c461/docs/SHARED_RENDERER_PERFORMANCE.md#exact-signed-16-bit-visibility-kernel).
+
+This improves Dino rather than materially changing Paul. Dino's instrumented
+Master geometry drops 19.706 to 18.775 ms, worker geometry 16.828 to 15.840 ms,
+and whole work 34.084 to 33.181 ms (2.65%). Its separate release runs measure
+23.6 animated and 24.0 paused submissions/s versus 20.0, while the control
+scenario remains 20.0. Paused/unlit pixels are identical. Dense cube controls
+retain 15/s and identical crops with less than 0.02% work variation.
+
+Release Paul endpoints at requested fields 600 and 6000 produce 886 submissions
+and 3544 ticks over 5400 VBlanks: **9.84444 submissions/s and 39.37778 ticks/s**.
+The preceding flush-dispatch build gives 9.84245 / 39.36979 in its equivalent
+long interval. That approximately 0.02% variation is effectively unchanged,
+not a useful Paul speedup or a recovery milestone.
+
+Exact register snapshots over six fields starting at 1100, using unchanged
+guest binaries and reviewed target assembly, explain the eligibility difference:
+427 of 1614 Dino observations newly fit the guard, versus 30 of 698 for Paul.
+These count edge ranges, including zero normals that still fall back; they
+are not completed fast-path calls. The current Paul Master profile assigns
+8.00% of exclusive execution costs to skin deformation, 5.58% to projection
+and 5.08% to instance submission. The short observation window and included
+waits do not support an inclusive cost or physical-hardware FPS claim.
+
+The final named-constant SDK rebuild yields identical release Dino and Paul
+application bytes to the measured candidate. Local SDK supported host/tool
+checks and all five installed-package CTests pass; the port passes 43 host
+tests and 247 scripted serial/worker geometry comparisons. Native Dino and
+Paul CDs boot and render in independent 30-second Mednafen runs; reviewed
+Paul frame 29 contains both actors and `FRAME 102`. The FRAME value is a debug
+checkpoint, not a host-recording FPS comparison. Authoritative core arithmetic
+is unchanged, so the preceding 16,334-tick continuous gate is not rerun.
+All 24 live combat/KO/replay/victory/match-reset/timeout cases pass on the
+release candidate (`recovery-cull16-combat-suite/suite.json`). Remote SDK CI
+remains queued at publication; the existing unrelated Phase 3 missing-palette
+failure has not been waived or declared fixed.
+
+Private evidence: `build/recovery-cull16{,-final,-verified}` and
+`assets/imported/recovery-cull16-{600,6000,verified,cd,long-cadence.json}`.
+SDK numeric evidence and edge-register counts are public under
+`harness/studies/renderer-cull16/`. This increment retains stock RAM and all
+simulation/input/scheduling behavior. Next investigate the shared skinning
+arithmetic using a matching Q16 procedural control, then qualify whole paths.

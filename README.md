@@ -280,13 +280,13 @@ The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
 actual application submissions, logic ticks and VDP lifecycle events. The
 earlier wide-camera paired experiment measured 8.43 submissions/s and 33.72 logic
 ticks/s. With the current renderer package, the closer camera measures 9.84
-submissions/s and 39.37 logic ticks/s in its longer neutral interval;
-see the [controlled renderer results](docs/PAUL_RUNTIME_EXPERIMENTS.md#scene-wide-emission-dispatch). The 30/60
+submissions/s and 39.38 logic ticks/s in its longer neutral interval;
+see the [controlled renderer results](docs/PAUL_RUNTIME_EXPERIMENTS.md#signed-16-bit-world-culling). The 30/60
 performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` installed, configure
+With LibSaturn `454ebc4e0f3d291569884dbfacd8814f9510c461` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
