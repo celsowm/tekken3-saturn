@@ -9,7 +9,7 @@
 #include "attack_records.h"
 #include "psx_contact.h"
 #include "branch_rules.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 static int replay_playing(const t3_psx_match_t* m) {
     return m->config->enable_rounds==2 && m->replay.mode>=1 && m->replay.mode<=4;
 }
@@ -30,7 +30,7 @@ static int blend_sample(void* user,uint32_t row,unsigned frame,int16_t root[3],t
        !t3_psx_pose_fk(pose,&c->ground_tables.trig,fk,&mask) ||
        t3_psx_pose_ik(pose,&c->ik,fk,mask,out,&mask)!=1)return 0;
     for(unsigned i=0;i<3;++i) {
-        int32_t value=t3_floor_shift((int32_t)pose[i]*(int32_t)(c->scale_percent*4096u/100u),12);
+        int32_t value=sat_floor_shift_i32((int32_t)pose[i]*(int32_t)(c->scale_percent*4096u/100u),12);
         uint16_t bits=(uint16_t)value;
         root[i]=(int16_t)(bits<32768u?(int32_t)bits:(int32_t)bits-65536);
     }

@@ -7,7 +7,7 @@
  * Unsupported launch/throw/mode-specific behavior is not approximated.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "psx_ground.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 
 static int16_t s16(int32_t n) {
     uint16_t u=(uint16_t)n;return (int16_t)(u<32768u?(int32_t)u:(int32_t)u-65536);
@@ -18,7 +18,7 @@ static int32_t w32(int64_t n) {
 }
 static int16_t le16(const uint8_t* p) {return s16((int32_t)(p[0]|((uint16_t)p[1]<<8)));}
 static int32_t abs16(int32_t n) {int32_t v=s16(n);return v<0?-v:v;}
-static int32_t floor256(int32_t n) {return t3_floor_shift(n,8u);}
+static int32_t floor256(int32_t n) {return sat_floor_shift_i32(n,8u);}
 static int valid(const t3_psx_ground_tables_t* t) {
     return t && t->trig.data && t->trig.size==T3_PSX_TRIG_BYTES && t->atan && t->atan_size==1025u;
 }

@@ -5,7 +5,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-# Platform-free deterministic core. Only the frontend touches LibSaturn.
+# Platform-free deterministic core. Only the frontend uses LibSaturn hardware;
+# the core also consumes its standalone integer-math header.
 add_library(tekken3_fight STATIC src/game/sha256.c src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_vm.c src/game/move_clock.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c)
 target_include_directories(tekken3_fight PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
@@ -29,6 +30,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # entry points independently collectible while the frontend uses mode 1.
     target_compile_options(tekken3_fight PRIVATE -m2 -mb -ffreestanding -ffunction-sections -fdata-sections)
     find_package(LibSaturn 0.1 CONFIG REQUIRED)
+    target_include_directories(tekken3_fight PRIVATE
+        "$<TARGET_PROPERTY:LibSaturn::Saturn,INTERFACE_INCLUDE_DIRECTORIES>")
 
     # LibSaturn is an installed runtime dependency. Its uninstalled source
     # tree supplies the offline original-humanoid/SKA1 generator only.
@@ -396,6 +399,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     libsaturn_add_disc(tekken3_saturn NAME tekken3_saturn
         IP_TEMPLATE_KIND native ALL)
 else()
+    find_path(T3_SATURN_MATH_INCLUDE_DIR saturn/int_math.h
+        HINTS "${LIBSATURN_SOURCE_DIR}/include" "$ENV{LIBSATURN_PREFIX}/include"
+              "${CMAKE_SOURCE_DIR}/../lib-saturn/include"
+              "${CMAKE_SOURCE_DIR}/.external/libsaturn/include")
+    if(NOT T3_SATURN_MATH_INCLUDE_DIR)
+        message(FATAL_ERROR "Set T3_SATURN_MATH_INCLUDE_DIR to the LibSaturn include directory (standalone integer math; no target toolchain needed).")
+    endif()
+    target_include_directories(tekken3_fight PRIVATE "${T3_SATURN_MATH_INCLUDE_DIR}")
     # Explicit local-only replay against private generated assets. Public CI
     # leaves this empty and neither compiles nor downloads retail data.
     set(T3_PRIVATE_REPLAY_ASSET_DIR "" CACHE PATH "Configured private Saturn build used by the native match replay evaluator")

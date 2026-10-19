@@ -136,10 +136,87 @@ static void joint_slot_order_tests(void) {
     parts[1].slot=T3_PSX_DRAW_PARTS;
     assert(!t3_psx_parts_to_slots(parts,joints,3,joints,&mask));
 }
+static uint32_t random_state=0x12345678u;
+static uint32_t random_word(void) {
+    random_state=random_state*1664525u+1013904223u;return random_state;
+}
+/* Independent wide oracle: division with explicit negative floor, rather
+ * than the production target's signed shifts and bounded accumulators. */
+static int32_t reference_floor(int64_t n) {
+    return (int32_t)(n/4096-(n<0 && n%4096!=0));
+}
+static int16_t reference_sat(int32_t n) {
+    return (int16_t)(n>32767?32767:(n< -32768?-32768:n));
+}
+static int16_t reference_wrap(int32_t n) {
+    unsigned v=(uint16_t)n;return (int16_t)(v<32768u?(int)v:(int)v-65536);
+}
+static int16_t reference_product(int16_t a,int16_t b) {
+    return reference_sat(reference_floor((int64_t)a*b));
+}
+static int16_t reference_trig(uint16_t angle,unsigned cosine) {
+    unsigned at=((angle>>3)&0x1FFEu)+(cosine?0x800u:0u);
+    return reference_wrap(trig[at]|((uint16_t)trig[at+1]<<8));
+}
+static void arithmetic_differential_tests(void) {
+    static const int16_t edges[]={-32768,-32767,-16385,-16384,-4096,-1,
+                                  0,1,4096,16384,16385,32767};
+    for(unsigned trial=0;trial<20000u;++trial) {
+        t3_psx_matrix_t a,b,expected,actual,alias;
+        for(unsigned i=0;i<3u;++i)for(unsigned j=0;j<3u;++j) {
+            a.m[i][j]=trial%3u==0u?edges[random_word()%12u]:
+                (trial%3u==1u?(int16_t)((int32_t)(random_word()%32769u)-16384):
+                 reference_wrap((int32_t)(random_word()&65535u)));
+            b.m[i][j]=trial%3u==0u?edges[random_word()%12u]:
+                reference_wrap((int32_t)(random_word()&65535u));
+        }
+        for(unsigned i=0;i<3u;++i)for(unsigned j=0;j<3u;++j) {
+            int64_t sum=0;
+            for(unsigned k=0;k<3u;++k)sum+=(int64_t)a.m[i][k]*b.m[k][j];
+            expected.m[i][j]=reference_sat(reference_floor(sum));
+        }
+        assert(t3_psx_mul_rot(&a,&b,&actual));
+        assert(!memcmp(&actual,&expected,sizeof(actual)));
+        alias=a;assert(t3_psx_mul_rot(&alias,&b,&alias));
+        assert(!memcmp(&alias,&expected,sizeof(alias)));
+        alias=b;assert(t3_psx_mul_rot(&a,&alias,&alias));
+        assert(!memcmp(&alias,&expected,sizeof(alias)));
+    }
+    /* Include arbitrary signed table values, not just physical unit sines:
+     * IR saturation and wrapping must remain exact for malformed/extreme data. */
+    for(unsigned pass=0;pass<2u;++pass) {
+        for(unsigned at=0;at<sizeof(trig);at+=2u)
+            put16(at,pass?reference_wrap((int32_t)(random_word()&65535u)):
+                        (int)(random_word()%8193u)-4096);
+        for(unsigned trial=0;trial<10000u;++trial) {
+            int16_t x=reference_wrap((int32_t)(random_word()&65535u));
+            int16_t y=reference_wrap((int32_t)(random_word()&65535u));
+            int16_t z=reference_wrap((int32_t)(random_word()&65535u));
+            int16_t sx=reference_trig((uint16_t)x,0),cx=reference_trig((uint16_t)x,1);
+            int16_t sy=reference_trig((uint16_t)y,0),cy=reference_trig((uint16_t)y,1);
+            int16_t sz=reference_trig((uint16_t)z,0),cz=reference_trig((uint16_t)z,1);
+            int16_t a1=reference_product(sx,cz),a2=reference_product(sx,sz);
+            int16_t cxcz=reference_product(cx,cz),cxsz=reference_product(cx,sz);
+            t3_psx_matrix_t expected={{{
+                reference_product(cy,cz),
+                reference_wrap((int32_t)reference_product(sy,a1)-cxsz),
+                reference_wrap((int32_t)a2+reference_product(sy,cxcz))},{
+                reference_product(cy,sz),
+                reference_wrap((int32_t)cxcz+reference_product(sy,a2)),
+                reference_wrap(reference_floor((int64_t)cxsz*sy)-a1)},{
+                reference_wrap(-sy),reference_product(sx,cy),reference_product(cy,cx)}}};
+            t3_psx_matrix_t actual;
+            t3_psx_trig_t table={trig,sizeof(trig)};
+            assert(t3_psx_euler_matrix(x,y,z,&table,&actual));
+            assert(!memcmp(&actual,&expected,sizeof(actual)));
+        }
+    }
+}
 int main(void) {
     euler_tests();
     compose_tests();
     joint_slot_order_tests();
+    arithmetic_differential_tests();
     puts("PS1 ten Euler/FK slots and parent partial-composition: passed");
     return 0;
 }

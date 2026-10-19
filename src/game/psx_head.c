@@ -6,7 +6,7 @@
  * bounded normal Paul camera path, explicit arithmetic and atomic outputs.
  * Gon eye tracking and non-fight camera modes are outside this path. */
 #include "psx_head.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 static int16_t s16(int32_t x) {
     uint16_t u=(uint16_t)x;return (int16_t)(u<32768u?(int32_t)u:(int32_t)u-65536);
 }
@@ -62,12 +62,12 @@ int t3_psx_head_look(t3_psx_head_t* state,const t3_psx_body_tables_t* t,
         const int32_t b[3]={opponent[2].origin.x,opponent[2].origin.y,opponent[2].origin.z};
         const int32_t h[3]={own[2].origin.x,own[2].origin.y,own[2].origin.z};
         for(unsigned i=0;i<3;++i)
-            target[i]=s16(s16(a[i]+t3_floor_shift((int64_t)b[i]-a[i],1))-h[i]);
+            target[i]=s16(s16(a[i]+sat_floor_shift_i64((int64_t)b[i]-a[i],1))-h[i]);
     }
     for(unsigned i=0;i<3;++i) {
         int64_t sum=0;
         for(unsigned j=0;j<3;++j)sum+=(int64_t)own[1].rotation.m[j][i]*target[j];
-        local[i]=t3_floor_shift(sum,12);
+        local[i]=sat_floor_shift_i64(sum,12);
     }
     if(!sqrt_pair(t,local[1],local[2],&v) || !angle(t,v,s16(local[0]),&pitch))return 0;
     pitch=s16(-pitch);if(pitch>0x11C7)pitch=0x11C7;if(pitch< -0x2AAA)pitch=-0x2AAA;

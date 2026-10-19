@@ -6,7 +6,7 @@
  * sampling callback and explicit global hold; replay playback remains separate.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "psx_blend.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 static int16_t wrap16(int32_t v) {
     uint16_t u=(uint16_t)v;return (int16_t)(u<32768u?(int32_t)u:(int32_t)u-65536);
 }
@@ -111,7 +111,7 @@ int16_t t3_psx_blend_root_y(t3_psx_blend_t* s,int16_t y) {
         int32_t v;
         s->weight=wrap16(wrap32((int64_t)s->counter*4096)/s->frames);
         v=wrap32((int64_t)s->root_delta[1]*s->weight*2);
-        y=wrap16(t3_floor_shift((int64_t)v+(v<0?8191:0),13)+y);
+        y=wrap16(sat_floor_shift_i64((int64_t)v+(v<0?8191:0),13)+y);
     }
     s->previous_root[1]=y;return y;
 }

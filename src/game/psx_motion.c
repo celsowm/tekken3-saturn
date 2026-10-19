@@ -1,5 +1,5 @@
 #include "psx_motion.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 #include <limits.h>
 
 #define TABLE_BASE 0x80096B40u
@@ -16,7 +16,7 @@ static int32_t wrap32(int64_t v) {
     return lo<0x80000000u ? (int32_t)lo : (int32_t)((int64_t)lo-4294967296LL);
 }
 static int32_t floor_shift(int64_t v,unsigned shift) {
-    return t3_floor_shift(v,shift);
+    return sat_floor_shift_i64(v,shift);
 }
 static int get_byte(const t3_motion_tables_t* t, uint32_t addr, uint8_t* out) {
     size_t p;

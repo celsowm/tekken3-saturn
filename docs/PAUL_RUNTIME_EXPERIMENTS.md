@@ -4,7 +4,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current retained package is `32fb84dbf0a8e03efa036c914f36d35cfc3dba7f`.
+The current retained package is `0bf55566a9fa046c8f1e142f7fa536f58574b6de`.
 
 ## Selection and rejected changes
 
@@ -258,3 +258,59 @@ exclusive shares of the observed CPU window, not inclusive simulation stage
 costs or additive recoverable frame-time gains. Prioritize controlled
 simulation/pose experiments and useful Slave work; profile evidence does not
 justify a blanket renderer or VDP1 performance explanation.
+
+## Shared integer floor shifts and bounded scalar products
+
+LibSaturn `0bf55566a9fa046c8f1e142f7fa536f58574b6de` provides the standalone
+`saturn/int_math.h` header. The core now consumes its signed 32/64-bit floor
+shifts and deletes the local `fixed_shift.h`. Native host builds need only the
+SDK headers; installed-package headers supply the Saturn build. CI checks out
+the same pinned SDK for both paths. No Saturn runtime is linked into host tests.
+
+The i32 helper is used for already-wrapped 32-bit values and individual signed
+16-bit products. Euler intermediates retain the original saturation and wrap
+points. General three-term matrix dot products remain 64-bit: their full signed
+16-bit input domain can overflow a 32-bit sum. No pose precision is reduced.
+SH-2 symbol size for `t3_psx_euler_matrix` falls from 872 to 612 bytes; the
+general matrix multiply remains 780 bytes.
+
+A rejected experiment checked a complete operand against +/-16384 before
+selecting an exact 32-bit matrix kernel. Its matrix function grew from 780 to
+1328 bytes and full neutral work worsened from 91 to 92 ms, with simulation
+11.920 ms/tick (`recovery-pose32-matrix`). The duplicated kernel and bounds
+checks are removed. Arithmetic equivalence alone did not justify retaining it.
+
+The retained 1200-field matrix (`recovery-shared-int-final-matrix`, warmup 300)
+has full neutral simulation median/p95 43/54 ms, work 92/102 ms and aggregate
+simulation 11.562 ms/tick. The previous material-program matrix gives 43/56 ms,
+91/104 ms and 11.761 ms/tick. Stage medians do not show a uniform frame gain.
+
+Fresh uninstrumented endpoint comparisons extend the observation to field 1800:
+
+| Interval after field 600 | Previous materials | Shared integer math |
+| --- | ---: | ---: |
+| VBlanks | 1204 | 1199 |
+| Submissions | 190 | 195 |
+| Logic ticks | 760 | 780 |
+| Submissions/s at nominal 60 Hz | 9.47 | 9.76 |
+| Logic ticks/s at nominal 60 Hz | 37.87 | 39.03 |
+
+The roughly 3.1% cadence improvement is small and does not meet either target.
+Evidence: `recovery-shared-int-before-long-report.json` and
+`recovery-shared-int-long-report.json`. These are Ymir observations with its
+known immediate DIVU model, not distinct-picture or physical hardware timing.
+The four-field recovery clamp and its loss of elapsed logic time remain.
+
+Qualification includes all 42 host CTests, 20000 matrix fixtures with wide
+independent dot-product references and both output aliases, 20000 Euler
+fixtures with physical and arbitrary signed sine tables, and ASan/UBSan runs.
+The SDK separately checks shift extrema and counts through/beyond both widths;
+its available host gates and all five installed-package CTests pass (the native
+macOS fixed-WRAM ABI mapping gate remains explicitly unavailable).
+
+The 1800-field scripted target verifier matches 247 serial/worker results
+(`recovery-shared-int-verified`). All 14 basic live combat cases pass
+(`recovery-shared-int-combat-suite`); this run does not requalify KO/replay or
+timeout flows. An actual 30-second Mednafen CD boot exits normally and reviewed
+frame 29 shows both actors and FRAME 102 (`recovery-shared-int-cd`). Slave task
+scheduling and authoritative match order are unchanged.

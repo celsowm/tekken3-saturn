@@ -1,5 +1,5 @@
 #include "psx_ik.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 #include <stdint.h>
 
 #define ONE 4096
@@ -20,7 +20,7 @@ static int32_t signed32(uint32_t u) {
 }
 static int32_t w32(int64_t v) {return signed32((uint32_t)(uint64_t)v);}
 static int32_t asr(int64_t v,unsigned bits) {
-    return t3_floor_shift(v,bits);
+    return sat_floor_shift_i64(v,bits);
 }
 static int32_t trunc12(int32_t v) {return v<0?asr((int64_t)v+4095,12u):asr(v,12u);}
 static int16_t sat16(int64_t v) {

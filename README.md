@@ -223,6 +223,11 @@ humanoids; original commercial content never enters CI.
 
 ## Build and test natively
 
+The portable core uses LibSaturn's standalone `saturn/int_math.h`; no Saturn
+runtime, emulator or cross compiler is needed. Keep the pinned LibSaturn checkout
+at `../lib-saturn`, or pass `-DT3_SATURN_MATH_INCLUDE_DIR=/path/to/libsaturn/include`
+to configure. CI checks out the pinned SDK explicitly.
+
 ```sh
 cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/host
@@ -280,7 +285,7 @@ performance gate remains open. These
 are emulator observations. Automatic VDP1 redraws and framebuffer swaps do not
 establish distinct-picture cadence.
 
-With LibSaturn `32fb84dbf0a8e03efa036c914f36d35cfc3dba7f` installed, configure
+With LibSaturn `0bf55566a9fa046c8f1e142f7fa536f58574b6de` installed, configure
 `-DT3_PARALLEL_GEOMETRY=ON` to prepare the second actor on Slave SH-2. Add
 `-DT3_VERIFY_PARALLEL_GEOMETRY=ON` to compare every worker result with serial
 preparation; this adds diagnostic overhead and must stay off for timing.
@@ -310,7 +315,7 @@ settings. See the [stage measurements](docs/PAUL_STAGE_MEASUREMENTS.md) for
 results and limits. The [subsequent runtime experiments](docs/PAUL_RUNTIME_EXPERIMENTS.md)
 retain a 20% skin-stage reduction and the accumulated renderer update reduces
 frozen two-actor work from 64 to 49 ms. Full-game cadence improves from 8.18 to
-9.47 submissions/s and from 32.73 to 37.87 logic ticks/s in the neutral interval.
+9.76 submissions/s and from 32.73 to 39.03 logic ticks/s in the neutral interval.
 
 ## FK/IK differential oracle
 

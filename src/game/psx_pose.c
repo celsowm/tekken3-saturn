@@ -1,11 +1,11 @@
 #include "psx_pose.h"
-#include "fixed_shift.h"
+#include <saturn/int_math.h>
 #include <stdint.h>
 
 static const uint8_t k_slots[10]={0u,1u,11u,2u,3u,7u,6u,10u,14u,17u};
 
 static int32_t floor12(int64_t v) {
-    return t3_floor_shift(v,12u);
+    return sat_floor_shift_i64(v,12u);
 }
 static int16_t sat16(int32_t v) {
     return (int16_t)(v>32767 ? 32767 : (v< -32768 ? -32768 : v));
@@ -15,7 +15,8 @@ static int16_t wrap16(int32_t v) {
     return (int16_t)(w<0x8000u?(int32_t)w:(int32_t)w-65536);
 }
 static int16_t gpf(int32_t a,int32_t b) {
-    return sat16(floor12((int64_t)a*b));
+    /* Both operands originate in signed 16-bit GTE IR registers. */
+    return sat16(sat_floor_shift_i32(a*b,12u));
 }
 static int16_t sine(const t3_psx_trig_t* table,uint16_t angle,unsigned cos) {
     size_t index=(size_t)(((uint32_t)angle>>3u)&0x1FFEu)+
@@ -39,15 +40,15 @@ int t3_psx_euler_matrix(int16_t x,int16_t y,int16_t z,
     int16_t sz=sine(trig,(uint16_t)z,0u),cz=sine(trig,(uint16_t)z,1u);
     int16_t a1=gpf(sx,cz),a2=gpf(sx,sz),a3=gpf(sx,cy);
     int16_t b1=gpf(sy,a1),b2=gpf(sy,a2);
-    int16_t cxcz=sat16(floor12((int64_t)cx*cz));
+    int16_t cxcz=gpf(cx,cz);
     int16_t b3=gpf(sy,cxcz),c1=gpf(cy,cz),c2=gpf(cy,sz),c3=gpf(cy,cx);
-    int16_t cxsz=sat16(floor12((int64_t)cx*sz));
+    int16_t cxsz=gpf(cx,sz);
     out->m[2][1]=a3;
     out->m[2][0]=wrap16(-sy);
     out->m[0][1]=wrap16((int32_t)b1-cxsz);
     out->m[1][1]=wrap16((int32_t)cxcz+b2);
     out->m[0][2]=wrap16((int32_t)a2+b3);
-    out->m[1][2]=wrap16(floor12((int64_t)cxsz*sy)-a1);
+    out->m[1][2]=wrap16(sat_floor_shift_i32((int32_t)cxsz*sy,12u)-a1);
     out->m[0][0]=c1;
     out->m[1][0]=c2;
     out->m[2][2]=c3;
