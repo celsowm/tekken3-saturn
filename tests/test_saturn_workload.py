@@ -11,6 +11,14 @@ from run_saturn_stage_matrix import cache_options
 
 
 class WorkloadTests(unittest.TestCase):
+    def test_selected_fast_path_must_actually_execute(self):
+        selected={'configuration':{'T3_COMPACT_CAMERA_SKIN':'ON'}}
+        for counters in ({},{'camera_skin_frames':0,'camera_skin_fallbacks':100}):
+            with self.assertRaises(ValueError):
+                workload.validate_optimizations(selected,'two-paul-release',counters)
+        workload.validate_optimizations(selected,'two-paul-release',{'camera_skin_frames':1})
+        workload.validate_optimizations(selected,'diagnostic',{})
+
     def test_untyped_cmake_inputs_are_preserved_when_rebuilding(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'CMakeCache.txt'

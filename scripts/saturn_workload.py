@@ -13,6 +13,7 @@ REQUIRED_ON = ('T3_ENABLE_PSX_OWNED_MATCH', 'T3_ENABLE_PSX_COMBAT',
 REQUIRED_OFF = ('T3_PERF_SAMPLES', 'T3_SIM_PROFILE', 'T3_POSE_TRACE',
                 'T3_VERIFY_PARALLEL_GEOMETRY', 'T3_CPU_DIAGNOSTICS', 'T3_STAGE_HUD',
                 'T3_CAPTURE_INPUT_TAPE', 'T3_REPLAY_INPUT_TAPE')
+REQUIRED_OFF += ('T3_VERIFY_COMPACT_CAMERA_SKIN',)
 
 
 def cache_entries(path):
@@ -86,3 +87,10 @@ def validate(workload, profile, state=None):
             errors.append('guest archive does not match the build')
     if errors:
         raise ValueError('two-paul-release workload rejected: ' + '; '.join(errors))
+
+
+def validate_optimizations(workload,profile,counters):
+    if profile == 'two-paul-release' and workload['configuration'].get(
+            'T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
+        if counters.get('camera_skin_frames',0)<1:
+            raise ValueError('two-paul-release rejected: selected camera skin path never completed a frame')

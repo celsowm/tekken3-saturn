@@ -184,6 +184,9 @@ def run(args):
             if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
             command.extend(['--snapshot-pc',hex(syms[symbol][0])])
     dump_requests=list(getattr(args,'symbol_dumps',[]))
+    if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
+        dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
+                              ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
     if '_g_sat_last_panic' in syms:
         dump_requests.append(('_g_sat_last_panic','native-panic.bin'))
     for i,name in enumerate(getattr(args,'dump_symbol',[])):
@@ -223,6 +226,11 @@ def run(args):
         raise ValueError('probe did not finish executing inside application')
     state = decode((out / 'diagnostics.bin').read_bytes())
     saturn_workload.validate(workload, workload_profile, state)
+    optimizations={}
+    for name in ('camera_skin_frames','camera_skin_fallbacks'):
+        entry=dump_manifest.get('_g_t3_'+name)
+        if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
+    saturn_workload.validate_optimizations(workload,workload_profile,optimizations)
     if state['first_error'] or state['draw_timeouts'] or state['commands_used'] > state['commands_capacity']:
         raise ValueError(f'guest rendering failed: {state}')
     if getattr(args,'capture_inputs',False):
@@ -245,7 +253,7 @@ def run(args):
     result = dict(emulator_frames=args.frames, cd_boot_validated=False,
                   elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
                   diagnostics_address=address, provenance=provenance, command=command, state=state,
-                  workload_profile=workload_profile, workload=workload)
+                  workload_profile=workload_profile, workload=workload,optimizations=optimizations)
     (out / 'observation.json').write_text(json.dumps(result, indent=2) + '\n')
     if getattr(args,'debug_profile',False):
         import analyze_saturn_profile

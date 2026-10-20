@@ -99,3 +99,35 @@ exactly the FRT control's endpoints. No complete-path improvement was shown,
 so the runtime API and port option were removed. The preserved builds,
 movies and reports remain private under `structural-v2-bounded*`. This is not
 the planned fused camera-space skin/placement path, which remains open.
+
+
+## Qualified second increment: compact projected queue
+
+SDK `d31e6d7` adds an optional 24-byte projected record for RGB and compiled
+material faces, retaining the general cold fallback and existing stable painter
+ordering. The port enables this queue in High WRAM by default; Dino enables its
+own queue in Low WRAM. This increment still retains full cold capacity and copies
+worker results during merge. Disjoint writer spans and removal of those copies
+remain open work.
+
+Fresh matched full-Paul builds using the same SDK/compiler/options completed
+4,041 ticks/1,010 submissions with the general queue and 4,153 ticks/1,038
+submissions with the compact queue over 5,400 Ymir fields: **2.77% more
+submissions**. Late swaps increased from 47 to 186, so this is not a presentation
+cadence qualification. The new SDK's general path is also approximately 2% slower
+than the preceding FRT-only SDK's 1,031 submissions. Frozen tick-120 model crops
+have zero changed pixels, worker/serial verification completes 184 comparisons,
+and all 24 original combat scenarios pass.
+
+Isolated neutral Mednafen CD captures show FRAME 49 to 538 at seconds 18 and 78
+for the compact queue, compared with 45 to 494 for the preceding FRT control:
+489 versus 449 submissions in 60 seconds (**8.91% more**). These counters do not
+establish unique complete pictures or hardware FPS. Private profiles disable
+both gamepads during measurement without modifying the interactive emulator
+configuration. The recorder now retains workload identity and profile metadata.
+
+Matched Dino runs improve the animated submission counter from 20.6 to 23.9/s;
+paused controls remain 24/s with identical model pixels, and scripted controls
+change from 20.0 to 20.1/s while passing runtime gates. Supported SDK host/tools
+checks and the five package checks pass. The full-Paul 30-picture/60-tick target
+remains unmet.

@@ -67,6 +67,9 @@ static sat_scene_t g_scene;
 /* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
  * and hot actor data in High WRAM; the linker checks both memory budgets. */
 static sat_scene3d_face_t g_faces[FACE_CAP] __attribute__((section(".wram_l")));
+#if defined(T3_PROJECTED_FACE_QUEUE)
+static sat_scene3d_projected_face_t g_projected_faces[FACE_CAP];
+#endif
 static uint32_t g_keys[FACE_CAP] __attribute__((section(".wram_l")));
 static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
 /* Explicitly cleared and uploaded by HUD initialization before its first use. */
@@ -500,6 +503,10 @@ int main(void) {
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
+#if defined(T3_PROJECTED_FACE_QUEUE)
+    SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_storage(
+        &g_scene.faces,g_projected_faces,FACE_CAP));
+#endif
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
 #if defined(T3_CLOSE_CAMERA)
         FX(45),
