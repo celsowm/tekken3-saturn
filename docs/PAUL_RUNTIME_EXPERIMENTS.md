@@ -50,6 +50,25 @@ cross-build still fails because `bullet_hell_stress` lacks
 `assets/palette_bgr555_be.bin`; this is an open repository gate, separate from
 the passing projection and consumer checks.
 
+## Sparse projection vertex prefetch (2026-10-19)
+
+Follow-up to the divider-overlap path: during the current vertex's Y-axis
+DIVU, LibSaturn computes the next vertex's independent clip-W and clip-X rows.
+The scalar oracle matches all 257 front-facing vertices in the added sparse
+camera test. On the native-CD two-cube projection control (866 vertices per
+actor), two Mednafen runs improved geometry from 4,666/4,666 to 4,322/4,321
+FRT ticks (7.38%) with identical model pixels. The installed candidate also
+builds and boots the Tekken CD; its screenshots are identical at seconds 30
+and 39, and both builds show `FRAME 666` at second 15.
+
+Ymir remains a counter-signal: it reports 27.816 ms before and 29.046 ms after,
+because its immediate-result DIVU model omits the SH-2 latency this path hides.
+The isolated projection gain did not increase the Tekken cadence. Keep the
+claim scoped to projection work; this is not a whole-game speedup or physical
+hardware qualification. The LibSaturn implementation and retained measurement
+are in [commit `4e4c0b0`](https://github.com/celsowm/libsaturn/commit/4e4c0b0)
+and [`projection-prefetch`](https://github.com/celsowm/libsaturn/blob/4e4c0b0/harness/studies/projection-prefetch/mednafen.json).
+
 ## Selection and rejected changes
 
 A fresh six-field Ymir profile at fields 360-365 reconciles both CPU histograms
