@@ -1,7 +1,7 @@
 import struct,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from analyze_saturn_stages import CAPACITY,FIELDS,decode,summarize
+from analyze_saturn_stages import CAPACITY,FIELDS,V1_FIELDS,decode,summarize
 from run_saturn_stage_matrix import cache_options,project_overrides
 
 class StageRingTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class StageRingTests(unittest.TestCase):
 
     def ring(self,count):
         raw=bytearray(12+CAPACITY*len(FIELDS)*4)
-        struct.pack_into('>III',raw,0,1,count,count%CAPACITY)
+        struct.pack_into('>III',raw,0,2,count,count%CAPACITY)
         for i in range(max(0,count-CAPACITY),count):
             values=[i+200,4,7]+[0]*(len(FIELDS)-3)
             values[FIELDS.index('simulation')]=12
@@ -39,6 +39,14 @@ class StageRingTests(unittest.TestCase):
         with self.assertRaises(ValueError):decode(self.ring(0))
     def test_reject_empty_warmup_window(self):
         with self.assertRaises(ValueError):summarize(decode(self.ring(2)),999)
+
+    def test_archived_version_one_does_not_report_unmeasured_stages_as_zero(self):
+        raw=bytearray(12+CAPACITY*len(V1_FIELDS)*4)
+        struct.pack_into('>III',raw,0,1,1,1)
+        struct.pack_into('>'+len(V1_FIELDS)*'I',raw,12,200,1,1,*([0]*(len(V1_FIELDS)-3)))
+        report=summarize(decode(raw))
+        self.assertNotIn('camera',report['stage_ms'])
+        self.assertIn('camera',summarize(decode(self.ring(2)))['stage_ms'])
 
     def test_matrix_preserves_optimization_and_toolchain_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -260,6 +260,7 @@ static void draw_scene(void) {
     T3_PERF_START(pose_publication_started);
     t3_move_probe_present();
     T3_PERF_ADD(placement,pose_publication_started);
+    T3_PERF_START(camera_started);
     sat_fx16_t center = from_q8((g_game.fighters[0].x + g_game.fighters[1].x) / 2);
 #if defined(T3_CLOSE_CAMERA)
     sat_fx16_t separation=from_q8(g_game.fighters[0].x-g_game.fighters[1].x);
@@ -279,8 +280,11 @@ static void draw_scene(void) {
 #endif
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
+    T3_PERF_ADD(camera,camera_started);
     if(T3_PERF_MODE!=1) {
+        T3_PERF_START(stage_started);
         floor_tiles();
+        T3_PERF_ADD(stage,stage_started);
         SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
     }
     T3_PERF_START(flush_started);
@@ -311,6 +315,9 @@ static void draw_profiler(void) {
         completed.placement,completed.geometry,completed.flush,completed.present,completed.work,completed.ticks};
     for(unsigned i=0;i<sizeof(values)/sizeof(values[0]);++i)
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,labels[i],values[i],COLUMN_X,FIRST_Y+ROW_HEIGHT*i));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"CAM ",completed.camera,4,FIRST_Y+ROW_HEIGHT*6));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"FLOOR ",completed.stage,4,FIRST_Y+ROW_HEIGHT*7));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"DIAG ",completed.diagnostics,4,FIRST_Y+ROW_HEIGHT*8));
 #endif
 }
 
@@ -613,10 +620,12 @@ int main(void) {
         if (T3_PERF_MODE!=1 && g_show_profiler) draw_profiler();
         T3_PERF_ADD(hud,hud_started);
         g_render_work_ms=sat_time_ms()-render_started_ms;
+        T3_PERF_START(diagnostics_started);
         {
             const sat_pad_state_t pads[2] = {pad0, pad1};
             publish_diagnostics(work_started_ms, ticks, pads);
         }
+        T3_PERF_ADD(diagnostics,diagnostics_started);
         T3_PERF_START(present_started);
         SAT_PANIC_IF_ERROR(sat_end_frame());
         T3_PERF_ADD(present,present_started);

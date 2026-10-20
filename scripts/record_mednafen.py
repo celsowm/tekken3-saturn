@@ -43,8 +43,10 @@ def record(args):
     (out/'ffprobe.json').write_bytes(subprocess.check_output(
         ['ffprobe','-v','quiet','-count_frames','-show_streams','-of','json',str(movie)]))
     for second in args.screenshots:
+        image=out/f'frame-{second}.png'
         subprocess.run(['ffmpeg','-y','-v','error','-ss',str(second),'-i',str(movie),'-frames:v','1',
-                        '-vf','scale=704:480',str(out/f'frame-{second}.png')],check=True)
+                        '-vf','scale=704:480',str(image)],check=True)
+        if not image.is_file():raise ValueError('no recorded video image at '+str(second)+' seconds')
     print(json.dumps(metadata,indent=2))
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)

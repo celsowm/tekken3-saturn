@@ -11,6 +11,24 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 import kmd_to_ska as kmd
 from build_local_kmd_assets import skeleton_parts,generate
+from audit_kmd_topology import audit,classify
+
+
+class TopologyAuditTests(unittest.TestCase):
+    def test_seams_cross_joint_faces_and_two_sided_faces_stay_distinct(self):
+        report=classify([0,0,0,1],5,
+            [(0,1,2,2),(0,1,2,2),(1,2,3,3),(0,1,4,4)],
+            [False,True,False,False])
+        self.assertEqual(report['face_classes'],dict(single_rigid_joint=2,
+            single_rigid_joint_cullable=1,multiple_rigid_joints=1,
+            multiple_rigid_joints_cullable=1,has_blend=1,has_blend_cullable=1))
+        self.assertEqual(report['single_rigid_joint_referenced_vertices'],3)
+        self.assertEqual(report['vertices_exclusive_to_cullable_single_joint_faces'],0)
+        self.assertEqual(report['blend_vertices'],1)
+
+    def test_invalid_topology_is_rejected(self):
+        for faces,flags in [([(0,1,2,3)],[]), ([(0,1,2,4)],[False])]:
+            with self.assertRaises(ValueError):classify([0,0,0,0],4,faces,flags)
 
 def synthetic_kmd():
     # The 27-row header ends at 0x5F8. One row includes four rigid vertices,
@@ -128,6 +146,16 @@ class KmdTests(unittest.TestCase):
             model,quads,_=kmd.to_source_model(parsed,Path(checkout))
             self.assertEqual(quads,[(0,1,3,2)])
             self.assertEqual(model.triangles,[(0,1,2),(1,3,2)])
+            source=dest/'fixture.kmd';source.write_bytes(synthetic_kmd())
+            topology=audit(source,Path(checkout))
+            self.assertEqual((topology['vertices'],topology['faces']),(4,1))
+            self.assertEqual(topology['face_classes'],
+                dict(single_rigid_joint=1,single_rigid_joint_cullable=1))
+            self.assertEqual(topology['single_rigid_joint_referenced_vertices'],4)
+            self.assertEqual(topology['vertices_exclusive_to_cullable_single_joint_faces'],4)
+            self.assertEqual(topology['maximum_influence_position_l1'],32768)
+            self.assertEqual(topology['position_shift'],14)
+            self.assertEqual(topology['q12_rotation_round_bias'],512)
             result=kmd.compile_ska(parsed,Path(checkout),dest)
             self.assertEqual(result["format"],"SKA1")
             self.assertEqual(result["joints"],22)

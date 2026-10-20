@@ -8,10 +8,11 @@
 /* Modes 1/2 deliberately remove drawing work and are diagnostic only. */
 #define T3_DRAW_ACTORS (T3_PERF_MODE == 2 ? 1u : 2u)
 #if defined(T3_PERF_SAMPLES)
-enum { T3_PERF_CAPACITY=1024 };
+enum { T3_PERF_CAPACITY=1024, T3_PERF_VERSION=2 };
 typedef struct {
     uint32_t field, ticks, elapsed, input, simulation, skeleton, skin,
-             placement, geometry, flush, hud, present, work;
+             placement, geometry, flush, hud, present, work,
+             camera, stage, diagnostics;
 } t3_perf_sample_t;
 typedef struct {
     uint32_t version, count, cursor;

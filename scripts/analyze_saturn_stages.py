@@ -3,21 +3,24 @@
 import argparse,json,math,struct
 from pathlib import Path
 
-FIELDS=('field','ticks','elapsed','input','simulation','skeleton','skin',
+V1_FIELDS=('field','ticks','elapsed','input','simulation','skeleton','skin',
         'placement','geometry','flush','hud','present','work')
+FIELDS=V1_FIELDS+('camera','stage','diagnostics')
 CAPACITY=1024
 
 def decode(raw):
-    expected=12+CAPACITY*len(FIELDS)*4
-    if len(raw)!=expected:raise ValueError(f'expected {expected} bytes, got {len(raw)}')
+    if len(raw)<12:raise ValueError('incomplete stage header')
     version,count,cursor=struct.unpack_from('>III',raw)
-    if version!=1 or not count or cursor!=count%CAPACITY:
+    if version not in (1,2) or not count or cursor!=count%CAPACITY:
         raise ValueError('invalid or unpublished stage ring')
+    fields=V1_FIELDS if version==1 else FIELDS
+    expected=12+CAPACITY*len(fields)*4
+    if len(raw)!=expected:raise ValueError(f'expected {expected} bytes, got {len(raw)}')
     # The next slot may be getting overwritten when the emulator stops. In a
     # full ring skip it, even if count/cursor still describe the previous
     # publication. This also protects against a partially copied old sample.
     indices=range(count) if count<CAPACITY else [(cursor+i)%CAPACITY for i in range(1,CAPACITY)]
-    rows=[dict(zip(FIELDS,struct.unpack_from('>'+len(FIELDS)*'I',raw,12+i*len(FIELDS)*4))) for i in indices]
+    rows=[dict(zip(fields,struct.unpack_from('>'+len(fields)*'I',raw,12+i*len(fields)*4))) for i in indices]
     if any(b['field']<a['field'] for a,b in zip(rows,rows[1:])):
         raise ValueError('non-monotonic stage fields')
     return rows
@@ -30,7 +33,7 @@ def summarize(rows,after_field=180):
         return dict(median=values[len(values)//2],p95=values[math.ceil(len(values)*.95)-1],maximum=values[-1])
     ticks=sum(r['ticks'] for r in rows)
     return dict(samples=len(rows),first_field=rows[0]['field'],last_field=rows[-1]['field'],
-                simulation_ticks=ticks,stage_ms={k:stats([r[k] for r in rows]) for k in FIELDS[3:]},
+                simulation_ticks=ticks,stage_ms={k:stats([r[k] for r in rows]) for k in FIELDS[3:] if all(k in r for r in rows)},
                 elapsed_fields=sum(r['elapsed'] for r in rows),
                 elapsed_fields_over_four=sum(max(0,r['elapsed']-4) for r in rows),
                 simulation_ms_per_tick=sum(r['simulation'] for r in rows)/ticks if ticks else None,

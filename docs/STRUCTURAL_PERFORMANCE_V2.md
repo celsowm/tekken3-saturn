@@ -215,7 +215,14 @@ or an additive FPS budget. A separate exact composited-video analysis records
 115 model-region RGB changes over 599 warmed field transitions (about 11.52/s).
 It counts changed crops, not unique poses or a complete 60-second qualification.
 
-The next structural boundary is immutable visual state: capture pose, placement,
+The subsequent [whole-frame review](CRITICAL_PATH_REVIEW.md) qualifies this
+scheduling proposal: the 45 ms Ymir / 64 ms sampled Mednafen frozen renderer
+already exceeds 33.33 ms, and the current geometry path already splits actors
+across CPUs. Snapshots alone are not a demonstrated fix. First measure the
+review's exact factored Q12/Q15 range and compiled rigid-part opportunities;
+recompute the useful-work budget before choosing a new ownership boundary.
+
+An immutable visual boundary would capture pose, placement,
 camera and HUD state before overlapping geometry with subsequent simulation.
 Account for all reads of the opponent's pose and shared motion caches, preserve
 original actor order, and limit additional presentation age to the authorized
