@@ -542,3 +542,48 @@ is complete: 7,544 exact comparisons passed, but its full-range timing was
 [`SKINNING_MAC_BENCH.md`](https://github.com/celsowm/libsaturn/blob/main/docs/SKINNING_MAC_BENCH.md).
 The next isolated target is projection, followed by the existing whole-path
 controls before any candidate is retained.
+
+## Clean two-Paul performance checkpoint
+
+2026-10-20: rebuilt the current project revision `1c8ac15` from clean CMake
+directories with the complete local Paul data set and matched gameplay flags.
+The retained configuration enables combat, owned match and skin preview,
+128-entry local-pose caching, parallel geometry, frame-on-submit, and High-WRAM
+geometry/material/texture banks. The clean image is 848,456 bytes and passes
+the standard 983,040-byte image limit and linker stack reserve.
+
+The 5,400-field Ymir injection run completes 1,002 submissions and 4,009
+simulation ticks: 11.13 submissions/s and 44.54 ticks/s over the full requested
+window. It records 84 ms frame work, 8 ms skin work and 46 ms render work, with
+zero draw timeouts, rejected faces or guest errors. These values belong to
+this exact full-Paul configuration and must not be generalized to other
+builds. Ymir's super-debugger trace covers six fields (5,390–5,395) on both
+CPUs, with no dropped samples. Its modeled Master costs put DIVMOT branch
+search at 7.66%, skin deformation at 7.01%, projection at 6.33%, instance
+submission at 5.06%, pose composition at 4.60% and rotation multiplication at
+4.06%. Ymir reports about 449,204 modeled execution cycles per CPU per field;
+its trace excludes sleep and separately advanced DMA and is not a physical
+Saturn cycle certification.
+
+Two cache variants were tested and discarded. The boot diagnostic reads CCR
+`0x01` on both Master and Slave in this injected run, so a second Slave cache
+enable is redundant. Skipping scene-source invalidation only when the receiving
+CPU reports its cache disabled therefore leaves this workload on the unchanged
+path. The variants preserve 1,002 submissions, 4,009 ticks and 84 ms work, and
+do not justify a runtime change.
+
+A clean build against the older installed prefix `saturn-prefix-gc` also
+completes 1,002 submissions and 4,009 ticks with 84 ms work (render rounds to
+45 ms instead of 46 ms). That one-millisecond diagnostic difference is below
+the timer's millisecond reporting precision; it does not show an SDK speedup
+or regression. The old installed prefix has no embedded source revision, so
+this is recorded as a package-snapshot comparison, not an exact SDK commit
+comparison. Its screenshot was captured one submission serial ahead, so the
+image comparison is not a matched-pose visual gate.
+
+Private captures stay under `/tmp/paul-q15-high4-{5400,debug}` and
+`/tmp/paul-old-sdk-5400`; the clean build directories are ignored under
+`build/paul-q15-high4` and `build/paul-old-sdk`. No source optimization is
+promoted from this checkpoint. The next candidate must attack the measured
+simulation/geometry work and pass a matched 5,400-field Paul run before it is
+called a performance improvement.
