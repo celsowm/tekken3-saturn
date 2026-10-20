@@ -1,5 +1,11 @@
 # Runtime experiments after stage isolation
 
+**Workload correction:** the sparse projection prefetch, affine matrix and
+Q15 dispatch controls at fields 360–365 used the procedural frontend model
+(143 vertices/151 faces, owned match OFF). Their approximately 30 submissions/s
+do not describe the original Paul pair. See
+[the corrected identities and current execution ledger](STRUCTURAL_PERFORMANCE_V2.md).
+
 Latest game-side increment: [simulation-to-presentation bridge](PRESENTATION_BRIDGE_PERFORMANCE.md).
 Owned pose publication now occurs once per submitted image, and per-tick binary
 tracing requires `T3_POSE_TRACE=ON`. Median measured work improves 91 to 87 ms;

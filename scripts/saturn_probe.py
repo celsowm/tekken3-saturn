@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import saturn_workload
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = ('magic version frame_serial vblanks sim_ticks sim_steps_last_frame '
@@ -131,6 +132,11 @@ def decode_panic(raw):
 
 def run(args):
     build, out = args.build.resolve(), args.out.resolve()
+    workload = saturn_workload.inspect(build)
+    workload_profile = getattr(args, 'workload', 'diagnostic')
+    saturn_workload.validate(workload, workload_profile)
+    if workload_profile == 'two-paul-release' and (args.profile or getattr(args, 'debug_profile', False)):
+        raise ValueError('two-paul-release cadence excludes intrusive CPU profiling; use diagnostic')
     out.mkdir(parents=True, exist_ok=True)
     elf = build / 'tekken3_saturn.elf'
     binary = build / 'tekken3_saturn.app.bin'
@@ -216,6 +222,7 @@ def run(args):
     if not boot.get('injected') or not start <= boot['pc_after_run'] < start + binary.stat().st_size:
         raise ValueError('probe did not finish executing inside application')
     state = decode((out / 'diagnostics.bin').read_bytes())
+    saturn_workload.validate(workload, workload_profile, state)
     if state['first_error'] or state['draw_timeouts'] or state['commands_used'] > state['commands_capacity']:
         raise ValueError(f'guest rendering failed: {state}')
     if getattr(args,'capture_inputs',False):
@@ -237,7 +244,8 @@ def run(args):
         provenance[name + '_revision'] = revision.stdout.strip() if revision.returncode == 0 else None
     result = dict(emulator_frames=args.frames, cd_boot_validated=False,
                   elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
-                  diagnostics_address=address, provenance=provenance, command=command, state=state)
+                  diagnostics_address=address, provenance=provenance, command=command, state=state,
+                  workload_profile=workload_profile, workload=workload)
     (out / 'observation.json').write_text(json.dumps(result, indent=2) + '\n')
     if getattr(args,'debug_profile',False):
         import analyze_saturn_profile
@@ -252,6 +260,8 @@ def run(args):
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build', type=Path, default=ROOT / 'build/saturn')
+    p.add_argument('--workload', choices=saturn_workload.PROFILES, default='diagnostic',
+                   help='two-paul-release refuses procedural, frozen or instrumented timing builds')
     p.add_argument('--libsaturn', type=Path, default=ROOT.parent / 'lib-saturn')
     p.add_argument('--probe', type=Path)
     p.add_argument('--bios', type=Path, default=os.environ.get('LIBSATURN_BIOS'),

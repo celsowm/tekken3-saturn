@@ -3,9 +3,10 @@
 import argparse,json,os,subprocess
 from pathlib import Path
 from run_saturn_stage_matrix import ROOT,cache_options,project_overrides
+import saturn_workload
 
 
-def build(baseline,out,overrides):
+def build(baseline,out,overrides,workload='diagnostic'):
     options,compiler_dir=cache_options(baseline.resolve()/'CMakeCache.txt')
     overrides=project_overrides(overrides)
     out=out.resolve()
@@ -20,6 +21,10 @@ def build(baseline,out,overrides):
     for i,command in enumerate(commands):
         with (out/f'variant-step-{i}.log').open('w') as log:
             subprocess.run(command,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
+    identity=saturn_workload.inspect(out)
+    saturn_workload.validate(identity,workload)
+    manifest['workload_profile']=workload
+    manifest['workload']=identity
     manifest['completed']=True
     (out/'variant.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print(json.dumps(manifest,indent=2))
@@ -30,4 +35,5 @@ if __name__=='__main__':
     p.add_argument('--baseline',type=Path,required=True)
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--cmake-option',action='append',default=[])
-    a=p.parse_args();build(a.baseline,a.out,a.cmake_option)
+    p.add_argument('--workload',choices=saturn_workload.PROFILES,default='diagnostic')
+    a=p.parse_args();build(a.baseline,a.out,a.cmake_option,a.workload)

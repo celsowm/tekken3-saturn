@@ -641,6 +641,8 @@ else()
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME saturn_release_workload_identity
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_saturn_workload.py")
         add_test(NAME simulation_profile_accounting
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_simulation_profile.py")
         add_test(NAME ps1_round_flow_snapshot_audit
