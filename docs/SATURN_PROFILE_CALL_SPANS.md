@@ -1,8 +1,72 @@
-# Completed CPU calls and private topology audit
+# Full-Paul call spans, stage budget and topology audit
 
 The bounded harness profile can now report inclusive completed calls as well
 as exclusive instruction costs. This supports the structural performance
 study without changing gameplay, SDK code or release scheduling.
+
+## Completed stage budget
+
+Diagnostic stage-ring version 2 adds `camera`, `stage` (floor/rails) and
+`diagnostics`. They respectively cover camera update/scene begin, stage face
+preparation, and snapshot publication. All three are inside complete `work`;
+they are separate from actor geometry and HUD submission. The 1,024-slot ring
+uses 65,548 Low-WRAM bytes, 12,288 more than version 1. The decoder retains
+version-1 support and omits its unmeasured new stages rather than reporting
+zeros. No new timers execute with `T3_PERF_SAMPLES=OFF`.
+
+The private `structural-v2-critical-detail/matrix.json` retains matched
+cache-on original-Paul controls over fields 300–1199. Values below are
+instrumented **median milliseconds per submission**, except the final row.
+The full window contains 170 completed samples/680 committed ticks; the
+frozen window contains 297 samples and no further committed ticks.
+
+| Stage | Full game | Frozen two-actor renderer |
+| --- | ---: | ---: |
+| Simulation | 30 | 0 |
+| Skeleton | 1 | 1 |
+| Skinning | 4 | 4 |
+| Placement including pose publication | 2 | 2 |
+| Actor geometry including worker join | 20 | 20 |
+| Flush | 10 | 10 |
+| Floor and rails | 4 | 4 |
+| Camera/scene begin | 0 | 0 |
+| Diagnostic publication | 0 | 0 |
+| HUD | 1 | 1 |
+| Presentation | 1 | 1 |
+| Complete work | 75 | 45 |
+| Simulation aggregate divided by committed ticks | 8.326 | n/a |
+
+Zero-millisecond medians reflect timer resolution. Stage medians need not add
+to the complete-work median. Outer VBlank/begin-frame waits are excluded.
+The independent simulation-only version-1 control measures 8.336 ms/tick
+over 894 committed ticks. Removing rendering is a diagnostic control; it does
+not establish full-game cadence. These captures have zero guest errors and
+draw timeouts. Full-game samples still discard 214 elapsed fields beyond the
+four-field clamp, while the simulation-only measured window discards none.
+
+Matching detailed full/frozen ELF hashes are respectively
+`48d8b3f8fb4c275e10b170eb31034ab33baa5843525aff3fc0cf7225f81cb189` and
+`8a5182ea349a57f9d91ea31f8e0591dc19451e7ab1a709777b29749ed335f5b3`.
+
+Independent Mednafen CD controls remain necessary. The earlier full-game
+35-second wall-time run stored only 5.833 seconds of video and cannot supply
+gameplay samples. Its replacement `structural-v2-critical-native-full-resume`
+contains 64.871 recorded seconds and visibly reaches gameplay. At movie
+seconds 18/20/22/24 the overlay shows complete work of 102/103/111/109 ms,
+simulation of 39/40/48/46 ms and geometry of 21/22/21/21 ms. This build uses
+the version-1 stage HUD. The detailed version-2 frozen CD control
+`structural-v2-critical-native-detail` contains 64.887 recorded seconds;
+seconds 18/22/24 show 64/65/64 ms complete work, 21/22/22 ms geometry,
+15/14/14 ms flush, 4/4/4 ms floor and 0/1/0 ms diagnostic publication.
+These are inspected snapshots with profiler/HUD overhead, not distributions,
+release cadence, unique-image counts or physical-hardware results.
+
+The rebuilt release application remains 854,112 bytes. A complete binary
+comparison with the qualified direct-span release finds only 38 differing
+bytes in 35 panic source-line literals. Each maps to the same unchanged source
+assertion; all other application bytes match. The private comparison is
+`structural-v2-critical-study/release-code-control.json`. Consequently this
+increment demonstrates instrumentation coverage, not a release speed gain.
 
 ## Reproduce the call report
 
@@ -82,9 +146,9 @@ python3 scripts/audit_kmd_topology.py \
 ```
 
 This uses the same canonical skin exporter and source-to-runtime vertex
-mapping as the renderer asset builder. It writes only counts, scope and the
-input hash; it exports no mesh. Retail inputs and generated reports remain
-private.
+mapping as the renderer asset builder. It writes counts, arithmetic bounds,
+scope and the input hash; it exports no mesh. Retail inputs and generated
+reports remain private.
 
 | Face class | Faces | Faces eligible for one-sided culling |
 | --- | ---: | ---: |
@@ -93,11 +157,37 @@ private.
 | At least one blended vertex | 277 | 271 |
 
 The source has 556 runtime vertices: 453 rigid and 103 blended. Single-joint
-faces reference 440 distinct rigid vertices. This is **static eligibility**;
+faces reference 440 distinct rigid vertices; only 235 are used exclusively by
+cullable single-joint faces. All 103 blended vertices have two equal half
+weights. This is **static eligibility**;
 it does not prove a saved vertex count, visibility, transformed-normal
 equivalence, rounding bounds, pixel parity or runtime benefit. A rigid-part
 culling experiment would need an independent proof and matched captures before
 changing renderer admission.
+
+The audit also reports the exported anchor shift and a hypothetical signed-Q12
+rotation dot-product bound. Paul uses shift 15 and maximum anchor L1 norm
+5,488: the full signed-16-bit coefficient bound is 179,830,784 before rounding,
+with a rounding bias of 1,024. The bias follows the exported shift; the synthetic
+shift-14 fixture uses 512. This bounds only that hypothetical dot product,
+excluding translation and blending. It proves neither equivalence to current
+Q16 skinning nor a one-pixel final projection bound. No Q12 runtime path is
+introduced.
+
+## Snapshot ownership constraints
+
+An overlap experiment must snapshot the final two-actor joint matrices, world
+placement center, camera and all HUD/round/replay facts together before any
+later authoritative tick. `draw_hud` currently reads both `g_game` and live
+round accessors; copying fighter transforms alone would leave mixed-time HUD
+state. `prepare_actors` also reads published world poses and generic clip/fade
+state, while geometry reads mutable actor vertices, instances and scene state.
+Those buffers require independent ownership until worker completion/release.
+The authoritative core retains shared mutable sample/pose caches and ordered
+opponent reads. Keep that simulation serial. Input edges, reset, pending tick
+debt and the authorized presentation-age bound require explicit handling;
+the current four-field clamp still deletes time. No overlap, debt repair or
+60-tick/30-picture qualification is claimed by this diagnostic increment.
 
 Synthetic checks cover blended seams, cross-joint and two-sided faces, invalid
 indices, recursive/nested calls, independent CPU clocks, capture boundaries and

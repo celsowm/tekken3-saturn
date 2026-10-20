@@ -230,3 +230,17 @@ one-frame/approximately 33 ms bound. The freed Low WRAM makes bounded snapshot
 storage possible. Retained tick debt, input-edge ownership, snapshot overlap,
 VF2 per-list comparison and the final 60-tick/30-picture acceptance remain open;
 the existing four-field time clamp is still present.
+
+## Critical-path instrumentation checkpoint
+
+The [completed call-span, stage and topology study](SATURN_PROFILE_CALL_SPANS.md)
+adds per-CPU inclusive completed calls with event conservation checks and a
+version-2 optional stage ring for camera, stage preparation and diagnostic
+publication. Version-1 captures remain readable. Matched Ymir full/frozen
+controls measure 75/45 ms median complete work; inspected independent Mednafen
+frames retain the larger native cost. The release application's only changed
+bytes are panic source-line literals; this is an instrumentation increment.
+The study records exact artifact identities, static topology limits and the
+pose/placement/camera/HUD ownership required before snapshot overlap. The
+performance target, retained tick debt and final encounter qualification remain
+open.

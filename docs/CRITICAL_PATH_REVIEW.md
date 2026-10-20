@@ -50,13 +50,20 @@ only. Release builds contain neither its storage nor its timing calls.
 
 An independent actual Mednafen CD capture of the new frozen diagnostic shows,
 at movie second 24: skin 5 ms, placement 3 ms, geometry 22 ms, flush 14 ms,
-floor 5 ms, present 7 ms and complete work 64 ms. Camera and diagnostics round
+floor 4 ms, present 7 ms and complete work 64 ms. Camera and diagnostics round
 to zero. The preceding diagnostic shows 64 ms complete work too. These are
 individual last-completed samples with additional profiler HUD work, not a
 native timing distribution. A separate 35-wall-second full diagnostic recording
 contains only 5.83 recorded seconds and does not establish gameplay coverage;
 it is excluded. The recorder now rejects missing requested screenshots instead
 of accepting ffmpeg's successful exit without an output image.
+
+The replacement full-game CD recording contains 64.871 recorded seconds and
+visibly reaches gameplay. Its inspected version-1 HUD samples show 102–111 ms
+complete work. The [call-span guide](SATURN_PROFILE_CALL_SPANS.md) records the
+sample times, artifact hashes and separate release-binary control: all release
+application bytes match the qualified build except 35 panic source-line
+literals. These controls establish coverage without claiming a speed gain.
 
 Private evidence: `structural-v2-critical-study`, `structural-v2-critical-detail`,
 `structural-v2-critical-native-frozen` and `structural-v2-critical-native-detail`
