@@ -58,16 +58,20 @@ The scalar oracle matches all 257 front-facing vertices in the added sparse
 camera test. On the native-CD two-cube projection control (866 vertices per
 actor), two Mednafen runs improved geometry from 4,666/4,666 to 4,322/4,321
 FRT ticks (7.38%) with identical model pixels. The installed candidate also
-builds and boots the Tekken CD; its screenshots are identical at seconds 30
-and 39, and both builds show `FRAME 666` at second 15.
+builds and boots the Tekken CD with `T3_PARALLEL_GEOMETRY=ON` and
+`T3_VERIFY_PARALLEL_GEOMETRY=ON`, matching the baseline. Its screenshots are
+pixel-identical at seconds 15, 30 and 39; both show `FRAME 666` at second 15.
+The matched six-field Ymir profile also has 403 simulation ticks and 201
+submissions in both builds.
 
 Ymir remains a counter-signal: it reports 27.816 ms before and 29.046 ms after,
 because its immediate-result DIVU model omits the SH-2 latency this path hides.
-The isolated projection gain did not increase the Tekken cadence. Keep the
-claim scoped to projection work; this is not a whole-game speedup or physical
-hardware qualification. The LibSaturn implementation and retained measurement
-are in [commit `4e4c0b0`](https://github.com/celsowm/libsaturn/commit/4e4c0b0)
-and [`projection-prefetch`](https://github.com/celsowm/libsaturn/blob/4e4c0b0/harness/studies/projection-prefetch/mednafen.json).
+Its matched game profile reports projection cost +9.09% Master and +10.38%
+Slave cycles, with the same DIVU-model limitation. Keep the claim scoped to
+projection work; this is not a whole-game speedup or physical hardware
+qualification. The LibSaturn implementation and retained measurement are in
+[commit `4e4c0b0`](https://github.com/celsowm/libsaturn/commit/4e4c0b0) and
+[`projection-prefetch`](https://github.com/celsowm/libsaturn/blob/4e4c0b0/harness/studies/projection-prefetch/mednafen.json).
 
 ## Selection and rejected changes
 
