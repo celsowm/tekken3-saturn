@@ -581,9 +581,15 @@ this is recorded as a package-snapshot comparison, not an exact SDK commit
 comparison. Its screenshot was captured one submission serial ahead, so the
 image comparison is not a matched-pose visual gate.
 
-Private captures stay under `/tmp/paul-q15-high4-{5400,debug}` and
-`/tmp/paul-old-sdk-5400`; the clean build directories are ignored under
-`build/paul-q15-high4` and `build/paul-old-sdk`. No source optimization is
-promoted from this checkpoint. The next candidate must attack the measured
-simulation/geometry work and pass a matched 5,400-field Paul run before it is
-called a performance improvement.
+The clean current build also boots as a real CD in Mednafen. Its 29.84-second
+recording contains both Paul models and an advancing HUD frame counter: the
+retained screenshots show `FRAME 21` at 15 seconds and `FRAME 114` at 28
+seconds. This confirms CD boot and continued rendering for this image; those
+checkpoints are not a physical Saturn rate measurement.
+
+Private captures stay under `/tmp/paul-q15-high4-{5400,debug}`,
+`/tmp/paul-q15-high4-mednafen` and `/tmp/paul-old-sdk-5400`; the clean build
+directories are ignored under `build/paul-q15-high4` and `build/paul-old-sdk`.
+No source optimization is promoted from this checkpoint. The next candidate
+must attack the measured simulation/geometry work and pass a matched
+5,400-field Paul run before it is called a performance improvement.
