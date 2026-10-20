@@ -131,3 +131,31 @@ paused controls remain 24/s with identical model pixels, and scripted controls
 change from 20.0 to 20.1/s while passing runtime gates. Supported SDK host/tools
 checks and the five package checks pass. The full-Paul 30-picture/60-tick target
 remains unmet.
+
+
+## Rejected: compact camera-space skinning (C and MAC.W)
+
+The experiment composed placement and camera with each referenced joint,
+quantized rotation coefficients to Q12, retained Q16 translation and Q15 blend,
+and projected camera-space vertices directly. Unsupported clipping retained an
+atomic world-space fallback. An initial run packed all 22 storage joints although
+only 18 were initialized; its zero fast-path executions invalidated the result.
+The corrected build packs only referenced joints. The workload guard now rejects
+selected release optimizations that complete no frames.
+
+Corrected C runs completed 4,037 ticks/1,009 submissions with 1,010 camera-path
+executions and no fallback over 5,400 Ymir fields. Specializing pure projection
+changed this to 4,097/1,024. Its Mednafen movie shows FRAME 48 to 536 at seconds
+18 and 78 (488 submissions), compared with the compact queue's 489.
+
+The SH-2 MAC.W variant passed 11,316 exact target vertex comparisons on
+reconstructed quantized matrices, including 1/2/3 influences, sums outside
+signed 32-bit range, both incoming SR.S modes and SR.S/interrupt-mask restoration.
+The reusable skinning benchmark includes packing each batch; that isolated path
+costs **43.27% more** than the existing C API in Ymir. Full-Paul execution reaches
+4,153 ticks/1,038 submissions with 1,039 camera-path executions and no fallback,
+matching the ordinary compact queue. Mednafen again gives FRAME 48 to 536 (488).
+Neither implementation shows an additional complete-path gain. The public runtime
+API and port options were removed; private patches, builds and captures remain
+under `structural-v2-camera-*`. Do not repeat this candidate as an untried MAC or
+camera optimization. Snapshot overlap and direct worker queue spans remain open.
