@@ -619,3 +619,16 @@ directories are ignored under `build/paul-q15-high4` and `build/paul-old-sdk`.
 No source optimization is promoted from this checkpoint. The next candidate
 must attack the measured simulation/geometry work and pass a matched
 5,400-field Paul run before it is called a performance improvement.
+
+### Parallel geometry control
+
+The same full-game configuration was also built with only
+`T3_PARALLEL_GEOMETRY=OFF`; two identical 5,400-field Ymir runs produced the
+same report. Compared with the parallel build, the serial control completes
+3,565 instead of 4,009 simulation ticks and 891 instead of 1,002 submissions.
+Its frame-work diagnostic rises from 84 to 86 ms and render work from 46 to
+56 ms. The enabled Slave geometry path therefore improves this workload by
+12.5% in simulated ticks over the requested window; keep parallel geometry on.
+The binaries have no draw timeouts or guest errors. Evidence is in
+`/tmp/paul-perf-serial-geometry-5400/observation.json` and
+`/tmp/paul-perf-serial-geometry-repeat-5400/observation.json`.
