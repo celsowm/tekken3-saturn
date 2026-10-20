@@ -10,7 +10,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current game package is LibSaturn `beed598`;
+The current game package is LibSaturn `beed598bf62216fb0db516270e331e26661fb1d4`;
 the earlier `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` package remains the
 historical base for the experiments below.
 
