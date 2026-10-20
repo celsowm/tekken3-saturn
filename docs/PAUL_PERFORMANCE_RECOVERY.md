@@ -258,10 +258,22 @@ with prevalidated input and one SR.S save/restore per range. It is rejected;
 production skinning and the Paul build stay unchanged. The earlier matrix MAC
 gain does not transfer to skinning.
 
-Return to projection as the next isolated geometry target. Keep the exact
-fixed-point contract, check the generated SH-2 instructions, then qualify any
-candidate with the existing cube and whole-Paul cadence controls. Continue to
-name fixed-point widths, masks, offsets and range bounds in shared code.
+Sparse projection prefetch is now measured and retained: the native-CD cube
+projection stage fell 7.38% with identical model pixels. The Tekken comparison
+was rebuilt with matching parallel-geometry flags and has identical captures
+at 15, 30 and 39 seconds. Ymir's immediate-result DIVU model is the opposing
+signal: matched game projection costs rose 9.09% on Master and 10.38% on Slave,
+with the same 403 simulation ticks and 201 submissions. This is evidence for
+the real SH-2 latency path, not a demonstrated whole-game cadence gain.
+
+Use the matched profile at fields 360-365 as the current baseline for the next
+geometry experiment. Master costs are 8.36% skin deformation, 6.05% instance
+submission, 5.14% matrix multiplication and 4.18% geometric face visibility.
+The Q16 MAC skinning and projected-winding shortcuts are already rejected; do
+not repeat them. Inspect the instance face-preparation loop for a bounded
+reduction that preserves world visibility and painter order, then compare the
+cube controls and complete release Paul cadence. Keep fixed-point widths,
+masks, offsets and range bounds named in shared code.
 
 Slave scheduling and pacing remain separate changes after their dependencies
 and critical-path costs are known.
