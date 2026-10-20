@@ -93,6 +93,11 @@ The implementation and detailed hashes are in [LibSaturn's affine matrix
 study](https://github.com/celsowm/libsaturn/blob/beed598/harness/studies/affine-matrix/tekken.json)
 and [renderer study](https://github.com/celsowm/libsaturn/blob/beed598/docs/RENDERER_PIPELINE_STUDY.md#affine-matrix-multiplication).
 
+The follow-up attempted to widen the exact face-visibility fast path for
+larger edges. It passed the mesh oracle but raised `quad_visible` cost 2.8% on
+both CPUs, with no cadence change, so it was rejected. The tested patch and
+matched Ymir results are in [LibSaturn's rejection report](https://github.com/celsowm/libsaturn/blob/e2b4646/harness/studies/quad-visible-bounded-edge/tekken.json).
+
 ## Selection and rejected changes
 
 A fresh six-field Ymir profile at fields 360-365 reconciles both CPU histograms
