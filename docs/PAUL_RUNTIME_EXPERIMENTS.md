@@ -587,6 +587,32 @@ retained screenshots show `FRAME 21` at 15 seconds and `FRAME 114` at 28
 seconds. This confirms CD boot and continued rendering for this image; those
 checkpoints are not a physical Saturn rate measurement.
 
+### Isolating the renderer from simulation
+
+2026-10-20: two clean diagnostic builds reused the same assets, gameplay
+options, SDK package, BIOS and 5,400-field Ymir injection as the full build.
+`T3_PERF_MODE=1` skips drawing; `T3_PERF_MODE=2` draws one actor while both
+fighters continue to simulate. The complete two-actor run above is the
+baseline. Results:
+
+| Profile | Sim ticks | Submitted frames | Frame work | Skin work | Render work | Faces in final snapshot |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Two actors | 4,009 | 1,002 | 84 ms | 8 ms | 46 ms | 774 |
+| One rendered actor | 4,964 | 1,241 | 61 ms | 4 ms | 31 ms | 408 |
+| Drawing disabled | 5,380 | 4,547 | 2 ms | 0 ms | 1 ms | 0 |
+
+These values show that rendering is the dominant cost in this build: disabling
+drawing restores nearly one simulation tick per observed field, and drawing
+one actor lands between the two-actor and no-draw cases. The one-actor profile
+still simulates both fighters. Because the slower full-render run accumulates
+more discarded fields and the HUD/replay state depends on simulation progress,
+compare throughput and phase costs here, not final gameplay state. These are
+diagnostic profiles, not candidate game configurations. They narrow the next
+optimization to shared per-actor skin/geometry/face preparation; changing
+combat logic or enabling another cache does not address the measured dominant
+cost. The run artifacts are `/tmp/paul-perf-nodraw-5400/observation.json` and
+`/tmp/paul-perf-one-actor-5400/observation.json`.
+
 Private captures stay under `/tmp/paul-q15-high4-{5400,debug}`,
 `/tmp/paul-q15-high4-mednafen` and `/tmp/paul-old-sdk-5400`; the clean build
 directories are ignored under `build/paul-q15-high4` and `build/paul-old-sdk`.
