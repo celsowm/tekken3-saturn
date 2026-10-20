@@ -19,6 +19,25 @@ after the paired increment below proved insufficient.
 The first [stage-isolation results and camera correction](PAUL_STAGE_MEASUREMENTS.md)
 now establish separate simulation and rendering costs.
 
+### Rejected: overlap the two actor skin jobs
+
+The 24-joint poses were prepared first, then actor 1's skin job was submitted
+to Slave while Master skinned actor 0. On the same cache-on Ymir configuration,
+the serial and candidate builds ran 1,800 emulator fields and ended at 1,783
+simulation ticks and 891 submitted frames, with no guest errors. Their final
+screenshots were byte-identical (`7956c0a3…d9d37b`). The integer-millisecond
+skin counter changed from 7 to 6 ms and render work from 26 to 25 ms, but the
+submission cadence did not move. That one-millisecond change is below the
+resolution needed to justify worker ownership, waiting and added lifecycle
+state. The candidate was removed; keep the current serial skin path until a
+larger, repeatable whole-path gain is demonstrated. Private captures:
+`parallel-skin-{baseline,1800}` under ignored `assets/imported/`.
+
+This confirms that overlapping only two small skin batches cannot address the
+remaining renderer budget. The next experiment should target the measured
+projection/visibility/submission path as a complete scene-preparation unit and
+retain exact command ordering and image hashes.
+
 This is the remaining performance execution plan for the
 [playable milestone](NEXT_PLAYABLE_MILESTONE.md). Preserve Paul's geometry,
 textures, authored poses and the verified original combat state. Target 60 Hz
