@@ -311,6 +311,14 @@ redraw control. The opt-in probe `--video-observations --video-crop 0:61:320:135
 records actual composited RGB changes below the HUD; this requires the updated
 external harness. See [presentation qualification](docs/VDP1_PRESENTATION.md).
 
+`T3_HIGH_GEOMETRY_SCRATCH=ON` now keeps 35,584 bytes of mutable private actor
+vertices/projection scratch in High WRAM, separate from texture/material state.
+The 60-second actual Mednafen neutral control advances 383 versus 401 FRAME
+counts (4.70% more submissions); Ymir cadence remains unchanged. Exact frozen
+pixels and serial/Slave results are preserved. OFF retains the Low-WRAM control;
+existing CMake caches keep their choice. See [memory placement evidence and
+limits](docs/HIGH_GEOMETRY_MEMORY.md).
+
 The default camera now moves with the fighter midpoint and increases its
 distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide
 view for comparisons. This changes presentation only; gameplay scale is fixed.

@@ -103,3 +103,12 @@ caches on both CPUs during actual CD boot. Its frozen renderer diagnostic
 shows a substantially larger Mednafen cost than Ymir injection, especially
 in flush and placement. Memory experiments must retain native controls;
 these observations do not qualify a renderer optimization.
+
+The next isolated consumer candidate separates
+[hot actor geometry](HIGH_GEOMETRY_MEMORY.md) from immutable actor state.
+The SDK's bank-control benchmark and tooling are pushed at `40fa9cf` and its
+Cube pipeline bench CI passes. Moving the small geometry group preserves
+the original model crop and serial/Slave results; the documented frozen
+native diagnostic improves while Ymir's 60-second neutral cadence remains
+unchanged. This does not complete the simulation, command preparation,
+tick-debt or integrated 60/30 gates above.

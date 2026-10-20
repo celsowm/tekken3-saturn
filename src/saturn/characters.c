@@ -22,6 +22,12 @@
 #define FADE_Q16 (SAT_FX16_ONE / 10)
 
 typedef struct {
+    sat_vec3_t vertices[T3_VERTEX_COUNT];
+    sat_projected_vertex_t projected[T3_VERTEX_COUNT];
+    sat_vec3_t world_vertices[T3_VERTEX_COUNT];
+} actor_geometry_t;
+
+typedef struct {
     sat_skeleton_instance_t skeleton;
     sat_transform3d_node_t nodes[T3_JOINT_COUNT];
     uint16_t scratch[T3_JOINT_COUNT];
@@ -31,7 +37,7 @@ typedef struct {
     sat_skel_clip_player_t clip_player;
     sat_mat4_t joints[T3_JOINT_COUNT];
     sat_mesh_t mesh;
-    sat_vec3_t vertices[T3_VERTEX_COUNT];
+    sat_vec3_t* vertices;
     uint16_t indices[T3_FACE_COUNT * 4u];
     uint16_t face_materials[T3_FACE_COUNT];
     sat_vdp1_texture_t textures[T3_TEXTURE_COUNT];
@@ -39,8 +45,8 @@ typedef struct {
     sat_scene3d_material_t materials[T3_TEXTURE_COUNT];
     sat_scene3d_material_program_t material_commands[T3_TEXTURE_COUNT];
     sat_scene3d_material_programs_t material_programs;
-    sat_projected_vertex_t projected[T3_VERTEX_COUNT];
-    sat_vec3_t world_vertices[T3_VERTEX_COUNT];
+    sat_projected_vertex_t* projected;
+    sat_vec3_t* world_vertices;
     sat_scene3d_instance_t instance;
     sat_scene3d_instance_binding_t binding;
     sat_mat4_t world;
@@ -57,6 +63,14 @@ static actor_t g_actors[2] __attribute__((section(".wram_l")));
 #else
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT];
 static actor_t g_actors[2];
+#endif
+/* Keep independently mutable geometry together. Texture/material tables and
+ * topology retain their own lifetime and bank; the placement option moves only
+ * these hot arrays, with identical capacity and CPU publication rules. */
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_GEOMETRY_SCRATCH)
+static actor_geometry_t g_actor_geometry[2] __attribute__((section(".wram_l")));
+#else
+static actor_geometry_t g_actor_geometry[2];
 #endif
 static uint8_t g_initialized;
 static uint8_t g_skin_preview_applied[2];
@@ -142,6 +156,9 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 
     for (i = 0; i < 2u; ++i) {
         actor_t* a = &g_actors[i];
+        a->vertices = g_actor_geometry[i].vertices;
+        a->projected = g_actor_geometry[i].projected;
+        a->world_vertices = g_actor_geometry[i].world_vertices;
         sat_model_asset_t model = g_asset.model;
         if (i == 1u) {
             /* The second costume gets a separate CRAM bank, never overriding
