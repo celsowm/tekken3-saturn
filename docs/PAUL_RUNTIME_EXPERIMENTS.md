@@ -10,7 +10,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current game package is LibSaturn `beed598bf62216fb0db516270e331e26661fb1d4`;
+The current game package is LibSaturn `14559f9d4001ea078f855ead3213869dd5088d86`;
 the earlier `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` package remains the
 historical base for the experiments below.
 
@@ -97,6 +97,20 @@ The follow-up attempted to widen the exact face-visibility fast path for
 larger edges. It passed the mesh oracle but raised `quad_visible` cost 2.8% on
 both CPUs, with no cadence change, so it was rejected. The tested patch and
 matched Ymir results are in [LibSaturn's rejection report](https://github.com/celsowm/libsaturn/blob/e2b4646/harness/studies/quad-visible-bounded-edge/tekken.json).
+
+## Q15 skinning dispatch (2026-10-19)
+
+LibSaturn now selects the Q15-specific skin loop once for the entire
+deformation range instead of testing the same conversion mode for every joint
+influence. On a matched six-field Ymir profile, Master skin deformation fell
+7.95% (225,375 to 207,462 cycles). The fixed profile window retained 403 ticks
+and 201 submissions, with the saved work absorbed as extra VBlank wait; no
+whole-game cadence gain is claimed. The 3,600-field control matched ticks,
+faces and commands with no errors. A 26-second native CD boot exited 0 and
+the second-15/24 screenshots were pixel-identical. ELF text grew by 1,456
+bytes. Details are in [LibSaturn commit
+`14559f9`](https://github.com/celsowm/libsaturn/commit/14559f9d4001ea078f855ead3213869dd5088d86) and its
+[measurement report](https://github.com/celsowm/libsaturn/blob/14559f9d4001ea078f855ead3213869dd5088d86/harness/studies/skin-q15-dispatch/tekken.json).
 
 ## Selection and rejected changes
 
