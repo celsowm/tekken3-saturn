@@ -71,3 +71,31 @@ Mednafen CD execution. Authoritative changes additionally require the full
 16,334-tick differential gate; final integration requires all 24 live scenarios.
 The pinned Ymir divider has immediate results, so latency-sensitive conclusions
 need an independent Mednafen control. Neither emulator certifies hardware FPS.
+
+## Qualified first increment: local FRT idle wait
+
+SDK `5d98b2f` replaces the executor's continuous shared-memory idle polling
+with on-chip FRT waiting and bounded maintenance. Fresh matching SDK/port
+controls reproduce 4,125 ticks/1,031 submissions in 5,400 Ymir fields for both
+variants. There is no Ymir cadence gain. Actual Mednafen CD movies give FRAME
+42 to 473 for the control and 45 to 494 for the candidate at movie seconds
+18 and 78: 431 versus 449 submissions in 60 seconds, or **4.18% more**.
+Both new SDKs use the same compiler/options. An earlier original-build movie
+reproduces the control's endpoints. These are submission-counter observations,
+not unique-picture/hardware FPS. All 24 original combat scenarios pass, as do
+the supported SDK host/tools and five package checks. The port CI now pins
+the qualified SDK commit. The new workload guard and cache-option preservation
+increments also pass both port workflows.
+
+## Rejected: shared bounded perspective
+
+An opt-in projection experiment used one depth reciprocal for both axes,
+overlapping its DIVU latency with coordinate work. It proved at most one pixel
+of error for a bounded clip range and retained exact fallback elsewhere;
+100,000 host cases and camera controls passed. However, matched complete-Paul
+Ymir runs changed 1,031 to 1,024 submissions (4,125 to 4,097 ticks). The actual
+Mednafen candidate retained FRAME 45 and 494 at movie seconds 18 and 78,
+exactly the FRT control's endpoints. No complete-path improvement was shown,
+so the runtime API and port option were removed. The preserved builds,
+movies and reports remain private under `structural-v2-bounded*`. This is not
+the planned fused camera-space skin/placement path, which remains open.
