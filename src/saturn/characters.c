@@ -14,7 +14,7 @@
 #include "saturn/skeleton3d.h"
 #include "saturn/skin3d.h"
 #include "saturn/time.h"
-#if defined(T3_PARALLEL_GEOMETRY)
+#if defined(T3_PARALLEL_GEOMETRY) || defined(T3_PARALLEL_SKINNING)
 #include "saturn/parallel.h"
 #endif
 
@@ -90,6 +90,7 @@ static sat_vdp1_texture_t g_texture_descriptors[ACTOR_COUNT][T3_TEXTURE_COUNT];
 static uint8_t g_initialized;
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
+#define GEOMETRY_TIMEOUT_TICKS 60000u
 #if defined(T3_PARALLEL_GEOMETRY)
 static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section(".wram_l")));
 static uint32_t g_geometry_keys[T3_FACE_COUNT] __attribute__((section(".wram_l")));
@@ -122,7 +123,6 @@ static int same_face(const sat_scene3d_face_t* a,const sat_scene3d_face_t* b) {
     return 1;
 }
 #endif
-#define GEOMETRY_TIMEOUT_TICKS 60000u
 #endif
 
 static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
@@ -157,7 +157,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     unsigned i;
     sat_result_t st;
     if (g_initialized) return SAT_OK;
-#if defined(T3_PARALLEL_GEOMETRY)
+#if defined(T3_PARALLEL_GEOMETRY) || defined(T3_PARALLEL_SKINNING)
     const sat_parallel_config_t parallel={SAT_PARALLEL_AUTO,NULL,0,0,GEOMETRY_TIMEOUT_TICKS};
     if((st=sat_parallel_init(&parallel))!=SAT_OK)return st;
 #endif
@@ -310,6 +310,36 @@ static sat_result_t prepare_base_skeleton(actor_t* a) {
             a->pose,T3_JOINT_COUNT)) != SAT_OK) return st;
     return sat_skeleton_world_matrices(&a->skeleton,a->joints,T3_JOINT_COUNT);
 }
+
+#if defined(T3_PARALLEL_SKINNING)
+typedef struct {
+    volatile sat_result_t range_result[2];
+} skin_ranges_t;
+
+static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
+    skin_ranges_t* ranges=(skin_ranges_t*)opaque;
+    const unsigned range_index=begin==0u?0u:1u;
+    while(begin<end) {
+        const unsigned actor_index=begin/T3_VERTEX_COUNT;
+        const uint32_t first=begin%T3_VERTEX_COUNT;
+        uint32_t count=T3_VERTEX_COUNT-first;
+        if(count>end-begin)count=end-begin;
+        if(actor_index>=T3_DRAW_ACTORS) {
+            ranges->range_result[range_index]=SAT_ERR_INVALID_ARG;
+            return;
+        }
+        actor_t* actor=&g_actors[actor_index];
+        const sat_result_t st=sat_skin_deform_range(&g_asset.skin,actor->joints,
+            T3_JOINT_COUNT,first,count,actor->mesh.vertices,actor->mesh.vertex_cap);
+        if(st!=SAT_OK) {
+            ranges->range_result[range_index]=st;
+            return;
+        }
+        begin+=count;
+    }
+}
+#endif
+
 static sat_result_t prepare_actors(void) {
     sat_result_t st;
     const uint32_t started=sat_time_ms();
@@ -339,12 +369,29 @@ static sat_result_t prepare_actors(void) {
         if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
 #endif
         T3_PERF_ADD(skeleton,skeleton_started);
+#if !defined(T3_PARALLEL_SKINNING)
         T3_PERF_START(skin_started);
         if ((st = sat_skin_update_mesh(&g_asset.skin,
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
             return st;
         T3_PERF_ADD(skin,skin_started);
+#endif
     }
+#if defined(T3_PARALLEL_SKINNING)
+    {
+        T3_PERF_START(skin_started);
+        skin_ranges_t ranges={{SAT_OK,SAT_OK}};
+        const uint32_t end=(uint32_t)T3_DRAW_ACTORS*T3_VERTEX_COUNT;
+        if((st=sat_parallel_for(0u,end,128u,skin_actors_range,&ranges,
+                g_actor_geometry,(uint32_t)sizeof(g_actor_geometry)))!=SAT_OK)return st;
+        if((st=sat_parallel_cache_sync_range(&ranges,sizeof(ranges)))!=SAT_OK)return st;
+        if(ranges.range_result[0]!=SAT_OK)return ranges.range_result[0];
+        if(ranges.range_result[1]!=SAT_OK)return ranges.range_result[1];
+        for(unsigned i=0;i<T3_DRAW_ACTORS;++i)
+            g_actors[i].mesh.vertex_count=T3_VERTEX_COUNT;
+        T3_PERF_ADD(skin,skin_started);
+    }
+#endif
     g_skin_work_ms=sat_time_ms()-started;
     return SAT_OK;
 }

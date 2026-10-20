@@ -632,3 +632,31 @@ Its frame-work diagnostic rises from 84 to 86 ms and render work from 46 to
 The binaries have no draw timeouts or guest errors. Evidence is in
 `/tmp/paul-perf-serial-geometry-5400/observation.json` and
 `/tmp/paul-perf-serial-geometry-repeat-5400/observation.json`.
+
+### Parallel vertex skinning
+
+The next measured change uses `sat_parallel_for` to split the existing,
+unchanged `sat_skin_deform_range` work across Master and Slave. Skeleton pose
+calculation remains on the Master; each CPU writes a disjoint vertex range,
+and the existing parallel API synchronizes the completed output before
+projection. `T3_PARALLEL_SKINNING` defaults to the geometry setting, so the
+existing two-CPU build picks it up while serial builds keep their current path.
+
+Two repeated 5,400-field active-game probes match exactly: the serial skin
+control completes 4,009 simulation ticks and 1,002 submissions; parallel
+skinning completes 4,125 ticks and 1,031 submissions. Frame work moves from
+84 to 81 ms, skin from 8 to 5 ms and render from 46 to 43 ms. Ymir's video
+observer sees 1,008 versus 1,037 fields with changed fighter/arena pixels
+(HUD excluded), a 2.9% increase. Both builds report zero draw timeouts and
+guest errors. The candidate records 149 late swaps versus 0 in the control;
+that cadence cost is retained in the report rather than hidden by submission
+counts.
+
+For a same-pose image gate, both builds stop simulation at tick 3,600. The
+fighter-and-arena crop is pixel-identical; only the HUD differs. The candidate
+reaches the stable image 116 fields earlier, with the same 907 changed fields
+and 117 distinct region images across the run. The release image grows by 848
+bytes (849,304 total), below the 983,040-byte limit. The final image also
+boots from CD in Mednafen with both Paul models and a running FRAME counter
+(`/tmp/paul-parallel-skinning-final-cd`). Evidence is under
+`/tmp/paul-parallel-skinning*5400`.
