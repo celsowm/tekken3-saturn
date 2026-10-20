@@ -224,6 +224,7 @@ jobs:
               -DT3_LOCAL_DIVMOT_ENABLED=1 -DT3_ENABLE_PSX_SKIN_PREVIEW=1 \
               -DT3_ENABLE_PSX_OWNED_MATCH=1 -DT3_ENABLE_PSX_COMBAT=1 \
               -DT3_PARALLEL_GEOMETRY=1 -DT3_VERIFY_PARALLEL_GEOMETRY=1 \
+              -DT3_PROJECTED_FACE_QUEUE=1 -DT3_DIRECT_FACE_SPANS=1 \
               -I .external/libsaturn/include -I src/game -I src/saturn \
               -I build/asset-kmd/generated -I build/asset-divmot/generated \
               src/saturn/main.c src/saturn/move_probe.c src/saturn/characters.c

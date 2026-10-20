@@ -159,3 +159,67 @@ Neither implementation shows an additional complete-path gain. The public runtim
 API and port options were removed; private patches, builds and captures remain
 under `structural-v2-camera-*`. Do not repeat this candidate as an untried MAC or
 camera optimization. Snapshot overlap and direct worker queue spans remain open.
+
+
+## Qualified third increment: direct worker spans
+
+SDK `6302bec` adds disjoint canonical queue spans with an optional two-byte
+logical-to-physical map per capacity slot. A worker writes 24-byte projected
+records directly into its reserved region; uncommon cold records also belong
+to the scene. Merge publishes only indices and painter keys. Master submissions
+remain independent, and logical source order stays prefix, Master, worker.
+Flush refuses outstanding reservations. Successful task release cancels an
+unmerged reservation only after executor ownership ends; timeouts retain it.
+Unused worst-case capacity remains reserved until the next frame.
+
+The port defaults `T3_DIRECT_FACE_SPANS` to its parallel-geometry selection,
+requires the projected queue, and removes the separate 773-record worker buffer
+from release builds. This frees **80,392 bytes of Low WRAM**. Fresh matched link
+maps end Low WRAM at `0x00290228` without spans and `0x0027c820` with them.
+High WRAM including code/data increases by 3,728 bytes; the final High BSS end
+is `0x060f8f98`, preserving the checked 16 KiB Master stack and stock RAM limits.
+The independent serial verifier retains its own ordinary scratch only in
+verification builds, and uses the queue accessor to compare compact entries.
+
+Fresh matching SDK/compiler/cache-on Ymir builds complete 4,133 ticks/1,033
+submissions without direct spans and 4,137/1,034 with them over 5,400 fields.
+Late swaps are 163/170, with zero guest errors/timeouts. This is effectively
+unchanged throughput; the preceding compact-only SDK reached 1,038 submissions.
+The selected direct worker path completes 1,036 pairs and is now checked by the
+release-workload guard, so a silent serial fallback cannot qualify the option.
+
+Actual isolated neutral Mednafen CD captures show FRAME 49 to 538 for the
+matched control and 50 to 557 for direct spans at movie seconds 18 and 78:
+**489 versus 507 submissions in 60 seconds (+3.68%)**, or 8.15 versus 8.45
+submission-counter increments/s. This is a small gain and does not establish
+30 new complete pictures/s or 60 logic ticks/s. Frozen tick-120 captures match
+all 97 stable diagnostic fields and exact model pixels; the final serial/worker
+verification completes 196 comparisons.
+
+An initial generic reader regressed Dino from 23.9 to 20.0 submissions/s.
+Bounded per-CPU Ymir profiles identified additional queue-reader and command
+admission work. Dispatching contiguous/indexed readers once per queue restores
+Dino's animated 23.9/s and paused 24/s, with zero changed paused model pixels.
+Scripted controls give 20.0/s versus the preceding 20.1/s and pass runtime gates.
+Supported SDK host/tools checks, five package checks and all 45 port host CTests
+pass. Both the direct prototype and final SDK build pass all **24 live combat
+cases**, including KO, native replay/victory, match reset and both timeout
+scenarios. Final integration evidence is retained under
+`structural-v2-direct-qualified*`.
+
+A bounded final full-Paul profile stores all 12 requested fields without drops.
+Master projection accounts for 9.50% of modeled exclusive interpreter cost and
+branch finding 7.67%; approximately 72% of Slave cost is in local idle/mailbox
+routines. These are interpreter-cost fractions, not elapsed hardware utilization
+or an additive FPS budget. A separate exact composited-video analysis records
+115 model-region RGB changes over 599 warmed field transitions (about 11.52/s).
+It counts changed crops, not unique poses or a complete 60-second qualification.
+
+The next structural boundary is immutable visual state: capture pose, placement,
+camera and HUD state before overlapping geometry with subsequent simulation.
+Account for all reads of the opponent's pose and shared motion caches, preserve
+original actor order, and limit additional presentation age to the authorized
+one-frame/approximately 33 ms bound. The freed Low WRAM makes bounded snapshot
+storage possible. Retained tick debt, input-edge ownership, snapshot overlap,
+VF2 per-list comparison and the final 60-tick/30-picture acceptance remain open;
+the existing four-field time clamp is still present.

@@ -19,6 +19,14 @@ class WorkloadTests(unittest.TestCase):
         workload.validate_optimizations(selected,'two-paul-release',{'camera_skin_frames':1})
         workload.validate_optimizations(selected,'diagnostic',{})
 
+    def test_direct_spans_require_a_completed_worker_pair(self):
+        selected={'configuration':{'T3_DIRECT_FACE_SPANS':'ON'}}
+        for counters in ({},{'geometry_pairs':0}):
+            with self.assertRaises(ValueError):
+                workload.validate_optimizations(selected,'two-paul-release',counters)
+        workload.validate_optimizations(selected,'two-paul-release',{'geometry_pairs':1})
+        workload.validate_optimizations(selected,'diagnostic',{})
+
     def test_untyped_cmake_inputs_are_preserved_when_rebuilding(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'CMakeCache.txt'

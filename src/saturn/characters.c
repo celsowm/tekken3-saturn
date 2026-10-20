@@ -92,7 +92,9 @@ static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 #define GEOMETRY_TIMEOUT_TICKS 60000u
 #if defined(T3_PARALLEL_GEOMETRY)
+#if !defined(T3_DIRECT_FACE_SPANS) || defined(T3_VERIFY_PARALLEL_GEOMETRY)
 static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section(".wram_l")));
+#endif
 static uint32_t g_geometry_keys[T3_FACE_COUNT] __attribute__((section(".wram_l")));
 static sat_scene3d_prepare_item_t g_geometry_item __attribute__((section(".wram_l")));
 static sat_scene3d_prepare_batch_t g_geometry_batch __attribute__((section(".wram_l")));
@@ -450,34 +452,55 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
             .color_calc_slot=SAT_SCENE3D_SLOT_INHERIT,
             .source_plan=&g_geometry_sources};
         if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
-                g_geometry_faces,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
+#if defined(T3_DIRECT_FACE_SPANS)
+                scene->faces.entries,
+#else
+                g_geometry_faces,
+#endif
+                g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
+#if defined(T3_DIRECT_FACE_SPANS)
+        if((st=sat_scene3d_faces_reserve_batch(&scene->faces,&g_geometry_batch))!=SAT_OK)return st;
+#endif
         g_geometry_batch.dispatch=SAT_SCENE3D_PREPARE_DISPATCH_RUNTIME;
         sat_parallel_handle_t handle=0;
-        if((st=sat_scene_prepare_batch_async(scene,&g_geometry_batch,&handle))!=SAT_OK)return st;
+        if((st=sat_scene_prepare_batch_async(scene,&g_geometry_batch,&handle))!=SAT_OK) {
+#if defined(T3_DIRECT_FACE_SPANS)
+            (void)sat_scene3d_faces_cancel_batch(&scene->faces,&g_geometry_batch);
+#endif
+            return st;
+        }
         actor_t* master=&g_actors[0];
         const sat_result_t master_result=sat_scene_submit_instance(scene,&master->instance,
             SAT_SCENE3D_SLOT_INHERIT,master->projected,master->world_vertices);
-        if((st=sat_parallel_wait(handle,GEOMETRY_TIMEOUT_TICKS))!=SAT_OK)return st;
-        if(master_result!=SAT_OK)return master_result;
+        st=sat_parallel_wait(handle,GEOMETRY_TIMEOUT_TICKS);
+        if(st!=SAT_OK || master_result!=SAT_OK) {
+            if(st!=SAT_ERR_TIMEOUT)(void)sat_scene_prepare_batch_release(scene,&g_geometry_batch,handle);
+            return st!=SAT_OK?st:master_result;
+        }
 #if defined(T3_VERIFY_PARALLEL_GEOMETRY)
         const sat_scene3d_faces_t prefix=scene->faces;
 #endif
         if((st=sat_scene_merge_prepared_batch(scene,&g_geometry_batch,handle))!=SAT_OK)return st;
 #if defined(T3_VERIFY_PARALLEL_GEOMETRY)
-        /* Join/merge consume worker output and keys before comparison. Reuse
-         * canonical queue storage for the reference; no extra face buffer.
-         * Compare only fields that merge/emission consume, never padding or
-         * the unspecified world coordinates of projected-safe faces. */
+        /* Independent ordinary reference owns separate face storage, while
+         * the direct worker span remains in the canonical queue. */
         sat_scene3d_faces_t reference=prefix;
+        reference.entries=g_geometry_faces;reference.keys=g_geometry_keys;
+        reference.projected_entries=NULL;reference.projected_indices=NULL;
+        reference.projected_gap=0;reference.reserved_batch=NULL;
+        reference.count=reference.cold_count=0;reference.capacity=T3_FACE_COUNT;
+        reference.culled_faces=reference.clipped_faces=0;
         if((st=sat_scene3d_faces_submit_instance(&reference,&slave->instance,
                 SAT_SCENE3D_SLOT_INHERIT,slave->projected,slave->world_vertices))!=SAT_OK)return st;
-        if(reference.count-prefix.count!=g_geometry_batch.metrics.prepared_faces ||
-           reference.culled_faces-prefix.culled_faces!=g_geometry_batch.metrics.culled_faces ||
-           reference.clipped_faces-prefix.clipped_faces!=g_geometry_batch.metrics.clipped_faces)
+        if(reference.count!=g_geometry_batch.metrics.prepared_faces ||
+           reference.culled_faces!=g_geometry_batch.metrics.culled_faces ||
+           reference.clipped_faces!=g_geometry_batch.metrics.clipped_faces)
             return SAT_ERR_VERIFY_FAILED;
         for(unsigned f=0;f<g_geometry_batch.metrics.prepared_faces;++f) {
+            sat_scene3d_face_t queued;
+            if((st=sat_scene3d_faces_get(&scene->faces,(uint16_t)(prefix.count+f),&queued))!=SAT_OK)return st;
             if(scene->faces.keys[prefix.count+f]!=g_geometry_keys[f] ||
-               !same_face(&scene->faces.entries[prefix.count+f],&g_geometry_faces[f]))return SAT_ERR_VERIFY_FAILED;
+               !same_face(&queued,&g_geometry_faces[f]))return SAT_ERR_VERIFY_FAILED;
         }
         ++g_t3_geometry_verified;
 #endif

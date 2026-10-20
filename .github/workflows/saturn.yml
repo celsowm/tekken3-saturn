@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: d31e6d777f0904a5ac662fc202578d0af10f5f26
+          ref: 6302bec652ad5ef79da3a7c834ece9340e0e2b38
           path: .external/libsaturn
           persist-credentials: false
 
@@ -79,6 +79,7 @@ jobs:
           cmake --preset saturn \
               -DLIBSATURN_SOURCE_DIR="$GITHUB_WORKSPACE/.external/libsaturn" \
               -DT3_PARALLEL_GEOMETRY=ON -DT3_VERIFY_PARALLEL_GEOMETRY=ON \
+              -DT3_PROJECTED_FACE_QUEUE=ON -DT3_DIRECT_FACE_SPANS=ON \
               -DT3_PERF_SAMPLES=ON
           cmake --build --preset saturn --parallel 3
           test -s build/saturn/tekken3_saturn.elf

@@ -184,6 +184,8 @@ def run(args):
             if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
             command.extend(['--snapshot-pc',hex(syms[symbol][0])])
     dump_requests=list(getattr(args,'symbol_dumps',[]))
+    if workload['configuration'].get('T3_DIRECT_FACE_SPANS') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_geometry_pairs','geometry-pairs.bin'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
@@ -227,7 +229,7 @@ def run(args):
     state = decode((out / 'diagnostics.bin').read_bytes())
     saturn_workload.validate(workload, workload_profile, state)
     optimizations={}
-    for name in ('camera_skin_frames','camera_skin_fallbacks'):
+    for name in ('camera_skin_frames','camera_skin_fallbacks','geometry_pairs'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
     saturn_workload.validate_optimizations(workload,workload_profile,optimizations)

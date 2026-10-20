@@ -94,3 +94,8 @@ def validate_optimizations(workload,profile,counters):
             'T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         if counters.get('camera_skin_frames',0)<1:
             raise ValueError('two-paul-release rejected: selected camera skin path never completed a frame')
+
+    if profile == 'two-paul-release' and workload['configuration'].get(
+            'T3_DIRECT_FACE_SPANS') in ('ON','1','TRUE'):
+        if counters.get('geometry_pairs',0)<1:
+            raise ValueError('two-paul-release rejected: selected direct worker path never completed a pair')

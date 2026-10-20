@@ -69,6 +69,9 @@ static sat_scene_t g_scene;
 static sat_scene3d_face_t g_faces[FACE_CAP] __attribute__((section(".wram_l")));
 #if defined(T3_PROJECTED_FACE_QUEUE)
 static sat_scene3d_projected_face_t g_projected_faces[FACE_CAP];
+#if defined(T3_DIRECT_FACE_SPANS)
+static uint16_t g_projected_indices[FACE_CAP];
+#endif
 #endif
 static uint32_t g_keys[FACE_CAP] __attribute__((section(".wram_l")));
 static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
@@ -506,6 +509,10 @@ int main(void) {
 #if defined(T3_PROJECTED_FACE_QUEUE)
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_storage(
         &g_scene.faces,g_projected_faces,FACE_CAP));
+#if defined(T3_DIRECT_FACE_SPANS)
+    SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_indices(
+        &g_scene.faces,g_projected_indices,FACE_CAP));
+#endif
 #endif
     SAT_PANIC_IF_ERROR(sat_camera3d_init(&g_camera,&eye,&target,&up,
 #if defined(T3_CLOSE_CAMERA)
