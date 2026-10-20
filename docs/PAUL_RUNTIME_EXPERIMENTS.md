@@ -10,7 +10,7 @@ The intermediate 30-render/60-logic gate remains open. None of these experiments
 meets that target or certifies physical hardware timing.
 The Q15 baseline used LibSaturn `a46598b24ddd386ee73cadbd3eebf42a811ea082`;
 subsequent renderer, memory and publication experiments are recorded below.
-The current game package is LibSaturn `10f995605e80a3903b345d1de029837168475a87`;
+The current game package is LibSaturn `beed598`;
 the earlier `4cf7c09224ed57929d831b5c0b2a8fee82a9604c` package remains the
 historical base for the experiments below.
 
@@ -72,6 +72,26 @@ projection work; this is not a whole-game speedup or physical hardware
 qualification. The LibSaturn implementation and retained measurement are in
 [commit `4e4c0b0`](https://github.com/celsowm/libsaturn/commit/4e4c0b0) and
 [`projection-prefetch`](https://github.com/celsowm/libsaturn/blob/4e4c0b0/harness/studies/projection-prefetch/mednafen.json).
+
+## Affine matrix multiplication (2026-10-19)
+
+The next matched Ymir profile identified `sat_mat4_multiply` as 5.14% of
+Master modeled cycles. LibSaturn now uses a specialized path when both inputs
+have the exact affine bottom row `[0, 0, 0, 1]`; all other inputs retain the
+generic implementation. The existing reference test covers 1,000 affine and
+non-affine combinations, including output aliasing.
+
+In the same six-field profile window, the routine fell from 138,471 to 91,656
+Master cycles (33.8%); total Master instructions fell 0.14%. Both builds
+produced 403 simulation ticks and 201 submissions. The 3,600-field control
+also matched at 3,583 ticks and 1,791 submissions, with no timeouts or geometry
+errors. Two independent 26-second Mednafen CD runs exited successfully and
+their screenshots at seconds 15 and 24 are byte-identical. The optimization
+adds 824 bytes of text. These measurements establish less work in one kernel;
+they do not show a whole-game cadence gain or qualify physical Saturn timing.
+The implementation and detailed hashes are in [LibSaturn's affine matrix
+study](https://github.com/celsowm/libsaturn/blob/beed598/harness/studies/affine-matrix/tekken.json)
+and [renderer study](https://github.com/celsowm/libsaturn/blob/beed598/docs/RENDERER_PIPELINE_STUDY.md#affine-matrix-multiplication).
 
 ## Selection and rejected changes
 
