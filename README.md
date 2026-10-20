@@ -319,6 +319,12 @@ pixels and serial/Slave results are preserved. OFF retains the Low-WRAM control;
 existing CMake caches keep their choice. See [memory placement evidence and
 limits](docs/HIGH_GEOMETRY_MEMORY.md).
 
+Compiled material prefixes and native texture descriptors also default to
+High WRAM (`T3_HIGH_MATERIAL_PROGRAMS`, `T3_HIGH_TEXTURE_DESCRIPTORS`). Their
+separate 60-second native Mednafen control advances 399 to 429 FRAME counts
+(7.52% more neutral submissions), with exact frozen pixels preserved. See
+[the material-table results and remaining limits](docs/MATERIAL_TABLE_MEMORY.md).
+
 The default camera now moves with the fighter midpoint and increases its
 distance with their separation. `-DT3_CLOSE_CAMERA=OFF` retains the old wide
 view for comparisons. This changes presentation only; gameplay scale is fixed.

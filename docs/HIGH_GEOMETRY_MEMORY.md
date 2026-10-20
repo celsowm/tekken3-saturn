@@ -129,9 +129,8 @@ The next CPU budget work still includes command preparation/flush, simulation
 copying, measured scheduling and retained tick debt. None is satisfied by
 moving these arrays.
 
-For the next memory control, the compiled material-command entries and their
-native texture descriptors still reside in Low WRAM in both Paul and Dino.
-Test those separately before changing the shared face ABI: they are much
-smaller than a full face array and are read during preflight/emission, where
-the native timing gap remains large. Their benefit and compatibility are
-unproven; retain existing owner/residency validation and exact output gates.
+The subsequent [material-table control](MATERIAL_TABLE_MEMORY.md) separately
+qualifies compiled prefixes and native texture descriptors in High WRAM,
+including exact pixels and both consumers. Its live native result is separate
+from the geometry gain above. Existing owner/residency checks remain in place;
+the shared face ABI is unchanged.

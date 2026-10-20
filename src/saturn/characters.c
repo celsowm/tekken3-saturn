@@ -20,6 +20,7 @@
 
 #define DT_Q16 (SAT_FX16_ONE / T3_HZ)
 #define FADE_Q16 (SAT_FX16_ONE / 10)
+enum { ACTOR_COUNT = 2 };
 
 typedef struct {
     sat_vec3_t vertices[T3_VERTEX_COUNT];
@@ -40,10 +41,10 @@ typedef struct {
     sat_vec3_t* vertices;
     uint16_t indices[T3_FACE_COUNT * 4u];
     uint16_t face_materials[T3_FACE_COUNT];
-    sat_vdp1_texture_t textures[T3_TEXTURE_COUNT];
+    sat_vdp1_texture_t* textures;
     sat_texture_t owners[T3_TEXTURE_COUNT];
     sat_scene3d_material_t materials[T3_TEXTURE_COUNT];
-    sat_scene3d_material_program_t material_commands[T3_TEXTURE_COUNT];
+    sat_scene3d_material_program_t* material_commands;
     sat_scene3d_material_programs_t material_programs;
     sat_projected_vertex_t* projected;
     sat_vec3_t* world_vertices;
@@ -59,21 +60,35 @@ static sat_skeleton_clip_t g_clips[T3_CLIP_COUNT];
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
 /* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT] __attribute__((section(".wram_l")));
-static actor_t g_actors[2] __attribute__((section(".wram_l")));
+static actor_t g_actors[ACTOR_COUNT] __attribute__((section(".wram_l")));
 #else
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT];
-static actor_t g_actors[2];
+static actor_t g_actors[ACTOR_COUNT];
 #endif
 /* Keep independently mutable geometry together. Texture/material tables and
  * topology retain their own lifetime and bank; the placement option moves only
  * these hot arrays, with identical capacity and CPU publication rules. */
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_GEOMETRY_SCRATCH)
-static actor_geometry_t g_actor_geometry[2] __attribute__((section(".wram_l")));
+static actor_geometry_t g_actor_geometry[ACTOR_COUNT] __attribute__((section(".wram_l")));
 #else
-static actor_geometry_t g_actor_geometry[2];
+static actor_geometry_t g_actor_geometry[ACTOR_COUNT];
+#endif
+/* Immutable after upload/compilation, independently placed from geometry
+ * and from each other so native bank experiments isolate their read cost. */
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_MATERIAL_PROGRAMS)
+static sat_scene3d_material_program_t g_material_commands[ACTOR_COUNT][T3_TEXTURE_COUNT]
+    __attribute__((section(".wram_l")));
+#else
+static sat_scene3d_material_program_t g_material_commands[ACTOR_COUNT][T3_TEXTURE_COUNT];
+#endif
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_TEXTURE_DESCRIPTORS)
+static sat_vdp1_texture_t g_texture_descriptors[ACTOR_COUNT][T3_TEXTURE_COUNT]
+    __attribute__((section(".wram_l")));
+#else
+static sat_vdp1_texture_t g_texture_descriptors[ACTOR_COUNT][T3_TEXTURE_COUNT];
 #endif
 static uint8_t g_initialized;
-static uint8_t g_skin_preview_applied[2];
+static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 #if defined(T3_PARALLEL_GEOMETRY)
 static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section(".wram_l")));
@@ -154,11 +169,13 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     if ((st = sat_model_validate(&g_asset.model)) != SAT_OK) return st;
     if (progress) progress(context, T3_CHARACTER_LOAD_MODEL_READY);
 
-    for (i = 0; i < 2u; ++i) {
+    for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
         a->vertices = g_actor_geometry[i].vertices;
         a->projected = g_actor_geometry[i].projected;
         a->world_vertices = g_actor_geometry[i].world_vertices;
+        a->textures = g_texture_descriptors[i];
+        a->material_commands = g_material_commands[i];
         sat_model_asset_t model = g_asset.model;
         if (i == 1u) {
             /* The second costume gets a separate CRAM bank, never overriding
@@ -248,7 +265,7 @@ sat_result_t t3_characters_reset(void) {
     unsigned i;
     sat_result_t st;
     if (!g_initialized) return SAT_ERR_BUSY;
-    for (i = 0; i < 2u; ++i) {
+    for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
         a->clip = T3_CLIP_IDLE;
         g_skin_preview_applied[i]=0u;
@@ -268,7 +285,7 @@ sat_result_t t3_characters_tick(const t3_match_t* game) {
     unsigned i;
     sat_result_t st;
     if (!g_initialized || !game) return SAT_ERR_INVALID_ARG;
-    for (i = 0; i < 2u; ++i) {
+    for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
         const t3_fighter_t* fighter = &game->fighters[i];
         int moved = fighter->x != a->last_x || fighter->z != a->last_z;
@@ -434,7 +451,7 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 }
 
 uint8_t t3_characters_skin_preview_applied(unsigned fighter) {
-    return fighter<2u?g_skin_preview_applied[fighter]:0u;
+    return fighter<ACTOR_COUNT?g_skin_preview_applied[fighter]:0u;
 }
 
 uint32_t t3_characters_texture_vram_bytes(void) {return g_texture_vram_bytes;}

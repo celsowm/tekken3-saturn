@@ -112,3 +112,11 @@ the original model crop and serial/Slave results; the documented frozen
 native diagnostic improves while Ymir's 60-second neutral cadence remains
 unchanged. This does not complete the simulation, command preparation,
 tick-debt or integrated 60/30 gates above.
+
+The [following material-table control](MATERIAL_TABLE_MEMORY.md) keeps both
+compiled prefixes and native texture descriptors in High WRAM. It preserves
+exact frozen pixels and serial/Slave output and independently measures
+399 to 429 visible FRAME increments over 60 actual Mednafen recorded seconds
+(7.52% more neutral submissions). Ymir cadence remains unchanged. Dino also
+shows lower native flush work, with no established cadence gain. This remains
+a bounded CPU-memory improvement, not the final integrated milestone.
