@@ -18,6 +18,9 @@ def cache_options(path):
     for line in path.read_text().splitlines():
         if line.startswith(('#','//')) or ':' not in line or '=' not in line:continue
         key,value=line.split('=',1);name,kind=key.split(':',1)
+        # Plain -DNAME=value entries are UNINITIALIZED until CMake declares
+        # a cache type. Dropping them silently changes replicated workloads.
+        if kind == 'UNINITIALIZED':kind='STRING'
         if kind not in ('BOOL','STRING','FILEPATH','PATH'):continue
         entries[name]=(kind,value)
     if 'CMAKE_C_COMPILER' not in entries:

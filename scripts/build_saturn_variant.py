@@ -6,9 +6,14 @@ from run_saturn_stage_matrix import ROOT,cache_options,project_overrides
 import saturn_workload
 
 
-def build(baseline,out,overrides,workload='diagnostic'):
+def build(baseline,out,overrides,workload='diagnostic',sdk_prefix=None):
     options,compiler_dir=cache_options(baseline.resolve()/'CMakeCache.txt')
     overrides=project_overrides(overrides)
+    if sdk_prefix is not None:
+        package=sdk_prefix.resolve()/'lib/cmake/LibSaturn'
+        if not (package/'LibSaturnConfig.cmake').is_file():
+            raise FileNotFoundError('SDK prefix has no installed LibSaturn CMake package: '+str(package))
+        options.append('-DLibSaturn_DIR:PATH='+str(package))
     out=out.resolve()
     if out.exists() and any(out.iterdir()):
         raise FileExistsError('use a fresh empty build directory')
@@ -36,4 +41,5 @@ if __name__=='__main__':
     p.add_argument('--out',type=Path,required=True)
     p.add_argument('--cmake-option',action='append',default=[])
     p.add_argument('--workload',choices=saturn_workload.PROFILES,default='diagnostic')
-    a=p.parse_args();build(a.baseline,a.out,a.cmake_option,a.workload)
+    p.add_argument('--sdk-prefix',type=Path,help='explicit installed SDK for a matched library control')
+    a=p.parse_args();build(a.baseline,a.out,a.cmake_option,a.workload,a.sdk_prefix)

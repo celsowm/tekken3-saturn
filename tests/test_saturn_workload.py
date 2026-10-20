@@ -2,13 +2,28 @@
 import copy
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import saturn_workload as workload
+from run_saturn_stage_matrix import cache_options
 
 
 class WorkloadTests(unittest.TestCase):
+    def test_untyped_cmake_inputs_are_preserved_when_rebuilding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'CMakeCache.txt'
+            entries={'CMAKE_BUILD_TYPE':'Release', 'CMAKE_C_FLAGS_RELEASE':'-O3 -DNDEBUG',
+                     'CMAKE_TOOLCHAIN_FILE':'/sdk/toolchain.cmake',
+                     'CMAKE_C_COMPILER':'/sdk/bin/sh2eb-elf-gcc', 'LibSaturn_DIR':'/sdk/lib/cmake',
+                     'LIBSATURN_SOURCE_DIR':'/src/lib-saturn', 'Python3_EXECUTABLE':'/venv/bin/python',
+                     'T3_LOCAL_KMD':'/private/paul.bin', 'T3_ENABLE_PSX_OWNED_MATCH':'ON'}
+            path.write_text('\n'.join(k+':UNINITIALIZED='+v for k,v in entries.items()))
+            options,compiler=cache_options(path)
+            self.assertEqual(compiler,Path('/sdk/bin'))
+            self.assertEqual(set(options),{'-D'+k+':STRING='+v for k,v in entries.items()})
+
     def fixture(self):
         return dict(kind='original-kmd', shape=dict(workload.PAUL_SHAPE),
                     original_textures=True, archive_bytes=81885, archive_sha256='a' * 64,

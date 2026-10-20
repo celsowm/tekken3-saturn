@@ -38,10 +38,13 @@ def inspect(build):
     for name, value in cache.items():
         if name.startswith('T3_LOCAL_') and value and Path(value).is_file():
             inputs[name] = hashlib.sha256(Path(value).read_bytes()).hexdigest()
+    sdk_archive = Path(cache.get('LibSaturn_DIR', '.')).parent.parent/'libsaturn.a'
     return dict(schema=1, kind='original-kmd' if original else 'procedural',
                 shape=shape, original_textures=defines.get('T3_ORIGINAL_TEXTURES') == '1',
                 archive_bytes=int(defines['T3_ARCHIVE_BYTES']),
                 archive_sha256=manifest.get('archive_sha256'), input_sha256=inputs,
+                sdk_archive_sha256=hashlib.sha256(sdk_archive.read_bytes()).hexdigest()
+                    if sdk_archive.is_file() else None,
                 configuration={k: v for k, v in cache.items() if k.startswith('T3_')},
                 build_type=cache.get('CMAKE_BUILD_TYPE'))
 
