@@ -25,6 +25,13 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
 sat_result_t t3_move_probe_simulation_sync(int full);
 #endif
 int32_t t3_move_probe_world_center(unsigned axis);
+#if defined(T3_PSX_CAMERA)
+#include "saturn/scene3d.h"
+/* The owned match's original fight camera as the Saturn camera, in the
+ * skin's world (x, -y, -z around the fighters' centre, 96 fx16 per unit).
+ * Sets eye, target, up, fov_y, aspect and view_proj; near/far are kept. */
+sat_result_t t3_move_probe_camera(sat_camera3d_t* camera);
+#endif
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 int32_t t3_move_probe_round_value(unsigned field);
 uint16_t t3_move_probe_slot(unsigned fighter);

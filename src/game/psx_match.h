@@ -15,6 +15,7 @@
 #include "psx_head.h"
 #include "psx_local_pose.h"
 #include "psx_world_pose.h"
+#include "psx_fight_camera.h"
 
 /* InputSource control, not a physical pad button. The owned core consumes it
  * after physics at the original input phase. All pad bits are ignored on clear. */
@@ -45,6 +46,8 @@ typedef struct {
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
     t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */
     t3_psx_world_pose_cache_t* world_pose_cache; /* Optional exact post-blend composition, derived storage. */
+    /* Optional original fight camera (enable_rounds=2 and the body only). */
+    const t3_psx_fight_camera_config_t* camera;
 } t3_psx_match_config_t;
 typedef struct {
     t3_move_vm_t vm;
@@ -85,6 +88,7 @@ typedef struct {
     uint32_t fight_clock;
     t3_psx_replay_t replay;
     int32_t intro_camera_left,replay_skip;
+    t3_psx_fight_camera_t camera;
 } t3_psx_match_t;
 typedef struct {
     uint32_t frame_counter;
@@ -116,4 +120,17 @@ int t3_psx_match_step_original(t3_psx_match_t* match,t3_input_t first,t3_input_t
  * advanced. For callers that treat any failure as fatal. */
 int t3_psx_match_step_original_in_place(t3_psx_match_t* match,t3_input_t first,t3_input_t second,
                                         const t3_psx_match_frame_t* frame);
+
+/* The fight camera's parts of the original step (psx_match_camera.c); each
+ * does nothing without a camera config and returns 0 on invalid state.
+ * Round start (FUN_8002AB68), after the fighters are placed. */
+int t3_psx_match_camera_round(t3_psx_match_t* match,int first);
+/* A live frame after RoundFlow: CameraDirector, CameraShakeStep, CameraFrame. */
+int t3_psx_match_camera_frame(t3_psx_match_t* match);
+/* A replay frame: `before` holds the fighters captured before the replay
+ * renders the frame; `first` on the replay's first frame. */
+void t3_psx_match_camera_capture(const t3_psx_match_t* match,t3_psx_camera_fighter_t before[2]);
+int t3_psx_match_camera_replay(t3_psx_match_t* match,t3_psx_camera_fighter_t before[2],int first);
+/* After the fighters moved: their screen x and, when live, the shakes they start. */
+int t3_psx_match_camera_after(t3_psx_match_t* match,int live);
 #endif

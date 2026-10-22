@@ -17,10 +17,36 @@ target_sources(tekken3_fight PRIVATE src/game/psx_match.c src/game/psx_round.c s
 target_sources(tekken3_fight PRIVATE src/game/psx_replay.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_local_pose.c)
 target_sources(tekken3_fight PRIVATE src/game/branch_input_filter.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_world_pose.c)
+
+# PRIVATE original fight camera tables (scripts/build_local_camera_assets.py):
+# the USA executable's tables from the private import and the fighter's raw
+# DIVMOT bank (BNS record; its camera sections). Never in public builds.
+set(T3_LOCAL_CAMERA_BANK "" CACHE FILEPATH "Private raw DIVMOT bank (BNS record) for the original fight camera")
+set(T3_LOCAL_CAMERA_SPLINE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_spline.bin"
+    CACHE FILEPATH "Private 0x660-byte PS1 spline window for the camera streams")
+function(t3_add_private_camera target)
+    if(NOT EXISTS "${T3_LOCAL_CAMERA_BANK}" OR NOT EXISTS "${T3_LOCAL_CAMERA_SPLINE}")
+        message(FATAL_ERROR "The original fight camera requires T3_LOCAL_CAMERA_BANK and T3_LOCAL_CAMERA_SPLINE")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(_gen "${CMAKE_BINARY_DIR}/generated/private_camera")
+    add_custom_command(OUTPUT "${_gen}/t3_local_camera.c" "${_gen}/t3_local_camera.h"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
+            --bank "${T3_LOCAL_CAMERA_BANK}" --spline-tables "${T3_LOCAL_CAMERA_SPLINE}"
+            --output "${_gen}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
+            "${CMAKE_SOURCE_DIR}/scripts/psx_camera_tables.py"
+            "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"
+            "${T3_LOCAL_CAMERA_BANK}" "${T3_LOCAL_CAMERA_SPLINE}"
+        VERBATIM COMMENT "Embed PRIVATE original fight camera tables (never distribute)")
+    target_sources(${target} PRIVATE "${_gen}/t3_local_camera.c")
+    target_include_directories(${target} PRIVATE "${_gen}")
+endfunction()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # These new blend routines otherwise exceed High WRAM's stack boundary.
@@ -474,6 +500,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_ENABLE_PSX_COMBAT=1)
     endif()
+    option(T3_PSX_CAMERA "Original fight camera from private tables (T3_LOCAL_CAMERA_BANK)" OFF)
+    if(T3_PSX_CAMERA)
+        if(NOT T3_ENABLE_PSX_COMBAT)
+            message(FATAL_ERROR "The original fight camera requires original combat (its round flow)")
+        endif()
+        t3_add_private_camera(tekken3_saturn)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_PSX_CAMERA=1)
+    endif()
     if(T3_ENABLE_PSX_OWNED_MATCH)
         if(NOT T3_LOCAL_PSX_GROUND_TABLES OR NOT T3_LOCAL_PSX_BODY_TABLES OR NOT T3_ENABLE_PSX_SKIN_PREVIEW OR NOT T3_LOCAL_COMMON_DIVMOT)
             message(FATAL_ERROR "Owned original match requires private ground/body tables, shared bank and original skin path")
@@ -838,6 +872,29 @@ else()
         target_link_libraries(test_psx_head PRIVATE tekken3_fight)
         target_compile_options(test_psx_head PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_procedural_head_tracking COMMAND test_psx_head)
+        # Golden-trace camera check; private inputs from scripts/camera_trace_cases.py.
+        add_executable(test_psx_camera_trace tests/test_psx_camera_trace.c)
+        target_link_libraries(test_psx_camera_trace PRIVATE tekken3_fight)
+        target_compile_options(test_psx_camera_trace PRIVATE -Wall -Wextra -Werror)
+        # One test per golden fight trace (scripts/camera_trace_cases.py).
+        foreach(_t3_camera_trace paul_law lei_king long_match)
+            add_test(NAME ps1_original_camera_trace_${_t3_camera_trace} COMMAND test_psx_camera_trace
+                     ${CMAKE_SOURCE_DIR}/build/camera-trace/${_t3_camera_trace}.cases
+                     ${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_trig.bin
+                     ${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_atan.bin
+                     ${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_body_sqrt.bin)
+            set_tests_properties(ps1_original_camera_trace_${_t3_camera_trace} PROPERTIES SKIP_RETURN_CODE 77)
+        endforeach()
+        # The owned match with the original camera on private data, as on the Saturn.
+        if(T3_PRIVATE_REPLAY_ASSET_DIR AND T3_LOCAL_CAMERA_BANK)
+            add_executable(t3_match_camera_eval tools/psx_match_camera_eval.c
+                "${_replay_logic}/t3_local_divmot.c" "${_replay_character}/t3_generated_character.c")
+            target_include_directories(t3_match_camera_eval PRIVATE "${_replay_logic}" "${_replay_character}")
+            t3_add_private_camera(t3_match_camera_eval)
+            target_link_libraries(t3_match_camera_eval PRIVATE tekken3_fight m)
+            target_compile_options(t3_match_camera_eval PRIVATE -Wall -Wextra -Werror)
+            add_test(NAME ps1_owned_match_original_camera COMMAND t3_match_camera_eval)
+        endif()
         add_executable(t3_pose_eval tools/psx_pose_eval.c)
         target_link_libraries(t3_pose_eval PRIVATE tekken3_fight)
         target_compile_options(t3_pose_eval PRIVATE -Wall -Wextra -Werror)

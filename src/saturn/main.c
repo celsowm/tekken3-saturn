@@ -205,11 +205,12 @@ static void character_loading_progress(void* context, t3_character_load_stage_t 
     }
 }
 
-static sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
+/* Inline: the original camera build uses neither helper. */
+static inline sat_vec3_t vec(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z) {
     sat_vec3_t v = {x, y, z};
     return v;
 }
-static sat_fx16_t from_q8(int32_t v) {
+static inline sat_fx16_t from_q8(int32_t v) {
     return (sat_fx16_t)(v * (SAT_FX16_ONE / 256));
 }
 
@@ -505,6 +506,10 @@ static void prepare_scene(void) {
     t3_move_probe_present();
     T3_PERF_ADD(placement,pose_publication_started);
     T3_PERF_START(camera_started);
+#if defined(T3_PSX_CAMERA)
+    /* The original fight camera, view_proj included. */
+    SAT_PANIC_IF_ERROR(t3_move_probe_camera(&g_camera));
+#else
     sat_fx16_t center = from_q8((g_game.fighters[0].x + g_game.fighters[1].x) / 2);
 #if defined(T3_CLOSE_CAMERA)
     sat_fx16_t separation=from_q8(g_game.fighters[0].x-g_game.fighters[1].x);
@@ -523,6 +528,7 @@ static void prepare_scene(void) {
     g_camera.target = vec(center, FX(1), 0);
 #endif
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
+#endif
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
 #if defined(T3_NATIVE_COMMANDS)
     SAT_PANIC_IF_ERROR(sat_vdp1_command_batch_reserve(FACE_CAP,&g_native_commands));

@@ -1,6 +1,7 @@
 #include "stage_vdp2.h"
 #include "saturn/color.h"
 #include "saturn/vdp2_layers.h"
+#include "saturn/vdp2_floor.h"
 #include "saturn/video.h"
 #include "saturn/cdfs.h"
 #include "disc.h"
@@ -107,42 +108,15 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     ++g_t3_vdp2_floor_prepared;
     if(g_valid && center_x==g_previous_center[0] && center_z==g_previous_center[1] &&
        same_camera(camera))return SAT_OK;
-    const int32_t* m=camera->view_proj.m;
-    /* The encounter has pitch and translation, with no yaw/roll. Invert
-     * its actual ground-plane homography, including the camera's fixed
-     * point rounding; no separate focal-angle approximation is needed.
-     * clip x = a*x+tx; clip y = c*z+ty; clip w = e*z+tw.
-     * w = (e*ty-c*tw)/(e*ndc_y-c). */
-    if(m[1] || m[2] || m[4] || m[12] || m[0]>=0 || m[14]<=0)
-        return SAT_ERR_UNSUPPORTED;
-    const int32_t a=m[0],c=m[6],e=m[14],tx=m[3],ty=m[7],tw=m[15];
-    const int32_t focal=-a*(WIDTH/2);
-    const int32_t density=(int32_t)((int64_t)64*65536*65536/(1800*96));
-    const int64_t numerator=(int64_t)e*ty-(int64_t)c*tw;
-    for(int y=0;y<HEIGHT;++y) {
-        const int32_t ndc=(HEIGHT/2-y)*SAT_FX16_ONE/(HEIGHT/2);
-        const int32_t denominator=(int32_t)((int64_t)e*ndc/SAT_FX16_ONE)-c;
-        int32_t scale=0;uint8_t hidden=1;
-        if(denominator) {
-            const int64_t w=numerator/denominator;
-            const int64_t k=w*density/focal;
-            if(w>=camera->near_z && w<=camera->far_z && k>0 && k<127*SAT_FX16_ONE) {
-                scale=(int32_t)k;hidden=0;
-            }
-        }
-        g_coefficients[y]=sat_vdp2_rotation_coefficient(scale,hidden);
-    }
-    g_params=(sat_vdp2_rotation_params_t){0};
-    g_params.xst=-(WIDTH/2)*SAT_FX16_ONE;
-    g_params.yst=(int32_t)((int64_t)focal*SAT_FX16_ONE/e);
-    g_params.dx=SAT_FX16_ONE;
-    g_params.matrix[0]=-SAT_FX16_ONE;
-    g_params.matrix[4]=SAT_FX16_ONE;
-    g_params.mx=(int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE))-(int32_t)((int64_t)density*tx/a);
-    g_params.my=-(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE))-(int32_t)((int64_t)density*tw/e);
-    g_params.kx=g_params.ky=SAT_FX16_ONE;
+    /* The floor map repeats every 1,800 PS1 units in 64 dots. The skin's
+     * world is 96 fx16 per PS1 unit around the fighters' centre, x and -z. */
+    const sat_vdp2_floor_t floor={WIDTH,HEIGHT,0,(int32_t)((int64_t)64*65536*65536/(1800*96)),
+        (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE)),
+        -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE)),64*SAT_FX16_ONE};
+    const sat_result_t st=sat_vdp2_floor_from_view(&floor,&camera->view_proj,&camera->eye,
+        camera->near_z,camera->far_z,&g_params,g_coefficients);
+    if(st!=SAT_OK)return st;
     g_params.coefficient_address=g_table_index?COEFFICIENT_B:COEFFICIENT_A;
-    g_params.coefficient_step=SAT_FX16_ONE;
     g_previous_camera=*camera;g_previous_center[0]=center_x;g_previous_center[1]=center_z;
     g_valid=g_dirty=1;
     return SAT_OK;

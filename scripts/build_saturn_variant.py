@@ -14,6 +14,10 @@ def build(baseline,out,overrides,workload='diagnostic',sdk_prefix=None):
         if not (package/'LibSaturnConfig.cmake').is_file():
             raise FileNotFoundError('SDK prefix has no installed LibSaturn CMake package: '+str(package))
         options.append('-DLibSaturn_DIR:PATH='+str(package))
+        # The baseline's own prefix may be gone; build with this one's toolchain.
+        options=[o for o in options if not o.startswith(('-DCMAKE_TOOLCHAIN_FILE:','-DCMAKE_PREFIX_PATH:'))]
+        options+=['-DCMAKE_TOOLCHAIN_FILE:FILEPATH='+str(sdk_prefix.resolve()/'share/libsaturn/toolchains/sh2eb-elf.cmake'),
+                  '-DCMAKE_PREFIX_PATH:STRING='+str(sdk_prefix.resolve())]
     out=out.resolve()
     if out.exists() and any(out.iterdir()):
         raise FileExistsError('use a fresh empty build directory')

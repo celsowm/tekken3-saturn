@@ -59,6 +59,17 @@ python3 scripts/compare_saturn_presentation.py \
 See the [bridge study](PRESENTATION_BRIDGE_PERFORMANCE.md) for the measured
 controls and trace opt-in configuration.
 
+When the pixels differ, `diff_saturn_screens.py` reports the bounding box, the
+pixel count, the rows that differ (grouped into runs) and the largest channel
+delta. `--image` also writes an amplified difference image. Probes compared
+against existing baselines need `--sh2-cache on`.
+
+```sh
+python3 scripts/diff_saturn_screens.py \
+  assets/imported/t30-z-frozen assets/imported/t30-cam-control-frozen \
+  --image assets/imported/t30-cam-control-frozen/diff.png
+```
+
 ## Wait for CI on a specific commit
 
 ```sh

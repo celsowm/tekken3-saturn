@@ -45,6 +45,15 @@ static int build_input_filter(unsigned slot,const uint8_t* rows,size_t bytes) {
 #if !defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_motion_cache_t g_pose_cache[2],g_root_cache[2];
 #endif
+#if defined(T3_PSX_CAMERA)
+#include "t3_local_camera.h"
+#include "saturn/math2d.h"
+/* The generated tables with the build's own trig, atan (ground) and square
+ * root (body) tables. */
+static t3_psx_camera_tables_t g_camera_tables;
+static t3_psx_trig_t g_camera_trig;
+static t3_psx_fight_camera_config_t g_camera_config;
+#endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_psx_match_t g_owned_match T3_HOT_WRAM;
 /* Reset assigns the entire object before match initialization. */
@@ -128,6 +137,10 @@ sat_result_t t3_move_probe_simulation_sync(int full) {
 #endif
 #if defined(T3_ENABLE_PSX_COMBAT)
             {&g_replay_history,sizeof(g_replay_history)},
+#endif
+#if defined(T3_PSX_CAMERA)
+            {&g_camera_tables,sizeof(g_camera_tables)},{&g_camera_trig,sizeof(g_camera_trig)},
+            {&g_camera_config,sizeof(g_camera_config)},
 #endif
         };
         for(unsigned i=0;i<sizeof(reset)/sizeof(*reset);++i) {
@@ -259,6 +272,15 @@ void t3_move_probe_reset(unsigned round) {
     /* Measured USA Paul mirror round placement; render conversion is separate. */
     g_owned_config.spawn[0]=(t3_psx_spawn_t){{-1000,0,-4},{-1000,-1027,-4},16384u,16384u};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){{1000,0,4},{1000,-1027,4},49151u,49151u};
+#if defined(T3_PSX_CAMERA)
+    g_camera_trig=(t3_psx_trig_t){t3_local_trig_blob,T3_LOCAL_TRIG_BYTES};
+    g_camera_tables=t3_local_camera_tables;g_camera_tables.trig=&g_camera_trig;
+    g_camera_tables.atan=t3_local_ground_blob;
+    g_camera_tables.sqrt=t3_local_body_blob;g_camera_tables.sqrt_size=384u;
+    g_camera_config=(t3_psx_fight_camera_config_t){&g_camera_tables,t3_local_camera_bank_choices,
+        T3_LOCAL_CAMERA_BANK_CHOICES,&t3_local_camera_bank_streams};
+    g_owned_config.camera=&g_camera_config;
+#endif
 #if defined(T3_REFERENCE_REPLAY)
     if(!reference_prepare_config()){g_active=0u;g_reference_error=1;return;}
 #endif
@@ -824,6 +846,37 @@ int32_t t3_move_probe_world_center(unsigned axis) {
     return (int32_t)(((int64_t)t3_move_probe_owned_value(0,axis+1u)+
                       t3_move_probe_owned_value(1,axis+1u))/2);
 }
+#if defined(T3_PSX_CAMERA)
+/* The PS1 picture is 368 x 480 around (192, 240) on a 4:3 screen, and its
+ * view matrix scales row 1 by 0x1BD2/4096: the half tangents are 184/H
+ * across and 240*4096/(0x1BD2*H) down. The projection takes its focal terms
+ * from H directly; fov_y and aspect are the matching values. */
+#define PSX_ROW1 0x1BD2
+sat_result_t t3_move_probe_camera(sat_camera3d_t* camera) {
+    const t3_psx_fight_camera_t* c=&g_owned_match.camera;
+    const t3_psx_camera_view_t* v=&c->camera.view;
+    const int16_t (*r)[3]=c->matrix.m;
+    const int32_t h=c->matrix.h;
+    const int32_t cx=t3_move_probe_world_center(0),cz=t3_move_probe_world_center(2);
+    sat_mat4_t view,projection;
+    if(!camera || !g_active || !c->started)return SAT_ERR_INVALID_ARG;
+    if(h<=0 || h>0x10000 || v->x-cx< -0x40000 || v->x-cx>0x40000 || v->y< -0x40000 ||
+       v->y>0x40000 || v->z-cz< -0x40000 || v->z-cz>0x40000)return SAT_ERR_INVALID_ARG;
+    camera->eye=(sat_vec3_t){(v->x-cx)*96,-v->y*96,-(v->z-cz)*96};
+    /* Forward is row 2 and up is -row 1 (Q12, lengths 4.0 and 4 * 1.74). */
+    camera->target=(sat_vec3_t){camera->eye.x+r[2][0]*64,camera->eye.y-r[2][1]*64,
+                                camera->eye.z-r[2][2]*64};
+    camera->up=(sat_vec3_t){-r[1][0]*16,r[1][1]*16,r[1][2]*16};
+    /* The half angle (65536 per turn) doubled, in fx16 degrees. */
+    camera->fov_y=(sat_fx16_t)sat_atan2_16(240*4096,PSX_ROW1*h)*720;
+    camera->aspect=(sat_fx16_t)(((int64_t)184*PSX_ROW1<<16)/(240*4096));
+    SAT_TRY(sat_mat4_look_at(&view,&camera->eye,&camera->target,&camera->up));
+    SAT_TRY(sat_mat4_perspective(&projection,camera->fov_y,camera->aspect,camera->near_z,camera->far_z));
+    projection.m[0]=(sat_fx16_t)(((int64_t)h<<16)/184);
+    projection.m[5]=(sat_fx16_t)(((int64_t)PSX_ROW1*h<<16)/(240*4096));
+    return sat_mat4_multiply(&camera->view_proj,&projection,&view);
+}
+#endif
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     if(!g_active || !view)return SAT_ERR_INVALID_ARG;

@@ -18,7 +18,9 @@ implementation of Tekken3Remake.
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
   `src/game/psx_round.c`, `src/game/psx_round_flow.c`, `src/game/psx_replay.c`,
-  `src/game/psx_blend.c`, `src/game/psx_head.c` and `src/game/psx_blend_math.c` adapt
+  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/psx_camera.c`,
+  `src/game/psx_match_camera.c` and
+  `src/game/psx_blend_math.c` adapt
   grounded physics, original hit transaction/reaction queuing and KO collapse,
   root/attack placement, exact integer collision, normal arena bounds, body
   spheres/separation, blend matrix normalization and scaling,
@@ -29,7 +31,15 @@ implementation of Tekken3Remake.
   `remake/core/fighter/fighter_animation.gd` and result classification from
   `remake/core/fight/round_flow.gd`, plus selective round placement from
   `remake/core/fight/fight_simulation.gd` and replay state/pose hooks from
-  `remake/core/fight/replay_state.gd`, to C.
+  `remake/core/fight/replay_state.gd`, plus the fight camera director, view
+  matrix, backdrop turn, camera streams, round-end phases and shake from
+  `remake/core/camera/camera_director.gd`, `camera_math.gd`,
+  `view_matrix.gd`, `backdrop_turn.gd`, `camera_reel.gd`, `camera_phase.gd`
+  and `camera_shake.gd`, the GTE projection from `remake/core/math/gte.gd`,
+  and the camera's place in the fight frame (its fighter inputs, the screen
+  joint and the landing and move-event shakes) from
+  `remake/core/fight/fight_simulation.gd` and
+  `remake/core/fighter/fighter_animation.gd`, to C.
   These files are under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/),
   not MIT. Required Notice: Copyright (c) 2026 n0madic.
   Its header identifies the changes. Builds linking this adaptation include

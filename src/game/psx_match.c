@@ -333,6 +333,9 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
         config->replay_storage->epoch+1:1);
     for(unsigned i=0;i<2;++i)n.round_actor[i].active=1;
     if(!reset_fighters(&n))return 0;
+    if(config->camera && (config->enable_rounds!=2 || !config->enable_body ||
+       !config->camera->tables || !t3_psx_camera_valid(config->camera->tables) ||
+       !t3_psx_match_camera_round(&n,1)))return 0;
     if(config->enable_rounds==2 && config->replay_storage)config->replay_storage->epoch=n.replay.epoch;
     *out=n;return 1;
 }
@@ -521,7 +524,7 @@ static int next_original_round(t3_psx_match_t* n) {
         f->head.current[0]=f->head.current[2]=0;f->head.current[1]=0x38E;
         f->head.active=0;f->head.snap=1;
     }
-    return pair_distance(n);
+    return pair_distance(n) && t3_psx_match_camera_round(n,0);
 }
 static int replay_apply_pose(t3_psx_match_t* n,unsigned i,const t3_psx_replay_frame_t* r) {
     t3_psx_fighter_t* f=&n->fighter[i];t3_move_record_t move;const t3_divmot_t* owner;
@@ -641,14 +644,18 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
             for(unsigned k=0;k<3;++k)f->blend.root_delta[k]=0;
     }
     if(playback) {
+        t3_psx_camera_fighter_t before[2];
         for(unsigned i=0;i<2;++i)if((n->flow.human_mask&(1u<<i)) && (frame->pressed[i]&0x800u))
             n->replay.skip=n->replay_skip=1;
-        if(n->ticks==UINT32_MAX || !replay_render(n))return 0;
+        t3_psx_match_camera_capture(n,before);
+        if(n->ticks==UINT32_MAX || !replay_render(n) ||
+           !t3_psx_match_camera_replay(n,before,n->replay.mode==T3_REPLAY_FIRST))return 0;
         ++n->ticks;
         return 1;
     }
+    if(!t3_psx_match_camera_frame(n))return 0;
     /* Original camera setup advances winner phase 3/4 to phase 5 during the
-     * following live frame; exact view/projection is a separate owner. */
+     * following live frame. */
     if(n->flow.camera==3 || n->flow.camera==4)n->flow.camera=5;
     else if(n->flow.camera<2 && n->intro_camera_left>0) {
         n->flow.camera=--n->intro_camera_left?1:2;
@@ -659,7 +666,8 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         else if(n->flow.input[i]==2)pads[i]=(t3_input_t){
             (uint16_t)(n->round_actor[i].script_input&0x1000?T3_IN_LEFT:0),0};
     }
-    if(!advance_core(n,pads[0],pads[1],n->replay.mode==7?record:0))return 0;
+    if(!advance_core(n,pads[0],pads[1],n->replay.mode==7?record:0) ||
+       !t3_psx_match_camera_after(n,1))return 0;
     if(n->config->replay_storage) {
         t3_psx_replay_storage_t* storage=n->config->replay_storage;
         storage->epoch=n->replay.epoch;
