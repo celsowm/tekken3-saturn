@@ -8,6 +8,11 @@
 #include "move_probe.h"
 #include "psx_skin_bridge.h"
 #include "perf.h"
+#include "placement.h"
+#if defined(T3_COMPILED_RENDERER)
+#include "compiled_renderer.h"
+extern const t3_compiled_plan_t t3_compiled_plan;
+#endif
 
 #include "saturn/character3d.h"
 #include "saturn/math3d.h"
@@ -21,11 +26,26 @@
 #define DT_Q16 (SAT_FX16_ONE / T3_HZ)
 #define FADE_Q16 (SAT_FX16_ONE / 10)
 enum { ACTOR_COUNT = 2 };
+#if defined(T3_ASSET_TOPOLOGY)
+volatile uint32_t g_t3_asset_topology_ready;
+#endif
+#if defined(T3_SHARE_ACTOR_RESOURCES)
+enum { RESOURCE_COPIES=1 };
+static sat_scene3d_material_program_t g_fallback_material_commands[T3_TEXTURE_COUNT]
+    __attribute__((section(".wram_l")));
+static sat_vdp1_texture_t g_fallback_texture_descriptors[T3_TEXTURE_COUNT]
+    __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_shared_actor_resources;
+#else
+enum { RESOURCE_COPIES=ACTOR_COUNT };
+#endif
 
 typedef struct {
     sat_vec3_t vertices[T3_VERTEX_COUNT];
     sat_projected_vertex_t projected[T3_VERTEX_COUNT];
+#if !defined(T3_VDP2_FLOOR)
     sat_vec3_t world_vertices[T3_VERTEX_COUNT];
+#endif
 } actor_geometry_t;
 
 typedef struct {
@@ -36,7 +56,15 @@ typedef struct {
     sat_skeleton_pose_joint_t fade_from[T3_JOINT_COUNT];
     sat_pose_fade_t fade;
     sat_skel_clip_player_t clip_player;
+#if defined(T3_COMPILED_RENDERER)
+    union {
+        sat_mat4_t joints[T3_JOINT_COUNT];
+        t3_compiled_pose_t compiled_pose;
+    };
+    uint8_t compiled_active;
+#else
     sat_mat4_t joints[T3_JOINT_COUNT];
+#endif
     sat_mesh_t mesh;
     sat_vec3_t* vertices;
     uint16_t indices[T3_FACE_COUNT * 4u];
@@ -57,10 +85,17 @@ typedef struct {
 
 static sat_character_asset_t g_asset;
 static sat_skeleton_clip_t g_clips[T3_CLIP_COUNT];
+#if defined(T3_VDP2_FLOOR)
+/* Owned encounter already places vertices in world space. Its generic
+ * transform fallback remains available in Low WRAM, freeing High WRAM
+ * for the VDP2/CDFS code without slowing projected vertex storage. */
+static sat_vec3_t g_stage_world_scratch[ACTOR_COUNT][T3_VERTEX_COUNT]
+    __attribute__((section(".wram_l")));
+#endif
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
 /* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT] __attribute__((section(".wram_l")));
-static actor_t g_actors[ACTOR_COUNT] __attribute__((section(".wram_l")));
+static actor_t g_actors[ACTOR_COUNT] T3_HOT_WRAM;
 #else
 static sat_model_texture_asset_t g_texture_tables[T3_TEXTURE_COUNT];
 static actor_t g_actors[ACTOR_COUNT];
@@ -76,32 +111,44 @@ static actor_geometry_t g_actor_geometry[ACTOR_COUNT];
 /* Immutable after upload/compilation, independently placed from geometry
  * and from each other so native bank experiments isolate their read cost. */
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_MATERIAL_PROGRAMS)
-static sat_scene3d_material_program_t g_material_commands[ACTOR_COUNT][T3_TEXTURE_COUNT]
+static sat_scene3d_material_program_t g_material_commands[RESOURCE_COPIES][T3_TEXTURE_COUNT]
     __attribute__((section(".wram_l")));
 #else
-static sat_scene3d_material_program_t g_material_commands[ACTOR_COUNT][T3_TEXTURE_COUNT];
+static sat_scene3d_material_program_t g_material_commands[RESOURCE_COPIES][T3_TEXTURE_COUNT];
 #endif
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_TEXTURE_DESCRIPTORS)
-static sat_vdp1_texture_t g_texture_descriptors[ACTOR_COUNT][T3_TEXTURE_COUNT]
+static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUNT]
     __attribute__((section(".wram_l")));
 #else
-static sat_vdp1_texture_t g_texture_descriptors[ACTOR_COUNT][T3_TEXTURE_COUNT];
+static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUNT];
 #endif
 static uint8_t g_initialized;
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
+#if defined(T3_COMPILED_RENDERER)
+static t3_compiled_renderer_t g_compiled_renderer;
+volatile uint32_t g_t3_compiled_skin_frames;
+volatile uint32_t g_t3_compiled_skin_fallbacks;
+#if defined(T3_VERIFY_COMPILED_RENDERER)
+static sat_mat4_t g_reference_joints[ACTOR_COUNT][T3_JOINT_COUNT] __attribute__((section(".wram_l")));
+static sat_vec3_t g_reference_vertices[T3_VERTEX_COUNT] __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_compiled_skin_verified;
+#endif
+_Static_assert(sizeof(t3_compiled_pose_t)<=sizeof(sat_mat4_t)*T3_JOINT_COUNT,
+    "compiled pose must fit the existing joint storage");
+#endif
 #define GEOMETRY_TIMEOUT_TICKS 60000u
 #if defined(T3_PARALLEL_GEOMETRY)
 #if !defined(T3_DIRECT_FACE_SPANS) || defined(T3_VERIFY_PARALLEL_GEOMETRY)
 static sat_scene3d_face_t g_geometry_faces[T3_FACE_COUNT] __attribute__((section(".wram_l")));
 #endif
-static uint32_t g_geometry_keys[T3_FACE_COUNT] __attribute__((section(".wram_l")));
-static sat_scene3d_prepare_item_t g_geometry_item __attribute__((section(".wram_l")));
-static sat_scene3d_prepare_batch_t g_geometry_batch __attribute__((section(".wram_l")));
-static sat_scene3d_source_plan_t g_geometry_sources __attribute__((section(".wram_l")));
+static uint32_t g_geometry_keys[T3_FACE_COUNT] T3_HOT_WRAM;
+static sat_scene3d_prepare_item_t g_geometry_item T3_HOT_WRAM;
+static sat_scene3d_prepare_batch_t g_geometry_batch T3_HOT_WRAM;
+static sat_scene3d_source_plan_t g_geometry_sources T3_HOT_WRAM;
 /* Materials have no vertex-Gouraud pointers; descriptor ranges plus topology. */
 static sat_scene3d_source_range_t g_geometry_source_ranges[T3_TEXTURE_COUNT+5u]
-    __attribute__((section(".wram_l")));
+    T3_HOT_WRAM;
 volatile uint32_t g_t3_geometry_pairs __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
 #if defined(T3_VERIFY_PARALLEL_GEOMETRY)
@@ -171,13 +218,36 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     if ((st = sat_model_validate(&g_asset.model)) != SAT_OK) return st;
     if (progress) progress(context, T3_CHARACTER_LOAD_MODEL_READY);
 
+    int share_resources=0;
+#if defined(T3_SHARE_ACTOR_RESOURCES)
+    /* Both original actors use this same decoded model and palette bytes.
+     * A single shared INDEX8 palette gives identical colors in either bank.
+     * Multiple overlapping banks retain separate resources unless all faces
+     * use LUT4, which never reads palette_base. */
+    share_resources=g_asset.model.texture_count>0;
+    for(unsigned t=0;t<g_asset.model.texture_count;++t)
+        if(g_asset.model.palette_count>1 &&
+           !(g_asset.model.textures[t].flags&SAT_MODEL_TEXTURE_LUT4))share_resources=0;
+    g_t3_shared_actor_resources=0;
+#endif
+
     for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
         a->vertices = g_actor_geometry[i].vertices;
         a->projected = g_actor_geometry[i].projected;
+#if defined(T3_VDP2_FLOOR)
+        a->world_vertices = g_stage_world_scratch[i];
+#else
         a->world_vertices = g_actor_geometry[i].world_vertices;
+#endif
+#if defined(T3_SHARE_ACTOR_RESOURCES)
+        a->textures=i && !share_resources?g_fallback_texture_descriptors:g_texture_descriptors[0];
+        a->material_commands=i && !share_resources?g_fallback_material_commands:g_material_commands[0];
+        if(i && share_resources)g_t3_shared_actor_resources=1;
+#else
         a->textures = g_texture_descriptors[i];
         a->material_commands = g_material_commands[i];
+#endif
         sat_model_asset_t model = g_asset.model;
         if (i == 1u) {
             /* The second costume gets a separate CRAM bank, never overriding
@@ -191,8 +261,16 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         /* These immutable model textures live for the application lifetime.
          * Use the public native model uploader; the logical texture registry
          * has 64 owner slots and is intended for individually managed assets. */
-        if ((st = sat_model_upload_textures(&model,a->textures,T3_TEXTURE_COUNT)) != SAT_OK)
+        if ((!share_resources || !i) &&
+            (st = sat_model_upload_textures(&model,a->textures,T3_TEXTURE_COUNT)) != SAT_OK)
             return st;
+        if(share_resources && i) {
+            /* Preserve the original second bank's CRAM side effect. Only
+             * immutable VDP1 pixels/descriptors/programs are shared. */
+            for(unsigned p=0;p<model.palette_count;++p)
+                if((st=sat_palette_upload_indexed8(model.palettes_rgb555+p*256u,
+                        (uint16_t)(model.palette_base+p)))!=SAT_OK)return st;
+        }
         for (unsigned t=0;t<T3_TEXTURE_COUNT;++t) {
             sat_scene3d_material_t* material=&a->materials[t];
             const sat_model_texture_asset_t* texture=&model.textures[t];
@@ -207,7 +285,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
                 a->textures, a->materials, T3_TEXTURE_COUNT)) != SAT_OK)
             return st;
 #endif
-        for (unsigned t=0;t<T3_TEXTURE_COUNT;++t)
+        if(!share_resources || !i)for (unsigned t=0;t<T3_TEXTURE_COUNT;++t)
             g_texture_vram_bytes+=(uint32_t)a->textures[t].width*a->textures[t].height/
                 (a->textures[t].format==SAT_VDP1_TEXTURE_LUT4?2u:1u);
         if ((st = sat_mesh_init(&a->mesh, a->vertices, T3_VERTEX_COUNT,
@@ -216,6 +294,13 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             return st;
         if ((st = sat_skin_validate_mesh(&g_asset.skin, &a->mesh)) != SAT_OK)
             return st;
+#if defined(T3_ASSET_TOPOLOGY)
+        /* The application owns the mutable archive; decode has already made
+         * its tables native-endian. After boot both actors only read topology.
+         * Vertices stay independently mutable. Bind before validation and
+         * source-plan creation, so their identities/publication remain exact. */
+        a->mesh.indices=(uint16_t*)(uintptr_t)g_asset.model.indices;
+#endif
         __builtin_memcpy(a->face_materials, g_asset.model.face_texture_indices,
                sizeof(a->face_materials));
         if ((st = sat_skeleton_instance_init(&a->skeleton,
@@ -231,12 +316,15 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         a->instance.materials = a->materials;
         a->instance.material_count = T3_TEXTURE_COUNT;
         a->instance.face_materials = a->face_materials;
+#if defined(T3_ASSET_TOPOLOGY)
+        a->instance.face_materials=g_asset.model.face_texture_indices;
+#endif
         a->instance.world = &a->world;
         /* Topology, texture residency and the face/material mapping remain
          * immutable after initialization. Pay their validation once; skinning
          * changes only vertex coordinates, which the binding permits. */
         if ((st = sat_scene3d_instance_binding_init(&a->binding, &a->mesh,
-                a->materials, T3_TEXTURE_COUNT, a->face_materials)) != SAT_OK)
+                a->materials, T3_TEXTURE_COUNT, a->instance.face_materials)) != SAT_OK)
             return st;
         if ((st = sat_scene3d_material_programs_init(&a->material_programs,
                 a->materials, T3_TEXTURE_COUNT, a->material_commands,
@@ -253,6 +341,15 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         if (progress) progress(context, i == 0u ?
             T3_CHARACTER_LOAD_PLAYER1_READY : T3_CHARACTER_LOAD_PLAYER2_READY);
     }
+#if defined(T3_ASSET_TOPOLOGY)
+    g_t3_asset_topology_ready=1;
+#endif
+#if defined(T3_COMPILED_RENDERER)
+    /* An unsupported asset keeps the reference path. All metadata is checked
+     * once against the decoded SKA, rather than trusted per frame. */
+    (void)t3_compiled_renderer_init(&g_compiled_renderer,&t3_compiled_plan,
+        &g_asset.skin,g_actors[0].indices,g_actors[0].mesh.face_count,t3_kmd_double_sided);
+#endif
 #if defined(T3_PARALLEL_GEOMETRY)
     /* Texture descriptors, materials and topology live for the application.
      * Pose vertices/world/masks remain dynamic in the SDK publication path. */
@@ -331,8 +428,15 @@ static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
             return;
         }
         actor_t* actor=&g_actors[actor_index];
-        const sat_result_t st=sat_skin_deform_range(&g_asset.skin,actor->joints,
-            T3_JOINT_COUNT,first,count,actor->mesh.vertices,actor->mesh.vertex_cap);
+        sat_result_t st;
+#if defined(T3_COMPILED_RENDERER)
+        if(actor->compiled_active) {
+            st=t3_compiled_deform_range(&g_compiled_renderer,&actor->compiled_pose,
+                first,count,actor->mesh.vertices,actor->mesh.vertex_cap)?SAT_OK:SAT_ERR_INVALID_ARG;
+        } else
+#endif
+        st=sat_skin_deform_range(&g_asset.skin,actor->joints,
+                T3_JOINT_COUNT,first,count,actor->mesh.vertices,actor->mesh.vertex_cap);
         if(st!=SAT_OK) {
             ranges->range_result[range_index]=st;
             return;
@@ -342,18 +446,54 @@ static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
 }
 #endif
 
-static sat_result_t prepare_actors(void) {
+#if defined(T3_VERIFY_COMPILED_RENDERER)
+static sat_result_t verify_compiled_actors(void) {
+    sat_result_t st;
+    for(unsigned i=0;i<T3_DRAW_ACTORS;++i) {
+        const actor_t* a=&g_actors[i];
+        if(!a->compiled_active)continue;
+        if((st=sat_skin_deform(&g_asset.skin,g_reference_joints[i],T3_JOINT_COUNT,
+                g_reference_vertices,T3_VERTEX_COUNT))!=SAT_OK)return st;
+        if(!t3_psx_skin_place(g_reference_vertices,T3_VERTEX_COUNT,
+                t3_move_probe_world_center(0),t3_move_probe_world_center(2)))return SAT_ERR_INVALID_ARG;
+        for(unsigned v=0;v<T3_VERTEX_COUNT;++v) {
+            const sat_vec3_t ref=g_reference_vertices[v],got=a->mesh.vertices[v];
+            if(ref.x!=got.x || ref.y!=got.y || ref.z!=got.z)return SAT_ERR_VERIFY_FAILED;
+        }
+        ++g_t3_compiled_skin_verified;
+    }
+    return SAT_OK;
+}
+#endif
+
+static sat_result_t prepare_actors(int defer_skin) {
     sat_result_t st;
     const uint32_t started=sat_time_ms();
     for (unsigned i = 0; i < T3_DRAW_ACTORS; ++i) {
         actor_t* a = &g_actors[i];
         T3_PERF_START(skeleton_started);
         g_skin_preview_applied[i]=0u;
+#if defined(T3_COMPILED_RENDERER)
+        a->compiled_active=0u;
+#endif
 #if defined(T3_ENABLE_PSX_SKIN_PREVIEW) && defined(T3_LOCAL_KMD_BIND)
         {
             t3_psx_joint_t originals[T3_PSX_DRAW_PARTS];
             uint32_t parts_mask=0u;
             int available=t3_move_probe_copy_world(i,originals,&parts_mask);
+#if defined(T3_COMPILED_RENDERER)
+            if(available && t3_move_probe_owned() &&
+               (parts_mask&T3_PSX_VISIBLE_MASK)==T3_PSX_VISIBLE_MASK &&
+               t3_compiled_pose_pack(&g_compiled_renderer,originals,parts_mask,
+                   t3_move_probe_world_center(0),t3_move_probe_world_center(2),
+                   &a->compiled_pose)) {
+                a->compiled_active=1u;
+                g_skin_preview_applied[i]=1u;
+#if defined(T3_VERIFY_COMPILED_RENDERER)
+                if(!t3_psx_skin_bridge(originals,parts_mask,g_reference_joints[i]))return SAT_ERR_INVALID_ARG;
+#endif
+            } else
+#endif
             /* Skip the base skeleton only when the bridge can supply every
              * joint referenced by this immutable skin. Accessory joints keep
              * their generic evaluation; an invalid original pose keeps the
@@ -372,15 +512,24 @@ static sat_result_t prepare_actors(void) {
 #endif
         T3_PERF_ADD(skeleton,skeleton_started);
 #if !defined(T3_PARALLEL_SKINNING)
+        if (!defer_skin) {
         T3_PERF_START(skin_started);
+#if defined(T3_COMPILED_RENDERER)
+        if(a->compiled_active) {
+            if(!t3_compiled_deform_range(&g_compiled_renderer,&a->compiled_pose,
+                    0,T3_VERTEX_COUNT,a->mesh.vertices,a->mesh.vertex_cap))return SAT_ERR_INVALID_ARG;
+            a->mesh.vertex_count=T3_VERTEX_COUNT;
+        } else
+#endif
         if ((st = sat_skin_update_mesh(&g_asset.skin,
                 a->joints, T3_JOINT_COUNT, &a->mesh, 0, NULL)) != SAT_OK)
             return st;
         T3_PERF_ADD(skin,skin_started);
+        }
 #endif
     }
 #if defined(T3_PARALLEL_SKINNING)
-    {
+    if (!defer_skin) {
         T3_PERF_START(skin_started);
         skin_ranges_t ranges={{SAT_OK,SAT_OK}};
         const uint32_t end=(uint32_t)T3_DRAW_ACTORS*T3_VERTEX_COUNT;
@@ -394,15 +543,234 @@ static sat_result_t prepare_actors(void) {
         T3_PERF_ADD(skin,skin_started);
     }
 #endif
+#if defined(T3_COMPILED_RENDERER)
+    unsigned active=0;
+    for(unsigned i=0;i<T3_DRAW_ACTORS;++i)active+=g_actors[i].compiled_active;
+    if(active==T3_DRAW_ACTORS)++g_t3_compiled_skin_frames;
+    else ++g_t3_compiled_skin_fallbacks;
+#if defined(T3_VERIFY_COMPILED_RENDERER)
+    if(!defer_skin && (st=verify_compiled_actors())!=SAT_OK)return st;
+#endif
+#endif
     g_skin_work_ms=sat_time_ms()-started;
     return SAT_OK;
+}
+
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+typedef struct {
+    sat_scene_t* scene;
+    int32_t center_x,center_z;
+    sat_result_t result[2];
+    uint32_t geometry_started;
+    /* Set through the uncached alias once a started worker's actor 1 is
+     * complete; the worker's task then continues with other work. */
+    volatile uint32_t worker_ready;
+#if defined(T3_NATIVE_PHASE_PROBE)
+    t3_character_phase_profile_t phase;
+#endif
+} fused_actor_context_t;
+static fused_actor_context_t g_fused_actors __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_fused_actor_frames;
+#if defined(T3_NATIVE_PHASE_PROBE)
+static t3_character_phase_profile_t g_completed_actor_phase;
+#endif
+
+/* The range executor purges stale Slave inputs once. Each CPU owns one
+ * complete vertex/projected span; only Master changes the canonical queue.
+ * No authoritative state, hardware access or nested dispatch on Slave. */
+static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
+    fused_actor_context_t* context=(fused_actor_context_t*)opaque;
+    for(uint32_t i=begin;i<end;++i) {
+        actor_t* actor=&g_actors[i];
+        uint32_t started=0;
+        if(i==0)started=sat_time_ms();
+#if defined(T3_NATIVE_PHASE_PROBE)
+        const uint16_t skin_started=sat_time_frc();
+#endif
+        sat_result_t st;
+#if defined(T3_COMPILED_RENDERER)
+        if(actor->compiled_active) {
+            st=t3_compiled_deform_range(&g_compiled_renderer,&actor->compiled_pose,
+                0,T3_VERTEX_COUNT,actor->mesh.vertices,actor->mesh.vertex_cap)?SAT_OK:SAT_ERR_INVALID_ARG;
+        } else
+#endif
+        {
+            /* Placement is applied as each vertex is stored, not in a
+             * second pass over the whole mesh. */
+            sat_skin_placement_t placement;
+            st=t3_psx_skin_placement(&placement,context->center_x,context->center_z)?
+                sat_skin_deform_range_placed(&g_asset.skin,actor->joints,T3_JOINT_COUNT,0,
+                    T3_VERTEX_COUNT,actor->mesh.vertices,actor->mesh.vertex_cap,&placement):
+                SAT_ERR_INVALID_ARG;
+        }
+#if defined(T3_NATIVE_PHASE_PROBE)
+        const uint16_t placement_started=sat_time_frc();
+#endif
+        if(i==0) {
+            g_skin_work_ms+=sat_time_ms()-started;
+            T3_PERF_ADD(skin,started);
+#if defined(T3_PERF_SAMPLES)
+            started=sat_time_ms();
+#endif
+        }
+#if defined(T3_NATIVE_PHASE_PROBE)
+        const uint16_t geometry_started=sat_time_frc();
+#endif
+        if(i==0) {
+            T3_PERF_ADD(placement,started);
+#if defined(T3_PERF_SAMPLES)
+            context->geometry_started=sat_time_ms();
+#endif
+        }
+        if(st==SAT_OK && i==0)
+            st=sat_scene_submit_instance(context->scene,&actor->instance,
+                SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
+        if(st==SAT_OK && i==1) {
+            sat_scene3d_prepare_batch_t worker=g_geometry_batch;
+            worker.projected_faces=sat_parallel_uncached_address(worker.projected_faces);
+            worker.faces=sat_parallel_uncached_address(worker.faces);
+            worker.keys=sat_parallel_uncached_address(worker.keys);
+            st=sat_scene3d_prepare_batch_execute(&worker);
+            sat_scene3d_prepare_batch_t* shared=sat_parallel_uncached_address(&g_geometry_batch);
+            shared->metrics=worker.metrics;
+#if defined(T3_NATIVE_PHASE_PROBE) && defined(SAT_SCENE3D_INSTANCE_PROFILE_AVAILABLE)
+            shared->instance_profile=worker.instance_profile;
+#endif
+        }
+        fused_actor_context_t* shared=sat_parallel_uncached_address(context);
+#if defined(T3_NATIVE_PHASE_PROBE)
+        const uint16_t finished=sat_time_frc();
+        shared->phase.skin[i]=(uint16_t)(placement_started-skin_started);
+        shared->phase.placement[i]=(uint16_t)(geometry_started-placement_started);
+        shared->phase.geometry[i]=(uint16_t)(finished-geometry_started);
+#endif
+        shared->result[i]=st;
+    }
+}
+
+static t3_characters_worker_start_t g_worker_start;
+
+void t3_characters_set_worker_start(t3_characters_worker_start_t start) {
+    g_worker_start=start;
+}
+
+void t3_characters_prepare_worker(void) {
+    prepare_actor_range(&g_fused_actors,1,2);
+    fused_actor_context_t* shared=sat_parallel_uncached_address(&g_fused_actors);
+    shared->worker_ready=1u;
+}
+
+/* Actor 0 here, actor 1 by the started worker; returns once both are done. */
+static sat_result_t prepare_with_worker(void) {
+    const sat_result_t st=g_worker_start();
+    if(st!=SAT_OK)return st;
+    prepare_actor_range(&g_fused_actors,0,1);
+    const fused_actor_context_t* shared=sat_parallel_uncached_address(&g_fused_actors);
+    for(uint32_t spins=0;!shared->worker_ready;)
+        if(++spins>=4000000u)return SAT_ERR_TIMEOUT;
+    return sat_parallel_cache_sync_range(&g_actor_geometry[1],sizeof(g_actor_geometry[1]));
+}
+
+static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
+    sat_result_t st;
+#if defined(T3_NATIVE_PHASE_PROBE)
+    const uint16_t setup_started=sat_time_frc();
+#endif
+    actor_t* slave=&g_actors[1];
+    for(unsigned i=0;i<2;++i) {
+        g_actors[i].mesh.vertex_count=T3_VERTEX_COUNT;
+        g_actors[i].instance.world=NULL;
+    }
+    g_geometry_item=(sat_scene3d_prepare_item_t){
+        .instance=&slave->instance,.screen_scratch=slave->projected,
+        .world_scratch=slave->world_vertices,.color_calc_slot=SAT_SCENE3D_SLOT_INHERIT,
+        .source_plan=&g_geometry_sources};
+    if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
+            scene->faces.entries,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
+    if((st=sat_scene3d_faces_reserve_batch(&scene->faces,&g_geometry_batch))!=SAT_OK)return st;
+    g_geometry_batch.view_proj=scene->faces.view_proj;
+    g_geometry_batch.eye=scene->faces.eye;
+    g_geometry_batch.forward=scene->faces.forward;
+    g_geometry_batch.near_depth=scene->faces.near_depth;
+    g_geometry_batch.width=scene->faces.width;
+    g_geometry_batch.height=scene->faces.height;
+    g_fused_actors=(fused_actor_context_t){.scene=scene,
+        .center_x=t3_move_probe_world_center(0),
+        .center_z=t3_move_probe_world_center(2),
+        .result={SAT_OK,SAT_OK},.worker_ready=0u};
+#if defined(T3_NATIVE_PHASE_PROBE)
+    const uint16_t dispatch_started=sat_time_frc();
+#endif
+    /* The Slave writes only actor 1's geometry; the Master's cache already
+     * holds its own writes for actor 0, so drop stale lines for actor 1 only. */
+    st=g_worker_start?prepare_with_worker():
+        sat_parallel_for(0,2,1,prepare_actor_range,&g_fused_actors,
+            &g_actor_geometry[1],sizeof(g_actor_geometry[1]));
+    if(st!=SAT_OK)return st; /* Do not reclaim a potentially running worker. */
+#if defined(T3_NATIVE_PHASE_PROBE)
+    const uint16_t merge_started=sat_time_frc();
+#endif
+    if((st=sat_parallel_cache_sync_range(&g_fused_actors,sizeof(g_fused_actors)))!=SAT_OK)return st;
+    if((st=sat_parallel_cache_sync_range(&g_geometry_batch,sizeof(g_geometry_batch)))!=SAT_OK)return st;
+    const uint32_t prepared=g_geometry_batch.metrics.prepared_faces;
+    if((st=sat_parallel_cache_sync_range(g_geometry_keys,
+            prepared*sizeof(*g_geometry_keys)))!=SAT_OK)return st;
+    if((st=sat_parallel_cache_sync_range(g_geometry_batch.projected_faces,
+            prepared*sizeof(*g_geometry_batch.projected_faces)))!=SAT_OK)return st;
+    /* Only clipping fallbacks read cold records. The ordinary projected
+     * subset writes none of them, so there is nothing to consume there. */
+    if((g_geometry_batch.metrics.clipped_faces || !slave->material_programs.all_compiled) &&
+       (st=sat_parallel_cache_sync_range(g_geometry_batch.faces,
+            T3_FACE_COUNT*sizeof(*g_geometry_batch.faces)))!=SAT_OK)return st;
+    if(g_fused_actors.result[0]!=SAT_OK)return g_fused_actors.result[0];
+    if(g_fused_actors.result[1]!=SAT_OK)return g_fused_actors.result[1];
+#if defined(T3_VERIFY_COMPILED_RENDERER)
+    if((st=verify_compiled_actors())!=SAT_OK)return st;
+#endif
+    if((st=sat_scene3d_faces_merge_prepared(&scene->faces,&g_geometry_batch))!=SAT_OK)return st;
+#if defined(T3_NATIVE_PHASE_PROBE)
+    const uint16_t finished=sat_time_frc();
+    g_completed_actor_phase=g_fused_actors.phase;
+#if defined(SAT_SCENE3D_INSTANCE_PROFILE_AVAILABLE)
+    g_completed_actor_phase.projection[0]=(uint16_t)scene->faces.instance_profile.projection_ticks;
+    g_completed_actor_phase.face_prep[0]=(uint16_t)scene->faces.instance_profile.preparation_ticks;
+    g_completed_actor_phase.projection[1]=(uint16_t)g_geometry_batch.instance_profile.projection_ticks;
+    g_completed_actor_phase.face_prep[1]=(uint16_t)g_geometry_batch.instance_profile.preparation_ticks;
+#endif
+    g_completed_actor_phase.setup=(uint16_t)(dispatch_started-setup_started);
+    g_completed_actor_phase.dispatch=(uint16_t)(merge_started-dispatch_started);
+    g_completed_actor_phase.merge=(uint16_t)(finished-merge_started);
+#endif
+    scene->submitted_faces+=g_geometry_batch.metrics.prepared_faces;
+    scene->culled_faces=scene->faces.culled_faces;
+    scene->clipped_faces=scene->faces.clipped_faces;
+    T3_PERF_ADD(geometry,g_fused_actors.geometry_started);
+    ++g_t3_geometry_pairs;
+    ++g_t3_fused_actor_frames;
+    return SAT_OK;
+}
+#endif
+
+const t3_character_phase_profile_t* t3_characters_phase_profile(void) {
+#if defined(T3_NATIVE_PHASE_PROBE)
+    return &g_completed_actor_phase;
+#else
+    return NULL;
+#endif
 }
 
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
     unsigned i;
     sat_result_t st;
     if (!scene || !game || !g_initialized) return SAT_ERR_INVALID_ARG;
-    if ((st = prepare_actors()) != SAT_OK) return st;
+    int fused=0;
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+    fused=t3_move_probe_owned() && T3_DRAW_ACTORS==2;
+#endif
+    if ((st = prepare_actors(fused)) != SAT_OK) return st;
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+    if(fused)return prepare_fused_actors(scene);
+#endif
     T3_PERF_START(placement_started);
     for (i = 0; i < T3_DRAW_ACTORS; ++i) {
         actor_t* a = &g_actors[i];
@@ -430,6 +798,9 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
              * Apply that exact transform in place after skinning rather than
              * paying the generic matrix-vector path for every visible vertex.
              * prepare_actors rewrites these vertices before every submission. */
+#if defined(T3_COMPILED_RENDERER)
+            if(!a->compiled_active)
+#endif
             if(!t3_psx_skin_place(a->mesh.vertices,a->mesh.vertex_count,
                     t3_move_probe_world_center(0),t3_move_probe_world_center(2)))
                 return SAT_ERR_INVALID_ARG;

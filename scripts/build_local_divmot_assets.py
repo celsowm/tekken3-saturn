@@ -31,7 +31,19 @@ def load_sequences(path):
         cleaned.append((command,window,steps))
     return cleaned
 
-def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None):
+def fnv1a(data,value=2166136261):
+    for b in data:value=((value^b)*16777619)&0xFFFFFFFF
+    return value
+
+def cold_file(bank,common):
+    """MOTION.BIN: big-endian header, then each bank at a 16-byte boundary."""
+    bank_at=64;common_at=(bank_at+len(bank)+15)&~15
+    digest=fnv1a(common,fnv1a(bank))
+    header=struct.pack('>7I',0x54334D4F,1,len(bank),len(common),bank_at,common_at,digest).ljust(bank_at,b'\0')
+    image=(header+bank).ljust(common_at,b'\0')+common
+    return image,bank_at,common_at,digest
+
+def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None,cold=False):
     bank=bank_path.read_bytes()
     _,section=sections_of(bank)
     if bank[1]==99:raise ValueError("main bank must be character bank, not type 99")
@@ -104,10 +116,29 @@ extern const uint8_t t3_local_spline_blob[{max(1,len(spline))}];
 extern const t3_command_sequence_t t3_local_sequences[{max(1,len(sequences))}];
 #define T3_LOCAL_DIVMOT_BANK_BYTES {len(bank)}u
 #define T3_LOCAL_DIVMOT_COMMON_BYTES {len(common)}u
-extern const uint8_t t3_local_bank[{len(bank)}];
+"""
+    if cold:
+        image,bank_at,common_at,digest=cold_file(bank,common)
+        header+=f"""/* Filled from MOTION.BIN by t3_cold_data_load before first use. */
+#define T3_LOCAL_COLD_FILE_BYTES {len(image)}u
+#define T3_LOCAL_COLD_BANK_OFFSET {bank_at}u
+#define T3_LOCAL_COLD_COMMON_OFFSET {common_at}u
+#define T3_LOCAL_COLD_FNV1A 0x{digest:08X}u
+extern uint8_t t3_local_bank[{len(bank)}];
+extern uint8_t t3_local_common[{max(1,len(common))}];
+#endif
+"""
+    else:
+        header+=f"""extern const uint8_t t3_local_bank[{len(bank)}];
 extern const uint8_t t3_local_common[{max(1,len(common))}];
 #endif
 """
+    def cold_storage(bank_bytes,common_bytes):
+        return ("#if defined(__sh__)\n"
+                "#define T3_COLD_STORAGE __attribute__((section(\".wram_l\"),aligned(16)))\n"
+                "#else\n#define T3_COLD_STORAGE\n#endif\n"
+                f"uint8_t t3_local_bank[{bank_bytes}] T3_COLD_STORAGE;\n"
+                f"uint8_t t3_local_common[{max(1,common_bytes)}] T3_COLD_STORAGE;\n")
     def emit(name,data):
         return ("const uint8_t "+name+"["+str(max(1,len(data)))+"] = {\n"+
                 "".join("    "+",".join(str(b) for b in data[i:i+24])+",\n"
@@ -115,7 +146,8 @@ extern const uint8_t t3_local_common[{max(1,len(common))}];
                 ("    0,\n" if not data else "")+"};\n")
     impl=('#include "t3_local_divmot.h"\n'
           '/* PRIVATE local PS1 move data. Never publish derived objects/ISO. */\n'
-          +emit("t3_local_bank",bank)+emit("t3_local_common",common)
+          +(cold_storage(len(bank),len(common)) if cold else
+            emit("t3_local_bank",bank)+emit("t3_local_common",common))
           +emit("t3_local_spline_blob",spline)
           +emit("t3_local_trig_blob",trig)
           +emit("t3_local_ik_blob",ik)
@@ -135,6 +167,7 @@ extern const uint8_t t3_local_common[{max(1,len(common))}];
     (out/"combat_reactions.bin").write_bytes(reactions)
     (out/"t3_local_divmot.h").write_text(header)
     (out/"t3_local_divmot.c").write_text(impl)
+    if cold:(out/"MOTION.BIN").write_bytes(image)
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
@@ -153,7 +186,9 @@ def main():
     p.add_argument("--body-tables",type=Path,help="private sqrt/body-joint/Paul-radius tables")
     p.add_argument("--rsqrt-table",type=Path,help="private original 768-byte blend reciprocal-sqrt window")
     p.add_argument("--combat-reactions",type=Path,help="private original 633-row reaction table; embeds only supported rows")
+    p.add_argument("--cold-file",action="store_true",
+                   help="write the two DIVMOT banks to MOTION.BIN and emit Low WRAM storage instead of embedding them")
     a=p.parse_args()
-    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table)
+    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table,a.cold_file)
     except (OSError,ValueError) as e:p.exit(1,f"private DIVMOT embed failed: {e}\n")
 if __name__=="__main__":main()

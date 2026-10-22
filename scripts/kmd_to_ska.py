@@ -356,10 +356,14 @@ def compile_ska(kmd,source,output,texture_arc=None):
                                 indexed_texture_bytes=64*len(unique),
                                 texture_patch_size=[8,8],source_arc_sha256=hashlib.sha256(texture_arc.read_bytes()).hexdigest())
         blob=encode(export,render,[node.name for node in model.nodes])
+        from compiled_render_plan import compile_plan
+        render_plan=compile_plan(export.skin,render.indices_abcd,double_sided)
     finally:
         sys.path.remove(str((source/"tools").resolve()))
     output.mkdir(parents=True,exist_ok=True)
     (output/"fighter_bind.ska").write_bytes(blob)
+    (output/"render_plan.json").write_text(
+        json.dumps(render_plan,indent=2,sort_keys=True)+'\n',encoding='utf8')
     with (output/"fighter_bind.obj").open("w",encoding="utf8") as f:
         f.write("# Untextured KMD rest-pose preview; coordinates require orientation validation\n")
         for v in model.vertices:f.write("v "+ " ".join(f"{x:.7f}" for x in v)+"\n")
@@ -371,6 +375,8 @@ def compile_ska(kmd,source,output,texture_arc=None):
             "logical_vertices":len(model.vertices),
             "compiled_vertices":len(export.skin.source_vertex),
             "blend_vertices":len(export.skin.blend),
+            "render_plan":{k:render_plan[k] for k in
+                ('schema','joint_mask','maximum_l1','exact_skin_supported')},
             "double_sided_faces":double_sided,
             "variant_rows_pending":variants_omitted,
             "original_textures":texture_arc is not None,"original_motion":False,

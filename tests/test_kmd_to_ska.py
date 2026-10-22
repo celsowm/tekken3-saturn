@@ -12,9 +12,28 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"scripts"))
 import kmd_to_ska as kmd
 from build_local_kmd_assets import skeleton_parts,generate
 from audit_kmd_topology import audit,classify
+from compiled_render_plan import compile_plan
+from types import SimpleNamespace
 
 
 class TopologyAuditTests(unittest.TestCase):
+    def test_compiled_plan_preserves_ids_and_unique_face_dependencies(self):
+        skin=SimpleNamespace(rigid=[((1,2,3),0),((2,3,4),0),((3,4,5),0),((4,5,6),1)],
+            blend=[((0,1,0),2,(16384,0),((1,2,3),(3,4,5),(0,0,0)))],
+            joint_count=2,max_joint=1,pos_shift=15)
+        plan=compile_plan(skin,[(0,1,2,2),(0,1,2,2),(1,2,3,3),(0,1,4,4)],
+                          [False,True,False,False])
+        self.assertEqual(plan['face_joints'],[0,255,255,255])
+        self.assertEqual(plan['joint_offsets'],[0,3,4])
+        self.assertEqual(plan['rigid_vertices'],[0,1,2,3])
+        self.assertEqual(plan['vertex_offsets'],[0,3,7,10,11,12])
+        self.assertEqual(plan['vertex_faces'],[0,1,3,0,1,2,3,0,1,2,2,3])
+        self.assertEqual(plan['maximum_l1'],15)
+        self.assertEqual(plan['joint_mask'],3)
+        self.assertTrue(plan['exact_skin_supported'])
+        skin.blend=[((0,1,0),2,(16383,0),((1,2,3),(3,4,5),(0,0,0)))]
+        self.assertFalse(compile_plan(skin,[(0,1,4,4)],[False])['exact_skin_supported'])
+
     def test_seams_cross_joint_faces_and_two_sided_faces_stay_distinct(self):
         report=classify([0,0,0,1],5,
             [(0,1,2,2),(0,1,2,2),(1,2,3,3),(0,1,4,4)],

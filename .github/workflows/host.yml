@@ -85,6 +85,10 @@ jobs:
         run: python -m pip install numpy pillow
       - name: Test frozen presentation comparator
         run: python -m unittest discover -s tests -p 'test_compare_saturn_presentation.py' -v
+      - name: Check experimental SCU DSP visibility against the exact world predicate
+        env:
+          LIBSATURN_SOURCE_DIR: .external/libsaturn
+        run: python -m unittest discover -s tests -p 'test_dsp_visibility.py' -v
       - name: Generate low-poly skeletal asset archive
         run: |
           python scripts/build_fighter_assets.py \
@@ -127,6 +131,13 @@ jobs:
             -I .external/libsaturn/include \
             -I src/game -I src/saturn -I build/asset-kmd/generated \
             src/saturn/main.c src/saturn/characters.c src/saturn/move_probe.c \
+            build/asset-kmd/generated/t3_generated_character.c
+          gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only \
+            -DT3_COMPILED_RENDERER=1 -DT3_VERIFY_COMPILED_RENDERER=1 \
+            -DT3_ENABLE_PSX_SKIN_PREVIEW=1 -DT3_PARALLEL_SKINNING=1 \
+            -I .external/libsaturn/include \
+            -I src/game -I src/saturn -I build/asset-kmd/generated \
+            src/saturn/characters.c src/saturn/compiled_renderer.c \
             build/asset-kmd/generated/t3_generated_character.c
       - name: Test private DIVMOT embed and optional Saturn probe on synthetic bank
         run: |

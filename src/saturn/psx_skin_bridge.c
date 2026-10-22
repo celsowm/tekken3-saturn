@@ -37,6 +37,12 @@ int t3_psx_skin_bridge(const t3_psx_joint_t pose[T3_PSX_DRAW_PARTS],
     return 1;
 }
 
+int t3_psx_skin_placement(sat_skin_placement_t* placement,int32_t cx,int32_t cz) {
+    if(!placement || cx< -30000 || cx>30000 || cz< -30000 || cz>30000)return 0;
+    *placement=(sat_skin_placement_t){6,{-cx*96,0,cz*96},0x0FFFFFFF};
+    return 1;
+}
+
 int t3_psx_skin_place(sat_vec3_t* vertices,uint32_t count,int32_t cx,int32_t cz) {
     if(!vertices || !count || cx< -30000 || cx>30000 || cz< -30000 || cz>30000)return 0;
     for(uint32_t i=0;i<count;++i) {

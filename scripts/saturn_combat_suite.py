@@ -9,6 +9,49 @@ import shutil
 import saturn_probe
 
 
+def delayed_script(script, fields):
+    if fields < 0:
+        raise ValueError('input offset must be nonnegative')
+    return ''.join(str(int(line.split(None,1)[0])+fields)+' '+line.split(None,1)[1]+'\n'
+                   for line in script.splitlines() if line.strip())
+
+
+# The world-composition cache check needs several hundred ticks of live play
+# in a 300-field case, and cache reuse is counted per submitted image, so it
+# depends on throughput. Starting every window this many fields after the
+# first tick is an empirical margin: 16 fields failed the high-hit case, 50
+# passed every case on both the cold-Low-WRAM candidate and its control; it is
+# not a minimum and not a model.
+GAMEPLAY_LEAD_FIELDS=50
+
+
+def first_gameplay_field(args,runner=saturn_probe.run,limit=1200,resolution=10):
+    """Return the first program field at which the simulation has ticked.
+
+    Boot-time CD loads vary by build, so fixed field windows are measured from
+    this point instead. Probes use neutral pads in their own directories.
+    """
+    def ticked(fields):
+        a=copy.copy(args);a.out=args.out/f'gameplay-start-{fields}';a.out.mkdir(parents=True,exist_ok=True)
+        a.frames=fields;a.port2='pad';a.workload='diagnostic';a.device_script=a.out/'input.devices'
+        a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n')
+        try:
+            return coherent_case(a,runner)['state']['sim_ticks']>0
+        except ValueError as error:
+            if any(text in str(error) for text in ('not published a gameplay frame','unsupported diagnostics magic')):return False
+            raise
+    high=resolution
+    while not ticked(high):
+        if high>=limit:raise AssertionError('simulation never started within %d fields'%limit)
+        high=min(limit,high*2)
+    low=high//2 if high>resolution else 0
+    while high-low>resolution:
+        mid=(low+high)//2
+        if ticked(mid):high=mid
+        else:low=mid
+    return high
+
+
 def coherent_case(args,runner=saturn_probe.run):
     """Retry only torn debugger publications, retaining the rejected artifacts.
 
@@ -41,10 +84,13 @@ def execute(args):
         if not ok:
             (root/'failed.json').write_text(json.dumps(results,indent=2)+'\n')
             raise AssertionError(message)
+    offset=getattr(args,'input_offset_fields',None)
+    measured=offset is None
+    if measured:offset=first_gameplay_field(args)+GAMEPLAY_LEAD_FIELDS
     def case(name,script='',frames=300):
         a=copy.copy(args);a.out=root/name;a.out.mkdir(parents=True,exist_ok=True)
-        a.frames=frames;a.port2='pad';a.device_script=a.out/'input.devices'
-        a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n'+script)
+        a.frames=frames+offset;a.port2='pad';a.device_script=a.out/'input.devices'
+        a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n'+delayed_script(script,offset))
         r=coherent_case(a);results[name]=r;s=r['state']
         require(s.get('psx_combat_active')==1,'original combat must be active')
         require(s.get('psx_round_flow_active')==1,'original round controller must be active')
@@ -114,9 +160,16 @@ def execute(args):
             raise AssertionError(label+': controlled lows did not finish the round')
         s,end=finish_round('ko',20,neutral,1)
         tape='\n'.join(lines)+'\n'
-        s=case('ko-collapse',tape,end)
+        # The approach that ends the round is sampled when it is already
+        # over; a faster build has run past the collapse start by then. Walk
+        # the sample point back until the collapse move itself is visible.
+        for back in range(0,160,10):
+            s=case('ko-collapse',tape,end-back)
+            if s['psx_ko_collapse'][1]==1 and s['psx_move_slot'][1]==3430:
+                break
         require(s['psx_health_q16'][1]==0 and s['psx_ko_collapse'][1]==1
                 and s['psx_move_slot'][1]==3430,'KO must start the original collapse move')
+        s=case('ko-collapse',tape,end)
         require(s['round_done']==1 and s['winner']==0 and s['wins0']==1 and not s['match_done'],
                 'KO must award P1 exactly one round')
         replay=case('ko-replay',tape,end+240)
@@ -138,7 +191,16 @@ def execute(args):
                 and held_victory['psx_move_frame'][0]>victory['psx_move_frame'][0]
                 and held_victory['psx_move_frame'][1]==victory['psx_move_frame'][1],
                 'winner pose must advance while the loser clock stays frozen')
-        next_end=end+1600
+        next_end=0
+        # A fixed post-KO wait can consume much of round two as throughput
+        # improves. Begin its controlled attacks at the first observed fresh
+        # round, rather than accidentally turning the second KO into timeout.
+        for checkpoint in range(victory_end+60,victory_end+1801,60):
+            name='next-round-search-'+str(checkpoint)
+            observed=case(name,tape,checkpoint);results.pop(name)
+            if observed['round']==2 and not observed['round_done']:
+                next_end=checkpoint;break
+        require(next_end>0,'victory must reach a fresh second round')
         s=case('next-round',tape,next_end)
         require(s['round']==2 and not s['round_done'] and s['wins0']==1 and s['wins1']==0
                 and s['psx_health_q16']==[140*65536]*2 and s['psx_anchor'][::3]==[-1000,1000]
@@ -163,7 +225,14 @@ def execute(args):
                 'Start must restore a fresh match after match end')
     if getattr(args,'with_timeout',False):
         # Neutral connected pads, no guest RAM edits or accelerated game clock.
-        s=case('timeout-next-round','',6000)
+        timeout_start=0
+        for checkpoint in range(2400,7201,600):
+            name='timeout-round-search-'+str(checkpoint)
+            observed=case(name,'',checkpoint);results.pop(name)
+            if observed['round']==2 and not observed['match_done']:
+                timeout_start=checkpoint;break
+        require(timeout_start>0,'first neutral timeout must reach round two')
+        s=case('timeout-next-round','',timeout_start)
         require(s['round']==2 and s['wins0']==s['wins1']==1 and not s['match_done']
                 and s['psx_health_q16']==[140*65536]*2,
                 'first neutral draw must award both players and restart')
@@ -173,6 +242,7 @@ def execute(args):
                 and s['psx_health_q16']==[140*65536]*2,
                 'second neutral draw must finish at 2-2 and report a drawn match')
     report=dict(passed=True,bounded_round_policy_validated=False,
+                input_offset_fields=offset,input_offset_measured=measured,
                 native_round_replay_victory_validated=bool(args.with_ko),
                 original_vs_timeout_scoring_validated=bool(getattr(args,'with_timeout',False)),
                 original_round_flow_parity=False,ps1_input_replay_parity=False,cases=results)
@@ -182,6 +252,8 @@ def execute(args):
 
 if __name__=='__main__':
     parser=saturn_probe.parser();parser.add_argument('--with-ko',action='store_true')
+    parser.add_argument('--input-offset-fields',type=int,default=None,
+                        help='delay all inputs and endpoints by this many fields; default measures the first simulation tick')
     parser.add_argument('--with-timeout',action='store_true',help='Run two neutral timeout scoring/restart checkpoints')
     parser.set_defaults(build=saturn_probe.ROOT/'build/paul-combat',
                         out=saturn_probe.ROOT/'assets/imported/saturn-original-combat-suite')

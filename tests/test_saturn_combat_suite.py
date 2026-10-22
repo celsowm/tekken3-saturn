@@ -8,6 +8,11 @@ import saturn_probe
 
 
 class CoherentCaseTests(unittest.TestCase):
+    def test_loading_offset_preserves_input_intervals(self):
+        self.assertEqual(suite.delayed_script('20 1 buttons=RIGHT\n100 1 buttons=NONE\n',160),
+                         '180 1 buttons=RIGHT\n260 1 buttons=NONE\n')
+        with self.assertRaises(ValueError):suite.delayed_script('',-1)
+
     def test_torn_snapshot_is_retained_and_actual_endpoint_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);inputs=root/'input.devices';inputs.write_text('0 1 buttons=X\n')
@@ -46,3 +51,22 @@ class CoherentCaseTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class GameplayStartTests(unittest.TestCase):
+    def test_start_is_found_within_resolution_for_any_boot_length(self):
+        for boot in (0,7,91,276,640):
+            with tempfile.TemporaryDirectory() as directory:
+                args=argparse.Namespace(out=Path(directory),frames=0,device_script=None)
+                def run(a):
+                    if a.frames<boot//4:raise ValueError('unsupported diagnostics magic/version')
+                    if a.frames<boot//2:raise ValueError('guest has not published a gameplay frame')
+                    return dict(state=dict(sim_ticks=max(0,a.frames-boot)))
+                found=suite.first_gameplay_field(args,run)
+                self.assertTrue(boot<=found<=boot+10,(boot,found))
+
+    def test_never_starting_simulation_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args=argparse.Namespace(out=Path(directory),frames=0,device_script=None)
+            with self.assertRaises(AssertionError):
+                suite.first_gameplay_field(args,lambda a:dict(state=dict(sim_ticks=0)),limit=100)

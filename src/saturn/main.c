@@ -15,6 +15,9 @@
 #include "characters.h"
 #include "saturn/app.h"
 #include "saturn/color.h"
+#if defined(T3_DMA_COMMAND_LIST)
+#include "saturn/dma.h"
+#endif
 #include "saturn/font.h"
 #include "saturn/hud.h"
 #include "saturn/input.h"
@@ -25,9 +28,27 @@
 #include "saturn/video.h"
 #include "saturn/vdp1.h"
 #include "saturn/time.h"
+#if defined(T3_OVERLAP_VDP1)
+#include "saturn/irq.h"
+#endif
+#if defined(T3_NATIVE_COMMANDS)
+#include "saturn/vdp1_command_batch.h"
+static sat_vdp1_command_batch_t g_native_commands;
+volatile uint32_t g_t3_native_command_frames;
+volatile uint32_t g_t3_cached_stage_faces;
+#endif
+#include "cold_data.h"
 #include "diagnostics.h"
+#include "placement.h"
 #include "move_probe.h"
 #include "perf.h"
+#if defined(T3_SLAVE_SIMULATION)
+#include <saturn/parallel.h>
+_Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the original single-clip bridge");
+#endif
+#if defined(T3_VDP2_FLOOR)
+#include "stage_vdp2.h"
+#endif
 #if defined(T3_CPU_DIAGNOSTICS)
 #include <saturn/sh2.h>
 #include <saturn/parallel.h>
@@ -55,37 +76,96 @@ static void capture_boot_cache(void) {
 }
 #endif
 
-enum { W = 320, H = 224, FACE_CAP = T3_SCENE_CAPACITY, HUD_COMMANDS = 192,
+#if defined(T3_VDP2_FLOOR)
+#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u)
+#else
+#define T3_STAGE_SCENE_CAPACITY T3_SCENE_CAPACITY
+#endif
+enum { W = 320, H = 224, FACE_CAP = T3_STAGE_SCENE_CAPACITY, HUD_COMMANDS = 192,
        HUD_FRAME_Y=47,HUD_CPU_Y=3,HUD_MASTER_CACHE_X=88,HUD_SLAVE_CACHE_X=168 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
 
 /* Fully initialized by t3_match_reset before any read. */
-static t3_match_t g_game __attribute__((section(".wram_l")));
+static t3_match_t g_game T3_HOT_WRAM;
 static t3_tick_clock_t g_tick_clock;
+#if defined(T3_SLAVE_SIMULATION)
+enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=2u };
+typedef struct {
+    sat_pad_state_t pads[2];
+    uint32_t first,count,epoch;
+} simulation_job_t;
+static simulation_job_t g_simulation_job T3_HOT_WRAM;
+uint8_t g_t3_simulation_stack[16384] __attribute__((aligned(16)));
+static t3_match_t g_image_match T3_HOT_WRAM;
+static int32_t g_image_round[3];
+static uint32_t g_simulation_epoch=1u,g_slave_simulation_epoch;
+volatile uint32_t g_t3_slave_sim_frames,g_t3_slave_sim_jobs,g_t3_slave_sim_ticks;
+volatile uint32_t g_t3_slave_sim_pose_tick,g_t3_slave_sim_pose_lag;
+volatile uint32_t g_t3_slave_sim_wait_ms,g_t3_slave_sim_max_wait_ms;
+#endif
 static sat_scene_t g_scene;
 /* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
  * and hot actor data in High WRAM; the linker checks both memory budgets. */
 static sat_scene3d_face_t g_faces[FACE_CAP] __attribute__((section(".wram_l")));
 #if defined(T3_PROJECTED_FACE_QUEUE)
+#if defined(T3_NATIVE_COMMANDS)
+static sat_scene3d_projected_face_t g_projected_faces[FACE_CAP] __attribute__((section(".wram_l")));
+#else
 static sat_scene3d_projected_face_t g_projected_faces[FACE_CAP];
+#endif
 #if defined(T3_DIRECT_FACE_SPANS)
 static uint16_t g_projected_indices[FACE_CAP];
 #endif
 #endif
-static uint32_t g_keys[FACE_CAP] __attribute__((section(".wram_l")));
-static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
+#if defined(T3_HIGH_SORT_KEYS)
+static uint32_t g_keys[FACE_CAP];
+#else
+static uint32_t g_keys[FACE_CAP] T3_HOT_WRAM;
+#endif
+static uint16_t g_order[FACE_CAP] T3_HOT_WRAM;
 /* Explicitly cleared and uploaded by HUD initialization before its first use. */
 static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
 static sat_camera3d_t g_camera;
-#if defined(T3_STAGE_HUD)
+#if defined(T3_NATIVE_COMMANDS)
+enum { STAGE_FACES=60 };
+static sat_view_cache_item_t g_stage_storage[STAGE_FACES] __attribute__((section(".wram_l")));
+static sat_view_cache_camera_t g_stage_camera __attribute__((section(".wram_l")));
+static sat_view_cache_t g_stage_cache;
+static uint16_t g_stage_count,g_stage_face,g_stage_cursor,g_stage_ready_count;
+static const sat_view_cache_item_t* g_stage_ready;
+static uint8_t g_stage_baking;
+#endif
+#if defined(T3_STAGE_HUD) || defined(T3_NATIVE_WAIT_PROBE) || defined(T3_NATIVE_PHASE_PROBE)
 static uint8_t g_show_profiler=1;
 #else
 static uint8_t g_show_profiler;
 #endif
 static uint32_t g_render_work_ms, g_render_submissions;
+#if defined(T3_NATIVE_WAIT_PROBE)
+static uint32_t g_t3_submit_ticks_last, g_t3_submit_ticks_sum, g_t3_submit_ticks_count;
+static uint32_t g_t3_native_sim_ticks, g_t3_native_prepare_ticks;
+static uint32_t g_t3_native_flush_ticks, g_t3_native_hud_ticks, g_t3_native_join_ticks;
+static uint32_t g_t3_native_pre_ticks, g_t3_native_post_ticks;
+/* Whole-run image statistics: duration buckets, and phase sums by the
+ * image's tick count (2 or 3+). */
+static uint32_t g_t3_hist[4], g_t3_by_ticks[2][6], g_t3_by_ticks_n[2];
+static uint32_t g_t3_native_painter_ticks, g_t3_native_emit_ticks;
+#endif
+#if defined(T3_OVERLAP_VDP1)
+volatile uint32_t g_t3_vdp1_overlap_frames;
+#endif
 static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
+
+static uint32_t display_fields(void) {
+#if defined(T3_OVERLAP_VDP1)
+    /* sat_frame_count advances when sat_wait_vblank observes an edge. The
+     * interrupt counter keeps advancing during CPU preparation as well. */
+    if(sat_irq_active())return sat_irq_count(SAT_IRQ_VBLANK_IN);
+#endif
+    return sat_frame_count();
+}
 
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
  * frame_serial is written last: it marks a complete snapshot. */
@@ -133,6 +213,7 @@ static sat_fx16_t from_q8(int32_t v) {
     return (sat_fx16_t)(v * (SAT_FX16_ONE / 256));
 }
 
+#if !defined(T3_VDP2_FLOOR)
 static void quad(sat_vec3_t a, sat_vec3_t b, sat_vec3_t c, sat_vec3_t d,
                  uint16_t color) {
     sat_quad3_t q = {{a, b, c, d}};
@@ -140,6 +221,19 @@ static void quad(sat_vec3_t a, sat_vec3_t b, sat_vec3_t c, sat_vec3_t d,
     m.kind = SAT_SCENE3D_RGB;
     m.rgb555 = color;
     m.color_calc_slot = SAT_INDEXED_SOLID_OPAQUE;
+#if defined(T3_NATIVE_COMMANDS)
+    const uint16_t face=g_stage_face++;
+    if(g_stage_ready && g_stage_cursor<g_stage_ready_count &&
+       g_stage_ready[g_stage_cursor].tag==face && g_stage_ready[g_stage_cursor].color==color) {
+        SAT_PANIC_IF_ERROR(sat_scene_queue_baked_view_item_material(
+            &g_scene,&g_stage_ready[g_stage_cursor++],&m,0));
+        return;
+    }
+    if(g_stage_baking) {
+        const sat_result_t cached=sat_view_cache_append_world(&g_stage_cache,&q,color,face);
+        if(cached!=SAT_ERR_UNSUPPORTED)SAT_PANIC_IF_ERROR(cached);
+    }
+#endif
     SAT_PANIC_IF_ERROR(sat_scene_submit_quad(&g_scene, &q, &m, 0));
 }
 
@@ -160,8 +254,24 @@ static void box3(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z,
     quad(vec(xl,yb,zf),vec(xr,yb,zf),vec(xr,yb,zn),vec(xl,yb,zn),side);
 }
 
+#endif
+
+#if defined(T3_VDP2_FLOOR)
+static void floor_tiles(void) {
+    SAT_PANIC_IF_ERROR(t3_stage_vdp2_prepare(&g_camera,
+        t3_move_probe_world_center(0),t3_move_probe_world_center(2)));
+}
+#else
 static void floor_tiles(void) {
     int x, z;
+#if defined(T3_NATIVE_COMMANDS)
+    g_stage_face=g_stage_cursor=0;g_stage_ready=NULL;g_stage_ready_count=0;
+    const sat_result_t cached=sat_view_cache_view_camera(&g_stage_cache,0,&g_camera,Q(25),W,H,
+        &g_stage_ready,&g_stage_ready_count);
+    g_stage_baking=cached==SAT_ERR_NOT_FOUND;
+    if(g_stage_baking)SAT_PANIC_IF_ERROR(sat_view_cache_begin_camera(&g_stage_cache,0,&g_camera,Q(25),W,H));
+    else SAT_PANIC_IF_ERROR(cached);
+#endif
     for (z = -2; z < 2; ++z) for (x = -6; x < 6; ++x) {
         sat_fx16_t l = FX(x), r = FX(x+1);
         sat_fx16_t n = FX(z), f = FX(z+1);
@@ -174,7 +284,13 @@ static void floor_tiles(void) {
          SAT_RGB555(10,16,20), SAT_RGB555(8,12,15), SAT_RGB555(14,21,23));
     box3(0, Q(4), FX(2), FX(6), Q(4), Q(5),
          SAT_RGB555(10,16,20), SAT_RGB555(8,12,15), SAT_RGB555(14,21,23));
+#if defined(T3_NATIVE_COMMANDS)
+    if(g_stage_baking)SAT_PANIC_IF_ERROR(sat_view_cache_finish(&g_stage_cache));
+    g_stage_baking=0;
+#endif
 }
+
+#endif
 
 static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
     t3_input_t out = {0,0};
@@ -202,7 +318,129 @@ static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
     return out;
 }
 
+#if defined(T3_SLAVE_SIMULATION)
+extern sat_result_t t3_simulation_task_entry(const void*,uint32_t,void*,uint32_t,uint32_t*);
+sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* output,
+        uint32_t capacity,uint32_t* written) {
+    if(!input || bytes!=sizeof(simulation_job_t) || !output ||
+       capacity<sizeof(t3_match_t) || !written)return SAT_ERR_INVALID_ARG;
+    const simulation_job_t* job=input;
+    t3_match_t* view=output; /* Executor supplies an uncached Slave alias. */
+    if(!job->count || job->first+job->count>T3_MAX_RECOVERY_FIELDS)return SAT_ERR_INVALID_ARG;
+    if(g_slave_simulation_epoch!=job->epoch) {
+        const sat_result_t st=t3_move_probe_simulation_sync(1);
+        if(st!=SAT_OK)return st;
+        g_slave_simulation_epoch=job->epoch;
+    }
+    for(uint32_t i=0;i<job->count;++i) {
+        t3_input_t p1=controller(&job->pads[0],view->fighters[0].facing);
+        t3_input_t p2=controller(&job->pads[1],view->fighters[1].facing);
+        if(job->first+i) {p1.pressed=0;p2.pressed=0;}
+        const sat_result_t st=t3_move_probe_owned_step(p1,p2,view);
+        if(st!=SAT_OK)return st;
+        t3_move_probe_tick(view);
+    }
+    g_t3_slave_sim_ticks=view->total_ticks;
+    ++g_t3_slave_sim_jobs;
+    *written=sizeof(*view);
+    return SAT_OK;
+}
+
+static sat_result_t simulation_submit(const sat_pad_state_t pads[2],uint32_t first,
+        uint32_t count,sat_parallel_handle_t* handle) {
+    g_simulation_job=(simulation_job_t){{pads[0],pads[1]},first,count,g_simulation_epoch};
+    return sat_parallel_submit(SIMULATION_TASK,&g_simulation_job,sizeof(g_simulation_job),
+        &g_game,sizeof(g_game),handle);
+}
+
+#if defined(T3_SLAVE_SIMULATION_POLL_TICKS)
+static sat_result_t simulation_wait(sat_parallel_handle_t handle) {
+    const uint16_t begin=sat_time_frc();
+    uint16_t checked=begin;
+    uint32_t spins=0;
+    for(;;) {
+        /* A short wait services the same owned task and propagates executor
+         * errors. A timeout retains ownership; it never reruns the task. */
+        const sat_result_t st=sat_parallel_wait(handle,1u);
+        if(st!=SAT_ERR_TIMEOUT)return st;
+        uint16_t now=sat_time_frc();
+        while((uint16_t)(now-checked)<T3_SLAVE_SIMULATION_POLL_TICKS) {
+            if((uint16_t)(now-begin)>=SIMULATION_TIMEOUT || ++spins>=2000000u)
+                return SAT_ERR_TIMEOUT;
+            now=sat_time_frc();
+        }
+        checked=now;
+        if((uint16_t)(now-begin)>=SIMULATION_TIMEOUT)return SAT_ERR_TIMEOUT;
+    }
+}
+#endif
+
+static sat_result_t simulation_join(sat_parallel_handle_t handle,uint32_t count) {
+    const uint32_t started=sat_time_ms();
+#if defined(T3_SLAVE_SIMULATION_POLL_TICKS)
+    sat_result_t st=simulation_wait(handle);
+#else
+    sat_result_t st=sat_parallel_wait(handle,SIMULATION_TIMEOUT);
+#endif
+    g_t3_slave_sim_wait_ms=sat_time_ms()-started;
+    if(g_t3_slave_sim_wait_ms>g_t3_slave_sim_max_wait_ms)
+        g_t3_slave_sim_max_wait_ms=g_t3_slave_sim_wait_ms;
+    if(st==SAT_ERR_TIMEOUT) {
+        /* Authoritative work may be partial. Stop it; never redo its ticks. */
+        (void)sat_parallel_abort(handle,SIMULATION_TIMEOUT);
+        return st;
+    }
+    if(st!=SAT_OK)return st;
+    uint32_t written=0;
+    if((st=sat_parallel_result(handle,&written))!=SAT_OK)return st;
+    if(written!=sizeof(g_game))return SAT_ERR_VERIFY_FAILED;
+    if((st=sat_parallel_release(handle))!=SAT_OK)return st;
+    if((st=t3_move_probe_simulation_sync(0))!=SAT_OK)return st;
+    /* The single-clip bridge has no time-varying generic clip selection.
+     * Advance its exact tick count locally; Slave never mutates actor storage. */
+    for(uint32_t i=0;i<count;++i)
+        if((st=t3_characters_tick(&g_game))!=SAT_OK)return st;
+    return SAT_OK;
+}
+
+static void capture_image_match(void) {
+    g_image_match=g_game;
+    g_image_round[0]=t3_move_probe_round_value(0);
+    g_image_round[1]=t3_move_probe_round_value(1);
+    g_image_round[2]=t3_move_probe_round_value(4);
+    g_t3_slave_sim_pose_tick=g_game.total_ticks;
+}
+
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+/* The deferred ticks follow the Slave's actor in one task, so they start as
+ * soon as that actor is prepared instead of after the Master's actor, the
+ * merge and another dispatch. The image state is captured just before. */
+enum { PREPARE_SIMULATION_TASK=0x102u };
+static simulation_job_t g_prepare_job;
+static sat_parallel_handle_t g_prepare_handle;
+
+static sat_result_t prepare_simulation_entry(const void* input,uint32_t bytes,void* output,
+        uint32_t capacity,uint32_t* written) {
+    sat_parallel_purge_cache(); /* the worker reads the Master's cached data */
+    t3_characters_prepare_worker();
+    return t3_simulation_task_entry(input,bytes,output,capacity,written);
+}
+
+static sat_result_t start_prepare_simulation(void) {
+    capture_image_match();
+    g_simulation_job=g_prepare_job;
+    return sat_parallel_submit(PREPARE_SIMULATION_TASK,&g_simulation_job,
+        sizeof(g_simulation_job),&g_game,sizeof(g_game),&g_prepare_handle);
+}
+#endif
+#endif
+
 static void draw_hud(void) {
+#if defined(T3_SLAVE_SIMULATION)
+    const t3_match_t* game=&g_image_match;
+#else
+    const t3_match_t* game=&g_game;
+#endif
 #if defined(T3_RENDER_BENCH_TICK)
 #if defined(T3_STAGE_HUD)
     enum { BENCH_STATUS_Y=183 };
@@ -214,14 +452,14 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P2", 288, 5));
     SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, 8, 19, 140, 8,
-        (uint32_t)g_game.fighters[0].health, T3_MAX_HEALTH,
+        (uint32_t)game->fighters[0].health, T3_MAX_HEALTH,
         SAT_RGB555(13,4,4), SAT_RGB555(6,27,12)));
     SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, 172, 19, 140, 8,
-        (uint32_t)g_game.fighters[1].health, T3_MAX_HEALTH,
+        (uint32_t)game->fighters[1].health, T3_MAX_HEALTH,
         SAT_RGB555(13,4,4), SAT_RGB555(6,27,12)));
-    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", g_game.round, 8, 35));
-    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (g_game.timer + 59u) / 60u, 125, 35));
-    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[0], 8, 47));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", game->round, 8, 35));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[0], 8, 47));
     /* One-based render submission serial, independent of logic ticks and
      * VBlanks. Keep it visible even when the optional profiler is hidden. */
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, HUD_FRAME_Y));
@@ -230,33 +468,39 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SCCR ",g_t3_boot_slave_verified?(int32_t)g_t3_boot_cache[1]:-1,
         HUD_SLAVE_CACHE_X,HUD_CPU_Y));
 #endif
-    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", g_game.wins[1], 248, 47));
+    SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[1], 248, 47));
 #if defined(T3_REPLAY_INPUT_TAPE)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
 #endif
 #if defined(T3_REFERENCE_REPLAY)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PS1 REFERENCE REPLAY",W/2,61));
 #endif
+#if defined(T3_SLAVE_SIMULATION)
+    const int replay=g_image_round[2];
+    const int round_active=g_image_round[0],round_state=g_image_round[1];
+#else
     const int replay=t3_move_probe_round_value(4);
+    const int round_active=t3_move_probe_round_value(0),round_state=t3_move_probe_round_value(1);
+#endif
     if(replay>=1 && replay<=4)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"REPLAY",W/2,85));
-    else if(t3_move_probe_round_value(0) && t3_move_probe_round_value(1)==0)
+    else if(round_active && round_state==0)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"READY",W/2,85));
-    else if (g_game.match_done)
+    else if (game->match_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            g_game.winner < 0 ? "MATCH DRAW" :
-            (g_game.winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!"), W/2, 85));
-    else if (g_game.round_done)
+            game->winner < 0 ? "MATCH DRAW" :
+            (game->winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!"), W/2, 85));
+    else if (game->round_done)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            g_game.winner < 0 ? "DRAW" :
-            (g_game.winner == 0 ? "PLAYER 1 ROUND" : "PLAYER 2 ROUND"), W/2, 85));
+            game->winner < 0 ? "DRAW" :
+            (game->winner == 0 ? "PLAYER 1 ROUND" : "PLAYER 2 ROUND"), W/2, 85));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_combat()?"X HIGH  DF+X MID  D+A LOW":t3_move_probe_owned()?
         "X/Y PUNCH  A/B KICK":"X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_owned()?
         "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
 }
 
-static void draw_scene(void) {
+static void prepare_scene(void) {
     T3_PERF_START(pose_publication_started);
     t3_move_probe_present();
     T3_PERF_ADD(placement,pose_publication_started);
@@ -280,6 +524,10 @@ static void draw_scene(void) {
 #endif
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
+#if defined(T3_NATIVE_COMMANDS)
+    SAT_PANIC_IF_ERROR(sat_vdp1_command_batch_reserve(FACE_CAP,&g_native_commands));
+    SAT_PANIC_IF_ERROR(sat_scene3d_faces_bind_native_commands(&g_scene.faces,&g_native_commands));
+#endif
     T3_PERF_ADD(camera,camera_started);
     if(T3_PERF_MODE!=1) {
         T3_PERF_START(stage_started);
@@ -287,8 +535,22 @@ static void draw_scene(void) {
         T3_PERF_ADD(stage,stage_started);
         SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
     }
+}
+
+static void flush_scene(void) {
     T3_PERF_START(flush_started);
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
+#if defined(T3_NATIVE_WAIT_PROBE)
+    sat_scene3d_profile_t scene_profile={0};
+    if(sat_scene3d_profile_get(&scene_profile)==SAT_OK) {
+        g_t3_native_painter_ticks=scene_profile.painter_ticks;
+        g_t3_native_emit_ticks=scene_profile.emission_ticks;
+    }
+#endif
+#if defined(T3_NATIVE_COMMANDS)
+    ++g_t3_native_command_frames;
+    g_t3_cached_stage_faces=g_scene.replayed_items;
+#endif
     T3_PERF_ADD(flush,flush_started);
 }
 
@@ -299,6 +561,44 @@ static void draw_profiler(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "VDP1 CMD ", g_t3_diagnostics.commands_used, 4, 78));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "SCENE FACES ", g_t3_diagnostics.faces_flushed, 4, 90));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME MS ", g_t3_diagnostics.frame_work_ms, 4, 102));
+#if defined(T3_NATIVE_WAIT_PROBE)
+    {
+        static const char* const names[6]={"PRE ","PREP ","FLSH ","HUD ","JOIN ","POST "};
+        for(unsigned k=0;k<2;++k) {
+            const uint32_t n=g_t3_by_ticks_n[k]?g_t3_by_ticks_n[k]:1u;
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,k?"N3 ":"N2 ",g_t3_by_ticks_n[k],k?248:176,66));
+            for(unsigned j=0;j<6;++j)
+                SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,names[j],g_t3_by_ticks[k][j]/n,
+                    k?248:176,78+12*j));
+        }
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"H<7000 ",g_t3_hist[0],176,150));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"H<7465 ",g_t3_hist[1],176,162));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"H<8500 ",g_t3_hist[2],176,174));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"H>8500 ",g_t3_hist[3],176,186));
+    }
+#endif
+#if defined(T3_NATIVE_PHASE_PROBE)
+    const t3_character_phase_profile_t* phase=t3_characters_phase_profile();
+    if(phase) {
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P1 SKIN ",phase->skin[0],176,66));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P1 PLACE ",phase->placement[0],176,78));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P1 GEOM ",phase->geometry[0],176,90));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P2 SKIN ",phase->skin[1],176,102));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P2 PLACE ",phase->placement[1],176,114));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P2 GEOM ",phase->geometry[1],176,126));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SETUP ",phase->setup,176,138));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"DISPATCH ",phase->dispatch,176,150));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MERGE ",phase->merge,176,162));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"FALLBACK ",g_scene.faces.fallback_faces,176,174));
+#if defined(SAT_SCENE3D_INSTANCE_PROFILE_AVAILABLE)
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P1 PROJ ",phase->projection[0],4,138));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P1 FACE ",phase->face_prep[0],4,150));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P2 PROJ ",phase->projection[1],4,162));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"P2 FACE ",phase->face_prep[1],4,174));
+#endif
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"CLIPPED ",g_scene.faces.clipped_faces,4,186));
+    }
+#endif
     if (t3_move_probe_active()) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 1", t3_move_probe_slot(0), 4, 114));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 2", t3_move_probe_slot(1), 4, 126));
@@ -326,7 +626,7 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     sat_scene_stats_t scene = {0};
     sat_vdp1_command_stats_t commands = {0};
     sat_vdp1_frame_stats_t pacing = {0};
-    uint32_t now = sat_frame_count();
+    uint32_t now = display_fields();
     uint32_t span = now - g_rate_sample_vblank;
     ++g_t3_diagnostics.snapshot_epoch;
     g_t3_diagnostics.elapsed_fields_last=g_tick_clock.elapsed_last;
@@ -492,7 +792,15 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     ++g_t3_diagnostics.snapshot_epoch;
 }
 
+#if defined(T3_COLD_LOW_WRAM)
+extern uint8_t __t3_sdk_hot_start[],__t3_sdk_hot_end[];
+#endif
+
 int main(void) {
+#if defined(T3_COLD_LOW_WRAM)
+    /* hot_wram.ld moves SDK runtime state out of crt0's cleared ranges. */
+    for(uint8_t* byte=__t3_sdk_hot_start;byte<__t3_sdk_hot_end;++byte)*byte=0;
+#endif
 #if defined(T3_CPU_DIAGNOSTICS)
     g_t3_boot_master_entry=sat_sh2_cache_control();
 #endif
@@ -504,6 +812,9 @@ int main(void) {
     g_t3_diagnostics=(t3_diagnostics_t){
         .magic=T3_DIAGNOSTICS_MAGIC,.version=T3_DIAGNOSTICS_VERSION};
     SAT_PANIC_IF_ERROR(sat_init(&video));
+#if defined(T3_DMA_COMMAND_LIST)
+    sat_dma_set_command_list(1);
+#endif
 #if defined(T3_FRAME_ON_SUBMIT)
     SAT_PANIC_IF_ERROR(sat_vdp1_set_frame_mode(SAT_VDP1_FRAME_ON_SUBMIT));
 #endif
@@ -513,6 +824,10 @@ int main(void) {
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
+#if defined(T3_NATIVE_COMMANDS)
+    SAT_PANIC_IF_ERROR(sat_view_cache_init(&g_stage_cache,g_stage_storage,&g_stage_count,1,STAGE_FACES));
+    SAT_PANIC_IF_ERROR(sat_view_cache_bind_cameras(&g_stage_cache,&g_stage_camera,1));
+#endif
 #if defined(T3_PROJECTED_FACE_QUEUE)
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_storage(
         &g_scene.faces,g_projected_faces,FACE_CAP));
@@ -530,6 +845,7 @@ int main(void) {
         (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
     SAT_PANIC_IF_ERROR(t3_characters_init(character_loading_progress, NULL));
     t3_match_reset(&g_game);
+    SAT_PANIC_IF_ERROR(t3_cold_data_load());
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
 #if !defined(T3_REFERENCE_REPLAY)
     /* The reference initializer already applied its single original seed. */
@@ -544,17 +860,51 @@ int main(void) {
 #if defined(T3_CPU_DIAGNOSTICS)
     capture_boot_cache();
 #endif
+#if defined(T3_VDP2_FLOOR)
+    loading_frame(BOOT_POSES, "PAUL STAGE");
+    SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
+#endif
     loading_frame(BOOT_READY, "READY");
-    prev_frame = sat_frame_count();
+#if defined(T3_SLAVE_SIMULATION)
+    for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
+        g_t3_simulation_stack[stack_byte]=0xA5u;
+    SAT_PANIC_IF_ERROR(sat_parallel_register_task(SIMULATION_TASK,t3_simulation_task_entry));
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+    SAT_PANIC_IF_ERROR(sat_parallel_register_task(PREPARE_SIMULATION_TASK,prepare_simulation_entry));
+#endif
+#endif
+    prev_frame = display_fields();
     g_rate_sample_vblank = prev_frame;
+#if defined(T3_OVERLAP_VDP1)
+    /* Initialize the original pose before the first gameplay image. Later
+     * iterations overlap preparation; this one startup wait is not repeated. */
+    SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#endif
+#if defined(T3_NATIVE_WAIT_PROBE)
+    uint16_t native_loop_started=sat_time_frc();
+#endif
     for (;;) {
         sat_pad_state_t pad0 = {0}, pad1 = {0};
-        uint32_t now, elapsed, hz, ticks, i, work_started_ms;
+        uint32_t now, elapsed, hz, ticks, work_started_ms;
+#if !defined(T3_SLAVE_SIMULATION)
+        uint32_t i;
+#endif
         /* Both pads are sampled by ONE SMPC transaction. Using the generic
          * app helper followed by a second port poll wasted one transaction. */
+#if !defined(T3_OVERLAP_VDP1)
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#else
+        /* Geometry/commands stay in WRAM. sat_end_frame waits for both END
+         * and the preceding swap before it writes VDP1 VRAM. */
+        const int overlapping_draw=sat_irq_active();
+        if(!overlapping_draw)SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#endif
         SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
+#if defined(T3_VDP2_FLOOR)
+        SAT_PANIC_IF_ERROR(sat_vdp1_set_erase_transparent());
+#else
         SAT_PANIC_IF_ERROR(sat_set_clear_color(FRAME_BACKGROUND));
+#endif
         SAT_PANIC_IF_ERROR(sat_begin_frame());
         work_started_ms = sat_time_ms();
         t3_perf_begin();
@@ -565,6 +915,10 @@ int main(void) {
         T3_PERF_ADD(input,input_started);
         if (pad0.pressed & SAT_PAD_Z) g_show_profiler ^= 1u;
         if (pad0.pressed & SAT_PAD_START) {
+#if defined(T3_SLAVE_SIMULATION)
+            SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));
+            ++g_simulation_epoch;
+#endif
             t3_match_reset(&g_game);
             t3_move_probe_reset(g_game.round);
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
@@ -572,7 +926,7 @@ int main(void) {
 #endif
             SAT_PANIC_IF_ERROR(t3_characters_reset());
         }
-        now = sat_frame_count();
+        now = display_fields();
         elapsed = now - prev_frame;
 #if defined(T3_PERF_SAMPLES)
         g_t3_perf_current.field=now;
@@ -586,7 +940,20 @@ int main(void) {
         else if(ticks>T3_RENDER_BENCH_TICK-g_game.total_ticks)
             ticks=T3_RENDER_BENCH_TICK-g_game.total_ticks;
 #endif
+#if defined(T3_NATIVE_WAIT_PROBE)
+        const uint16_t native_sim_started=sat_time_frc();
+#endif
         T3_PERF_START(simulation_started);
+#if defined(T3_SLAVE_SIMULATION)
+        const sat_pad_state_t simulation_pads[2]={pad0,pad1};
+        const uint32_t deferred=g_game.total_ticks==0?0u:(ticks<DEFERRED_TICKS?ticks:DEFERRED_TICKS);
+        const uint32_t leading=ticks-deferred;
+        sat_parallel_handle_t simulation_handle=0;
+        if(leading) {
+            SAT_PANIC_IF_ERROR(simulation_submit(simulation_pads,0,leading,&simulation_handle));
+            SAT_PANIC_IF_ERROR(simulation_join(simulation_handle,leading));
+        }
+#else
         for (i = 0; i < ticks; ++i) {
             t3_input_t p1 = controller(&pad0, g_game.fighters[0].facing);
             t3_input_t p2 = pad1.connected ?
@@ -609,16 +976,75 @@ int main(void) {
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
             t3_sim_tick_end();
         }
+#endif
+        SAT_PANIC_IF_ERROR(t3_cold_data_verify_slice());
         T3_PERF_ADD(simulation,simulation_started);
+#if defined(T3_NATIVE_WAIT_PROBE)
+        g_t3_native_sim_ticks=(uint16_t)(sat_time_frc()-native_sim_started);
+#endif
 #if defined(T3_PERF_SAMPLES)
         g_t3_perf_current.ticks=ticks;
 #endif
         const uint32_t render_started_ms=sat_time_ms();
-        draw_scene();
+#if defined(T3_NATIVE_WAIT_PROBE)
+        const uint16_t native_prepare_started=sat_time_frc();
+        g_t3_native_pre_ticks=(uint16_t)(native_prepare_started-native_loop_started);
+#endif
+#if defined(T3_SLAVE_SIMULATION) && defined(T3_FUSED_ACTOR_PREPARATION)
+        g_prepare_handle=0;
+        if(deferred) {
+            g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch};
+            t3_characters_set_worker_start(start_prepare_simulation);
+        }
+#endif
+        prepare_scene();
+#if defined(T3_NATIVE_WAIT_PROBE)
+        g_t3_native_prepare_ticks=(uint16_t)(sat_time_frc()-native_prepare_started);
+#endif
+#if defined(T3_SLAVE_SIMULATION)
+#if defined(T3_FUSED_ACTOR_PREPARATION)
+        t3_characters_set_worker_start(NULL);
+        if(g_prepare_handle)simulation_handle=g_prepare_handle;
+        else
+#endif
+        {
+            capture_image_match();
+            if(deferred)
+                SAT_PANIC_IF_ERROR(simulation_submit(simulation_pads,leading,deferred,&simulation_handle));
+        }
+#endif
+#if defined(T3_NATIVE_WAIT_PROBE)
+        const uint16_t native_flush_started=sat_time_frc();
+#endif
+        flush_scene();
+#if defined(T3_NATIVE_WAIT_PROBE)
+        g_t3_native_flush_ticks=(uint16_t)(sat_time_frc()-native_flush_started);
+        const uint16_t native_hud_started=sat_time_frc();
+#endif
         T3_PERF_START(hud_started);
         if(T3_PERF_MODE!=1)draw_hud();
+#if defined(T3_SLAVE_SIMULATION)
+        if(deferred) {
+#if defined(T3_NATIVE_WAIT_PROBE)
+            const uint16_t native_join_started=sat_time_frc();
+#endif
+            SAT_PANIC_IF_ERROR(simulation_join(simulation_handle,deferred));
+#if defined(T3_NATIVE_WAIT_PROBE)
+            g_t3_native_join_ticks=(uint16_t)(sat_time_frc()-native_join_started);
+#endif
+            ++g_t3_slave_sim_frames;
+            /* Diagnostics describe the latest committed core. The separate
+             * pose tick identifies the older image and bounds its tick lag. */
+            t3_move_probe_present();
+        }
+        g_t3_slave_sim_pose_lag=g_game.total_ticks-g_t3_slave_sim_pose_tick;
+#endif
         if (T3_PERF_MODE!=1 && g_show_profiler) draw_profiler();
         T3_PERF_ADD(hud,hud_started);
+#if defined(T3_NATIVE_WAIT_PROBE)
+        const uint16_t native_post_started=sat_time_frc();
+        g_t3_native_hud_ticks=(uint16_t)(native_post_started-native_hud_started);
+#endif
         g_render_work_ms=sat_time_ms()-render_started_ms;
         T3_PERF_START(diagnostics_started);
         {
@@ -627,10 +1053,45 @@ int main(void) {
         }
         T3_PERF_ADD(diagnostics,diagnostics_started);
         T3_PERF_START(present_started);
+#if defined(T3_VDP2_FLOOR)
+#if defined(T3_NATIVE_WAIT_PROBE)
+        const uint16_t submit_started=sat_time_frc();
+#endif
         SAT_PANIC_IF_ERROR(sat_end_frame());
+#if defined(T3_NATIVE_WAIT_PROBE)
+        g_t3_submit_ticks_last=(uint16_t)(sat_time_frc()-submit_started);
+        g_t3_submit_ticks_sum+=g_t3_submit_ticks_last;
+        ++g_t3_submit_ticks_count;
+#endif
+        SAT_PANIC_IF_ERROR(t3_stage_vdp2_present());
+#else
+        SAT_PANIC_IF_ERROR(sat_end_frame());
+#endif
+#if defined(T3_OVERLAP_VDP1)
+        if(overlapping_draw)++g_t3_vdp1_overlap_frames;
+#endif
         T3_PERF_ADD(present,present_started);
         T3_PERF_ADD(work,work_started_ms);
         t3_perf_end();
         ++g_render_submissions;
+#if defined(T3_NATIVE_WAIT_PROBE)
+        {
+            const uint16_t ended=sat_time_frc();
+            g_t3_native_post_ticks=(uint16_t)(ended-native_post_started);
+            const uint16_t duration=(uint16_t)(ended-native_loop_started);
+            native_loop_started=ended;
+            if(g_game.total_ticks>120u) {
+                ++g_t3_hist[duration<7000u?0:duration<7465u?1:duration<8500u?2:3];
+                const unsigned k=ticks>=3u?1u:0u;
+                if(ticks>=2u) {
+                    const uint32_t phases[6]={g_t3_native_pre_ticks,g_t3_native_prepare_ticks,
+                        g_t3_native_flush_ticks,g_t3_native_hud_ticks,g_t3_native_join_ticks,
+                        g_t3_native_post_ticks};
+                    for(unsigned j=0;j<6;++j)g_t3_by_ticks[k][j]+=phases[j];
+                    ++g_t3_by_ticks_n[k];
+                }
+            }
+        }
+#endif
     }
 }

@@ -30,6 +30,10 @@ typedef struct {
 } t3_command_sequence_t;
 int t3_command_matches_table(uint16_t command, const t3_input_history_t* h,
                              const t3_command_sequence_t* table, size_t count);
+/* Necessary current-frame condition only. A true result does not establish
+ * a historical sequence/double tap; the ordinary matcher must still run. */
+int t3_command_current_possible(uint16_t command,const t3_input_history_t* h,
+                               const t3_command_sequence_t* table,size_t count);
 
 /* Sequence words are (buttons << 8) | numpad direction, most recent last.
  * 'steps' is a zero-terminated table of at most T3_INPUT_SEQUENCE_MAX entries.

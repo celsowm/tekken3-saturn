@@ -18,6 +18,12 @@ uint8_t t3_move_probe_active(void);
 uint8_t t3_move_probe_owned(void);
 uint8_t t3_move_probe_combat(void);
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view);
+#if defined(T3_SLAVE_SIMULATION)
+/* Cache ownership only; caller has joined the previous simulation job.
+ * Full transfer is required across Master reset; ordinary consumption needs
+ * only the match and query counters, not the Slave-owned cache/history data. */
+sat_result_t t3_move_probe_simulation_sync(int full);
+#endif
 int32_t t3_move_probe_world_center(unsigned axis);
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 int32_t t3_move_probe_round_value(unsigned field);

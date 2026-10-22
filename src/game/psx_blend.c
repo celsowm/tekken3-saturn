@@ -126,7 +126,7 @@ int T3_SIM_IMPL(t3_psx_blend_locals)(t3_psx_blend_t* s,const t3_psx_rsqrt_t* tab
     for(unsigned i=1;i<18;++i) {
         if(s->mode && (!t3_psx_matrix_add_scaled(&s->delta[i-1],&slots[i],s->weight,&slots[i]) ||
                       !t3_psx_matrix_orthonormalize(&slots[i],table,&slots[i])))return 0;
-        s->previous[i-1]=slots[i];
+        t3_psx_matrix_copy(&s->previous[i-1],&slots[i]);
     }
     return 1;
 }

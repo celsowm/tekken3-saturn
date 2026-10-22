@@ -22,6 +22,22 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 sat_result_t t3_characters_reset(void);
 sat_result_t t3_characters_tick(const t3_match_t* game);
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game);
+/* Fused preparation normally splits the actors with sat_parallel_for. With a
+ * start function, render calls it just before actor 1 is needed; it must
+ * start a task whose worker calls t3_characters_prepare_worker() first (that
+ * task may go on with unrelated work), and render prepares actor 0 meanwhile.
+ * NULL restores sat_parallel_for. */
+typedef sat_result_t (*t3_characters_worker_start_t)(void);
+void t3_characters_set_worker_start(t3_characters_worker_start_t start);
+void t3_characters_prepare_worker(void);
+/* FRT durations are owned by the actor CPU and published after the fused
+ * worker join. Dispatch includes both actors and must not be added to them. */
+typedef struct {
+    uint16_t skin[2], placement[2], geometry[2];
+    uint16_t projection[2], face_prep[2];
+    uint16_t setup, dispatch, merge;
+} t3_character_phase_profile_t;
+const t3_character_phase_profile_t* t3_characters_phase_profile(void);
 uint8_t t3_characters_skin_preview_applied(unsigned fighter);
 uint32_t t3_characters_texture_vram_bytes(void);
 uint32_t t3_characters_skin_work_ms(void);

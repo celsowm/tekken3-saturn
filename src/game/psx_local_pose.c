@@ -37,7 +37,7 @@ int t3_psx_local_pose(const int16_t pose[T3_PSX_POSE_CHANNELS],
         for(unsigned i=0;i<c->capacity;++i) {
             const t3_psx_local_pose_entry_t* e=&c->entries[i];
             if(e->valid && e->fingerprint==hash && same_pose(e->pose,pose)) {
-                for(unsigned j=0;j<T3_PSX_ROTATION_SLOTS;++j)out[j]=e->slots[j];
+                __builtin_memcpy(out,e->slots,sizeof(e->slots));
                 *fk_mask=e->fk_mask;*mask=e->mask;*root_xx=e->root_xx;
                 ++c->hits;return 1;
             }
@@ -50,10 +50,10 @@ int t3_psx_local_pose(const int16_t pose[T3_PSX_POSE_CHANNELS],
         t3_psx_local_pose_entry_t* e=&c->entries[c->cursor];
         if(e->valid)++c->evictions;
         for(unsigned i=0;i<T3_PSX_POSE_CHANNELS;++i)e->pose[i]=pose[i];
-        for(unsigned i=0;i<T3_PSX_ROTATION_SLOTS;++i)e->slots[i]=result[i];
+        __builtin_memcpy(e->slots,result,sizeof(e->slots));
         e->fingerprint=hash;e->fk_mask=f;e->mask=m;e->root_xx=fk[0].m[0][0];e->valid=1;
         if(++c->cursor==c->capacity)c->cursor=0;
     }
-    for(unsigned i=0;i<T3_PSX_ROTATION_SLOTS;++i)out[i]=result[i];
+    __builtin_memcpy(out,result,sizeof(result));
     *fk_mask=f;*mask=m;*root_xx=fk[0].m[0][0];return 1;
 }

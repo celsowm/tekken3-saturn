@@ -184,11 +184,40 @@ def run(args):
             if symbol not in syms:raise ValueError('missing snapshot symbol: '+name)
             command.extend(['--snapshot-pc',hex(syms[symbol][0])])
     dump_requests=list(getattr(args,'symbol_dumps',[]))
+    if workload['configuration'].get('T3_OVERLAP_VDP1') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_vdp1_overlap_frames','vdp1-overlap-frames.bin'))
     if workload['configuration'].get('T3_DIRECT_FACE_SPANS') in ('ON','1','TRUE'):
         dump_requests.append(('_g_t3_geometry_pairs','geometry-pairs.bin'))
+    if workload['configuration'].get('T3_FUSED_ACTOR_PREPARATION') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_fused_actor_frames','fused-actor-frames.bin'))
+    if workload['configuration'].get('T3_BRANCH_INPUT_FILTER') in ('ON','1','TRUE'):
+        dump_requests.extend(('_g_t3_'+name,name.replace('_','-')+'.bin') for name in (
+            'branch_filter_ready','branch_filter_used','branch_filter_words'))
+    if int(workload['configuration'].get('T3_WORLD_POSE_CACHE_ENTRIES','0'))>0:
+        dump_requests.extend(('_g_t3_'+name,name.replace('_','-')+'.bin') for name in (
+            'world_cache_hits','world_cache_misses'))
+    if workload['configuration'].get('T3_SHARE_ACTOR_RESOURCES') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_shared_actor_resources','shared-actor-resources.bin'))
+    if workload['configuration'].get('T3_ASSET_TOPOLOGY') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_asset_topology_ready','asset-topology-ready.bin'))
+    if workload['configuration'].get('T3_SLAVE_SIMULATION') in ('ON','1','TRUE'):
+        for suffix in ('frames','jobs','ticks','pose_tick','pose_lag','max_wait_ms'):
+            dump_requests.append(('_g_t3_slave_sim_'+suffix,'slave-simulation-'+suffix+'.bin'))
+        dump_requests.append(('_g_t3_simulation_stack','simulation-stack.bin'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
+    if workload['configuration'].get('T3_COMPILED_RENDERER') in ('ON','1','TRUE'):
+        dump_requests.extend([('_g_t3_compiled_skin_frames','compiled-skin-frames.bin'),
+                              ('_g_t3_compiled_skin_fallbacks','compiled-skin-fallbacks.bin')])
+    if workload['configuration'].get('T3_VERIFY_COMPILED_RENDERER') in ('ON','1','TRUE'):
+        dump_requests.append(('_g_t3_compiled_skin_verified','compiled-skin-verified.bin'))
+    if workload['configuration'].get('T3_NATIVE_COMMANDS') in ('ON','1','TRUE'):
+        dump_requests.extend([('_g_t3_native_command_frames','native-command-frames.bin'),
+                              ('_g_t3_cached_stage_faces','cached-stage-faces.bin')])
+    if workload['configuration'].get('T3_VDP2_FLOOR') in ('ON','1','TRUE'):
+        dump_requests.extend(('_g_t3_'+name,name.replace('_','-')+'.bin') for name in (
+            'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates'))
     if '_g_sat_last_panic' in syms:
         dump_requests.append(('_g_sat_last_panic','native-panic.bin'))
     for i,name in enumerate(getattr(args,'dump_symbol',[])):
@@ -229,9 +258,25 @@ def run(args):
     state = decode((out / 'diagnostics.bin').read_bytes())
     saturn_workload.validate(workload, workload_profile, state)
     optimizations={}
-    for name in ('camera_skin_frames','camera_skin_fallbacks','geometry_pairs'):
+    for name in ('vdp1_overlap_frames','camera_skin_frames','camera_skin_fallbacks','geometry_pairs',
+                 'fused_actor_frames',
+                 'branch_filter_ready','branch_filter_used','branch_filter_words',
+                 'world_cache_hits','world_cache_misses',
+                 'shared_actor_resources',
+                 'asset_topology_ready',
+                 'slave_sim_frames','slave_sim_jobs','slave_sim_ticks',
+                 'slave_sim_pose_tick','slave_sim_pose_lag','slave_sim_max_wait_ms',
+                 'compiled_skin_frames','compiled_skin_fallbacks','compiled_skin_verified',
+                 'native_command_frames','cached_stage_faces',
+                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
+    if '_g_t3_simulation_stack' in dump_manifest:
+        stack=(out/'simulation-stack.bin').read_bytes()
+        if len(stack)!=16384 or any(b!=0xA5 for b in stack[:256]):
+            raise ValueError('simulation stack guard damaged')
+        first=next((i for i,b in enumerate(stack) if b!=0xA5),len(stack))
+        optimizations['slave_sim_stack_used']=len(stack)-first
     saturn_workload.validate_optimizations(workload,workload_profile,optimizations)
     if state['first_error'] or state['draw_timeouts'] or state['commands_used'] > state['commands_capacity']:
         raise ValueError(f'guest rendering failed: {state}')

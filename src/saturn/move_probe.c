@@ -21,20 +21,46 @@ static uint32_t g_t3_pose_trace_tick;
 #include "psx_match.h"
 #include "t3_generated_character.h"
 
+#include "placement.h"
+
 static t3_divmot_t g_bank, g_common;
+#if defined(T3_BRANCH_INPUT_FILTER)
+#include "branch_input_filter.h"
+enum { BRANCH_FILTER_WORDS=2048 };
+static uint32_t g_branch_filter_words[BRANCH_FILTER_WORDS] T3_HOT_WRAM;
+static t3_branch_input_filter_t g_branch_filters[3];
+volatile uint32_t g_t3_branch_filter_ready,g_t3_branch_filter_words;
+static int build_input_filter(unsigned slot,const uint8_t* rows,size_t bytes) {
+    const unsigned needed=(unsigned)((bytes/12u+31u)/32u)*T3_BRANCH_INPUT_CLASSES;
+    if(needed>BRANCH_FILTER_WORDS-g_t3_branch_filter_words)return 0;
+    if(!t3_branch_input_filter_init(&g_branch_filters[slot],rows,bytes,
+            t3_local_sequences,T3_LOCAL_SEQUENCE_COUNT,
+            g_branch_filter_words+g_t3_branch_filter_words,
+            BRANCH_FILTER_WORDS-g_t3_branch_filter_words))return 0;
+    g_t3_branch_filter_words+=needed;
+    g_t3_branch_filter_ready|=1u<<slot;
+    return 1;
+}
+#endif
 #if !defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_motion_cache_t g_pose_cache[2],g_root_cache[2];
 #endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
-static t3_psx_match_t g_owned_match __attribute__((section(".wram_l")));
+static t3_psx_match_t g_owned_match T3_HOT_WRAM;
 /* Reset assigns the entire object before match initialization. */
-static t3_psx_match_config_t g_owned_config __attribute__((section(".wram_l")));
+static t3_psx_match_config_t g_owned_config T3_HOT_WRAM;
 /* Shared immutable motion samples; no live matrices or actor state. */
-static t3_motion_sample_cache_t g_sample_cache __attribute__((section(".wram_l")));
+static t3_motion_sample_cache_t g_sample_cache T3_HOT_WRAM;
+#if T3_WORLD_POSE_CACHE_ENTRIES > 0
+static t3_psx_world_pose_cache_t g_world_pose_cache T3_HOT_WRAM;
+static t3_psx_world_pose_entry_t g_world_pose_entries[T3_WORLD_POSE_CACHE_ENTRIES]
+    T3_HOT_WRAM;
+volatile uint32_t g_t3_world_cache_hits,g_t3_world_cache_misses;
+#endif
 #if T3_LOCAL_POSE_CACHE_ENTRIES > 0
-static t3_psx_local_pose_cache_t g_local_pose_cache __attribute__((section(".wram_l")));
+static t3_psx_local_pose_cache_t g_local_pose_cache T3_HOT_WRAM;
 static t3_psx_local_pose_entry_t g_local_pose_entries[T3_LOCAL_POSE_CACHE_ENTRIES]
-    __attribute__((section(".wram_l")));
+    T3_HOT_WRAM;
 #endif
 #if defined(T3_ENABLE_PSX_COMBAT)
 static t3_psx_replay_storage_t g_replay_history __attribute__((section(".wram_l")));
@@ -56,9 +82,62 @@ static uint32_t g_fk_mask[2],g_fk_parts[2],g_ik_mask[2];
 static uint8_t g_hurt_ready[2];
 static int32_t g_hurt_head_y[2];
 #if defined(T3_LOCAL_KMD_BIND)
-static t3_psx_joint_t g_world_pose[2][T3_PSX_DRAW_PARTS] __attribute__((section(".wram_l")));
+static t3_psx_joint_t g_world_pose[2][T3_PSX_DRAW_PARTS] T3_HOT_WRAM;
 #endif
 static int16_t g_fk_root_xx[2];
+#if defined(T3_SLAVE_SIMULATION) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+#include <saturn/parallel.h>
+sat_result_t t3_move_probe_simulation_sync(int full) {
+    const struct {const void* address;uint32_t size;} query[]={
+        {&g_owned_match,sizeof(g_owned_match)},
+        {&g_round,sizeof(g_round)},
+        {g_segments,sizeof(g_segments)},
+        {g_move_event_status,sizeof(g_move_event_status)},
+        {g_move_extra_kind,sizeof(g_move_extra_kind)},
+        {g_move_extra_damage,sizeof(g_move_extra_damage)},
+        {g_move_event_fired,sizeof(g_move_event_fired)},
+        {g_decode_errors,sizeof(g_decode_errors)},
+#if T3_LOCAL_POSE_CACHE_ENTRIES > 0
+        {&g_local_pose_cache,sizeof(g_local_pose_cache)},
+#endif
+#if T3_WORLD_POSE_CACHE_ENTRIES > 0
+        {&g_world_pose_cache,sizeof(g_world_pose_cache)},
+        {(const void*)&g_t3_world_cache_hits,sizeof(g_t3_world_cache_hits)},
+        {(const void*)&g_t3_world_cache_misses,sizeof(g_t3_world_cache_misses)},
+#endif
+    };
+    for(unsigned i=0;i<sizeof(query)/sizeof(*query);++i) {
+        const sat_result_t st=sat_parallel_cache_sync_range(query[i].address,query[i].size);
+        if(st!=SAT_OK)return st;
+    }
+    if(full) {
+        const struct {const void* address;uint32_t size;} reset[]={
+            {&g_bank,sizeof(g_bank)},{&g_common,sizeof(g_common)},
+            {&g_owned_config,sizeof(g_owned_config)},
+            {&g_active,sizeof(g_active)},{&g_start_slot,sizeof(g_start_slot)},
+            {&g_sample_cache,sizeof(g_sample_cache)},
+#if T3_LOCAL_POSE_CACHE_ENTRIES > 0
+            {g_local_pose_entries,sizeof(g_local_pose_entries)},
+#endif
+#if T3_WORLD_POSE_CACHE_ENTRIES > 0
+            {g_world_pose_entries,sizeof(g_world_pose_entries)},
+#endif
+#if defined(T3_BRANCH_INPUT_FILTER)
+            {g_branch_filters,sizeof(g_branch_filters)},
+            {g_branch_filter_words,sizeof(g_branch_filter_words)},
+#endif
+#if defined(T3_ENABLE_PSX_COMBAT)
+            {&g_replay_history,sizeof(g_replay_history)},
+#endif
+        };
+        for(unsigned i=0;i<sizeof(reset)/sizeof(*reset);++i) {
+            const sat_result_t st=sat_parallel_cache_sync_range(reset[i].address,reset[i].size);
+            if(st!=SAT_OK)return st;
+        }
+    }
+    return SAT_OK;
+}
+#endif
 #if defined(T3_ENABLE_PSX_SHADOW_CONTACT) && defined(T3_LOCAL_KMD_BIND) && !defined(T3_ENABLE_PSX_OWNED_MATCH)
 /* Debugger-written external WORLD placement; never inferred from the
  * prototype's Q8 fighter coordinates. Writer: odd epoch, update roots
@@ -98,6 +177,27 @@ sat_result_t t3_move_probe_init(void) {
         return SAT_ERR_INVALID_ARG;
 #endif
 #endif
+#if defined(T3_BRANCH_INPUT_FILTER)
+    g_t3_branch_filter_ready=g_t3_branch_filter_words=0;
+    if(!build_input_filter(0,g_bank.data+g_bank.sections[0],g_bank.branch_count*12u))
+        return SAT_ERR_CAPACITY;
+#if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
+    if(!build_input_filter(1,g_common.data+g_common.sections[0],g_common.branch_count*12u))
+        return SAT_ERR_CAPACITY;
+#endif
+    const t3_branch_input_filter_t* common_filter=NULL;
+#if T3_LOCAL_COMMON_BRANCH_BYTES > 0
+    if(!build_input_filter(2,t3_local_common_branches,T3_LOCAL_COMMON_BRANCH_BYTES))
+        return SAT_ERR_CAPACITY;
+    common_filter=&g_branch_filters[2];
+#endif
+    if(!t3_divmot_set_input_filters(&g_bank,&g_branch_filters[0],common_filter))
+        return SAT_ERR_INVALID_ARG;
+#if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
+    if(!t3_divmot_set_input_filters(&g_common,&g_branch_filters[1],common_filter))
+        return SAT_ERR_INVALID_ARG;
+#endif
+#endif
     /* Slot 3 is the ordinary Tekken standing stance. Fallback is useful for
      * synthetic tests, but must not be mistaken for authentic startup. */
     g_start_slot=3u;
@@ -126,6 +226,11 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
     g_owned_config.sample_cache=&g_sample_cache;
+#if T3_WORLD_POSE_CACHE_ENTRIES > 0
+    t3_psx_world_pose_cache_init(&g_world_pose_cache,g_world_pose_entries,T3_WORLD_POSE_CACHE_ENTRIES);
+    g_owned_config.world_pose_cache=&g_world_pose_cache;
+    g_t3_world_cache_hits=g_t3_world_cache_misses=0;
+#endif
 #if T3_LOCAL_POSE_CACHE_ENTRIES > 0
     t3_psx_local_pose_cache_init(&g_local_pose_cache,g_local_pose_entries,T3_LOCAL_POSE_CACHE_ENTRIES);
     g_owned_config.local_pose_cache=&g_local_pose_cache;
@@ -741,7 +846,8 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
         g_reference_error=3;return SAT_ERR_INVALID_ARG;
     }
 #endif
-    if(!t3_psx_match_step_original(&g_owned_match,p0,p1,&frame)) {
+    /* Any failure is fatal to the frontend, so step the match in place. */
+    if(!t3_psx_match_step_original_in_place(&g_owned_match,p0,p1,&frame)) {
 #if defined(T3_REFERENCE_REPLAY)
         g_reference_error=4;
 #endif
@@ -755,6 +861,10 @@ reference_complete:;
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
 #endif
     view->total_ticks=g_owned_match.ticks;
+#if T3_WORLD_POSE_CACHE_ENTRIES > 0
+    g_t3_world_cache_hits=g_world_pose_cache.hits;
+    g_t3_world_cache_misses=g_world_pose_cache.misses;
+#endif
     view->hits=(uint16_t)(g_owned_match.fighter[0].registered_hits+g_owned_match.fighter[1].registered_hits);
     view->blocks=(uint16_t)(g_owned_match.fighter[0].registered_blocks+g_owned_match.fighter[1].registered_blocks);
 #if defined(T3_ENABLE_PSX_COMBAT)

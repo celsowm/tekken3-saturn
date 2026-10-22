@@ -14,6 +14,7 @@
 #include "psx_blend.h"
 #include "psx_head.h"
 #include "psx_local_pose.h"
+#include "psx_world_pose.h"
 
 /* InputSource control, not a physical pad button. The owned core consumes it
  * after physics at the original input phase. All pad bits are ignored on clear. */
@@ -43,6 +44,7 @@ typedef struct {
     t3_psx_replay_storage_t* replay_storage;
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
     t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */
+    t3_psx_world_pose_cache_t* world_pose_cache; /* Optional exact post-blend composition, derived storage. */
 } t3_psx_match_config_t;
 typedef struct {
     t3_move_vm_t vm;
@@ -110,4 +112,8 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t first,t3_input_t second);
  * fighter or round state is supplied per tick. */
 int t3_psx_match_step_original(t3_psx_match_t* match,t3_input_t first,t3_input_t second,
                                const t3_psx_match_frame_t* frame);
+/* The same step without the atomic copy: a failure may leave `match` partly
+ * advanced. For callers that treat any failure as fatal. */
+int t3_psx_match_step_original_in_place(t3_psx_match_t* match,t3_input_t first,t3_input_t second,
+                                        const t3_psx_match_frame_t* frame);
 #endif

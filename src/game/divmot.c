@@ -1,6 +1,7 @@
 #include "sim_profile.h"
 #include "divmot.h"
 #include "branch_rules.h"
+#include "branch_input_filter.h"
 #include <stddef.h>
 
 static uint16_t le16(const uint8_t* p) {
@@ -43,6 +44,7 @@ int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length) {
     out->bank_type = kind;
     out->common_branches = NULL;
     out->common_branch_count = 0u;
+    out->input_filter=out->common_input_filter=NULL;
     return 1;
 }
 
@@ -52,8 +54,25 @@ int t3_divmot_set_common_branches(t3_divmot_t* bank, const uint8_t* data,
         length/12u>65535u) return 0;
     bank->common_branches=data;
     bank->common_branch_count=(uint16_t)(length/12u);
+    bank->common_input_filter=NULL;
     return 1;
 }
+
+static int filter_rows_match(const t3_branch_input_filter_t* f,const uint8_t* rows,unsigned count) {
+    return f && f->words && f->rows==rows && f->row_count==count &&
+        f->word_count==(count+31u)/32u;
+}
+int t3_divmot_set_input_filters(t3_divmot_t* bank,
+    const t3_branch_input_filter_t* own,const t3_branch_input_filter_t* common) {
+    if(!bank || !bank->data ||
+       (own && !filter_rows_match(own,bank->data+bank->sections[0],bank->branch_count)) ||
+       (common && !filter_rows_match(common,bank->common_branches,bank->common_branch_count)))return 0;
+    bank->input_filter=own;bank->common_input_filter=common;
+    return 1;
+}
+#if defined(T3_BRANCH_INPUT_FILTER)
+volatile uint32_t g_t3_branch_filter_used;
+#endif
 
 int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
                    t3_move_record_t* out) {
@@ -139,10 +158,33 @@ static int T3_SIM_IMPL(branch_find)(const t3_divmot_t* bank, t3_move_record_t cu
                              t3_branch_record_t* picked,int return_end) {
     unsigned i, return_index=0u, in_common=0u, walked=0u;
     t3_branch_record_t row;
-    if (!bank || !input || !picked || current.branch_index>=bank->branch_count)
+    if (!bank || !bank->data || !input || !picked || current.branch_index>=bank->branch_count)
         return 0;
-    for (i=current.branch_index; walked++<(unsigned)bank->branch_count*
-                                       (1u+bank->common_branch_count); ++i) {
+    const t3_branch_input_filter_t* filters[2]={NULL,NULL};
+    unsigned input_class=T3_BRANCH_INPUT_UNFILTERED;
+    if(bank->input_filter || bank->common_input_filter)
+        input_class=t3_branch_input_filter_class(input);
+    if(input_class<T3_BRANCH_INPUT_CLASSES) {
+        if(filter_rows_match(bank->input_filter,bank->data+bank->sections[0],bank->branch_count) &&
+           bank->input_filter->sequences==sequences && bank->input_filter->sequence_count==sequence_count)
+            filters[0]=bank->input_filter;
+        if(filter_rows_match(bank->common_input_filter,bank->common_branches,bank->common_branch_count) &&
+           bank->common_input_filter->sequences==sequences && bank->common_input_filter->sequence_count==sequence_count)
+            filters[1]=bank->common_input_filter;
+    }
+    const unsigned limit=(unsigned)bank->branch_count*(1u+bank->common_branch_count);
+    for (i=current.branch_index; walked++<limit; ++i) {
+        const t3_branch_input_filter_t* filter=filters[in_common];
+        if(filter) {
+            unsigned next;
+            if(!t3_branch_input_filter_next(filter,input_class,i,&next))return 0;
+            if(next-i>limit-walked)return 0;
+            walked+=next-i;
+#if defined(T3_BRANCH_INPUT_FILTER)
+            if(next>i)g_t3_branch_filter_used=1;
+#endif
+            i=next;
+        }
         if (in_common) {
             if (!bank->common_branches || i>=bank->common_branch_count) return 0;
             decode_branch(bank->common_branches+i*12u,&row);

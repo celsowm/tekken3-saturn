@@ -58,6 +58,34 @@ class PresentationComparison(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'pixels'):
             compare(*self.paths)
 
+    def test_cached_stage_requires_exact_face_reconciliation(self):
+        for p in self.paths:
+            d=json.loads((p/'observation.json').read_text())
+            d['state'].update(faces_submitted=770,faces_flushed=770)
+            (p/'observation.json').write_text(json.dumps(d))
+        self.edit('observation.json',lambda d:d.update(
+            optimizations=dict(cached_stage_faces=48,native_command_frames=100)))
+        self.edit('observation.json',lambda d:d['state'].update(faces_submitted=722,faces_flushed=722))
+        with self.assertRaises(ValueError):compare(*self.paths)
+        self.assertEqual(compare(*self.paths,True)['reconciled_cached_stage_faces'],[0,48])
+        self.edit('observation.json',lambda d:d['state'].update(faces_flushed=721))
+        with self.assertRaises(ValueError):compare(*self.paths,True)
+
+    def test_shared_texture_residency_requires_exact_accounting_and_evidence(self):
+        for p in self.paths:
+            d=json.loads((p/'observation.json').read_text())
+            d['state']['model_texture_vram_bytes']=92672
+            (p/'observation.json').write_text(json.dumps(d))
+        self.edit('observation.json',lambda d:d['state'].update(model_texture_vram_bytes=46336))
+        with self.assertRaises(ValueError):compare(*self.paths)
+        self.edit('observation.json',lambda d:d.update(optimizations={'shared_actor_resources':1}))
+        with self.assertRaisesRegex(ValueError,'evidence'):compare(*self.paths)
+        self.edit('observation.json',lambda d:d.update(workload=dict(original_textures=True,
+            configuration={'T3_SHARE_ACTOR_RESOURCES':'ON'})))
+        self.assertEqual(compare(*self.paths)['resident_texture_vram_bytes'],[92672,46336])
+        self.edit('observation.json',lambda d:d['state'].update(model_texture_vram_bytes=46335))
+        with self.assertRaisesRegex(ValueError,'snapshot'):compare(*self.paths)
+
 
 if __name__ == '__main__':
     unittest.main()

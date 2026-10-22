@@ -22,6 +22,13 @@ typedef struct {
 typedef struct {
     int16_t m[3][3];  /* 4.12 PS1 rotation, row-major */
 } t3_psx_matrix_t;
+/* Struct assignment of this 2-aligned, 18-byte type is a memcpy call on the
+ * SH-2; nine halfword moves are several times cheaper. */
+static inline void t3_psx_matrix_copy(t3_psx_matrix_t* out,const t3_psx_matrix_t* in) {
+    out->m[0][0]=in->m[0][0];out->m[0][1]=in->m[0][1];out->m[0][2]=in->m[0][2];
+    out->m[1][0]=in->m[1][0];out->m[1][1]=in->m[1][1];out->m[1][2]=in->m[1][2];
+    out->m[2][0]=in->m[2][0];out->m[2][1]=in->m[2][1];out->m[2][2]=in->m[2][2];
+}
 typedef struct {
     int8_t parent;       /* -1 means character root; otherwise preceding draw part */
     uint8_t slot;        /* PS1 animation/attachment slot 0..21; 18+ pending */

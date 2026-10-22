@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "psx_pose.h"
 #include "saturn/math3d.h"
+#include "saturn/skin3d.h"
 
 /* PS1 KMD coordinates are expressed in integer units, where 4096 =
  * one LibSaturn unit. A Q12 matrix therefore becomes Q16 with << 4.
@@ -29,5 +30,7 @@ int t3_psx_skin_bridge(const t3_psx_joint_t pose[T3_PSX_DRAW_PARTS],
  * |center| <= 30000 original units and |vertex component| <= 0x0FFFFFFF;
  * failure leaves the complete vertex buffer untouched. */
 int t3_psx_skin_place(sat_vec3_t* vertices,uint32_t count,int32_t center_x,int32_t center_z);
+/* The same placement for sat_skin_deform_range_placed: 0 for a bad center. */
+int t3_psx_skin_placement(sat_skin_placement_t* placement,int32_t center_x,int32_t center_z);
 
 #endif

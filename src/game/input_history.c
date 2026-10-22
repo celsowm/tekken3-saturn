@@ -142,3 +142,22 @@ int t3_command_matches_table(uint16_t command, const t3_input_history_t* h,
     }
     return 0;
 }
+
+int t3_command_current_possible(uint16_t command,const t3_input_history_t* h,
+                               const t3_command_sequence_t* table,size_t count) {
+    if(!h || !h->count)return 0;
+    const t3_command_frame_t current=t3_history_at(h,0);
+    if(command==0xC001u || command==0xC002u)
+        return current.direction==(command==0xC001u?6u:4u);
+    if(command<0xC00Eu)return t3_command_matches(command,h);
+    if(!((command>=0xC00Eu && command<=0xC04Cu) ||
+         (command>=0xC7FFu && command<=0xC827u)) || !table)return 0;
+    for(size_t i=0;i<count;++i)if(table[i].command==command) {
+        unsigned j=0;
+        while(j<T3_INPUT_SEQUENCE_MAX+1u && table[i].steps[j])++j;
+        if(!j || j>T3_INPUT_SEQUENCE_MAX || !table[i].window ||
+           table[i].window>T3_INPUT_HISTORY_FRAMES)return 0;
+        return sequence_step(table[i].steps[j-1u],current);
+    }
+    return 0;
+}

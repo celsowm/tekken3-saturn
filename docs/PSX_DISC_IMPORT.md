@@ -46,8 +46,16 @@ input sequences. The compact banks total 20,536,108 bytes with motion,
 hitboxes and events. This is an offline collection for analysis; the whole
 collection is not a Saturn resident-memory budget or a playable build.
 
-Generated files are excluded by Git: `inventory.json` for all 303 entries; `raw/036.bin` (stage ARC textures, still opaque), `raw/056.bin` (panorama), `raw/071.bin` (first documented fighter KMD), and `stages/stg_a.obj` with untextured panorama vertices and faces. The OBJ is an **intermediate research artifact**, not yet a runtime-ready Saturn asset or a faithful on-screen panorama.
+Generated files are excluded by Git: `inventory.json` for all 303 entries;
+`raw/036.bin` (stage ARC textures), `raw/056.bin` (panorama), `raw/071.bin`
+(first documented fighter KMD), and `stages/stg_a.obj` with untextured panorama
+vertices and faces. The OBJ remains an intermediate research artifact.
+The separate [Paul stage converter and runtime](PAUL_STAGE_VDP2.md) now read
+the stage ARC/TMD directly and produce a private CD asset for NBG0/RBG0.
 
-Next: decode stage TIM assets from corresponding ARC records, map CBA/TSB/UVs, adapt for Saturn VDP1/VDP2 budgets; parse KMD skin sections and divmot motion data, and validate frame-by-frame. There are no original models/animations in the executable at this stage.
+Paul's KMD skin, original motion and owned combat are now available through
+the separate private encounter options. The stage increment resolves original
+CBA/TSB/UV texture associations, but its panorama is a fixed-bearing bake;
+original dynamic parallax, floor shading and lighting remain separate work.
 
 References: [independent Tekken3Remake format research](https://github.com/n0madic/Tekken3Remake/tree/master/docs/research/formats), [Tek3Ex](https://github.com/xan1242/Tek3Ex). The implementation here was independently written and does not copy those tools' source.

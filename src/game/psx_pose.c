@@ -90,7 +90,7 @@ int t3_psx_mul_rot(const t3_psx_matrix_t* a,const t3_psx_matrix_t* b,
             for(k=0;k<3u;++k)dot+=(int64_t)a->m[i][k]*b->m[k][j];
             r.m[i][j]=sat16(floor12(dot));
         }
-    *out=r;
+    t3_psx_matrix_copy(out,&r);
     return 1;
 }
 static int valid_vec(t3_vec3i_t p) {
@@ -161,7 +161,8 @@ int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],uint32_t* valid_slots) {
     t3_psx_joint_t result[T3_PSX_DRAW_PARTS]={0};uint32_t mask=0;
     if(!parts || !in || !out || !valid_slots || (valid_parts>>T3_PSX_DRAW_PARTS))return 0;
-    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)if(valid_parts&(1u<<i)) {
+    uint32_t valid=valid_parts;
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i,valid>>=1)if(valid&1u) {
         unsigned slot=parts[i].slot;
         if(slot>=T3_PSX_DRAW_PARTS || (mask&(1u<<slot)))return 0;
         result[slot]=in[i];mask|=1u<<slot;

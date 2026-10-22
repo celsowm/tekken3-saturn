@@ -1,6 +1,81 @@
 # Harness-led Saturn performance work
 
-Latest increment: [bounded local FK/IK reuse](LOCAL_POSE_REUSE_PERFORMANCE.md).
+Latest: [1,800-image Mednafen gate reached](THIRTY_IMAGE_GATE.md). The Slave now
+runs its actor preparation and the deferred simulation ticks as one task.
+FRAME advances 1,844 over 60 s (gate 1,800), with exact frozen pixels,
+reference replays and all 24 combat cases.
+
+Current experiment: [cold motion banks in Low WRAM, hot state in High WRAM](COLD_LOW_WRAM_EXPERIMENT.md).
+After comparing against retail Virtua Fighter 2, the opt-in `T3_COLD_LOW_WRAM`
+build loads the 544 KB DIVMOT banks from `MOTION.BIN` into Low WRAM. It moves
+the per-frame state, including the SDK's 64 KB command state, into High WRAM.
+Three alternating Mednafen pairs give 1,223 versus 834 submissions per 60 s
+(+46.6%). All 16,334 reference ticks, frozen pixels and the 24 live cases pass,
+with an input offset for the ~3 s longer boot. Ymir shows no steady-state
+change, so the gain depends on Mednafen's Low WRAM timing until physical
+hardware confirms it.
+
+Previous experiment: [world composition and shared-resource pipeline](WORLD_COMPOSITION_EXPERIMENT.md).
+Three paired native CD runs give 833 versus 739 submission increments over each
+60-second window (13.88 vs 12.32/s, +12.72%). All 24 live combat cases, frozen
+pixels and all 16,334 continuous reference ticks pass. The candidate remains
+opt-in, and submission cadence does not establish 30 newly displayed images/s.
+The report also records the completed tiled DSP-visibility test: exact in its
+bounded simulator cases, but 2.5 times slower than an optimized SH-2 tile once
+all transfer costs are included. An instrumented native frame shows roughly
+24 ms scene preparation, 17 ms flush, 15–17 ms leading simulation and 6–7 ms
+inside `sat_end_frame`. VDP1 waits are rare in this probe; command-list DMA
+regresses, and High-WRAM painter keys show only a one-run 0.96% gain. The
+selective-projection experiment also regresses in three native layouts (590,
+577 and 731 against 833 submissions, each with exact frozen pixels). Its
+LibSaturn code was removed. An isolated native SDK profile attributes about
+2055/3663 flush ticks to the entire ordered-emission function and 804/3663
+to painter ordering.
+Review of the next step found that the ordinary compiled-program emitter
+already writes directly into the VDP1 command list, and an earlier dense
+writer/pipeline failed its native throughput gate. The measured flush includes
+sorting and emission, but deleting flush alone would still leave roughly
+48 ms of the diagnostic frame. First collect an additive, CPU-owned native
+preparation breakdown and measure a coupled change that removes a substantial
+pass or dependency; do not repeat the direct-writer experiment under a new
+name. The warmed 833/60 s cadence implies about 72 ms per submission; the
+30-image gate needs at most 33.3 ms per image plus proven display completion
+and 60 committed logic ticks/s. The [review and revised execution order](WORLD_COMPOSITION_EXPERIMENT.md#reviewed-budget-and-execution-order) keep the
+unfinished VDP2 parallax/distance-shading work explicit.
+
+Qualified increment: [immutable input filtering](BRANCH_INPUT_FILTER.md). All 16,334
+original/host/Saturn reference ticks and three alternating native CD pairs pass;
+all 24 live combat cases also pass. The filter now defaults ON for the optimized
+original-texture VDP2 stage with whole-actor preparation. Every pair gives 735
+versus 666 submissions over 60 recorded seconds (+10.36%); this is approximately
+12.25 increments/s, still far below the target. The report records the native
+remaining budget and next coupled useful-work experiment.
+
+Qualified work: [whole-actor preparation and remaining 30 FPS work](ACTOR_PREPARATION_EXPERIMENT.md).
+The qualified whole-actor preparation now defaults ON for the optimized original
+VDP2-stage configuration. Three alternating CD pairs each give 668 versus 633
+submissions per 60 seconds (+5.53%); all 24 combat cases pass, and the promoted
+ELF exactly matches the qualified binary. Reciprocal projection and the following
+serial-Slave simulation/flush pipeline were implemented, measured and removed.
+The best pipeline screening gives 727 versus 668 increments, failing its 1.5x
+continuation gate. Impossible branch filtering is now implemented and qualified.
+The full 60-tick/30-image goal remains active and unmet.
+
+The private [Paul stage integration](PAUL_STAGE_VDP2.md) now uses the original
+street art on NBG0 and its original floor tile on RBG0, through existing SDK
+APIs. One warmed final Mednafen pair gives 633 versus 598 submissions per
+60 seconds; it is not a three-pair or 30-FPS qualification. Read the report
+for the fixed-panorama limitation, stock-memory layout and combat coverage.
+
+Current architecture plan: [full-Paul renderer](COMPILED_RENDERER_PLAN.md).
+The qualified [frame-preparation overlap](FRAME_PREPARATION_OVERLAP.md) improves
+matched Mednafen submission throughput by 17.95%. The subsequent
+[dense-command and simulation pipeline](COMMAND_PREPARATION_EXPERIMENT.md) has
+been implemented and tested, but fails its 1.5x continuation gate. Keep the
+qualified overlap release; the proposed Slave window is no longer untested.
+The 60-tick/30-image goal remains unmet. The entries below retain earlier work.
+
+Earlier increment: [bounded local FK/IK reuse](LOCAL_POSE_REUSE_PERFORMANCE.md).
 The selected 128-entry cache retains exact locals before dynamic blend/tracking.
 Matching cache-on controls reduce median measured work from 87 to 79 ms;
 roughly 60-second neutral release cadence improves 40.100 to 44.867 logic ticks/s
@@ -11,7 +86,7 @@ excess image transitions and preserves the same cadence. Next: capture actual
 CD-boot cache state and reduce the independent 49 ms renderer budget. The earlier
 [presentation boundary](PRESENTATION_BRIDGE_PERFORMANCE.md) remains in place.
 
-Current execution order: [structural performance recovery](STRUCTURAL_PERFORMANCE_EXECUTION.md).
+Earlier execution order: [structural performance recovery](STRUCTURAL_PERFORMANCE_EXECUTION.md).
 The [earlier recovery plan](PAUL_PERFORMANCE_RECOVERY.md) retains the history
 and detailed qualification constraints.
 That plan prioritizes cost isolation, visual comparison and whole-path gains

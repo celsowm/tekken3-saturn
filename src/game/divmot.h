@@ -13,6 +13,7 @@ enum {
 };
 /* Validated zero-copy view of one unrelocated PS1 bank (little-endian).
  * No pointer relocation, malloc or ROM/code emulation. */
+struct t3_branch_input_filter;
 typedef struct {
     const uint8_t* data;
     size_t size;
@@ -22,6 +23,7 @@ typedef struct {
     uint8_t bank_type;
     const uint8_t* common_branches; /* optional private EXE 12-byte rows */
     uint16_t common_branch_count;
+    const struct t3_branch_input_filter *input_filter,*common_input_filter;
 } t3_divmot_t;
 
 typedef struct {
@@ -52,6 +54,11 @@ int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length);
  * The caller owns its lifetime. Empty input detaches it. */
 int t3_divmot_set_common_branches(t3_divmot_t* bank, const uint8_t* data,
                                  size_t length);
+/* Attach only matching immutable row indexes. Reopening/detaching common
+ * data clears the corresponding attachment. Rebuild after modifying bytes
+ * or sequence entries; descriptors and masks must remain immutable/alive. */
+int t3_divmot_set_input_filters(t3_divmot_t* bank,
+    const struct t3_branch_input_filter* own,const struct t3_branch_input_filter* common);
 int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
                    t3_move_record_t* out);
 int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,

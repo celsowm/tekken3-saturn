@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 
 from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES
+from compiled_render_plan import emit_c
 
 def skeleton_parts(model):
     """Return the original loader's draw order and Z fixup, without mesh data."""
@@ -97,6 +98,7 @@ extern const t3_psx_part_t* const t3_private_actor_parts[2];
         payload.append('};')
     payload.append('const t3_psx_part_t* const t3_private_actor_parts[2] = {%s,t3_private_kmd_parts};' %
                    ('actor0_parts' if actor0_raw is not None else 't3_private_kmd_parts'))
+    payload.extend(emit_c(json.loads((preview/"render_plan.json").read_text())))
     (output/"t3_generated_character.c").write_text('\n'.join(payload)+'\n',encoding='utf8')
     (output/"t3_generated_character.h").write_text(header,encoding='utf8')
     report.update(
