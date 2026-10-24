@@ -503,7 +503,7 @@ void t3_move_probe_tick(const t3_match_t* match) {
 #elif defined(T3_ENABLE_PSX_MOVE_LIFECYCLE)
             /* Visual lifecycle preview. The enclosing match still owns
              * provisional HP/physics, so never fabricate original hit facts. */
-            const t3_move_start_facts_t no_hit={0u,1u,0};
+            const t3_move_start_facts_t no_hit={0u,1u,0,0};
             int transitioned=t3_move_vm_begin(&VM(i),no_hit);
 #else
             int transitioned=t3_move_vm_tick_ex(
@@ -978,6 +978,9 @@ int32_t t3_move_probe_owned_value(unsigned i,unsigned field) {
             return m->active_first>0 && m->active_last>=m->active_first &&
                    f->vm.clock.pose_frame+1>=m->active_first && f->vm.clock.pose_frame<=m->active_last;
         }
+        case 31:return f->ground.throw_state;
+        case 32:return f->ground.in_throw;
+        case 33:return f->ground.attack_pending;
         }
     }
 #else
@@ -1135,6 +1138,21 @@ uint8_t t3_move_probe_cpu_mask(void) {
 #else
     return 0u;
 #endif
+}
+int32_t t3_move_probe_camera_value(unsigned field) {
+#if defined(T3_ENABLE_PSX_COMBAT)
+    const t3_psx_fight_camera_t* c=&g_owned_match.camera;
+    if(!g_active)return 0;
+    switch(field) {
+    case 0:return c->camera.throw_player;
+    case 1:return c->camera.thrower;
+    case 2:return c->camera.state;
+    case 3:return c->camera.script;
+    }
+#else
+    (void)field;
+#endif
+    return 0;
 }
 int32_t t3_move_probe_round_value(unsigned field) {
 #if defined(T3_ENABLE_PSX_COMBAT)

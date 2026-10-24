@@ -40,6 +40,7 @@ typedef struct {
     uint32_t attack_descriptor; /* +0x28: built-in id or section9-relative offset+4 */
     uint32_t branch_index;
     uint16_t attack_word;
+    uint16_t damage_word;   /* row +0x14 before event damage is added */
     uint16_t damage_class;
     uint16_t stance_slot;
     int16_t step,end_turn;

@@ -48,6 +48,7 @@ typedef struct {
     uint8_t flight_landed,landing_shake;
     int16_t throw_state,juggle_count,step_cooldown;
     uint8_t in_throw; /* +0xC4: paired by MoveStep, kept while throw_state != 0 */
+    uint8_t attack_pending; /* +0xBD: the victim was attacking or had power on throw start */
     uint16_t guard;
 } t3_psx_ground_state_t;
 

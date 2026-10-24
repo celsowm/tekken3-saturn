@@ -112,7 +112,8 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
             if(!c->collapse_on_ko)return 0; /* the alternate airborne KO is not yet ported */
             if(collapse) {
                 t3_move_record_t previous=s->vm.move;
-                const t3_move_start_facts_t facts={s->got_hit,0,s->freeze};
+                const t3_move_start_facts_t facts={s->got_hit,0,s->freeze,
+                                                   (int16_t)s->vm.clock.pose_frame};
                 s->hit.collapsed=1;s->hit.prior_slot=s->vm.slot;
                 s->hit.prior_pose_frame=(uint16_t)s->vm.clock.pose_frame;s->hit.prior_attack_word=s->vm.move.attack_word;
                 s->vm.pending_valid=0;s->vm.clock.pose_frame=1;

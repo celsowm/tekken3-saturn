@@ -72,7 +72,7 @@ int main(int argc,char** argv) {
             if(!pending)goto fail;
             if(ready==1) {
                 t3_move_record_t previous=vm.move;
-                t3_move_start_facts_t facts={u8(b+0xCEu),(uint8_t)(i32(b+0x3F4u)!=0),i16(b+0xEEu)};
+                t3_move_start_facts_t facts={u8(b+0xCEu),(uint8_t)(i32(b+0x3F4u)!=0),i16(b+0xEEu),i16(b+0x16u)};
                 t3_psx_reaction_pick_t reaction={0};
                 uint8_t segments=0,flags=(uint8_t)((u16(b+0x19Cu)?128u:0u)|(u16(b+0x19Eu)?64u:0u));
                 uint32_t r=u32(b+0x1A8u);

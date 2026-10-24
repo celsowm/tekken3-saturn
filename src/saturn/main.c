@@ -1086,7 +1086,12 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
         g_t3_diagnostics.psx_move_age[fighter]=t3_move_probe_move_age(fighter);
         g_t3_diagnostics.psx_freeze[fighter]=t3_move_probe_freeze(fighter);
         g_t3_diagnostics.psx_hold_frames[fighter]=t3_move_probe_hold_frames(fighter);
+        g_t3_diagnostics.psx_throw_state[fighter]=(int16_t)t3_move_probe_owned_value(fighter,31);
+        g_t3_diagnostics.psx_in_throw[fighter]=(uint8_t)t3_move_probe_owned_value(fighter,32);
+        g_t3_diagnostics.psx_attack_pending[fighter]=(uint8_t)t3_move_probe_owned_value(fighter,33);
     }
+    g_t3_diagnostics.psx_camera_throw_player=(int16_t)t3_move_probe_camera_value(0);
+    g_t3_diagnostics.psx_camera_thrower=(int16_t)t3_move_probe_camera_value(1);
     g_t3_diagnostics.psx_shadow_contact_status[0] = t3_move_probe_shadow_status(0);
     g_t3_diagnostics.psx_shadow_contact_status[1] = t3_move_probe_shadow_status(1);
     g_t3_diagnostics.psx_shadow_contact_zone[0] = t3_move_probe_shadow_zone(0);

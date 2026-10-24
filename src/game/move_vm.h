@@ -59,6 +59,9 @@ int t3_move_vm_tick_ex(t3_move_vm_t* vm, const t3_input_history_t* input,
 typedef struct {
     uint8_t got_hit,alive;
     int16_t hit_freeze_in;
+    /* Pose frame before this start; transition 0x22 tests it against the
+     * victim's previous attack startup. */
+    int16_t previous_pose_frame;
 } t3_move_start_facts_t;
 /* Explicit experimental two-phase lifecycle. start uses original one-based
  * pose/root time; decoding the stream uses pose_frame-1. begin runs before

@@ -10,6 +10,70 @@ static uint8_t bytes[BYTES],trig[0x2800],atan_bytes[1025],push[20];
 static t3_psx_replay_storage_t history,history_before;
 static void p16(uint8_t* p,uint16_t v){p[0]=(uint8_t)v;p[1]=(uint8_t)(v>>8);}
 static void p32(uint8_t* p,uint32_t v){p16(p,(uint16_t)v);p16(p+2,(uint16_t)(v>>16));}
+/* SituationClassify's four posture rows and four opponent quadrants. */
+static void test_throw_situation(void) {
+    static const uint16_t state[4]={0x40u,0x20u,0x80u,0x280u};
+    static const int16_t expected[4][4]={{2,4,3,5},{6,8,7,9},{10,12,11,13},{14,16,15,17}};
+    t3_psx_ground_state_t self={0},opp={0};
+    for(unsigned row=0;row<4;++row)for(unsigned q=0;q<4;++q) {
+        self.opponent_quadrant=(uint8_t)q;opp.state=state[row];
+        self.relative_angle=0;
+        assert(t3_psx_throw_situation(&self,1,&opp)==expected[row][q]);
+    }
+    self.opponent_quadrant=0;opp.state=0x40u;
+    assert(t3_psx_throw_situation(&self,0,&opp)==-1);
+    opp.in_air=1;assert(t3_psx_throw_situation(&self,1,&opp)==-1);opp.in_air=0;
+    opp.about_to_hit=1;assert(t3_psx_throw_situation(&self,1,&opp)==-1);opp.about_to_hit=0;
+    self.opponent_quadrant=4;assert(t3_psx_throw_situation(&self,1,&opp)==-1);
+    /* No posture row (state bits 0x20/0x40/0x80 clear). */
+    self.opponent_quadrant=0;opp.state=0;assert(t3_psx_throw_situation(&self,1,&opp)==-1);
+    /* A negative angle is the same as its 16-bit predecessor. */
+    opp.state=0x40u;self.relative_angle=0xFFFFu;assert(t3_psx_throw_situation(&self,1,&opp)==2);
+    /* Behind: quadrant 0/2 only, and only with state bit 1 set. */
+    self.relative_angle=0x6000u;
+    for(unsigned q=0;q<4;++q) {
+        self.opponent_quadrant=(uint8_t)q;opp.state=2u;
+        assert(t3_psx_throw_situation(&self,1,&opp)==(q==0?0x12:q==2?0x13:-1));
+    }
+    opp.state=0;assert(t3_psx_throw_situation(&self,1,&opp)==-1);
+    self.relative_angle=0x5000u;opp.state=2u;self.opponent_quadrant=0;
+    assert(t3_psx_throw_situation(&self,1,&opp)==-1);
+}
+/* Transition 0x22 writes +0xBD from the victim's pre-restart pose/startup. */
+static void test_attack_pending(void) {
+    t3_psx_ground_tables_t t={{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),push,sizeof(push),NULL};
+    t3_move_record_t previous={0},current={0};
+    t3_move_vm_t vm={0};
+    t3_psx_ground_state_t victim,thrower;
+    current.length=4;current.state_word=0x3884u;
+    vm.move=current;vm.current_transition=34u;
+    previous.damage_word=0x4000u;previous.active_first=10u;
+    memset(&victim,0,sizeof(victim));victim.root=(t3_vec3i_t){-100,0,0};
+    memset(&thrower,0,sizeof(thrower));thrower.root=(t3_vec3i_t){100,0,0};
+    assert(t3_psx_ground_start(&victim,&thrower,&vm,&previous,&t,0,0,
+                               (t3_move_start_facts_t){0,1,0,5},NULL,0));
+    assert(victim.attack_pending==1u && victim.throw_state==-1 && victim.in_throw==1u);
+    memset(&victim,0,sizeof(victim));victim.root=(t3_vec3i_t){-100,0,0};
+    assert(t3_psx_ground_start(&victim,&thrower,&vm,&previous,&t,0,0,
+                               (t3_move_start_facts_t){0,1,0,10},NULL,0));
+    assert(victim.attack_pending==0u);
+    memset(&victim,0,sizeof(victim));victim.root=(t3_vec3i_t){-100,0,0};
+    previous.damage_word=0;
+    assert(t3_psx_ground_start(&victim,&thrower,&vm,&previous,&t,0,0,
+                               (t3_move_start_facts_t){0,1,0,0},NULL,0));
+    assert(victim.attack_pending==0u);
+    previous.damage_word=0x4000u;thrower.power_timer=1;
+    memset(&victim,0,sizeof(victim));victim.root=(t3_vec3i_t){-100,0,0};
+    assert(t3_psx_ground_start(&victim,&thrower,&vm,&previous,&t,0,0,
+                               (t3_move_start_facts_t){0,1,0,10},NULL,0));
+    assert(victim.attack_pending==1u);
+    thrower.power_timer=0;
+    memset(&victim,0,sizeof(victim));victim.root=(t3_vec3i_t){-100,0,0};
+    victim.throw_state=-1;victim.attack_pending=7u;
+    assert(t3_psx_ground_start(&victim,&thrower,&vm,&previous,&t,0,0,
+                               (t3_move_start_facts_t){0,1,0,0},NULL,0));
+    assert(victim.attack_pending==7u);
+}
 int main(void) {
     t3_divmot_t bank;
     t3_psx_match_t game,before;
@@ -124,5 +188,7 @@ int main(void) {
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.ticks==before.ticks+1 && !memcmp(game.fighter,before.fighter,sizeof(game.fighter)));
     assert(!memcmp(&game.replay,&before.replay,sizeof(game.replay)));
+    test_throw_situation();
+    test_attack_pending();
     return 0;
 }

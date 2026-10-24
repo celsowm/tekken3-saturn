@@ -63,12 +63,13 @@ static uint32_t isqrt(uint32_t n) {
     while(guess<rest){guess<<=1;rest>>=1;}
     for(;;){uint32_t before=guess;guess=(n/before+before)>>1;if(guess>=before)return before;}
 }
-/* SituationClassify (0x800313B0): the throw situation code of conditions
- * 2..0x17. BranchFind recomputes it per list from facts that a list walk
- * does not change, so one value per branch evaluation is the same. */
-static int16_t throw_situation(const t3_psx_ground_state_t* self,int contact,
+/* SituationClassify (0x800313B0): the throw situation code of branch
+ * conditions 2..0x17. The tables are indexed by the opponent quadrant
+ * (+0x40): q 0..3. BranchFind recomputes it per list from facts that a list
+ * walk does not change, so one value per branch evaluation is the same. */
+int16_t t3_psx_throw_situation(const t3_psx_ground_state_t* self,int contact,
                                const t3_psx_ground_state_t* opp) {
-    static const int8_t codes[4][4]={{2,4,5,3},{6,8,9,7},{10,12,13,11},{14,16,17,15}};
+    static const int8_t codes[4][4]={{2,4,3,5},{6,8,7,9},{10,12,11,13},{14,16,15,17}};
     const uint32_t s=opp->state;
     const unsigned q=self->opponent_quadrant;
     int row=-1;
@@ -89,7 +90,7 @@ void t3_psx_match_branch_facts(const t3_psx_match_t* n,unsigned i,t3_branch_cont
     facts->known=T3_FACT_IDENTITY|T3_FACT_DISTANCE|T3_FACT_ORIENTATION|T3_FACT_RECOVERY|
                  T3_FACT_COLLISION|T3_FACT_CONTACT|T3_FACT_HEALTH|T3_FACT_POWER|T3_FACT_OPPONENT|
                  T3_FACT_THROW;
-    facts->throw_situation=throw_situation(&f->ground,f->contact_this_move,&opp->ground);
+    facts->throw_situation=t3_psx_throw_situation(&f->ground,f->contact,&opp->ground);
     if(c->enable_rounds==2)facts->known|=T3_FACT_SIDE;
     facts->side_flag=f->side_flag;
     facts->opponent_bank=t3_psx_match_bank(c,1u-i)->bank_type;facts->own_character=c->character[i];
@@ -97,7 +98,7 @@ void t3_psx_match_branch_facts(const t3_psx_match_t* n,unsigned i,t3_branch_cont
     facts->relative_angle=f->ground.relative_angle;facts->heading_delta=f->ground.heading_delta;
     facts->facing_quadrant=f->ground.facing_quadrant;facts->opponent_quadrant=f->ground.opponent_quadrant;
     facts->recover_frames=f->ground.recover_frames;facts->recover_mash=f->ground.recover_mash;
-    facts->body_contact=f->body.contact;facts->contact=f->contact_this_move;
+    facts->body_contact=f->body.contact;facts->contact=f->contact;
     /* FUN_80045260 clears the hit flags every frame: they hold only on the frame of the hit. */
     facts->guarded=opp->got_hit?opp->last_guarded:0;facts->counter_hit=opp->got_hit?opp->last_counter:0;facts->whiffed=f->whiffed;
     facts->opponent_guard=opp->ground.guard;facts->opponent_in_air=opp->ground.in_air;
@@ -578,9 +579,10 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         /* MoveStartOrAdvance counts the side-step cooldown down first. */
         if(f->ground.step_cooldown>0)--f->ground.step_cooldown;
         t3_move_record_t before=f->vm.move;
-        t3_move_start_facts_t facts={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in};
-        uint8_t flags=f->vm.pending_flags;
         f->previous_pose_frame=previous_pose[i];
+        t3_move_start_facts_t facts={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,
+                                     (int16_t)previous_pose[i]};
+        uint8_t flags=f->vm.pending_flags;
         int started=t3_move_vm_begin(&f->vm,facts);
         if(started<0)return 0;
         f->started=(uint8_t)started;
@@ -740,7 +742,8 @@ static int next_original_round(t3_psx_match_t* n) {
         v->active_bank=v->root_bank=v->pending_bank;v->root_slot=1;
         v->clock.pose_frame=v->clock.root_frame=1;v->last_entry_frame=1;
         if(f->body.active) {
-            t3_move_start_facts_t facts={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in};
+            t3_move_start_facts_t facts={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,
+                                         (int16_t)v->clock.pose_frame};
             if(t3_move_vm_begin(v,facts)!=1 || !t3_psx_ground_start(g,&n->fighter[1u-i].ground,v,&v->move,
                 &n->config->ground_tables,0,0,facts,&f->reaction,0))return 0;
         }
@@ -890,7 +893,8 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         t3_psx_fighter_t* f=&n->fighter[i];
         f->body.active=(uint8_t)n->round_actor[i].active;
         if(actions.start_slot[i]>=0) {
-            t3_move_start_facts_t start={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in};
+            t3_move_start_facts_t start={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,
+                                         (int16_t)f->vm.clock.pose_frame};
             f->blend.mode=0;
             if(actions.grounded_mask&(1u<<i))f->ground.anchor.y=0;
             const unsigned kind=kept_branch_kind(&f->vm);

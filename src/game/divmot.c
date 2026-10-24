@@ -89,7 +89,8 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     out->branch_index = le32(p+12);
     out->stance_slot = le16(p+16);
     out->end_turn = (int16_t)le16(p+18);
-    out->damage_class = t3_move_total_damage(bank,le16(p+20),le32(p+32));
+    out->damage_word = le16(p+20);
+    out->damage_class = t3_move_total_damage(bank,out->damage_word,le32(p+32));
     out->step = (int16_t)le16(p+22);
     out->length = p[24];
     out->air_start = p[25];

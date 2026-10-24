@@ -276,7 +276,7 @@ static void test_common_bank_branches(void) {
 static void test_phased_stream_identity(void) {
     uint8_t bytes[N_BYTES+104u];t3_divmot_t bank;t3_move_vm_t vm;
     const unsigned moves=100u;
-    const t3_move_start_facts_t no_hit={0,1,0};
+    const t3_move_start_facts_t no_hit={0,1,0,0};
     make_bank();memcpy(bytes,bank_bytes,N_BYTES);memset(bytes+N_BYTES,0,104);
     bytes[N_BYTES+2]=bytes[N_BYTES+54]=7;
     for(unsigned i=7;i<15;++i)put32(bytes+4u+4u*i,sizeof(bytes));
@@ -299,7 +299,7 @@ static void test_phased_move_lifecycle(void) {
     t3_divmot_t bank;
     t3_move_vm_t vm,unchanged;
     t3_input_history_t history;
-    const t3_move_start_facts_t no_hit={0,1,0};
+    const t3_move_start_facts_t no_hit={0,1,0,0};
     const unsigned row0=64u,row1=64u+3u*12u+56u;
     make_bank();bank_bytes[row0+8]=14; /* verified high-hit clock transition */
     bank_bytes[row1+27]=1; /* authored held pose for root-ownership regression */

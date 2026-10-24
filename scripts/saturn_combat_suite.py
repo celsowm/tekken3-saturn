@@ -116,6 +116,30 @@ def execute(args):
         require(s['psx_health_q16']==[140*65536]*2 and s['psx_registered_blocks']==[0,1]
                 and s['psx_registered_hits']==[0,0],name+': guard must prevent damage')
         require(s['psx_reaction_slot'][1]==slot,name+': wrong guard reaction')
+    # Paul's d/f+1+2 throw row only matches in a five-field stance window, so
+    # hold d/f and toggle both punches once per field across a stance cycle.
+    # Situation 2 (front, standing) selects follow-up 2848; its reaction entry
+    # 0x10D0 asks for victim slot 3143, empty in both banks and filled from the
+    # merged index's fallback slot as the original does.
+    throw_lines=['20 1 buttons=RIGHT','100 1 buttons=NONE']
+    throw_lines+=[f'{t} 1 buttons='+('DOWN+RIGHT+X+Y' if t%2==0 else 'DOWN+RIGHT')
+                  for t in range(110,230)]
+    throw_script='\n'.join(throw_lines)+'\n'
+    s=case('throw',throw_script,210)
+    require(s['psx_move_slot'][0]==2848 and s['psx_move_frame'][0]>1
+            and s['psx_attack_word'][0]==0x800,'d/f+1+2 must start the authored throw follow-up')
+    require(s['psx_throw_state']==[1,-1] and s['psx_in_throw']==[1,1]
+            and s['psx_attack_pending']==[0,0],'the throw must pair both fighters')
+    require(s['psx_move_slot'][1]==3143 and s['psx_move_frame'][1]>1,
+            'the victim must play the throw-victim slot')
+    require(s['psx_camera_throw_player']==0 and s['psx_camera_thrower']==0,
+            'the throw must hand the camera to its preset')
+    # The five-field stance window can be caught up to a cycle late, so the
+    # authored damage event may not have fired by the active-state sample.
+    # Health does not refill until the next round, so a later sample sees it.
+    s=case('throw-damage',throw_script,280)
+    require(s['psx_health_q16'][0]==140*65536 and s['psx_health_q16'][1]==100*65536,
+            'the throw follow-up must deal its authored 40 damage')
     # Law's 2250 runs about 23 ticks from the hit (near field 132), so it can
     # end by 155 while Paul's has not; 140 sits inside both reactions.
     s=case('visible-reaction',close+'110 2 buttons=LEFT\n120 1 buttons=X\n',140)

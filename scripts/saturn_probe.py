@@ -63,6 +63,9 @@ ROUND_FIELDS=[('psx_round_flow_active','I',1)]+[(name,'i',1) for name in (
     'psx_replay_recorded','psx_replay_epoch')]
 SCHEDULE_FIELDS=[(name,'I',1) for name in (
     'elapsed_fields_last','observed_fields','discarded_fields','scheduled_ticks')]
+THROW_FIELDS=[('psx_throw_state','h',2),('psx_camera_throw_player','h',1),
+              ('psx_camera_thrower','h',1),('psx_in_throw','B',2),
+              ('psx_attack_pending','B',2)]
 
 class IncompleteSnapshotError(ValueError):
     """Guest was stopped while publishing its diagnostic snapshot."""
@@ -73,7 +76,7 @@ def decode(raw):
         raise ValueError('truncated diagnostics')
     values = list(struct.unpack_from('>' + 'I' * WORDS, raw))
     result = dict(zip(PREFIX, values[:len(PREFIX)]))
-    if result['magic'] != 0x54334431 or result['version'] not in range(12,23):
+    if result['magic'] != 0x54334431 or result['version'] not in range(12,24):
         raise ValueError('unsupported diagnostics magic/version')
     at = len(PREFIX)
     for name in PAIRS:
@@ -99,6 +102,7 @@ def decode(raw):
     extended+=ROUND_FIELDS if result['version']>=20 else []
     extended+=SCHEDULE_FIELDS if result['version']>=21 else []
     extended+=[('local_pose_cache','I',4)] if result['version']>=22 else []
+    extended+=THROW_FIELDS if result['version']>=23 else []
     for name, kind, count in extended:
         alignment = struct.calcsize('>' + kind)
         at = (at + alignment - 1) // alignment * alignment

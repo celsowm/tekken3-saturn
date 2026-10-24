@@ -361,6 +361,12 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
          * anchored at its own root; the caller sets the down time from the
          * thrower's move. */
         if(n.throw_state>=0) {
+            /* Counter throw: the victim was still in its attack startup, or
+             * had power, when the throw started (transition 0x22, +0xBD). */
+            const int counter=!(((previous->damage_word==0 ||
+                (int16_t)previous->active_first<=facts.previous_pose_frame) &&
+                opp->power_timer==0));
+            n.attack_pending=counter?1u:0u;
             n.heading=n.facing=(uint16_t)(n.heading-0x8000u);anchor=1;
         } else if(m->flags&0x80000u){n.facing=n.heading;anchor=1;}
         n.push_frames=n.push_speed=n.push_table_frames=0;

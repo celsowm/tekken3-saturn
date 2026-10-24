@@ -48,6 +48,9 @@ int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]);
 #endif
 int32_t t3_move_probe_round_value(unsigned field);
+/* Throw-camera handoff: 0 throw_player, 1 thrower, 2 director state,
+ * 3 playing script/preset (-1 none). */
+int32_t t3_move_probe_camera_value(unsigned field);
 uint16_t t3_move_probe_slot(unsigned fighter);
 uint16_t t3_move_probe_frame(unsigned fighter);
 uint8_t t3_move_probe_phased(void);

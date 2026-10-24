@@ -17,6 +17,10 @@
 #include "psx_world_pose.h"
 #include "psx_fight_camera.h"
 
+/* Throw situation code (0x800313B0), branch conditions 2..0x17. */
+int16_t t3_psx_throw_situation(const t3_psx_ground_state_t* self,int contact,
+                               const t3_psx_ground_state_t* opp);
+
 /* InputSource control, not a physical pad button. The owned core consumes it
  * after physics at the original input phase. All pad bits are ignored on clear. */
 enum { T3_PSX_INPUT_CLEAR = 1u << 15 };
