@@ -118,6 +118,18 @@ attacks enabled on `build/t30-law` (2026-10-23, including KO, replay, the
 second round, match reset and two neutral timeouts). Its output is
 `assets/imported/t30-law-combat/suite.json`.
 
+The Saturn reference replay also matched all 3,000 ticks of `oracle-law-s1`
+with the native match step (`assets/imported/paul-law-reference-final/reference-comparison.json`).
+The fixture supplies the original seed, pads, side flags, per-tick screen X,
+and the previous fighter view on the sparse RoundFlow draw frames that use it.
+The guest receives no expected state digests; the host compares its output
+with the original trace after each tick. This establishes match-state parity
+for that fixture, conditional on its camera observations. Independent camera
+parity, USA real-game capture, pixels and other matchups still need checks.
+The combined `regression-flush-trusted` gate passed on 2026-10-24: 55 host
+tests, 54 Law host tests, 24 live combat cases and 3,000/3,000 reference ticks.
+Its local report is `assets/imported/regression-flush-trusted/summary.json`.
+
 ### Original CPU opponent
 
 `fight_oracle_export.py --cpu-mask` records each original `AiUpdate` call in

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize saved probe, combat-suite and Mednafen runs; compare cadence.
+"""Summarize saved probe, combat-suite, regression and Mednafen runs; compare cadence.
 
 Use --fields to inspect selected saved guest counters without ad hoc JSON code:
 
@@ -15,10 +15,10 @@ from saturn_probe import decode_panic
 
 def read_run(path):
     if path.is_dir():
-        candidates = [path / name for name in ('suite.json', 'observation.json', 'run.json')
+        candidates = [path / name for name in ('summary.json', 'suite.json', 'observation.json', 'run.json')
                       if (path / name).is_file()]
         if len(candidates) != 1:
-            raise ValueError(f'{path}: specify one suite.json, observation.json or run.json')
+            raise ValueError(f'{path}: specify one summary.json, suite.json, observation.json or run.json')
         path = candidates[0]
     return path, json.loads(path.read_text())
 
@@ -45,6 +45,16 @@ def summarize(path):
     path, data = read_run(path)
     if 'state' in data:
         result = dict(kind='probe', **probe_summary(data, path.parent))
+    elif 'stages' in data and 'build' in data:
+        stages = data['stages']
+        result = dict(kind='regression', complete=bool(data.get('complete')),
+                      passed=bool(data.get('passed')),
+                      stages=[dict(name=stage['name'], status=stage['status'],
+                                   seconds=stage.get('seconds'),
+                                   detail=stage.get('detail', {})) for stage in stages],
+                      failed_stages=data.get('failed_stages', []),
+                      duration_seconds=data.get('duration_seconds'),
+                      elf_sha256=data['build'].get('elf_sha256'))
     elif 'cases' in data and 'passed' in data:
         cases = {name: probe_summary(case, path.parent / name)
                  for name, case in data['cases'].items()}

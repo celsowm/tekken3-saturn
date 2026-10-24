@@ -35,9 +35,10 @@ def compare(root,export,observation):
         observation_schema_sha256=manifest['observation_schema_sha256'],
         expected_digests_sha256=hashlib.sha256(expected).hexdigest(),
         guest_trace_sha256=hashlib.sha256(trace[:count*32]).hexdigest(),
-        scope='One original seed, then identical external mapped/physical pad IO and source-frame counters; '
+        scope='One original seed, then external mapped/physical pad IO, source-frame counters, '
+              'per-tick screen X and sparse previous camera views used by RoundFlow; '
               'every declared field hashed as signed i64 big endian after each native tick. '
-              'Rendered diagnostic build, not performance or exact-camera certification.')
+              'Rendered diagnostic build, not performance or independent-camera certification.')
     (root/'reference-comparison.json').write_text(json.dumps(result,indent=2)+'\n')
     return result
 
