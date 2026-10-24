@@ -165,7 +165,8 @@ static uint16_t g_stage_count,g_stage_face,g_stage_cursor,g_stage_ready_count;
 static const sat_view_cache_item_t* g_stage_ready;
 static uint8_t g_stage_baking;
 #endif
-#if defined(T3_STAGE_HUD) || defined(T3_NATIVE_PHASE_PROBE) || \
+#if defined(T3_STAGE_HUD) || \
+    (defined(T3_NATIVE_PHASE_PROBE) && !defined(T3_NATIVE_PHASE_PROBE_SILENT)) || \
     (defined(T3_NATIVE_WAIT_PROBE) && !defined(T3_NATIVE_WAIT_PROBE_SILENT))
 static uint8_t g_show_profiler=1;
 #else
