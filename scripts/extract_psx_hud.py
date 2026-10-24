@@ -52,7 +52,10 @@ def extract(vram, spec):
             index = (packed >> (4 * (x & 3))) & 15
             visible += palette[index] != 0
             indices.append(index)
-        indices += [0] * (padded_width - width)
+        # VDP1 requires an 8-texel width. Resample across that width so a
+        # stretched 2-texel fill remains visible for the full destination.
+        if padded_width != width:
+            indices = [indices[col * width // padded_width] for col in range(padded_width)]
         pixels += bytes((indices[i] << 4) | indices[i + 1]
                         for i in range(0, padded_width, 2))
     # Saturn VDP1 LUT colours need the RGB bit set to mix with indexed sprites.
@@ -73,6 +76,7 @@ def main():
         raise ValueError(f'expected 127 USA system texture members, got {len(tims)}')
     vram = system_textures.build_vram(tims)
     images = {}
+    packed = bytearray(b'T3HUD01\0' + struct.pack('<HH', len(PIECES), 0))
     args.out.mkdir(parents=True, exist_ok=True)
     for spec in PIECES:
         name, pixels, lut, info = extract(vram, spec)
@@ -86,9 +90,13 @@ def main():
         images[name] = dict(file=filename, palette_file=palette_file,
                             sha256=hashlib.sha256(pixels).hexdigest(),
                             palette_sha256=hashlib.sha256(lut).hexdigest(), **info)
+        packed += struct.pack('<HHHH', info['width'], info['padded_width'], info['height'], len(pixels))
+        packed += lut + pixels
+    (args.out / 'HUD.BIN').write_bytes(packed)
     manifest = dict(schema=1, source='Tekken 3 USA executable system textures',
                     exe_sha256=hashlib.sha256(exe).hexdigest(),
                     format='VDP1 LUT4, left texel in high nibble; RGB555 LE CLUT with bit15 visible',
+                    disc_file='HUD.BIN', disc_sha256=hashlib.sha256(packed).hexdigest(),
                     images=images)
     (args.out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(f'{len(images)} HUD images -> {args.out}')

@@ -102,11 +102,11 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
 - [ ] Floor distance shading (VDP2 has no per-line brightness ramp without losing texture contrast).
 - [~] Sound: swing, hand/foot guard and hit samples from VAB 0, plus Paul's and Law's shouts and hurt voices; no KO or result voices, music or most effects.
 - [~] Effects: a hit/guard spark at the contact point (HUD cross); the original effect sprites are not ported.
-- [~] HUD: original bar behaviour; text instead of the system-texture sprites.
-  `scripts/extract_psx_hud.py` now extracts the USA executable's original bar
-  caps/fills, round marks and timer digits into private VDP1 LUT4 patterns and
-  palettes (`assets/imported/tekken3-usa/hud`). Runtime upload, layout and
-  font/name sprites are still pending.
+- [~] HUD: private original system-texture bar caps/fills, round marks and timer
+  digits upload to VDP1 with `T3_ORIGINAL_HUD=ON` and draw during gameplay.
+  The runtime scales them to the Saturn's 320 × 224 display; exact original
+  384 × 480 placement, three-length bar animation, name plates, font and
+  round messages remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
 - [~] Menus: an optional title screen (`T3_TITLE_SCREEN`); no select or mode menus.
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 

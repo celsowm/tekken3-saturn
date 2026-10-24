@@ -445,6 +445,29 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         list(APPEND _t3_stage_disc_files "${_t3_sfx_gen}/SFX.BIN")
         target_compile_definitions(tekken3_saturn PRIVATE T3_SFX=1)
     endif()
+    set(T3_LOCAL_HUD_EXE "" CACHE FILEPATH "Private USA SLUS_004.02 for original fight HUD sprites")
+    option(T3_ORIGINAL_HUD "Draw private original fight HUD bar, timer and mark sprites" OFF)
+    if(T3_ORIGINAL_HUD)
+        option(T3_ORIGINAL_HUD_BARS "Draw original health bar sprites (off isolates their cost)" ON)
+        if(NOT T3_LOCAL_HUD_EXE OR NOT EXISTS "${T3_LOCAL_HUD_EXE}")
+            message(FATAL_ERROR "T3_ORIGINAL_HUD requires T3_LOCAL_HUD_EXE")
+        endif()
+        set(_t3_hud_gen "${CMAKE_BINARY_DIR}/generated/private_hud")
+        add_custom_command(OUTPUT "${_t3_hud_gen}/HUD.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_hud_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                "${T3_LOCAL_HUD_EXE}"
+            VERBATIM)
+        target_sources(tekken3_saturn PRIVATE src/saturn/original_hud.c
+            "${_t3_hud_gen}/HUD.BIN")
+        list(APPEND _t3_stage_disc_files "${_t3_hud_gen}/HUD.BIN")
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD=1)
+        if(T3_ORIGINAL_HUD_BARS)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD_BARS=1)
+        endif()
+    endif()
     option(T3_VDP2_FLOOR "Draw the private Paul stage with NBG0 and RBG0" ${_t3_stage_default})
     if(T3_VDP2_FLOOR)
         if(NOT T3_LOCAL_PAUL_STAGE)

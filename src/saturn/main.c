@@ -43,6 +43,9 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "move_probe.h"
 #include "perf.h"
 #include "sfx.h"
+#if defined(T3_ORIGINAL_HUD)
+#include "original_hud.h"
+#endif
 #include "combat_events.h"
 #if defined(T3_SLAVE_SIMULATION)
 #include <saturn/parallel.h>
@@ -653,11 +656,14 @@ enum { BAR_WIDTH = 140, BAR_Y = 19, BAR_HEIGHT = 8 };
 static int g_recent_damage[2];
 static void health_bar(int x, int inner_right, int health, int* recent) {
     int length = (health * BAR_WIDTH + T3_MAX_HEALTH - 1) / T3_MAX_HEALTH;
-    const uint16_t empty = SAT_RGB555(13,4,4);
     if (length < 0) length = 0;
     if (length > BAR_WIDTH) length = BAR_WIDTH;
     if (*recent < length) *recent = length;
     else if (*recent > length) *recent -= (*recent - length + 7) / 8;
+#if defined(T3_ORIGINAL_HUD_BARS)
+    SAT_PANIC_IF_ERROR(t3_original_hud_bar(x,BAR_Y,BAR_WIDTH,length,*recent,inner_right));
+#else
+    const uint16_t empty = SAT_RGB555(13,4,4);
     SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, x, BAR_Y, BAR_WIDTH, BAR_HEIGHT, 0, 1u, empty, empty));
     if (*recent > 0)
         SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, inner_right ? x + BAR_WIDTH - *recent : x,
@@ -665,6 +671,7 @@ static void health_bar(int x, int inner_right, int health, int* recent) {
     if (length > 0)
         SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, inner_right ? x + BAR_WIDTH - length : x,
             BAR_Y, length, BAR_HEIGHT, 1u, 1u, empty, SAT_RGB555(6,27,12)));
+#endif
 }
 
 static void draw_hud(void) {
@@ -687,8 +694,18 @@ static void draw_hud(void) {
     health_bar(172,0,game->fighters[1].health,&g_recent_damage[1]);
     draw_sparks();
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", game->round, 8, 35));
+#if defined(T3_ORIGINAL_HUD)
+    SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,147,3));
+    for(unsigned mark=0;mark<2;++mark) {
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,136-12*(int)mark,35));
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,172+12*(int)mark,35));
+    }
+#else
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
+#endif
+#if !defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[0], 8, 47));
+#endif
     /* One-based render submission serial, independent of logic ticks and
      * VBlanks. Keep it visible even when the optional profiler is hidden. */
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, HUD_FRAME_Y));
@@ -697,7 +714,9 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SCCR ",g_t3_boot_slave_verified?(int32_t)g_t3_boot_cache[1]:-1,
         HUD_SLAVE_CACHE_X,HUD_CPU_Y));
 #endif
+#if !defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[1], 248, 47));
+#endif
 #if defined(T3_REPLAY_INPUT_TAPE)
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"RECORDED INPUT DEMO",W/2,61));
 #endif
@@ -1153,6 +1172,9 @@ int main(void) {
 #if defined(T3_VDP2_FLOOR)
     loading_frame(BOOT_POSES, "PAUL STAGE");
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
+#endif
+#if defined(T3_ORIGINAL_HUD)
+    SAT_PANIC_IF_ERROR(t3_original_hud_init());
 #endif
     /* The face store is idle until the first scene: it holds the sound file. */
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_faces,sizeof g_faces));

@@ -32,8 +32,12 @@ title screen, when built in, waits for START first). With port 2 empty the CPU
 plays Law and gets stronger after each match you win; with a pad in port 2 it
 is a 2 player match.
 
-The original fight HUD's bar, mark and timer patterns can be extracted from
-the same private USA executable with `python3 scripts/extract_psx_hud.py`.
-The ignored `assets/imported/tekken3-usa/hud/manifest.json` records their
-source hash, dimensions and palettes. The current disc still renders its
-existing HUD until the extracted sprites are wired into the runtime.
+Set `T3_ORIGINAL_HUD=ON` and `T3_LOCAL_HUD_EXE` to the private USA
+`SLUS_004.02` to build the original fight HUD bar, mark and timer sprites into
+the disc. CMake runs `scripts/extract_psx_hud.py` and packs the private
+`HUD.BIN`; the ignored `assets/imported/tekken3-usa/hud/manifest.json` records
+the source hash, dimensions and palettes when the script is run directly.
+The name plates and original text font are still pending. This option needs
+`T3_LOCAL_POSE_CACHE_ENTRIES=128` in the measured release configuration to
+fit High Work RAM. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md) for the build and
+runtime evidence.
