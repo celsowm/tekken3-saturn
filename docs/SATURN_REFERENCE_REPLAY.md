@@ -17,7 +17,13 @@ The public build neither enables it nor bundles the required private data.
    spans, with bounded gaps merged to fit 64 descriptors. It also exports the
    mapped gameplay pad samples, early physical/pressed button latch and original
    source-frame counter. Inputs are external IO; clear/script input remains
-   native RoundFlow's responsibility.
+   native RoundFlow's responsibility. The optional `views.bin` carries the two
+   pieces of visual state the original feeds back into gameplay: the previous
+   CameraFrame view for the ticks whose RoundFlow draw consumes it, and the
+   per-tick screen x that draw/CameraFrame leaves in `+0x1278` for
+   `PairwiseDistances`. The view table is sparse (one record per round
+   transition) because it is linked into High WRAM; the screen table is four
+   bytes per tick.
 3. The shared `tools/psx_match_reference.inc` retains the existing seed checks
    and observation fields. The Saturn initializer consumes the compact seed
    once before the first tick. Its ordinary match state then advances through
@@ -36,7 +42,8 @@ The public build neither enables it nor bundles the required private data.
 
 The manifest binds all exported files, the original seed/trace, evaluator and
 observation schema. The generated image contains initial seed bytes, compressed
-external inputs/source-counter deltas and a manifest fingerprint. It contains
+external inputs/source-counter deltas, the sparse view/screen table and a
+manifest fingerprint. It contains
 **no per-tick expected state or expected digest table**. The SHA implementation
 passes empty/abc/multiblock/million-a vectors and chunk-boundary tests; private
 host replay also passes ASan/UBSan. This is a cryptographic comparison of the
@@ -119,3 +126,32 @@ limit. Reference code uses size optimization; the live core remains unchanged.
 This closes the **declared continuous native-state gate**, not the whole
 [playable milestone](NEXT_PLAYABLE_MILESTONE.md). The remaining live performance
 shortfall and presentation-camera calibration stay in the continuation plan.
+
+## Verified checkpoint (2026-10-24, Paul vs Law)
+
+| Capture / report directory | Consecutive ticks | Compared scalar values | Result |
+| --- | ---: | ---: | --- |
+| Paul mirror VS Law, USA, one round / `paul-law-reference-final` | 3,000 | 4,168,960 | All match |
+
+This export closes the last divergent tick of the continuous replay. At source
+frame 2,340 the original's RoundFlow fighter draw leaves the opponent at screen
+x >= 0x191, so `PairwiseDistances` takes its off-screen stand-in (target 0x4000,
+distance 480) and `FighterRelativeAngles` skips the `aim_dir` update. Feeding
+only the view was not sufficient: the draw also has to establish the per-tick
+screen x, otherwise the stand-in decision freezes. The fixture therefore holds
+one 38-byte view record (tick 2,183, the `T3_ROUND_WIN_POSES` transition draw)
+and 3,000 four-byte screen pairs; host runs reproduce the failure with
+`T3_REPLAY_NO_VIEW=1` and `T3_REPLAY_NO_SCREEN=1`.
+
+The fixture uses 6,240 seed bytes, 1,259 external-input events (27,698 bytes),
+750 source-counter bytes, 38 view bytes and 12,000 screen bytes. The 96,000-byte
+digest trace and 6,000-byte field-count trace sit in Low WRAM; the initialized
+image is 616,100 bytes, below the 983,040-byte loader limit. Expected state and
+digests remain host-only.
+
+The 2026-10-17 P1/P2/draw exports above are bound to the observation schema of
+that revision. Their `observation_schema_sha256` differs from the current
+`tools/psx_match_reference.inc` hash, so today's fixture generator refuses them;
+that drift predates this checkpoint and would need a fresh original audit to
+regenerate. The loader still accepts view-less exports (covered by
+`tests/test_reference_replay.py`).

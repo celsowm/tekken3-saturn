@@ -4,6 +4,8 @@ import argparse,hashlib,json,struct
 from pathlib import Path
 
 SCHEMA_FILES=('tools/psx_match_reference.inc','tools/psx_ground_eval_fields.h','tools/psx_round_flow_eval_fields.h')
+VIEW_HEADER=12
+VIEW_BYTES=38
 
 def load(root):
     manifest=json.loads((root/'manifest.json').read_text())
@@ -25,6 +27,23 @@ def load(root):
            not 1<=r[9]<=65535 or (len(r)==12 and any(v not in (0,1) for v in r[10:12]))
            for r in rows):
         raise ValueError('invalid input/frame/field-count word')
+    views=None
+    if 'views.bin' in manifest.get('files',{}):
+        data=(root/'views.bin').read_bytes()
+        if hashlib.sha256(data).hexdigest()!=manifest['files']['views.bin']:
+            raise ValueError('changed private reference export: views.bin')
+        if len(data)<16 or data[:8]!=b'T3VIEWS\0':
+            raise ValueError('invalid bounded reference draw trace')
+        count=struct.unpack_from('<I',data,8)[0]
+        screens_at=12+VIEW_BYTES*count
+        if not 1<=count<=256 or len(data)<screens_at+4 or \
+                struct.unpack_from('<I',data,screens_at)[0]!=len(rows) or \
+                len(data)!=screens_at+4+4*len(rows):
+            raise ValueError('invalid bounded reference draw trace')
+        ticks=[struct.unpack_from('<I',data,12+VIEW_BYTES*i)[0] for i in range(count)]
+        if ticks!=sorted(set(ticks)) or ticks[-1]>=len(rows):
+            raise ValueError('invalid reference view ticks')
+        views=(data[12:screens_at],data[screens_at+4:])
     seed=(root/'seed.ranges').read_bytes()
     if len(seed)<12 or seed[:8]!=b'T3RANGES':raise ValueError('invalid compact seed')
     count=struct.unpack_from('<I',seed,8)[0];at=12
@@ -38,7 +57,7 @@ def load(root):
         if any(address<end and start<address+size for start,end in spans):raise ValueError('overlapping seed spans')
         spans.append((address,address+size));at+=size
     if at!=len(seed):raise ValueError('trailing seed bytes')
-    return manifest,rows,seed
+    return manifest,rows,seed,views
 
 def emit_bytes(name,data):
     data=data or b'\0'
@@ -46,7 +65,7 @@ def emit_bytes(name,data):
         '    '+','.join(map(str,data[i:i+24]))+',\n' for i in range(0,len(data),24))+'};\n'
 
 def generate(root,out):
-    manifest,rows,seed=load(root)
+    manifest,rows,seed,views=load(root)
     addresses=json.loads((root/'seed-addresses.json').read_text())
     if set(addresses)!={'step_x','step_z','previous','ramp'} or any(
             not isinstance(v,int) or not 0x80000000<=v<0x80200000 for v in addresses.values()):
@@ -70,14 +89,21 @@ typedef struct {uint16_t tick,words[10];} t3_reference_event_t;
 '''
     text+=f'#define T3_REFERENCE_TICKS {len(rows)}u\n#define T3_REFERENCE_FIRST_FRAME {rows[0][0]}u\n'
     text+=f'#define T3_REFERENCE_HAS_SIDES {int(len(rows[0])==12)}\n'
+    view_count=len(views[0])//VIEW_BYTES if views is not None else 0
+    text+=f'#define T3_REFERENCE_HAS_VIEW {int(view_count!=0)}\n'
+    text+=f'#define T3_REFERENCE_VIEWS {view_count}u\n'
     identity=hashlib.sha256((root/'manifest.json').read_bytes()).digest()
     text+='#define T3_REFERENCE_FIXTURE_ID {'+','.join(map(str,identity))+'}\n'
     for name,value in addresses.items():text+=f'#define T3_REFERENCE_{name.upper()} {value}u\n'
     text+=emit_bytes('t3_reference_seed',seed)+emit_bytes('t3_reference_deltas',deltas)
+    if views is not None:
+        text+=emit_bytes('t3_reference_views',views[0])+emit_bytes('t3_reference_screens',views[1])
     text+=f'#define T3_REFERENCE_EVENTS {len(events)}u\nstatic const t3_reference_event_t t3_reference_events[] = {{\n'
     text+=''.join('    {'+str(t)+',{'+','.join(map(str,v))+'}},\n' for t,v in events)+'};\n#endif\n'
     out.parent.mkdir(parents=True,exist_ok=True);out.write_text(text)
     return dict(ticks=len(rows),events=len(events),seed_bytes=len(seed),delta_bytes=len(deltas),
+        view_bytes=len(views[0]) if views is not None else 0,
+        screen_bytes=len(views[1]) if views is not None else 0,
         input_bytes=len(events)*22,expected_state_bytes_in_image=0,trace_sha256=manifest['trace_sha256'])
 
 if __name__=='__main__':

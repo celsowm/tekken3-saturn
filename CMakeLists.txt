@@ -597,6 +597,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             message(FATAL_ERROR "Reference replay requires live original combat and its own external input fixture")
         endif()
         set(_t3_reference "${CMAKE_BINARY_DIR}/generated/private_reference/t3_reference_fixture.h")
+        set(_t3_reference_views "")
+        if(EXISTS "${T3_LOCAL_REFERENCE_REPLAY}/views.bin")
+            set(_t3_reference_views "${T3_LOCAL_REFERENCE_REPLAY}/views.bin")
+        endif()
         add_custom_command(OUTPUT "${_t3_reference}"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_reference_replay.py"
                 "${T3_LOCAL_REFERENCE_REPLAY}" "${_t3_reference}"
@@ -604,6 +608,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${T3_LOCAL_REFERENCE_REPLAY}/manifest.json"
                 "${T3_LOCAL_REFERENCE_REPLAY}/inputs.tsv" "${T3_LOCAL_REFERENCE_REPLAY}/seed.ranges"
                 "${T3_LOCAL_REFERENCE_REPLAY}/seed-addresses.json" "${T3_LOCAL_REFERENCE_REPLAY}/expected.sha256"
+                ${_t3_reference_views}
                 "${CMAKE_SOURCE_DIR}/tools/psx_match_reference.inc"
                 "${CMAKE_SOURCE_DIR}/tools/psx_ground_eval_fields.h"
                 "${CMAKE_SOURCE_DIR}/tools/psx_round_flow_eval_fields.h"

@@ -113,6 +113,9 @@ typedef struct t3_psx_match {
     uint8_t round_gap; /* FightMain frames since the round ended (0..2) */
     /* Without a fight camera: the screen x supplied by the frames. */
     uint8_t screen_known;int16_t screen_x[2];
+    /* Diagnostic: this tick's fighter draw consumed frame->fighter_view
+     * (the host exports that view into the sparse reference fixture). */
+    uint8_t frame_view_used;
     uint32_t pair_distance; /* PairwiseDistances' pair table (0x8009EA08) */
     uint32_t frame_counter; /* g_frameCounter of the frame being stepped */
     uint32_t fighter_distance; /* g_fighterDistance: fighter 0's after PairwiseDistances */

@@ -114,6 +114,36 @@ static int reference_input(uint32_t tick,t3_input_t* first,t3_input_t* second,
     *frame=(t3_psx_match_frame_t){.frame_counter=g_reference_source_frame,
         .physical={w[4],w[5]},.pressed={w[6],w[7]},
         .side_known=T3_REFERENCE_HAS_SIDES,.side={(uint8_t)w[8],(uint8_t)w[9]}};
+#if defined(T3_REFERENCE_HAS_VIEW) && T3_REFERENCE_HAS_VIEW
+    /* Per-tick screen x the fighter draw left (+0x1278): the external state
+     * PairwiseDistances reads. Sparse 38-byte view records additionally carry
+     * the previous CameraFrame view for the ticks whose RoundFlow draw uses it. */
+    const uint8_t* s=t3_reference_screens+4u*tick;
+    frame->screen_known=1;
+    frame->screen_x[0]=(int16_t)(uint16_t)(s[0]|(uint16_t)s[1]<<8);
+    frame->screen_x[1]=(int16_t)(uint16_t)(s[2]|(uint16_t)s[3]<<8);
+    unsigned lo=0,hi=T3_REFERENCE_VIEWS;
+    while(lo<hi) {
+        unsigned mid=(lo+hi)/2;const uint8_t* r=t3_reference_views+38u*mid;
+        uint32_t t=(uint32_t)r[0]|(uint32_t)r[1]<<8|(uint32_t)r[2]<<16|(uint32_t)r[3]<<24;
+        if(t<tick)lo=mid+1;else hi=mid;
+    }
+    if(lo<T3_REFERENCE_VIEWS) {
+        const uint8_t* p=t3_reference_views+38u*lo;
+        uint32_t t=(uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+        if(t==tick) {
+            static t3_psx_camera_matrix_t view;unsigned at=4;
+            for(unsigned r=0;r<3;++r)for(unsigned k=0;k<3;++k,at+=2)
+                view.m[r][k]=(int16_t)(uint16_t)(p[at]|(uint16_t)p[at+1]<<8);
+            for(unsigned k=0;k<3;++k,at+=4)
+                view.t[k]=(int32_t)((uint32_t)p[at]|((uint32_t)p[at+1]<<8)|
+                    ((uint32_t)p[at+2]<<16)|((uint32_t)p[at+3]<<24));
+            view.h=(int32_t)((uint32_t)p[at]|((uint32_t)p[at+1]<<8)|
+                ((uint32_t)p[at+2]<<16)|((uint32_t)p[at+3]<<24));
+            frame->fighter_view=&view;
+        }
+    }
+#endif
 #if defined(T3_REFERENCE_DEBUG_VALUES)
     if(tick==T3_REFERENCE_DEBUG_TICK) {
         const uint32_t values[8]={tick,g_reference_cursor,w[0],w[1],w[2],w[3],w[4],w[5]};

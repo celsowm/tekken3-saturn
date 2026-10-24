@@ -9,8 +9,11 @@ import collections
 import hashlib
 import json
 import os
+import struct
 import subprocess
 from pathlib import Path
+
+from build_reference_replay import VIEW_BYTES, VIEW_HEADER
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,7 +25,8 @@ def run(case, evaluator, export=None):
     env = dict(os.environ)
     if export is not None:
         export.mkdir(parents=True, exist_ok=True)
-        (export / 'manifest.json').unlink(missing_ok=True)
+        for name in ('manifest.json', 'views.bin'):
+            (export / name).unlink(missing_ok=True)
         env['T3_REFERENCE_OUTPUT'] = str(export.resolve())
     out = subprocess.run(args, capture_output=True, text=True, env=env)
     (case / 'native.jsonl').write_text(out.stdout)
@@ -33,7 +37,23 @@ def run(case, evaluator, export=None):
 
 def write_reference_manifest(case, evaluator, export, rows):
     """Publish a Saturn fixture only after every original-code tick matched."""
-    names = ('seed.ranges', 'seed-addresses.json', 'inputs.tsv', 'expected.sha256')
+    names = ['seed.ranges', 'seed-addresses.json', 'inputs.tsv', 'expected.sha256']
+    views = export / 'views.bin'
+    if views.exists():
+        data = views.read_bytes()
+        if len(data) < VIEW_HEADER + 4 or data[:8] != b'T3VIEWS\0':
+            raise ValueError('reference draw trace is truncated')
+        count = struct.unpack_from('<I', data, 8)[0]
+        if not 1 <= count <= 256 or \
+                len(data) != VIEW_HEADER + VIEW_BYTES * count + 4 + 4 * len(rows):
+            raise ValueError('reference view count differs from the original fight')
+        ticks = [struct.unpack_from('<I', data, VIEW_HEADER + VIEW_BYTES * i)[0]
+                 for i in range(count)]
+        if ticks != sorted(set(ticks)) or ticks[-1] >= len(rows):
+            raise ValueError('reference view ticks are not ordered')
+        if struct.unpack_from('<I', data, VIEW_HEADER + VIEW_BYTES * count)[0] != len(rows):
+            raise ValueError('reference screen count differs from the original fight')
+        names.append('views.bin')
     files = {name: hashlib.sha256((export / name).read_bytes()).hexdigest() for name in names}
     if len((export / 'expected.sha256').read_bytes()) != 32 * len(rows):
         raise ValueError('reference digest count differs from the original fight')

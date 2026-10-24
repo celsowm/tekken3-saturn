@@ -6,7 +6,7 @@ import saturn_probe
 from build_reference_replay import load
 
 def compare(root,export,observation):
-    manifest,rows,_=load(export)
+    manifest,rows,_,_=load(export)
     identity=hashlib.sha256((export/'manifest.json').read_bytes()).digest()
     if (root/'reference-fixture.bin').read_bytes()!=identity:
         raise ValueError('guest fixture identity differs from the selected export')

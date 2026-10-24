@@ -125,13 +125,23 @@ int main(int argc,char** argv) {
         }
         const t3_psx_match_frame_t video={frame,{(uint16_t)physical0,(uint16_t)physical1},{(uint16_t)edge0,(uint16_t)edge1},
                                           fields==13,{(uint8_t)side0,(uint8_t)side1},
-                                          1,{i16(0x800A9228u+0x1278u),i16(0x800A9228u+0x188Cu+0x1278u)},
+                                          !getenv("T3_REPLAY_NO_SCREEN"),
+                                          {i16(0x800A9228u+0x1278u),i16(0x800A9228u+0x188Cu+0x1278u)},
                                           viewed?&view:NULL};
         ai_frame=call;
         int ok=original_round_flow?
             (getenv("T3_REPLAY_IN_PLACE")?t3_psx_match_step_original_in_place(&game,p0,p1,&video):
                                      t3_psx_match_step_original(&game,p0,p1,&video)):
             t3_psx_match_step(&game,p0,p1);
+        /* The screen x this tick's PairwiseDistances reads (+0x1278). */
+        if(reference_views && !reference_add_screen(i16(0x800A9228u+0x1278u),
+                                                    i16(0x800A9228u+0x188Cu+0x1278u)))
+            {fclose(input);return 2;}
+        /* Only ticks whose RoundFlow draw consumed the view get a view record. */
+        if(reference_views && game.frame_view_used) {
+            if(!reference_write_view(rows,&view)){fclose(input);return 2;}
+            ++reference_view_count;
+        }
         if(!snapshot(path)){fclose(input);return 2;}
         printf("{\"call\":%u,\"source_frame\":%u,\"native_tick\":%u,\"supported\":%s,\"clear_inputs\":[%u,%u],\"body_checked\":true,\"blend_checked\":%s,\"differences\":[",call,frame,game.ticks,ok?"true":"false",game.fighter[0].input.direction_cleared,game.fighter[1].input.direction_cleared,config.rsqrt.data?"true":"false");
         differences=0;
@@ -195,6 +205,7 @@ int main(int argc,char** argv) {
     }
     fclose(input);
     ai_tape_close();
+    if(!reference_close_views())return 2;
     if(reference_hashes && (fclose(reference_hashes) || fclose(reference_inputs)))return 2;
     if(reference_debug_values && fclose(reference_debug_values))return 2;
     if(reference_debug_labels && fclose(reference_debug_labels))return 2;

@@ -822,6 +822,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     t3_psx_round_flow_actions_t actions;
     t3_psx_replay_frame_t record[2]={{0}};
     n->frame_counter=frame->frame_counter;
+    n->frame_view_used=0;
     t3_sim_context((uint32_t)n->flow.state,(uint32_t)n->replay.mode,
         (uint32_t)n->fighter[0].body.active|((uint32_t)n->fighter[1].body.active<<1));
     if(n->config->replay_storage && n->config->replay_storage->epoch!=n->replay.epoch)return 0;
@@ -912,10 +913,11 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         t3_psx_camera_matrix_t view;
         const t3_psx_camera_matrix_t* drawn=NULL;
         int16_t* screen=NULL;
+        unsigned drew=0;
         if(n->config->camera) {
             t3_psx_match_fighter_view(&n->camera,&view);
             drawn=&view;screen=n->camera.screen_x;
-        } else if(frame->fighter_view && n->screen_known) {
+        } else if(frame->fighter_view) {
             drawn=frame->fighter_view;screen=n->screen_x;
         }
         n->flow.camera=old_camera;n->flow.blend_hold=20;
@@ -923,8 +925,13 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
             n->fighter[i].body.active=old_active[i];
             if(old_active[i] && (!place(n,&n->fighter[i]) ||
                 (n->config->enable_body && !compose(n,i))))return 0;
-            if(old_active[i] && drawn)t3_psx_match_draw_screen(n,i,drawn,&screen[i]);
+            if(old_active[i] && drawn) {
+                t3_psx_match_draw_screen(n,i,drawn,&screen[i]);++drew;
+            }
         }
+        /* A supplied view is the only screen source without a camera. */
+        if(drawn && drew)n->screen_known=1;
+        n->frame_view_used=(uint8_t)(drawn && drew);
         n->flow.camera=camera;n->flow.blend_hold=hold;
         for(unsigned i=0;i<2;++i)n->fighter[i].body.active=(uint8_t)n->round_actor[i].active;
     }
