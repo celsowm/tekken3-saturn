@@ -11,6 +11,10 @@ typedef struct {
     /* The fighters' bank section 7 (camera choices) and section 8 streams. */
     const t3_psx_camera_choice_t* bank_choices;size_t bank_choice_count;
     const t3_psx_camera_streams_t* bank_streams;
+    /* When P2 uses another character bank, its camera sections differ. */
+    const t3_psx_camera_choice_t* second_bank_choices;size_t second_bank_choice_count;
+    const t3_psx_camera_streams_t* second_bank_streams;
+    const t3_motion_tables_t* spline;
 } t3_psx_fight_camera_config_t;
 
 typedef struct {
@@ -22,6 +26,7 @@ typedef struct {
     int16_t phase;                   /* the director's g_cameraPhase */
     int16_t flow;                    /* the round flow's phase last seen */
     int16_t screen_x[2];             /* fighter +0x1278 */
+    t3_psx_backdrop_turn_t backdrop; /* the panorama's turn after the frame */
     uint8_t started;
 } t3_psx_fight_camera_t;
 #endif

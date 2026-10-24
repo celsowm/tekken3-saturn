@@ -51,14 +51,10 @@ static int safe_vec(t3_vec3i_t v) {
            v.y>=-T3_PSX_UNIT_LIMIT && v.y<=T3_PSX_UNIT_LIMIT &&
            v.z>=-T3_PSX_UNIT_LIMIT && v.z<=T3_PSX_UNIT_LIMIT;
 }
+/* Callers pass |v[k]| <= T3_PSX_UNIT_LIMIT (safe_vec or a 15-bit split). */
 static void mvmva(const t3_psx_matrix_t* m,const int32_t v[3],int16_t out[3]) {
     unsigned i;
-    for(i=0;i<3u;++i) {
-        int64_t dot=(int64_t)m->m[i][0]*v[0]+
-                    (int64_t)m->m[i][1]*v[1]+
-                    (int64_t)m->m[i][2]*v[2];
-        out[i]=sat16(asr(dot,12u));
-    }
+    for(i=0;i<3u;++i)out[i]=sat16(t3_psx_dot12(m->m[i],v));
 }
 static int compose(frame_t* out,const frame_t* p,
                    const t3_psx_matrix_t* local,t3_vec3i_t off) {
@@ -114,15 +110,16 @@ static int limb_target(const int16_t pose[49],unsigned start,
 }
 static int square_root0(uint32_t a,const t3_psx_ik_tables_t* table,int32_t* out) {
     unsigned lz=0u,shift,x;
-    uint32_t mant,value;
+    uint32_t mant,value,probe=a;
     if(a==0u){*out=0;return 1;}
-    while((a & (0x80000000u>>lz))==0u && lz<31u)++lz;
+    /* Shift the value, not the mask: the SH-2 has no variable shift. */
+    while(!(probe&0x80000000u) && lz<31u){probe<<=1;++lz;}
     lz&=~1u;
     x=lz<24u?a>>(24u-lz):a<<(lz-24u);
     if(x<SQRT_FIRST || x>0xFFu)return 0;
     shift=(31u-lz)>>1u;
     mant=(uint32_t)(int32_t)read16(table->ik_blob+(x-SQRT_FIRST)*2u);
-    value=(uint32_t)((((uint64_t)mant<<shift)&0xFFFFFFFFULL)>>12u);
+    value=(mant<<shift)>>12u; /* shift <= 15: the low 32 bits of the 64-bit form */
     *out=(int32_t)value;
     return 1;
 }
@@ -141,7 +138,8 @@ static void bend(t3_psx_matrix_t* m,int32_t sine,int32_t cosine) {
                                                  (int64_t)b*cosine,12u));
     }
 }
-/* Return 1=solved, 0=too short / singular, -1=invalid coefficient table.
+/* Return 1=solved, 2=too short to bend (upper written, lower left as it was),
+ * 0=singular (neither written), -1=invalid coefficient table.
  * Original integer intermediate wraps are intentional, see research/pose.py. */
 static int solve(const int32_t target[3],int16_t swivel,int arm,
                  const t3_psx_ik_tables_t* table,
@@ -192,13 +190,13 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
     upper->m[2][2]=signed16((uint16_t)asr(w32(-(int64_t)ss*w+(int64_t)cs*v),12u));
     if(arm) {
         if(length>0x215){identity(lower);return 1;}
-        if(length<0x47)return 0;
+        if(length<0x47)return 2;
         d=asr(w32((int64_t)inv*0x9204),11u);
         cos_a=asr(w32(((int64_t)length*0x800+d)*0xD9),16u);
         cos_b=asr(w32(((int64_t)length*0x800-d)*0x11A),16u);
     } else {
         if(length>0x37B){identity(lower);return 1;}
-        if(length<3)return 0;
+        if(length<3)return 2;
         d=asr(w32((int64_t)inv*0x6F8),11u);
         cos_a=asr(w32(((int64_t)length*0x800+d)*0x92),16u);
         cos_b=asr(w32(((int64_t)length*0x800-d)*0x93),16u);
@@ -241,11 +239,11 @@ int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
     frame_t root,chest,right,left,hips,fr[4];
     int32_t targets[4][3];
     uint32_t mask;
-    unsigned i,j,k;
+    unsigned i,j;
     if(!pose || !input || !output || !output_mask)return -1;
     if(!table_ok(table))return 0;
     if((input_mask & 0x24CCFu)!=0x24CCFu)return -1; /* all 10 FK slots */
-    for(i=0;i<T3_PSX_ROTATION_SLOTS;++i)result[i]=input[i];
+    __builtin_memcpy(result,input,sizeof(result)); /* one call, not one per matrix */
     for(i=0;i<3u;++i)
         for(j=0;j<3u;++j)
             basis.m[i][j]=read16(table->ik_blob+T3_PSX_SQRT_BYTES+
@@ -278,10 +276,14 @@ int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
         rc=solve(targets[i],pose[k_swivel[i]],i<2u,table,&upper,&lower);
         if(rc<0)return -1;
         if(rc==0)continue; /* singular limbs are unknown, not identity */
-        result[k_upper[i]]=upper;result[k_lower[i]]=lower;
+        result[k_upper[i]]=upper;
+        mask|=(uint32_t)1u<<k_upper[i];
+        /* IkSolveLimb leaves the lower slot as it was: known only if supplied. */
+        if(rc==2)continue;
+        result[k_lower[i]]=lower;
         mask|=((uint32_t)1u<<k_upper[i])|((uint32_t)1u<<k_lower[i]);
     }
-    for(k=0;k<T3_PSX_ROTATION_SLOTS;++k)output[k]=result[k];
+    __builtin_memcpy(output,result,sizeof(result));
     *output_mask=mask;
     return 1;
 }

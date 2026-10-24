@@ -2,19 +2,24 @@
 """Convert private USA stg_a ARC/TMD into a Saturn NBG0 panorama and RBG0 tile.
 
 Only user-supplied files are read. No retail data is shipped with this tool.
-The panorama is a fixed-bearing perspective bake for this port's camera;
-original dynamic panorama parallax and floor distance shading are not emulated.
+The panorama becomes a 360-degree cylinder picture baked from above the
+fighters' midpoint (panorama_raycast.py); src/game/stage_backdrop.c maps it
+onto the screen line by line. Floor distance shading is not emulated.
 """
 import argparse
 import hashlib
 import json
-import math
 from pathlib import Path
 import struct
 
 from psx_character_textures import upload_block
 
-WIDTH, HEIGHT, STRIDE = 320, 224, 512
+# The backdrop cylinder: an 8-bit 1024 x 256 NBG0 bitmap whose rows 240-255
+# stay free for the VDP2 tables (stage_vdp2.c). The tangent range covers the
+# fight camera's pitches and eye heights (tools/psx_match_camera_eval.c).
+COLUMNS, ROWS = 1024, 240
+BAKE_HEIGHT = 1100
+TAN_TOP, ROWS_PER_TAN = 0.80, 200.0
 US_EXE_SHA = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
 PAUL_ARC_SHA = '7e26ca6f72af5d38164ed47a092338847aea5ec2c0e2216601dd2b5b0b2e9e56'
 PAUL_TMD_SHA = '6b0f2c413ca02c5a47182733b1f37afe4f0eec28c545a7fc0520b222351c382b'
@@ -117,56 +122,38 @@ def primitives(tmd):
     return result
 
 
-def panorama(tmd, vram, height):
-    pixels = [0x8000] * (STRIDE * HEIGHT)
-    scale = 96 / 65536
-    ey, ez = 2.0, -5.6
-    length = math.hypot(.5, 5.6)
-    sy, cz = -.5 / length, 5.6 / length
-    focal = HEIGHT / 2 / math.tan(math.radians(22.5))
-    def view(v):
-        (x, y, z), (u, vv) = v
-        wx, wy, wz = x * 8 * scale, -(y * 8 + height) * scale, -z * 8 * scale
-        return [-wx, cz * (wy - ey) - sy * (wz - ez), sy * (wy - ey) + cz * (wz - ez), u, vv]
-    def clipped(poly):
-        out = []
-        for a, b in zip(poly, poly[1:] + poly[:1]):
-            if a[2] >= .25:
-                out.append(a)
-            if (a[2] >= .25) != (b[2] >= .25):
-                t = (.25 - a[2]) / (b[2] - a[2])
-                out.append([a[i] + t * (b[i] - a[i]) for i in range(5)])
-        return out
-    def triangle(points, rgb, material):
-        p = [(WIDTH/2 + focal*v[0]/v[2], HEIGHT/2 - focal*v[1]/v[2], v[3], v[4]) for v in points]
-        (ax, ay, au, av), (bx, by, bu, bv), (cx, cy, cu, cv) = p
-        det = (by-cy)*(ax-cx)+(cx-bx)*(ay-cy)
-        if abs(det) < 1e-9:
-            return
-        for y in range(max(0, math.ceil(min(ay, by, cy))), min(HEIGHT-1, math.floor(max(ay, by, cy)))+1):
-            for x in range(max(0, math.ceil(min(ax, bx, cx))), min(WIDTH-1, math.floor(max(ax, bx, cx)))+1):
-                a = ((by-cy)*(x-cx)+(cx-bx)*(y-cy))/det
-                b = ((cy-ay)*(x-cx)+(ax-cx)*(y-cy))/det
-                c = 1-a-b
-                if min(a, b, c) < -1e-7:
-                    continue
-                if material:
-                    color = texel(vram, *material, round(a*au+b*bu+c*cu), round(a*av+b*bv+c*cv))
-                    if not color:
-                        continue
-                    channels = [min(31, ((color >> (5*k)) & 31) * rgb[k] // 128) for k in range(3)]
-                else:
-                    channels = [n >> 3 for n in rgb]
-                pixels[y*STRIDE+x] = 0x8000 | sum(n << (5*k) for k, n in enumerate(channels))
-    # The original links every panorama packet into one OT bucket (reverse order).
-    packets = primitives(tmd)
-    for rgb, material, corners in reversed(packets):
-        for ids in ([(0, 1, 2)] if len(corners) == 3 else [(0, 1, 2), (1, 3, 2)]):
-            poly = clipped([view(corners[i]) for i in ids])
-            for i in range(1, len(poly)-1):
-                triangle((poly[0], poly[i], poly[i+1]), rgb, material)
-    return pixels, len(packets)
-
+def cylinder(tmd, vram, height):
+    """The panorama as seen from BAKE_HEIGHT above the midpoint, one 360-degree
+    picture: column c looks along atan2(x, z) = 2 pi (c + 0.5) / COLUMNS, row r
+    at the elevation tangent TAN_TOP - (r + 0.5) / ROWS_PER_TAN."""
+    import numpy as np
+    from panorama_raycast import Panorama, cylinder_dirs
+    scene = Panorama(tmd, vram, height)
+    dirs = cylinder_dirs(COLUMNS, ROWS, TAN_TOP, ROWS_PER_TAN)
+    _, colour, _ = scene.cast((0.0, -float(BAKE_HEIGHT), 0.0), dirs)
+    opaque = colour != 0
+    distinct = sorted(set(int(c) for c in colour[opaque]))
+    if len(distinct) <= 255:
+        palette = distinct
+        lookup = {c: i for i, c in enumerate(palette)}
+        chosen = np.array([lookup[int(c)] for c in colour[opaque]])
+    else:
+        # One 8-bit CRAM bank: median cut with k-means refinement, no dither
+        # (the layer is magnified about 2.6 times, so patterns would show).
+        from PIL import Image
+        rgb = np.stack([(colour[opaque] >> (5*k)) & 31 for k in range(3)], axis=1).astype(np.uint8)*8
+        strip = Image.fromarray(rgb.reshape(1, -1, 3), 'RGB')
+        quantized = strip.quantize(colors=255, method=Image.Quantize.MEDIANCUT, kmeans=8,
+                                   dither=Image.Dither.NONE)
+        levels = np.array(quantized.getpalette()[:255*3]).reshape(-1, 3)//8
+        palette = [int(0x8000 | r | g << 5 | b << 10) for r, g, b in levels]
+        chosen = np.array(quantized).reshape(-1)
+    indices = np.zeros(len(colour), dtype=np.uint8)
+    indices[opaque] = chosen + 1
+    # Largest channel error in 5-bit steps, for the manifest.
+    got = np.array(palette)[chosen]
+    error = max(int(np.abs(((got >> (5*k)) & 31) - ((colour[opaque] >> (5*k)) & 31)).max()) for k in range(3))
+    return bytes(indices), [0] + palette, scene, dict(distinct=len(distinct), max_channel_error=error)
 
 def build(source, output):
     arc_path, tmd_path, exe_path = source/'raw/036.bin', source/'raw/056.bin', source/'SLUS_004.02'
@@ -179,17 +166,34 @@ def build(source, output):
     height = struct.unpack_from('<i', exe, 0x800 + 0x25138 - 0x10000)[0]
     vram, descriptor, tims = read_arc(arc)
     tile, palette, colors = floor_tile(vram, descriptor)
-    background, packets = panorama(tmd, vram, height)
+    picture, picture_palette, scene, quantization = cylinder(tmd, vram, height)
     output.mkdir(parents=True, exist_ok=True)
     # Whole-sector sections avoid restarting unaligned CD reads for each chunk.
-    payload = struct.pack('>16I', 0x54335354, 1, STRIDE, HEIGHT, 64, 64, len(tile), 16, 2048, 4096, 6144, len(background)*2, 0, 0, 0, 0)
-    payload += bytes(2048-len(payload)) + tile + struct.pack('>16H', *palette) + bytes(2016)
-    payload += struct.pack('>'+str(len(background))+'H', *background)
+    sections = dict(tile=2048, floor_palette=4096, picture_palette=6144, picture=8192)
+    payload = struct.pack('>16I', 0x54335354, 2, COLUMNS, ROWS, 64, 64, len(tile), 16,
+                          sections['tile'], sections['floor_palette'], sections['picture_palette'],
+                          len(picture_palette), sections['picture'], len(picture), 0, 0)
+    payload += bytes(sections['tile']-len(payload)) + tile
+    payload += bytes(sections['floor_palette']-len(payload)) + struct.pack('>16H', *palette)
+    payload += bytes(sections['picture_palette']-len(payload)) + struct.pack(f'>{len(picture_palette)}H', *picture_palette)
+    payload += bytes(sections['picture']-len(payload)) + picture
+    payload += bytes(-len(payload) % 2048)
     (output/'PAUL.STG').write_bytes(payload)
-    (output/'t3_local_stage.h').write_text('#ifndef T3_LOCAL_STAGE_H\n#define T3_LOCAL_STAGE_H\n#define T3_STAGE_FILE_BYTES '+str(len(payload))+'u\n#endif\n')
-    manifest = dict(stage='Paul / stg_a', format_version=1, tims=tims, panorama_packets=packets,
-                    panorama_height=height, floor_shading=struct.unpack_from('<h', descriptor, 806)[0],
-                    panorama='Fixed-bearing bake; dynamic source parallax is not reproduced.',
+    half = round(scene.half)
+    (output/'t3_local_stage.h').write_text('\n'.join([
+        '#ifndef T3_LOCAL_STAGE_H', '#define T3_LOCAL_STAGE_H',
+        f'#define T3_STAGE_FILE_BYTES {len(payload)}u',
+        f'#define T3_STAGE_COLUMNS {COLUMNS}u', f'#define T3_STAGE_ROWS {ROWS}u',
+        f'#define T3_STAGE_PICTURE_COLOURS {len(picture_palette)}u',
+        f'#define T3_STAGE_BOX_HALF {half}', f'#define T3_STAGE_BAKE_HEIGHT {BAKE_HEIGHT}',
+        f'#define T3_STAGE_TAN_TOP {round(TAN_TOP*65536)}',
+        f'#define T3_STAGE_ROWS_PER_TAN {round(ROWS_PER_TAN*65536)}',
+        '#endif', '']))
+    manifest = dict(stage='Paul / stg_a', format_version=2, tims=tims, panorama_height=height,
+                    panorama_half=half, cylinder=dict(columns=COLUMNS, rows=ROWS, bake_height=BAKE_HEIGHT,
+                                                      tan_top=TAN_TOP, rows_per_tan=ROWS_PER_TAN,
+                                                      colours=len(picture_palette)-1, **quantization),
+                    floor_shading=struct.unpack_from('<h', descriptor, 806)[0],
                     floor='Original oriented 64x64 repeating tile; distance shading is not reproduced.',
                     sha256={str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in (arc_path,tmd_path,exe_path)},
                     output_sha256=hashlib.sha256(payload).hexdigest(), output_bytes=len(payload))
@@ -197,7 +201,7 @@ def build(source, output):
     try:
         from PIL import Image
         def rgb(c): return tuple(((c >> (5*k)) & 31)*255//31 for k in range(3))
-        im=Image.new('RGB',(STRIDE,HEIGHT));im.putdata([rgb(c) for c in background]);im.crop((0,0,WIDTH,HEIGHT)).save(output/'panorama.png')
+        im=Image.new('RGB',(COLUMNS,ROWS));im.putdata([rgb(picture_palette[i]) for i in picture]);im.save(output/'panorama.png')
         im=Image.new('RGB',(64,64));im.putdata([rgb(c) for c in colors]);im.save(output/'floor.png')
     except ImportError:
         pass

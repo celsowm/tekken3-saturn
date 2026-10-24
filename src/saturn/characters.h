@@ -8,6 +8,15 @@
 
 /* 48 floor faces, 36+ fighter body geometry; generous but bounded. */
 #define T3_SCENE_CAPACITY (T3_FACE_COUNT * 2u + 128u)
+/* With the projected queue, full scene records are needed only for faces
+ * the compiled path cannot draw (near-plane clipping, uncompiled
+ * materials). The measured peak is 225 per frame, in KO close-ups; a face
+ * beyond the bound is dropped and counted in skipped_faces. The Slave
+ * batch asks for at most T3_ACTOR_COLD_FACES of them. */
+#ifndef T3_COLD_FACES
+#define T3_COLD_FACES 640u
+#endif
+#define T3_ACTOR_COLD_FACES 320u
 
 typedef enum {
     T3_CHARACTER_LOAD_MODEL_READY,

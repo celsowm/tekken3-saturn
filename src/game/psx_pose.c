@@ -5,9 +5,6 @@
 
 static const uint8_t k_slots[10]={0u,1u,11u,2u,3u,7u,6u,10u,14u,17u};
 
-static int32_t floor12(int64_t v) {
-    return sat_floor_shift_i64(v,12u);
-}
 static int16_t sat16(int32_t v) {
     return (int16_t)(v>32767 ? 32767 : (v< -32768 ? -32768 : v));
 }
@@ -68,7 +65,7 @@ int T3_SIM_IMPL(t3_psx_pose_fk)(const int16_t pose[T3_PSX_POSE_CHANNELS],
         t3_psx_euler_matrix(pose[ch],pose[ch+1u],pose[ch+2u],table,&result[k_slots[i]]);
         mask|=(uint32_t)1u<<k_slots[i];
     }
-    for(i=0;i<T3_PSX_ROTATION_SLOTS;++i)out[i]=result[i];
+    __builtin_memcpy(out,result,sizeof(result)); /* one call, not one per matrix */
     *valid_slots=mask;
     return 1;
 }
@@ -79,16 +76,66 @@ T3_SIM_WRAP(int,t3_psx_pose_fk,T3_SIM_FK,
                    uint32_t* valid_slots),
     (pose,table,out,valid_slots))
 
+#define T3_BITS4(n) UINT32_C(1)<<(n),UINT32_C(1)<<((n)+1),UINT32_C(1)<<((n)+2),UINT32_C(1)<<((n)+3)
+const uint32_t t3_psx_bits[32]={T3_BITS4(0),T3_BITS4(4),T3_BITS4(8),T3_BITS4(12),
+    T3_BITS4(16),T3_BITS4(20),T3_BITS4(24),T3_BITS4(28)};
+#undef T3_BITS4
+
+static int small_entries(const t3_psx_matrix_t* m) {
+    const int16_t* v=&m->m[0][0];
+    uint32_t outside=0u;
+    /* v+16384 leaves 0..32767 only for v in -16384..16383. */
+    for(unsigned k=0;k<9u;++k)outside|=(uint32_t)(v[k]+16384)&~32767u;
+    return outside==0u;
+}
+#if defined(__sh__)
+/* sat16(floor((a . b) / 4096)) for halfword triples: MAC.W keeps the exact
+ * 64-bit sum (S is clear), which the two C paths below also compute. */
+static inline int16_t dot3_12(const int16_t* a,const int16_t* b) {
+    int32_t hi,lo;
+    __asm__("clrmac\n\tmac.w @%0+,@%1+\n\tmac.w @%0+,@%1+\n\tmac.w @%0+,@%1+\n\t"
+            "sts mach,%2\n\tsts macl,%3"
+            :"+r"(a),"+r"(b),"=r"(hi),"=r"(lo)
+            :"m"(*(const int16_t(*)[3])a),"m"(*(const int16_t(*)[3])b)
+            :"mach","macl");
+    if(hi!=lo>>31)return hi<0?-32768:32767;
+    return sat16(t3_psx_floor12(lo));
+}
+#endif
 int t3_psx_mul_rot(const t3_psx_matrix_t* a,const t3_psx_matrix_t* b,
                    t3_psx_matrix_t* out) {
     t3_psx_matrix_t r={0};
-    unsigned i,j,k;
+    unsigned i,j;
     if(!a || !b || !out)return 0;
+#if defined(__sh__)
+    {
+        const int16_t bt[3][3]={{b->m[0][0],b->m[1][0],b->m[2][0]},
+            {b->m[0][1],b->m[1][1],b->m[2][1]},{b->m[0][2],b->m[1][2],b->m[2][2]}};
+        for(i=0;i<3u;++i)
+            for(j=0;j<3u;++j)r.m[i][j]=dot3_12(a->m[i],bt[j]);
+        t3_psx_matrix_copy(out,&r);
+        return 1;
+    }
+#endif
+    if(small_entries(a) && small_entries(b)) {
+        /* |entry| <= 16384: three products sum within 32 bits. */
+        for(j=0;j<3u;++j)
+            for(i=0;i<3u;++i)
+                r.m[i][j]=sat16(t3_psx_floor12(a->m[i][0]*b->m[0][j]+
+                    a->m[i][1]*b->m[1][j]+a->m[i][2]*b->m[2][j]));
+        t3_psx_matrix_copy(out,&r);
+        return 1;
+    }
+    /* Each 16x16 product fits 32 bits. floor(sum/4096) is the sum of each
+     * product's floor plus the carry of their low 12 bits, so the SH-2 needs
+     * no 64-bit arithmetic for the same result. */
     for(j=0;j<3u;++j)
         for(i=0;i<3u;++i) {
-            int64_t dot=0;
-            for(k=0;k<3u;++k)dot+=(int64_t)a->m[i][k]*b->m[k][j];
-            r.m[i][j]=sat16(floor12(dot));
+            const int32_t p0=(int32_t)a->m[i][0]*b->m[0][j];
+            const int32_t p1=(int32_t)a->m[i][1]*b->m[1][j];
+            const int32_t p2=(int32_t)a->m[i][2]*b->m[2][j];
+            r.m[i][j]=sat16(sat_floor_shift_i32(p0,12u)+sat_floor_shift_i32(p1,12u)+sat_floor_shift_i32(p2,12u)+
+                (int32_t)((uint32_t)((p0&4095)+(p1&4095)+(p2&4095))>>12));
         }
     t3_psx_matrix_copy(out,&r);
     return 1;
@@ -100,20 +147,18 @@ static int valid_vec(t3_vec3i_t p) {
 }
 static int place(const t3_psx_joint_t* parent,const t3_vec3i_t* delta,
                  t3_vec3i_t* out) {
-    int64_t coords[3];
-    int64_t x[3]={(int64_t)delta->x,delta->y,delta->z};
-    unsigned i,j;
+    int32_t coords[3];
+    const int32_t x[3]={delta->x,delta->y,delta->z}; /* within the unit limit */
+    unsigned i;
     for(i=0;i<3u;++i) {
-        int64_t sum=0;
-        for(j=0;j<3u;++j)sum+=(int64_t)parent->rotation.m[i][j]*x[j];
-        coords[i]=(int64_t)(i==0u?parent->origin.x:
-                (i==1u?parent->origin.y:parent->origin.z))+floor12(sum);
+        coords[i]=(i==0u?parent->origin.x:(i==1u?parent->origin.y:parent->origin.z))+
+            t3_psx_dot12(parent->rotation.m[i],x);
         if(coords[i]<-T3_PSX_UNIT_LIMIT || coords[i]>T3_PSX_UNIT_LIMIT)
             return 0;
     }
-    out->x=(int32_t)coords[0];
-    out->y=(int32_t)coords[1];
-    out->z=(int32_t)coords[2];
+    out->x=coords[0];
+    out->y=coords[1];
+    out->z=coords[2];
     return 1;
 }
 int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
@@ -136,15 +181,15 @@ int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PART
         /* Slots 18..21 are costume-attachment rotations: no IK/FK
          * equivalent until attachment dynamics are implemented. */
         if(p->slot>=T3_PSX_ROTATION_SLOTS ||
-           !(valid_slots & ((uint32_t)1u<<p->slot)))continue;
-        if(p->parent>=0 && !(mask & ((uint32_t)1u<<p->parent)))continue;
+           !(valid_slots & t3_psx_bit(p->slot)))continue;
+        if(p->parent>=0 && !(mask & t3_psx_bit((unsigned)p->parent)))continue;
         par=p->parent<0?root:&result[p->parent];
         if(!t3_psx_mul_rot(&par->rotation,&slots[p->slot],
                            &result[i].rotation) ||
            !place(par,&p->offset,&result[i].origin))return 0;
-        mask|=(uint32_t)1u<<i;
+        mask|=t3_psx_bit(i);
     }
-    for(i=0;i<T3_PSX_DRAW_PARTS;++i)out[i]=result[i];
+    __builtin_memcpy(out,result,sizeof(result)); /* one call, not one per part */
     *valid_parts=mask;
     return 1;
 }
@@ -164,8 +209,8 @@ int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
     uint32_t valid=valid_parts;
     for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i,valid>>=1)if(valid&1u) {
         unsigned slot=parts[i].slot;
-        if(slot>=T3_PSX_DRAW_PARTS || (mask&(1u<<slot)))return 0;
-        result[slot]=in[i];mask|=1u<<slot;
+        if(slot>=T3_PSX_DRAW_PARTS || (mask&t3_psx_bit(slot)))return 0;
+        result[slot]=in[i];mask|=t3_psx_bit(slot);
     }
     for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)out[i]=result[i];
     *valid_slots=mask;return 1;

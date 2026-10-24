@@ -19,7 +19,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
     for(unsigned i=0;i<2;++i) {
         uint32_t b=0x800A9228u+i*0x188Cu;
         t3_psx_fighter_t* f=&game.fighter[i];
-        if(u16(b+0x18)!=0 || u16(b+0xA0)!=3 || u32(b+0x1A4) || u32(b+0x4C)!=u32(b+0x54) ||
+        if(u16(b+0xA0)!=3 || u32(b+0x1A4) || u32(b+0x4C)!=u32(b+0x54) ||
            u16(b+0x404) || u16(b+0x406))return 0;
 #define READ(member,offset,kind) f->ground.member=kind(b+offset);
         T3_GROUND_EVAL_FIELDS(READ)
@@ -31,7 +31,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
         f->vm.clock=(t3_move_clock_t){i16(b+0x58),i16(b+0x50),i16(b+0x5C),i16(b+0x6E),
             i16(b+0x76),i16(b+0x6A),(uint8_t)i16(b+0x92),u8(b+0xDA)};
         f->vm.current_transition=(uint8_t)u16(b+0xA2);f->vm.current_branch_kind=u8(b+0x8B);
-        f->vm.last_entry_frame=i16(b+0x198);
+        f->vm.last_entry_frame=i16(b+0x198);f->vm.branch_window=i16(b+0x6C);
         f->health_q16=i32(b+0x3F4);f->hit_done=u8(b+0x83+1u-i);
         if(original_round_flow) {
             t3_psx_round_actor_t* a=&game.round_actor[i];
@@ -40,7 +40,8 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
             a->script_input=u16(b+0x408);a->costume=i16(b+0x1C);
         }
         f->contact=u8(b+0xD1);f->contact_this_move=u8(b+0x88);f->got_hit=u8(b+0xCE);
-        f->hit_freeze_in=i16(b+0xEE);f->previous_anchor=f->ground.anchor;
+        f->last_guarded=u8(b+0xCF);f->last_counter=u8(b+0xD3);
+        f->hit_freeze_in=i16(b+0xEE);f->previous_anchor=f->ground.anchor;f->side_flag=u8(b+0xC6);
         f->blend_guarded_previous=u8(b+0x89);f->blend_in_reaction=u8(b+0x8A);
         /* USA release-layout mapping of JP HeadLookAt state 0x8009E920.
          * Only the initial full RAM seeds it; expected exits never reseed. */
@@ -125,6 +126,8 @@ static void compare(unsigned i,uint32_t sx,uint32_t sz) {
     REFERENCE_VM(clock.frame_step,0x6E,i16);REFERENCE_VM(clock.ballistic,0x92,i16);REFERENCE_VM(current_transition,0xA2,u16);
 #undef REFERENCE_VM
     check(i,"hit","health_q16",f->health_q16,i32(b+0x3F4));
+    check(i,"ground","side_flag",f->side_flag,u8(b+0xC6));
+    check(i,"move","branch_window",f->vm.branch_window,i16(b+0x6C));
     check(i,"move","pending_slot",f->vm.pending_valid?(int)f->vm.pending_slot:-1,u32(b+0x1A4)?i16(b+0x1A0):-1);
     if(f->vm.pending_valid) {
         check(i,"move","queued.transition",f->vm.queued.transition,u16(b+0x19A));
@@ -134,6 +137,7 @@ static void compare(unsigned i,uint32_t sx,uint32_t sz) {
     }
     check(i,"hit","guarded",f->hit.guarded,u8(b+0xCF));
     check(i,"hit","hit_clean",f->hit.hit_clean,u8(b+0xD0));
+    check(i,"hit","counter",f->last_counter,u8(b+0xD3));
     check(i,"hit","hit_done",f->hit_done,u8(b+0x83+1u-i));
     if(config.rsqrt.data) {
 #define BLEND(field,off,kind) check(i,"blend",#field,f->blend.field,kind(b+off))

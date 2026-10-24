@@ -6,8 +6,13 @@
  * joint where the GTE projection does. Generated data is a local build input,
  * never a public fixture.
  *
- *   t3_match_camera_eval [frames]   -> one JSON summary line; exit 0 on pass */
+ *   t3_match_camera_eval [frames [cameras.jsonl [every]]]
+ *       -> one JSON summary line; exit 0 on pass. With a path, every
+ *          `every`-th frame's view (eye relative to the fighters' root
+ *          midpoint, Q12 rows, H and the panorama turn) is written there
+ *          for the backdrop checks. */
 #include "psx_match.h"
+#include "attack_records.h"
 #include "t3_local_divmot.h"
 #include "t3_local_camera.h"
 #include "t3_generated_character.h"
@@ -39,16 +44,22 @@ static int setup(void) {
     tables=t3_local_camera_tables;trig=(t3_psx_trig_t){t3_local_trig_blob,T3_LOCAL_TRIG_BYTES};
     tables.trig=&trig;tables.atan=t3_local_ground_blob;
     tables.sqrt=t3_local_body_blob;tables.sqrt_size=384u;
-    camera=(t3_psx_fight_camera_config_t){&tables,t3_local_camera_bank_choices,
-        T3_LOCAL_CAMERA_BANK_CHOICES,&t3_local_camera_bank_streams};
+    camera=(t3_psx_fight_camera_config_t){
+        .tables=&tables,
+        .bank_choices=t3_local_camera_bank_choices,
+        .bank_choice_count=T3_LOCAL_CAMERA_BANK_CHOICES,
+        .bank_streams=&t3_local_camera_bank_streams};
+    if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)
+        bank.builtin_attacks=common.builtin_attacks=t3_local_combat_attacks;
     config.bank=&bank;config.common=&common;config.sample_cache=&samples;
-    config.ground_tables=(t3_psx_ground_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},
-        t3_local_ground_blob,1025u,t3_local_ground_blob+1025u,T3_LOCAL_GROUND_BYTES-1025u};
+    if(!t3_psx_ground_tables_bind(trig,t3_local_ground_blob,T3_LOCAL_GROUND_BYTES,&config.ground_tables))return 0;
     config.spline=(t3_motion_tables_t){t3_local_spline_blob,T3_LOCAL_SPLINE_BYTES};
     config.sequences=t3_local_sequences;config.sequence_count=T3_LOCAL_SEQUENCE_COUNT;
     config.enable_body=config.enable_combat=1;config.enable_rounds=2;
     config.replay_storage=&history;config.collapse_on_ko=1;
     config.reactions=t3_local_combat_reactions;config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
+    config.close_reactions=t3_local_combat_close;config.close_reactions_size=T3_LOCAL_COMBAT_CLOSE_BYTES;
+    config.throw_victim_slots=t3_local_combat_throws;config.throw_victim_slots_size=T3_LOCAL_COMBAT_THROW_BYTES;
     config.parts[0]=t3_private_actor_parts[0];config.parts[1]=t3_private_actor_parts[1];
     config.ik=(t3_psx_ik_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     config.body_tables=t3_local_body_blob;config.body_tables_size=T3_LOCAL_BODY_BYTES;
@@ -102,7 +113,12 @@ static int saturn_view(const t3_psx_camera_matrix_t* m,const t3_psx_camera_view_
 int main(int argc,char** argv) {
     unsigned frames=argc>1?(unsigned)strtoul(argv[1],0,10):DEFAULT_FRAMES;
     unsigned phases=0,cinematics=0,shakes=0,replays=0,projected=0,overhead=0,run=0;
-    double worst=0,roll=0,low=1e9;uint16_t last[2]={0,0};
+    unsigned every=argc>3?(unsigned)strtoul(argv[3],0,10):15u;
+    double worst=0,roll=0,low=1e9,high=-1e9,height_sum=0,pitch_lo=1e9,pitch_hi=-1e9;
+    int32_t h_lo=1<<30,h_hi=0;uint16_t last[2]={0,0};
+    FILE* dump=argc>2?fopen(argv[2],"w"):0;
+    if(argc>2 && !dump){printf("{\"error\":\"dump\"}\n");return 1;}
+    if(!every)every=1;
     if(!setup()){printf("{\"error\":\"setup\"}\n");return 1;}
     for(run=0;run<frames;++run) {
         t3_input_t p0=pad(0,last),p1=pad(1,last);
@@ -110,8 +126,8 @@ int main(int argc,char** argv) {
         const t3_psx_fight_camera_t* c=&game.camera;
         if(game.flow.state==T3_ROUND_END && game.flow.match_result)break;
         if(!t3_psx_match_step_original_in_place(&game,p0,p1,&fr)) {
-            printf("{\"error\":\"step\",\"frame\":%u,\"phase\":%d,\"flow\":%d,\"replay\":%d}\n",
-                   run,c->phase,game.flow.camera,game.replay.mode);
+            printf("{\"error\":\"step\",\"frame\":%u,\"phase\":%d,\"flow\":%d,\"state\":%d,\"gap\":%u,\"replay\":%d}\n",
+                   run,c->phase,game.flow.camera,(int)game.flow.state,(unsigned)game.round_gap,game.replay.mode);
             return 1;
         }
         phases|=1u<<(c->phase&15);cinematics|=1u<<(c->camera.cinematic&15);
@@ -121,6 +137,25 @@ int main(int argc,char** argv) {
         /* The VDP2 floor needs a level right axis (row 0) and the eye above the floor. */
         roll=fmax(roll,fabs(c->matrix.m[0][1]/4096.0));
         if(-c->camera.view.y<low)low=-c->camera.view.y;
+        if(-c->camera.view.y>high)high=-c->camera.view.y;
+        height_sum+=-c->camera.view.y;
+        if(c->matrix.h<h_lo)h_lo=c->matrix.h;
+        if(c->matrix.h>h_hi)h_hi=c->matrix.h;
+        {
+            /* Pitch of the forward axis (row 2), degrees up. */
+            const double p=atan2(-c->matrix.m[2][1],hypot(c->matrix.m[2][0],c->matrix.m[2][2]))*180/M_PI;
+            pitch_lo=fmin(pitch_lo,p);pitch_hi=fmax(pitch_hi,p);
+        }
+        if(dump && run%every==0) {
+            const int32_t mx=(game.fighter[0].ground.root.x+game.fighter[1].ground.root.x)/2;
+            const int32_t mz=(game.fighter[0].ground.root.z+game.fighter[1].ground.root.z)/2;
+            const int16_t (*r)[3]=c->matrix.m;
+            fprintf(dump,"{\"frame\":%u,\"eye\":[%d,%d,%d],\"rows\":[[%d,%d,%d],[%d,%d,%d],[%d,%d,%d]],"
+                    "\"h\":%d,\"turn\":%d,\"phase\":%d,\"overhead\":%d}\n",run,
+                    (int)(c->camera.view.x-mx),(int)c->camera.view.y,(int)(c->camera.view.z-mz),
+                    r[0][0],r[0][1],r[0][2],r[1][0],r[1][1],r[1][2],r[2][0],r[2][1],r[2][2],
+                    (int)c->matrix.h,(int)c->backdrop.angle,c->phase,c->camera.overhead);
+        }
         for(unsigned i=0;i<2;++i) {
             const t3_psx_joint_t* j=&game.fighter[i].world[SCREEN_JOINT];
             const int32_t p[3]={j->origin.x,j->origin.y,j->origin.z};
@@ -137,9 +172,11 @@ int main(int argc,char** argv) {
     }
     printf("{\"frames\":%u,\"rounds\":%d,\"result\":%d,\"phases\":\"0x%X\",\"cinematics\":\"0x%X\","
            "\"shakes\":%u,\"replays\":%u,\"overhead_frames\":%u,\"projected\":%u,\"worst_px\":%.3f,"
-           "\"max_right_y\":%.4f,\"lowest_eye\":%.0f}\n",
+           "\"max_right_y\":%.4f,\"lowest_eye\":%.0f,\"highest_eye\":%.0f,\"mean_eye\":%.0f,"
+           "\"h\":[%d,%d],\"pitch_deg\":[%.1f,%.1f]}\n",
            run,game.flow.played,game.flow.match_result,phases,cinematics,shakes,replays,overhead,projected,worst,
-           roll,low);
+           roll,low,high,run?height_sum/run:0.0,(int)h_lo,(int)h_hi,pitch_lo,pitch_hi);
+    if(dump)fclose(dump);
     /* The GTE rounds its division; the look-at camera should land within 2 px. */
     return worst<=2.0?0:1;
 }

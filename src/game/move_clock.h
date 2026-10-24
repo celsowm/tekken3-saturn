@@ -31,7 +31,8 @@ typedef struct {
 int t3_move_clock_pending_ready(const t3_move_clock_t* clock,
                                  int16_t entry_frame,uint8_t current_length);
 /* Ground move-start CLOCK effects only. Returns rootMove binding as above.
- * Throw/launch starts (30..34,36) and unknown transitions are unsupported.
+ * Throws (33 thrower, 34 victim) restart at frame 1 like the default case;
+ * 31, 32 and unknown transitions are unsupported.
  * Tracking, reanchoring, pushback, state flags and input-buffer changes are
  * separate fighter responsibilities; this function never invents them. */
 int t3_move_clock_begin(t3_move_clock_t* clock,const t3_move_start_t* start);

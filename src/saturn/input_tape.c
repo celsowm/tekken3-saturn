@@ -5,7 +5,13 @@
 #if defined(T3_CAPTURE_INPUT_TAPE)
 volatile uint32_t g_t3_input_tape_count;
 volatile uint32_t g_t3_input_tape_overflow;
-volatile uint32_t g_t3_input_tape[512][5] __attribute__((section(".wram_l")));
+/* The Slave loop never records here (its CPU input tape is in move_probe.c). */
+#if defined(T3_SLAVE_SIMULATION)
+#define TAPE_RECORDS 1u
+#else
+#define TAPE_RECORDS 512u
+#endif
+volatile uint32_t g_t3_input_tape[TAPE_RECORDS][5] __attribute__((section(".wram_l")));
 #endif
 #if defined(T3_REPLAY_INPUT_TAPE)
 #include "t3_private_input_tape.h"
@@ -29,7 +35,7 @@ void t3_input_tape_step(uint32_t tick,t3_input_t* p0,t3_input_t* p1) {
     uint32_t count=g_t3_input_tape_count;
     if(!count || g_t3_input_tape[count-1u][1]!=p0->held || g_t3_input_tape[count-1u][2]!=p0->pressed ||
        g_t3_input_tape[count-1u][3]!=p1->held || g_t3_input_tape[count-1u][4]!=p1->pressed) {
-        if(count>=512u){g_t3_input_tape_overflow=1;return;}
+        if(count>=TAPE_RECORDS){g_t3_input_tape_overflow=1;return;}
         g_t3_input_tape[count][0]=tick;
         g_t3_input_tape[count][1]=p0->held;g_t3_input_tape[count][2]=p0->pressed;
         g_t3_input_tape[count][3]=p1->held;g_t3_input_tape[count][4]=p1->pressed;

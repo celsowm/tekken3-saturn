@@ -4,7 +4,8 @@
  * C adaptation of integer angles/polar, grounded FighterMovePhysics,
  * _tracking and _guard_state in pinned Tekken3Remake research.
  * Changes: portable typed state, bounded tables, explicit wrap, atomic writes.
- * Unsupported launch/throw/mode-specific behavior is not approximated.
+ * Throw starts (33/34) follow VS rules; mode-specific behavior is not
+ * approximated.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "psx_ground.h"
@@ -20,6 +21,78 @@ static int32_t w32(int64_t n) {
 static int16_t le16(const uint8_t* p) {return s16((int32_t)(p[0]|((uint16_t)p[1]<<8)));}
 static int32_t abs16(int32_t n) {int32_t v=s16(n);return v<0?-v:v;}
 static int32_t floor256(int32_t n) {return sat_floor_shift_i32(n,8u);}
+int t3_psx_ground_tables_bind(t3_psx_trig_t trig,const uint8_t* blob,size_t size,
+                              t3_psx_ground_tables_t* out) {
+    if(!blob || !out || size!=T3_PSX_GROUND_BLOB_BYTES)return 0;
+    *out=(t3_psx_ground_tables_t){trig,blob,T3_PSX_ATAN_BYTES,blob+T3_PSX_ATAN_BYTES,
+        T3_PSX_PUSH_BYTES+T3_PSX_LAUNCH_PUSH_BYTES,
+        blob+T3_PSX_ATAN_BYTES+T3_PSX_PUSH_BYTES+T3_PSX_LAUNCH_PUSH_BYTES};
+    return 1;
+}
+/* ISqrt (0x8002A578): Newton iteration from a power-of-two estimate. */
+static uint32_t isqrt(uint32_t n) {
+    uint64_t guess=1,rest=n,prev;
+    if(!n)return 0;
+    while(guess<rest){guess<<=1;rest>>=1;}
+    for(;;){prev=guess;guess=(n/prev+prev)>>1;if(guess>=prev)return (uint32_t)prev;}
+}
+/* LaunchTrajectory (0x8002F2C8), after fight_math.launch_trajectory: the
+ * flight speed, rise and the entry frame that makes the fall end on the
+ * ground. The sum is divided as an unsigned int and later steps wrap at 32
+ * bits, as in the original (high bounces depend on it). */
+static int launch_trajectory(t3_psx_ground_state_t* n,const t3_move_record_t* m,
+                             const t3_move_record_t* previous,int16_t pose_frame) {
+    const int32_t hold=m->hold_frame?m->hold_frame:previous->length;
+    const int32_t y=n->root.y,ground=n->ground_offset,dmg=n->last_damage,jug=n->juggle_count;
+    const int same=previous->animation_offset==m->animation_offset;
+    int32_t speed=dmg+(jug+1)*7+10+(n->air_kind==5u?10:0),v,vc,sq,e,entry,fall,count;
+    uint32_t t;
+    n->air_speed=(int16_t)(speed<0?0:speed>100?100:speed);
+    v=w32((int64_t)dmg*4-sat_floor_shift_i32(w32((int64_t)n->velocity.y+n->hit_dir.y),3u)-(jug*7-40));
+    if(v< -100){vc=-100;sq=10000;}
+    else {vc=v<100?v:100;sq=vc*vc;}
+    n->air_vel_y=s16(-vc);
+    {
+        int32_t r=w32((int64_t)sq+(int64_t)w32((int64_t)ground+y)*12);
+        uint32_t mag=r<0?(uint32_t)0-(uint32_t)r:(uint32_t)r;
+        t=((uint32_t)vc+isqrt(mag))/6u;
+    }
+    e=w32(-(int64_t)t);
+    if(!t){t=1;e=-1;}
+    e=w32((int64_t)hold+e+1);
+    if(e<1)e=1;
+    if(!(n->state&4u) && e!=1){t=t-1u+(uint32_t)e;entry=1;}
+    else if(!jug) {
+        t+=10u;entry=w32((int64_t)hold-(int64_t)t+1);
+        if(entry<1)entry=1;
+    } else {
+        int32_t back=0;
+        entry=e;
+        if(same && (pose_frame-e<0?e-pose_frame:pose_frame-e)<10) {
+            entry=pose_frame-10;back=-entry;
+            if(entry<1){entry=1;back=-1;}
+            t=t+(uint32_t)e+(uint32_t)back;
+        }
+    }
+    count=w32((int64_t)t+1);
+    if(!count)return 0;
+    {
+        const uint64_t c=(uint64_t)(int64_t)count;
+        fall=sat_floor_shift_i32(w32((int64_t)(uint32_t)(c*c*6u)),1u);
+    }
+    if(w32((int64_t)w32((int64_t)vc*count-fall)-y)<ground) {
+        const int64_t num=-(int64_t)w32((int64_t)ground+y+fall);
+        n->air_vel_y=s16((int32_t)(num/count));
+    }
+    n->push_cursor=T3_PSX_PUSH_BYTES;n->push_table_frames=8;
+    n->launch_entry=s16(entry);
+    n->push_direction=s16(n->target_dir-0x8000);
+    if(n->air_kind==1u) {
+        n->air_vel_y=400;n->launch_entry=6;
+        n->push_frames=m->length>6u?(int16_t)(m->length-6u):0;n->push_speed=0x28;
+    }
+    return 1;
+}
 static int valid(const t3_psx_ground_tables_t* t) {
     return t && t->trig.data && t->trig.size==T3_PSX_TRIG_BYTES && t->atan && t->atan_size==1025u;
 }
@@ -185,8 +258,7 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     if(!state || !opp || !vm || !previous || !valid(t) || !vm->move.length ||
        facts.got_hit>1u || facts.alive>1u || end_turn>1u || segments>2u)return 0;
     code=vm->current_transition;
-    if(code==16u || code==18u || code==19u || code==28u ||
-       !(code<=29u || code==35u || (code>=37u && code<=43u)))return 0;
+    if(!(code<=30u || code==33u || code==34u || code==35u || code==36u || (code>=37u && code<=43u)))return 0;
     n=*state;m=&vm->move;
     n.air_phase=n.slide_state=n.track_mode=n.step_kind=0u;n.track_accum=0;n.hit_cooldown=0;
     n.opponent_start=opp->root;
@@ -231,7 +303,31 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
         else {n.facing=n.aim_dir;n.track_mode=6u;}
         clear_turn=1;tail=1;break;
     case 15:n.track_mode=1;n.facing=n.aim_dir;clear_turn=1;tail=1;break;
+    case 16:case 18:case 19:
+        /* Slides close in on the opponent; the distance is taken when the
+         * root move's airborne window opens (FighterMovePhysics). */
+        n.track_mode=11;n.facing=n.target_dir;n.slide_state=1u;
+        n.slide_step_x=n.slide_step_z=0;
+        if(code==19u)n.heading=(uint16_t)(n.heading-0x8000u);
+        n.turn_frames=m->active_first>1u?(int16_t)(m->active_first-1u):1;
+        n.turn_step=towards(n.target_dir,n.heading,n.turn_frames);tail=1;break;
     case 17:break;
+    case 30:case 36:
+        /* Launch (air kind 5) and juggle: a ballistic flight from the entry
+         * frame LaunchTrajectory picks; the caller moves the clock there. */
+        if(!t->air_kinds || t->push_size<T3_PSX_PUSH_BYTES+T3_PSX_LAUNCH_PUSH_BYTES)return 0;
+        if(code==30u){n.air_kind=5u;n.launch_armed=1u;n.ground_offset=le16(t->air_kinds+5u*4u);}
+        else if(!n.juggle_count)n.air_vel_x=n.air_vel_y=n.air_vel_z=0;
+        n.anchor.y=n.root.y;
+        if(!launch_trajectory(&n,m,previous,vm->clock.pose_frame))return 0;
+        n.air_phase=1u;n.juggle_count=s16(n.juggle_count+1);
+        {
+            int value=previous->flags&0x1000u?0:n.last_damage+n.recover_mash/2;
+            n.recover_mash=s16(value)>65?66:s16(value);n.recover_frames=m->length;
+        }
+        n.track_mode=11;
+        n.facing=(uint16_t)(n.aim_dir+((previous->flags&0x1000u) && reaction?reaction->push_angle:0));
+        clear_turn=1;tail=1;break;
     case 20:case 21:
         n.track_mode=n.relative_angle<0x4FA4u?(code==20u?4u:2u):6u;
         n.anchor_dirty=1u;anchor=1;clear_turn=1;break;
@@ -240,7 +336,36 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     case 23:n.track_mode=9;n.facing=n.heading;anchor=(int)reanchor;break;
     case 24:n.track_mode=8;n.facing=n.aim_dir;tail=1;break;
     case 26:case 27:n.facing=n.heading;n.step_kind=code==26u?1u:2u;break;
-    case 29:n.track_mode=10;n.facing=n.heading;clear_turn=1;tail=1;break;
+    case 28:n.track_mode=10;n.throw_state=0;n.facing=n.heading;clear_turn=1;
+        anchor=(int)reanchor;n.step_cooldown=0x18;break;
+    case 29:n.track_mode=10;n.throw_state=0;n.facing=n.heading;clear_turn=1;tail=1;break;
+    case 33:
+        /* Thrower: turned to the victim by its quadrant, then over 16 frames
+         * to the victim's heading; anchored at the victim's root. Later
+         * parts (or a reversed throw) take the partner's facing. */
+        if(!n.throw_state) {
+            static const uint16_t turn[4]={0x8000u,0xC000u,0u,0x4000u};
+            n.heading=n.facing=(uint16_t)(n.target_dir+turn[n.opponent_quadrant&3u]);
+            n.turn_frames=16;
+            n.turn_step=s16(s16((int32_t)opp->heading-n.heading)/16);
+            n.anchor.x=opp->root.x;n.anchor.z=opp->root.z;
+        } else if(n.throw_state<0 || (m->flags&0x80000u)) {
+            n.heading=n.facing=opp->facing;
+            n.anchor.x=opp->root.x;n.anchor.z=opp->root.z;
+        }
+        n.push_frames=n.push_speed=n.push_table_frames=0;
+        n.throw_state=n.throw_state<0?1:s16(n.throw_state+1);
+        break;
+    case 34:
+        /* Victim: turned away from its own heading by 180 degrees and
+         * anchored at its own root; the caller sets the down time from the
+         * thrower's move. */
+        if(n.throw_state>=0) {
+            n.heading=n.facing=(uint16_t)(n.heading-0x8000u);anchor=1;
+        } else if(m->flags&0x80000u){n.facing=n.heading;anchor=1;}
+        n.push_frames=n.push_speed=n.push_table_frames=0;
+        n.throw_state=n.throw_state<1?s16(n.throw_state-1):-1;
+        break;
     default:
         if(!reaction || !reaction->selected || reaction->transition!=code ||
            !load_push(&n,t,reaction->push_index))return 0;
@@ -261,7 +386,8 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     }
     if(clear_turn)n.turn_frames=n.turn_step=0;
     if(anchor || (tail && reanchor)) {n.anchor.x=n.root.x;n.anchor.z=n.root.z;}
-    if(code!=17u)n.throw_state=0;
+    if(code!=17u && code!=33u && code!=34u)n.throw_state=0;
+    n.in_throw=n.throw_state!=0;
     *state=n;return 1;
 }
 T3_SIM_WRAP(int,t3_psx_ground_start,T3_SIM_GROUND,
@@ -279,13 +405,44 @@ int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_gr
     int32_t dx,dz,push=0;
     int pose;
     if(!state || !opp || !vm || !opponent_vm || !valid(t) || !vm->move.length ||
-       direction>9u || pressed>15u || vm->clock.ballistic ||
-       state->track_mode>12u || state->slide_state || state->slide_to_point ||
-       state->throw_state || state->juggle_count)return 0;
+       direction>9u || pressed>15u ||
+       state->track_mode>12u || state->slide_state>2u || state->slide_to_point)return 0;
     n=*state;m=&vm->move;pose=vm->clock.pose_frame;
-    n.landed_a=n.landed_b=n.about_to_hit=0;
+    n.landed_a=n.landed_b=n.about_to_hit=0;n.flight_landed=n.landing_shake=0;
     if(!t3_psx_ground_angles(&n,opp,t))return 0;
-    if(m->air_start && pose>=(int)m->air_start-1 && pose<=m->air_end && m->step) {
+    if(n.slide_state==1u) {
+        if(vm->root_move.air_start<=pose) {
+            int frames=vm->root_move.air_end-pose;
+            int32_t total=n.distance>0xC00u?0xA0C:w32((int64_t)n.distance-500);
+            if(!frames)frames=1;
+            if(!t3_psx_polar(t,s16(total/frames),n.target_dir,&n.slide_step_x,&n.slide_step_z))return 0;
+            n.slide_state=2u;n.air_phase=2u;
+        }
+    } else if(n.slide_state==2u) {
+        n.anchor.z=w32((int64_t)n.anchor.z+n.slide_step_z);
+        n.anchor.x=w32((int64_t)n.anchor.x+n.slide_step_x);
+        if(vm->root_move.air_end<=pose) {
+            n.slide_state=0u;n.slide_step_x=n.slide_step_z=0;
+            n.anchor.x=n.root.x;n.anchor.z=n.root.z;
+        }
+    }
+    if(vm->clock.ballistic && !(vm->clock.hit_freeze && opponent_vm->bank && opponent_vm->bank->bank_type==0xEu)) {
+        /* Ballistic flight: gravity 6 per frame, the horizontal speed along
+         * the push-back direction, landing once falling past the ground offset. */
+        int32_t vx,vz;
+        n.air_vel_y=s16(n.air_vel_y+6);
+        n.anchor.y=w32((int64_t)n.anchor.y+n.air_vel_y);
+        n.anchor.x=w32((int64_t)n.anchor.x+n.air_vel_x);
+        n.anchor.z=w32((int64_t)n.anchor.z+n.air_vel_z);
+        if(!t3_psx_polar(t,n.air_speed,(uint16_t)(n.target_dir+0x8000u),&vx,&vz))return 0;
+        n.air_vel_x=s16(vx);n.air_vel_z=s16(vz);
+        if(n.air_vel_y>0 && -(int32_t)n.ground_offset<=n.anchor.y) {
+            if(n.air_kind==1u)n.landing_shake=1u;
+            n.anchor=(t3_vec3i_t){n.root.x,0,n.root.z};
+            if(n.air_kind==5u)n.landed_a=1u;else n.landed_b=1u;
+            n.flight_landed=1u;n.air_phase=2u;
+        }
+    } else if(m->air_start && pose>=(int)m->air_start-1 && pose<=m->air_end && m->step) {
         if(!t3_psx_polar(t,m->step,n.facing,&dx,&dz))return 0;
         n.step_accum_x=w32((int64_t)n.step_accum_x+dx);n.step_accum_z=w32((int64_t)n.step_accum_z+dz);
         dx=-floor256(n.step_accum_x);dz=-floor256(n.step_accum_z);
@@ -294,7 +451,10 @@ int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_gr
         n.step_accum_z=w32((int64_t)n.step_accum_z+dz*256LL);
     }
     if(!n.in_air)n.launch_armed=0;
-    if(n.turn_frames) {n.turn_frames=s16(n.turn_frames-1);n.heading=(uint16_t)(n.heading+n.turn_step);}
+    if(n.turn_frames) {
+        n.turn_frames=s16(n.turn_frames-1);n.heading=(uint16_t)(n.heading+n.turn_step);
+        if(n.throw_state==1)n.facing=n.heading;
+    }
     if(n.push_frames>0){push=n.push_speed;--n.push_frames;}
     if(n.push_table_frames>0) {
         if(!t->push || n.push_cursor+2u>t->push_size)return 0;
@@ -310,7 +470,7 @@ int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_gr
     if(n.hit_cooldown>0)--n.hit_cooldown;
     n.active_segments=pose<m->active_first || pose>m->active_last?0u:
                       (n.attack_segment_count==2u?2u:1u);
-    n.in_air=(uint8_t)(pose>=m->air_start && pose<=m->air_end);
+    n.in_air=(uint8_t)(n.juggle_count || (pose>=m->air_start && pose<=m->air_end));
     if(pose==m->air_end && vm->clock.hold_frames==-1 && pose!=1 && n.air_phase!=2u) {
         if(!n.was_hit_this_move || n.air_kind==5u || (n.state_class!=9u && !(n.state&4u)))n.landed_a=1u;
         else n.landed_b=1u;

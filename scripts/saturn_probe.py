@@ -135,8 +135,8 @@ def run(args):
     workload = saturn_workload.inspect(build)
     workload_profile = getattr(args, 'workload', 'diagnostic')
     saturn_workload.validate(workload, workload_profile)
-    if workload_profile == 'two-paul-release' and (args.profile or getattr(args, 'debug_profile', False)):
-        raise ValueError('two-paul-release cadence excludes intrusive CPU profiling; use diagnostic')
+    if workload_profile in saturn_workload.RELEASE_PROFILES and (args.profile or getattr(args, 'debug_profile', False)):
+        raise ValueError(workload_profile + ' cadence excludes intrusive CPU profiling; use diagnostic')
     out.mkdir(parents=True, exist_ok=True)
     elf = build / 'tekken3_saturn.elf'
     binary = build / 'tekken3_saturn.app.bin'
@@ -159,9 +159,15 @@ def run(args):
                               ('_g_t3_input_tape_overflow','input-overflow.bin'),
                               ('_g_t3_input_tape','input-tape.bin')]:
             if name not in syms:
+                if '_g_t3_cpu_tape' in syms:continue  # Slave simulation: only the CPU tape records
                 raise ValueError('input recording requires a T3_CAPTURE_INPUT_TAPE=ON build')
             location,length=syms[name]
             command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
+        for name,filename in [('_g_t3_cpu_tape_count','cpu-count.bin'),('_g_t3_cpu_tape_overflow','cpu-overflow.bin'),
+                              ('_g_t3_cpu_tape','cpu-tape.bin')]:
+            if name in syms:
+                location,length=syms[name]
+                command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
     if args.device_script:
         command.extend(['--device-script', str(args.device_script.resolve())])
     if getattr(args,'wram_low_fill',None) is not None:
@@ -188,6 +194,7 @@ def run(args):
         dump_requests.append(('_g_t3_vdp1_overlap_frames','vdp1-overlap-frames.bin'))
     if workload['configuration'].get('T3_DIRECT_FACE_SPANS') in ('ON','1','TRUE'):
         dump_requests.append(('_g_t3_geometry_pairs','geometry-pairs.bin'))
+        dump_requests.append(('_g_t3_cold_peak','cold-peak.bin'))
     if workload['configuration'].get('T3_FUSED_ACTOR_PREPARATION') in ('ON','1','TRUE'):
         dump_requests.append(('_g_t3_fused_actor_frames','fused-actor-frames.bin'))
     if workload['configuration'].get('T3_BRANCH_INPUT_FILTER') in ('ON','1','TRUE'):
@@ -204,6 +211,11 @@ def run(args):
         for suffix in ('frames','jobs','ticks','pose_tick','pose_lag','max_wait_ms'):
             dump_requests.append(('_g_t3_slave_sim_'+suffix,'slave-simulation-'+suffix+'.bin'))
         dump_requests.append(('_g_t3_simulation_stack','simulation-stack.bin'))
+    if workload['configuration'].get('T3_LOCAL_PSX_AI_TABLES'):
+        dump_requests.extend(('_g_t3_ai_'+n,'ai-'+n.replace('_','-')+'.bin') for n in ('calls','ticks','max_ticks','reads','conditions'))
+    if workload['configuration'].get('T3_LOCAL_SFX'):
+        dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
+            'played','play_ms','play_max_ms','update_ms','ko_voices'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
@@ -268,12 +280,12 @@ def run(args):
                  'slave_sim_pose_tick','slave_sim_pose_lag','slave_sim_max_wait_ms',
                  'compiled_skin_frames','compiled_skin_fallbacks','compiled_skin_verified',
                  'native_command_frames','cached_stage_faces',
-                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates'):
+                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
     if '_g_t3_simulation_stack' in dump_manifest:
         stack=(out/'simulation-stack.bin').read_bytes()
-        if len(stack)!=16384 or any(b!=0xA5 for b in stack[:256]):
+        if len(stack)!=saturn_workload.SLAVE_STACK_BYTES or any(b!=0xA5 for b in stack[:256]):
             raise ValueError('simulation stack guard damaged')
         first=next((i for i,b in enumerate(stack) if b!=0xA5),len(stack))
         optimizations['slave_sim_stack_used']=len(stack)-first
@@ -281,11 +293,26 @@ def run(args):
     if state['first_error'] or state['draw_timeouts'] or state['commands_used'] > state['commands_capacity']:
         raise ValueError(f'guest rendering failed: {state}')
     if getattr(args,'capture_inputs',False):
-        count=struct.unpack('>I',(out/'input-count.bin').read_bytes())[0]
-        overflow=struct.unpack('>I',(out/'input-overflow.bin').read_bytes())[0]
-        if overflow or count<1 or count>512:raise ValueError('input trace is empty or overflowed')
-        raw=(out/'input-tape.bin').read_bytes()
+        master=all((out/n).is_file() for n in ('input-count.bin','input-overflow.bin','input-tape.bin'))
+        count=struct.unpack('>I',(out/'input-count.bin').read_bytes())[0] if master else 0
+        overflow=struct.unpack('>I',(out/'input-overflow.bin').read_bytes())[0] if master else 0
+        cpu_tape=(out/'cpu-count.bin').is_file()
+        if overflow or count>512 or (count<1 and not cpu_tape):raise ValueError('input trace is empty or overflowed')
+        raw=(out/'input-tape.bin').read_bytes() if master else b''
         events=[list(struct.unpack_from('>5I',raw,i*20)) for i in range(count)]
+        if (out/'cpu-count.bin').is_file():
+            # Merge the CPU's P2 input (a Slave-side tape) into a pad replay of the same fight.
+            cpu_count=struct.unpack('>I',(out/'cpu-count.bin').read_bytes())[0]
+            if struct.unpack('>I',(out/'cpu-overflow.bin').read_bytes())[0]:raise ValueError('CPU input trace overflowed')
+            cpu_raw=(out/'cpu-tape.bin').read_bytes()
+            cpu=[struct.unpack_from('>3H',cpu_raw,i*6) for i in range(cpu_count)]
+            ticks=sorted({e[0] for e in events}|{c[0] for c in cpu}|{0})
+            merged=[]
+            for t in ticks:
+                p=[e for e in events if e[0]<=t][-1] if any(e[0]<=t for e in events) else [t,0,0,0,0]
+                c=[x for x in cpu if x[0]<=t][-1] if any(x[0]<=t for x in cpu) else (t,0,0)
+                merged.append([t,p[1],p[2],c[1],c[2]])
+            events=merged
         (out/'input-tape.json').write_text(json.dumps(dict(events=events,
             final_tick=state['sim_ticks'],scope='Captured relative simulation inputs; no guest state injection'),indent=2)+'\n')
     provenance = {}
@@ -316,7 +343,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build', type=Path, default=ROOT / 'build/saturn')
     p.add_argument('--workload', choices=saturn_workload.PROFILES, default='diagnostic',
-                   help='two-paul-release refuses procedural, frozen or instrumented timing builds')
+                   help='release profiles refuse procedural, frozen or instrumented timing builds')
     p.add_argument('--libsaturn', type=Path, default=ROOT.parent / 'lib-saturn')
     p.add_argument('--probe', type=Path)
     p.add_argument('--bios', type=Path, default=os.environ.get('LIBSATURN_BIOS'),

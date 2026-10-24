@@ -3,20 +3,31 @@
 
 /* DivmotLinkBank replaces the raw move-row frame count with the authored
  * stream's first byte. Retail rows can store zero before that load step. */
-int t3_move_vm_resolve(const t3_divmot_t* bank, const t3_divmot_t* common,
-                         unsigned slot, t3_move_record_t* record,
-                         const t3_divmot_t** owner) {
+static int resolve(const t3_divmot_t* bank, const t3_divmot_t* common,
+                   unsigned slot, t3_move_record_t* record,
+                   const t3_divmot_t** owner,int knots) {
     t3_motion_stream_t motion;
     t3_move_record_t decoded;
     const t3_divmot_t* active=NULL;
     int opened;
     if(!record || !owner ||
        t3_divmot_slot_resolve(bank,common,slot,&decoded,&active)!=1)return 0;
-    opened=t3_motion_open(active,common,decoded.animation_offset,&motion);
+    opened=knots?t3_motion_open(active,common,decoded.animation_offset,&motion):
+                 t3_motion_open_header(active,common,decoded.animation_offset,&motion);
     if (opened<0) return 0;
     if (opened==1) decoded.length=motion.frames;
     *record=decoded;*owner=active;
     return 1;
+}
+int t3_move_vm_resolve(const t3_divmot_t* bank, const t3_divmot_t* common,
+                         unsigned slot, t3_move_record_t* record,
+                         const t3_divmot_t** owner) {
+    return resolve(bank,common,slot,record,owner,1);
+}
+int t3_move_vm_peek(const t3_divmot_t* bank, const t3_divmot_t* common,
+                    unsigned slot, t3_move_record_t* record,
+                    const t3_divmot_t** owner) {
+    return resolve(bank,common,slot,record,owner,0);
 }
 
 int t3_move_vm_start(t3_move_vm_t* vm, const t3_divmot_t* bank,

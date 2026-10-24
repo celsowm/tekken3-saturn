@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Summarize saved probe, combat-suite and Mednafen runs; compare cadence."""
+"""Summarize saved probe, combat-suite and Mednafen runs; compare cadence.
+
+Use --fields to inspect selected saved guest counters without ad hoc JSON code:
+
+    report_saturn_runs.py assets/imported/t30-law-ai-probe \
+      --fields pad_connected psx_registered_hits discarded_fields --provenance
+"""
 import argparse
 import json
 from pathlib import Path
@@ -96,12 +102,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('runs', type=Path, nargs='*')
     parser.add_argument('--cadence', type=Path, nargs=2, metavar=('START', 'END'))
+    parser.add_argument('--fields', nargs='+', metavar='STATE_FIELD',
+                        help='include selected diagnostic state fields from each probe')
+    parser.add_argument('--provenance', action='store_true',
+                        help='include the recorded build and emulator hashes')
     parser.add_argument('--hz', type=float, default=60)
     args = parser.parse_args()
     if not args.runs and not args.cadence:
         parser.error('provide saved runs or --cadence START END')
     try:
         runs = [summarize(path) for path in args.runs]
+        if args.fields or args.provenance:
+            for path, run in zip(args.runs, runs):
+                source, data = read_run(path)
+                if run['kind'] != 'probe':
+                    raise ValueError(f'{source}: --fields/--provenance require a probe')
+                if args.fields:
+                    missing = [key for key in args.fields if key not in data['state']]
+                    if missing:
+                        raise ValueError(f'{source}: unknown state fields: {missing}')
+                    run['state'] = {key: data['state'][key] for key in args.fields}
+                if args.provenance:
+                    run['provenance'] = data.get('provenance')
         result = dict(runs=runs, passed=all(run['passed'] for run in runs))
         if args.cadence:
             result['cadence'] = cadence(*args.cadence, args.hz)

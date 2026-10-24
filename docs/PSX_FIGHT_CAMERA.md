@@ -122,12 +122,11 @@ places the eye higher and looks down.
 
 ## Known gaps
 
-- **Backdrop.** The VDP2 backdrop is still placed for the old camera. With the
-  lower original eye, a black line shows between its bottom edge and the
-  floor horizon. The original fills that gap with the panorama box: the floor
-  grid reaches only about ±9,000 units around the fighters' tile. Fixing it
-  means wiring the backdrop turn and the box (Tekken3Remake `stages.md`),
-  which is the next stage task.
+- **Backdrop.** Resolved: the panorama box is now a VDP2 cylinder scrolled
+  per line from this camera and its backdrop turn, and the floor ends at the
+  box walls (`PAUL_STAGE_VDP2.md`, "Moving panorama"). A line can only
+  scroll, so box corners and steep views bend the picture by a few texels.
+  Floor distance shading, stage lighting and shadows are still missing.
 - **Overhead KO depth.** The renderer does not apply the overhead
   `t[2] − 0xA3A` fighter depth. Only `screen_x` uses it.
 - **Bank streams.** Throw camera streams are not embedded, because the

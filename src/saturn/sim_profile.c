@@ -2,7 +2,11 @@
 #if defined(T3_SIM_PROFILE)
 #include <saturn/profile.h>
 #include <saturn/time.h>
-enum { ACTORS=3, CAPACITY=128, COUNTERS=ACTORS*T3_SIM_STAGES, DEPTH=24 };
+#if !defined(T3_SIM_PROFILE_CAPACITY)
+#define T3_SIM_PROFILE_CAPACITY 128
+#endif
+/* Retained rows; a build short of Low Work RAM lowers it (totals are kept). */
+enum { ACTORS=3, CAPACITY=T3_SIM_PROFILE_CAPACITY, COUNTERS=ACTORS*T3_SIM_STAGES, DEPTH=24 };
 typedef struct {
     uint32_t field,tick,state,replay,active,errors,depth;
     sat_profile_counter_t counters[COUNTERS];
@@ -17,7 +21,12 @@ _Static_assert(sizeof(sat_profile_counter_t)==12,"profile counter wire layout");
 _Static_assert(sizeof(sample_t)==28+12*COUNTERS,"profile sample wire layout");
 _Static_assert(sizeof(capture_t)==44+12*COUNTERS+CAPACITY*sizeof(sample_t),
                "profile capture wire layout");
+/* The full capture needs Low Work RAM; a few rows fit with the rest of .bss. */
+#if T3_SIM_PROFILE_CAPACITY>=16
 volatile capture_t g_t3_sim_profile __attribute__((section(".wram_l")));
+#else
+volatile capture_t g_t3_sim_profile;
+#endif
 static sample_t current;
 static sat_profile_t profile;
 static sat_profile_span_t spans[DEPTH];

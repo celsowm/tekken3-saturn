@@ -116,7 +116,9 @@ def execute(args):
         require(s['psx_health_q16']==[140*65536]*2 and s['psx_registered_blocks']==[0,1]
                 and s['psx_registered_hits']==[0,0],name+': guard must prevent damage')
         require(s['psx_reaction_slot'][1]==slot,name+': wrong guard reaction')
-    s=case('visible-reaction',close+'110 2 buttons=LEFT\n120 1 buttons=X\n',155)
+    # Law's 2250 runs about 23 ticks from the hit (near field 132), so it can
+    # end by 155 while Paul's has not; 140 sits inside both reactions.
+    s=case('visible-reaction',close+'110 2 buttons=LEFT\n120 1 buttons=X\n',140)
     require(s['psx_move_slot'][1]==2250 and s['psx_move_frame'][1]>1,'reaction must own the visible VM')
     s=case('miss','20 1 buttons=LEFT\n100 1 buttons=NONE\n120 1 buttons=X\n')
     require(s['psx_health_q16']==[140*65536]*2 and s['psx_registered_hits']==[0,0]
@@ -132,12 +134,18 @@ def execute(args):
     s=case('simultaneous','20 1 buttons=RIGHT\n20 2 buttons=LEFT\n100 1 buttons=NONE\n100 2 buttons=NONE\n120 1 buttons=X\n120 2 buttons=X\n')
     require(all(0<h<140*65536 for h in s['psx_health_q16']) and s['psx_registered_hits']==[1,1],
             'simultaneous attacks must publish both damage results')
-    s=case('unsupported-move',close+'120 1 buttons=Y\n')
-    require(s['psx_unsupported_moves'][0]>0 and s['psx_health_q16']==[140*65536]*2,
-            'unsupported commands must be reported without invented combat')
+    # Every attack starts (docs/FIGHT_ORACLE.md): Y must not be dropped.
+    s=case('other-attack',close+'120 1 buttons=Y\n')
+    require(s['psx_unsupported_moves']==[0,0] and
+            sum(s['psx_registered_hits']+s['psx_registered_blocks'])==1,
+            'a non-qualified attack must start and make contact')
     s=case('reset',script+'390 2 buttons=NONE\n400 1 buttons=START\n420 1 buttons=NONE\n',500)
+    # The fighters start walking a few ticks into the round, and which tick the
+    # fixed field lands on follows the image cost (a HUD overlay moves it by one
+    # tick, 2 units), so the placement is checked within 16 units of the start.
     require(s['psx_health_q16']==[140*65536]*2 and s['psx_registered_hits']==[0,0]
-            and s['psx_registered_blocks']==[0,0] and s['psx_anchor'][::3]==[-1000,1000],
+            and s['psx_registered_blocks']==[0,0]
+            and abs(s['psx_anchor'][0]+1000)<=16 and abs(s['psx_anchor'][3]-1000)<=16,
             'START must reset native HP, hits and placement')
     if args.with_ko:
         # Observe the side before each approach. A fixed LEFT/RIGHT list from
@@ -186,7 +194,10 @@ def execute(args):
         victory=case('ko-victory',tape,victory_end)
         require(victory['psx_round_state']==6 and victory['psx_replay_mode']==5 and victory['psx_move_slot'][0] in range(3431,3435)
                 and victory['psx_move_frame'][0]>1,'victory must own an authored pose after replay')
-        held_victory=case('ko-victory-hold',tape,victory_end+60)
+        # Sample the hold soon after victory starts: the victory slot follows
+        # frame parity (3431 + button, pose (frame & 1) + 1), and the shorter
+        # pose can finish within 60 fields, ending round state 6.
+        held_victory=case('ko-victory-hold',tape,victory_end+20)
         require(held_victory['psx_round_state']==6
                 and held_victory['psx_move_frame'][0]>victory['psx_move_frame'][0]
                 and held_victory['psx_move_frame'][1]==victory['psx_move_frame'][1],

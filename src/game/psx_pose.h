@@ -29,6 +29,37 @@ static inline void t3_psx_matrix_copy(t3_psx_matrix_t* out,const t3_psx_matrix_t
     out->m[1][0]=in->m[1][0];out->m[1][1]=in->m[1][1];out->m[1][2]=in->m[1][2];
     out->m[2][0]=in->m[2][0];out->m[2][1]=in->m[2][1];out->m[2][2]=in->m[2][2];
 }
+/* 1u << n for n < 32, read from a table: GCC compiles a variable shift, and
+ * a test of x & (1u << n), to a libgcc call on the SH-2. */
+extern const uint32_t t3_psx_bits[32];
+static inline uint32_t t3_psx_bit(unsigned n) {return t3_psx_bits[n];}
+/* floor((m . v) / 4096), the 64-bit result, for |v[k]| <= T3_PSX_UNIT_LIMIT.
+ * v = high*4096 + low (low 0..4095) keeps every product within 32 bits, so
+ * the SH-2 needs no 64-bit multiply. */
+static inline int32_t t3_psx_floor12(int32_t v) {
+    /* Logical shift, then sign-extend the 20-bit field: the floor quotient
+     * without the SH-2's libgcc arithmetic-shift helper. */
+    return (int32_t)((((uint32_t)v>>12u)^0x80000u)-0x80000u);
+}
+#if defined(__sh__)
+/* MAC.L keeps the 64-bit sum (S is clear); its low word after the shift. */
+static inline int32_t t3_psx_dot12(const int16_t m[3],const int32_t v[3]) {
+    const int32_t w[3]={m[0],m[1],m[2]};
+    const int32_t* a=w;const int32_t* b=v;
+    uint32_t hi,lo;
+    __asm__("clrmac\n\tmac.l @%0+,@%1+\n\tmac.l @%0+,@%1+\n\tmac.l @%0+,@%1+\n\t"
+            "sts mach,%2\n\tsts macl,%3"
+            :"+r"(a),"+r"(b),"=r"(hi),"=r"(lo)
+            :"m"(*(const int32_t(*)[3])w),"m"(*(const int32_t(*)[3])v)
+            :"mach","macl");
+    return (int32_t)(hi<<20|lo>>12);
+}
+#else
+static inline int32_t t3_psx_dot12(const int16_t m[3],const int32_t v[3]) {
+    return m[0]*t3_psx_floor12(v[0])+m[1]*t3_psx_floor12(v[1])+m[2]*t3_psx_floor12(v[2])+
+        t3_psx_floor12(m[0]*(v[0]&4095)+m[1]*(v[1]&4095)+m[2]*(v[2]&4095));
+}
+#endif
 typedef struct {
     int8_t parent;       /* -1 means character root; otherwise preceding draw part */
     uint8_t slot;        /* PS1 animation/attachment slot 0..21; 18+ pending */

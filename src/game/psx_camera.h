@@ -41,13 +41,19 @@ enum {
  * script < -1 is a camera stream in the owner's bank section 8. */
 typedef struct { int16_t kind; uint16_t weight; int32_t script; } t3_psx_camera_choice_t;
 
-/* A camera stream of bank section 8, baked to samples (eye xyz, target xyz,
- * weight per frame) by FUN_80038F38's decoder. */
-typedef struct { uint16_t offset,frames,yaw_mode; uint32_t first; } t3_psx_camera_stream_t;
+/* A camera stream of bank section 8. `first` indexes either decoded samples
+ * or the retained compact bytes, depending on the owning stream bank. */
+typedef struct { uint16_t offset,frames,yaw_mode; uint32_t first;uint16_t encoded_bytes; } t3_psx_camera_stream_t;
 typedef struct {
     const t3_psx_camera_stream_t* streams;size_t stream_count;
     const int16_t (*samples)[7];size_t sample_count;
+    const uint8_t* encoded;size_t encoded_size;
 } t3_psx_camera_streams_t;
+
+/* Decode one frame from an original compact section-8 camera stream. */
+int t3_psx_camera_decode_compact(const uint8_t* encoded,size_t bytes,
+                                 unsigned frame,const t3_motion_tables_t* spline,
+                                 int16_t out[7]);
 
 /* A hit camera script (0x80024418, 32 bytes each): kind 0 frames the
  * fighters, 1 looks at the contact point, -1 none. */
@@ -112,6 +118,7 @@ typedef struct {
     const t3_psx_camera_choice_t* bank_choices;   /* the fighter's bank section 7 */
     size_t bank_choice_count;
     const t3_psx_camera_streams_t* bank_streams;  /* the fighter's bank section 8, baked */
+    const t3_motion_tables_t* bank_spline;       /* original spline basis for compact streams */
 } t3_psx_camera_fighter_t;
 
 typedef struct { int32_t x,y,z,pitch,yaw,h; } t3_psx_camera_source_t;

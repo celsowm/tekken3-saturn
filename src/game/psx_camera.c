@@ -654,6 +654,60 @@ static void transition_start(cam_t* c) {
 }
 static void cancel(cam_t* c) {c->script=-1;c->wait=-1;c->state=T3_PSX_CINEMATIC_IDLE;}
 
+/* Camera bank section 8 uses the same keyed spline as pose motion, with a
+ * camera-specific shift of four. Decode one frame from the original compact
+ * words so the full set of authored streams fits in stock Work RAM. */
+static uint16_t stream_word(const uint8_t* p) {return (uint16_t)(p[0]|(uint16_t)p[1]<<8);}
+int t3_psx_camera_decode_compact(const uint8_t* data,size_t limit,
+                                 unsigned frame,const t3_motion_tables_t* spline,
+                                 int16_t out[7]) {
+    size_t at=4;
+    unsigned frames,channels;
+    if(!data || !spline || !out || limit<4u)return 0;
+    frames=stream_word(data+2)&0x3ffu;channels=stream_word(data+2)>>10;
+    if(channels!=7u || frame>=frames)return 0;
+    for(unsigned ch=0;ch<7u;++ch) {
+        unsigned time=ch&1u?frames-frame-1u:frame;
+        unsigned start=0,segments;
+        int found=0;int16_t value=0;
+        if(at+2u>limit)return 0;
+        segments=stream_word(data+at)>>12;
+        for(unsigned j=0;j<=segments;++j) {
+            uint16_t desc;unsigned kind,length,words;
+            if(at+2u>limit)return 0;
+            desc=stream_word(data+at);at+=2;
+            kind=(desc>>10)&3u;length=desc&0x3ffu;
+            words=kind==0u?1u:kind==1u?2u:length;
+            if(!length || words>(limit-at)/2u)return 0;
+            if(kind==2u) {
+                unsigned end=start;
+                for(unsigned k=1;k<length;++k)end+=1u+(stream_word(data+at+2u*k)&31u);
+                if(!found && time>=start && time<=end) {
+                    if(t3_motion_spline_words(data+at,words*2u,length,
+                            time-start,end-start+1u,spline,&value)!=1)return 0;
+                    found=1;
+                }
+                start=end+1u;
+            } else {
+                if(!found && time>=start && time<start+length) {
+                    if(kind==0u)value=(int16_t)stream_word(data+at);
+                    else if(kind==1u) {
+                        const int32_t initial=(int16_t)stream_word(data+at);
+                        const int32_t delta=(int16_t)stream_word(data+at+2u);
+                        value=(int16_t)(initial+delta*(int32_t)(time-start)/(frames<10u?1:32));
+                    } else value=(int16_t)stream_word(data+at+2u*(time-start));
+                    found=1;
+                }
+                start+=length;
+            }
+            at+=2u*words;
+        }
+        if(!found)return 0;
+        out[ch]=value;
+    }
+    return at==limit;
+}
+
 /* FUN_800666E0 selecting a stream of `player`'s bank: returns its yaw mode, -2 when missing. */
 static int32_t stream_start(cam_t* c,const fig_t f[2],int32_t script,int player) {
     const t3_psx_camera_streams_t* b=f[player].bank_streams;size_t i;
@@ -662,7 +716,9 @@ static int32_t stream_start(cam_t* c,const fig_t f[2],int32_t script,int player)
     for(i=0;i<b->stream_count;i++) {
         const t3_psx_camera_stream_t* e=&b->streams[i];
         if(e->offset!=((uint32_t)script&0xFFFFu))continue;
-        if(!e->frames || e->first+e->frames>b->sample_count)return -2;
+        if(!e->frames || (b->samples ? e->first+e->frames>b->sample_count :
+            !b->encoded || e->first>b->encoded_size ||
+            e->encoded_bytes>b->encoded_size-e->first))return -2;
         c->stream_frames=(int16_t)e->frames;
         return e->yaw_mode;
     }
@@ -673,14 +729,20 @@ static int32_t stream_start(cam_t* c,const fig_t f[2],int32_t script,int player)
  * the stream; the last frame is repeated (it only feeds an unused source). */
 static int stream_sample(cam_t* c,const fig_t f[2]) {
     const t3_psx_camera_streams_t* b=f[c->stream_player].bank_streams;
-    const int16_t* raw;size_t i;int32_t index=c->stream_frame,w;
+    const int16_t* raw;int16_t decoded[7];size_t i;int32_t index=c->stream_frame,w;
     c->stream_frame=s16(c->stream_frame+1);
     if(!b)return 0;
     for(i=0;i<b->stream_count;i++)if(b->streams[i].offset==((uint32_t)c->stream&0xFFFFu))break;
     if(i==b->stream_count)return 0;
     if(index<0)index=0;
     if(index>=b->streams[i].frames)index=b->streams[i].frames-1;
-    raw=b->samples[b->streams[i].first+(uint32_t)index];
+    if(b->samples)raw=b->samples[b->streams[i].first+(uint32_t)index];
+    else {
+        if(!t3_psx_camera_decode_compact(b->encoded+b->streams[i].first,
+                b->streams[i].encoded_bytes,(unsigned)index,
+                f[c->stream_player].bank_spline,decoded))return 0;
+        raw=decoded;
+    }
     w=div_trunc(raw[6],8);
     if(w<0)w=0;
     else if(w>STREAM_WEIGHT_FULL || c->stream_frames<=c->stream_frame)w=STREAM_WEIGHT_FULL;

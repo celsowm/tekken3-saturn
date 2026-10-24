@@ -39,6 +39,12 @@ typedef struct {
 int t3_motion_open(const t3_divmot_t* character,
                    const t3_divmot_t* common,
                    uint32_t animation_word, t3_motion_stream_t* out);
+/* t3_motion_open without the knot-span sums: the header and key bounds are
+ * checked, so frames and counts are safe to read, but the stream must pass
+ * t3_motion_open before it is sampled. */
+int t3_motion_open_header(const t3_divmot_t* character,
+                          const t3_divmot_t* common,
+                          uint32_t animation_word, t3_motion_stream_t* out);
 
 /* Caller-owned single-entry cache. Banks and their bytes must be immutable
  * while cached; zero the cache when reloading/modifying a bank. Only successful
@@ -61,6 +67,33 @@ int t3_motion_open_cached(t3_motion_cache_t* cache,const t3_divmot_t* bank,
 int t3_motion_sample(const t3_motion_stream_t* stream, unsigned frame,
                      const t3_motion_tables_t* tables,
                      int16_t pose[T3_PSX_POSE_CHANNELS]);
+
+/* Where one spline channel's knot walk last stopped; next 0 means none. */
+typedef struct {
+    int32_t p0,p1,p2;
+    uint16_t prev,cur;
+    uint8_t next;
+} t3_motion_knot_t;
+typedef struct {
+    const uint8_t* stream; /* the stream's first key; NULL when unused */
+    uint8_t frames;
+    t3_motion_knot_t knot[T3_PSX_POSE_CHANNELS];
+} t3_motion_cursor_t;
+/* t3_motion_sample, with each spline channel's knot walk resumed where the
+ * cursor's last sample of the same stream stopped, so a frame near the last
+ * costs a step or two rather than a walk from the first knot. The results
+ * are the same. A cursor holding another stream restarts. Caller-owned
+ * derived data: set stream to NULL after editing bank bytes. A NULL cursor
+ * samples without one. */
+int t3_motion_sample_cursor(const t3_motion_stream_t* stream, unsigned frame,
+                            const t3_motion_tables_t* tables,t3_motion_cursor_t* cursor,
+                            int16_t pose[T3_PSX_POSE_CHANNELS]);
+
+/* Camera section-8 spline segment: the same original basis, shift 4 rather
+ * than a pose channel's shift 1/5. Keys are little-endian signed words. */
+int t3_motion_spline_words(const uint8_t* keys,size_t bytes,unsigned count,
+                           unsigned frame,unsigned frames,const t3_motion_tables_t* tables,
+                           int16_t* out);
 
 enum {T3_MOTION_SAMPLE_CACHE_SLOTS=512};
 typedef struct {

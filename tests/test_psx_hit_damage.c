@@ -121,7 +121,8 @@ static void strict_and_best(void) {
     m.close_reaction=2u;
     assert(!t3_psx_hit_preview(&m,4u,&f,&out));
     f.close_table_available=1u;
-    assert(!t3_psx_hit_preview(&m,4u,&f,&out));
+    /* A zero distance threshold is never close (unsigned distance < 0). */
+    assert(t3_psx_hit_preview(&m,4u,&f,&a) && !a.close);
     f.close_threshold=400u;
     f.defender_guard=0x200u; /* non-guard bits are not a guard mask */
     assert(!t3_psx_hit_preview(&m,4u,&f,&out));

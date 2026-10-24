@@ -1,11 +1,19 @@
-"""Identify a Saturn build and refuse mislabeled two-Paul release timings."""
+"""Identify a Saturn build and refuse mislabeled release timings (two Pauls,
+or Paul against Law)."""
 import hashlib
 import json
 import re
 from pathlib import Path
 
-PROFILES = ('diagnostic', 'two-paul-release')
+PROFILES = ('diagnostic', 'two-paul-release', 'paul-law-release')
+RELEASE_PROFILES = PROFILES[1:]
 PAUL_SHAPE = dict(vertices=556, faces=773, joints=22, textures=724, blend_vertices=103)
+# A second mesh sizes the shared count macros to the larger of the two meshes
+# (Law: 593 vertices, 768 faces, 754 textures); blend_vertices stays P1's.
+PAUL_LAW_SHAPE = dict(vertices=593, faces=773, joints=22, textures=754, blend_vertices=103)
+SHAPES = {'two-paul-release': PAUL_SHAPE, 'paul-law-release': PAUL_LAW_SHAPE}
+# P2's own bank, mesh and textures: hashed inputs of a Paul-against-Law build.
+LAW_INPUTS = ('T3_LOCAL_SECOND_DIVMOT', 'T3_LOCAL_ACTOR1_MESH_KMD', 'T3_LOCAL_ACTOR1_ARC')
 SHAPE_MACROS = dict(vertices='T3_VERTEX_COUNT', faces='T3_FACE_COUNT',
                     joints='T3_JOINT_COUNT', textures='T3_TEXTURE_COUNT')
 REQUIRED_ON = ('T3_ENABLE_PSX_OWNED_MATCH', 'T3_ENABLE_PSX_COMBAT',
@@ -16,6 +24,9 @@ REQUIRED_OFF = ('T3_PERF_SAMPLES', 'T3_SIM_PROFILE', 'T3_POSE_TRACE',
 REQUIRED_OFF += ('T3_VERIFY_COMPACT_CAMERA_SKIN',)
 REQUIRED_OFF += ('T3_VERIFY_COMPILED_RENDERER',)
 
+
+# g_t3_simulation_stack in src/saturn/main.c and simulation_stack.S.
+SLAVE_STACK_BYTES=8192
 
 def cache_entries(path):
     entries = {}
@@ -48,7 +59,7 @@ def inspect(build):
         if digest!=stage.get('output_sha256'):
             raise ValueError('private stage asset does not match its manifest')
         stage=dict(name=stage['stage'],asset_sha256=digest,bytes=stage['output_bytes'],
-                   panorama=stage['panorama'],floor=stage['floor'])
+                   format_version=stage['format_version'],cylinder=stage['cylinder'],floor=stage['floor'])
     sdk_archive = Path(cache.get('LibSaturn_DIR', '.')).parent.parent/'libsaturn.a'
     return dict(schema=1, kind='original-kmd' if original else 'procedural',
                 shape=shape, original_textures=defines.get('T3_ORIGINAL_TEXTURES') == '1',
@@ -66,10 +77,15 @@ def validate(workload, profile, state=None):
     if profile == 'diagnostic':
         return
     errors = []
+    shape = SHAPES[profile]
     if workload['kind'] != 'original-kmd' or not workload['original_textures']:
         errors.append('original KMD mesh and textures are required')
-    if workload['shape'] != PAUL_SHAPE:
-        errors.append('expected the complete Paul shape ' + str(PAUL_SHAPE))
+    if workload['shape'] != shape:
+        errors.append('expected the complete shape ' + str(shape))
+    if profile == 'paul-law-release':
+        for name in LAW_INPUTS:
+            if not workload['input_sha256'].get(name):
+                errors.append(name + ' must name a private input')
     config = workload['configuration']
     if workload['build_type'] != 'Release':
         errors.append('Release build is required')
@@ -94,26 +110,26 @@ def validate(workload, profile, state=None):
         for name in ('psx_skin_preview_applied', 'psx_pose_status'):
             if state.get(name) != [1, 1]:
                 errors.append('guest ' + name + ' must confirm both actors')
-        if state.get('model_texture_count') != PAUL_SHAPE['textures']:
-            errors.append('guest texture count does not match Paul')
+        if state.get('model_texture_count') != shape['textures']:
+            errors.append('guest texture count does not match the build shape')
         if state.get('model_archive_bytes') != workload['archive_bytes']:
             errors.append('guest archive does not match the build')
     if errors:
-        raise ValueError('two-paul-release workload rejected: ' + '; '.join(errors))
+        raise ValueError(profile + ' workload rejected: ' + '; '.join(errors))
 
 
 def validate_optimizations(workload,profile,counters):
-    if profile == 'two-paul-release' and workload['configuration'].get(
+    if profile in RELEASE_PROFILES and workload['configuration'].get(
             'T3_ASSET_TOPOLOGY') in ('ON','1','TRUE'):
         if counters.get('asset_topology_ready',0)!=1:
-            raise ValueError('two-paul-release rejected: resident asset topology was not bound')
-    if profile == 'two-paul-release' and workload['configuration'].get(
+            raise ValueError(profile+' rejected: resident asset topology was not bound')
+    if profile in RELEASE_PROFILES and workload['configuration'].get(
             'T3_SLAVE_SIMULATION') in ('ON','1','TRUE'):
         if min(counters.get('slave_sim_'+name,0) for name in ('frames','jobs','ticks','pose_tick'))<1:
-            raise ValueError('two-paul-release rejected: selected Slave simulation never completed')
-        if not 0<=counters.get('slave_sim_pose_lag',-1)<=2 or \
-                not 0<counters.get('slave_sim_stack_used',0)<=16384-256:
-            raise ValueError('two-paul-release rejected: invalid Slave simulation lag or stack use')
+            raise ValueError(profile+' rejected: selected Slave simulation never completed')
+        if not 0<=counters.get('slave_sim_pose_lag',-1)<=3 or \
+                not 0<counters.get('slave_sim_stack_used',0)<=SLAVE_STACK_BYTES-256:
+            raise ValueError(profile+' rejected: invalid Slave simulation lag or stack use')
     if profile == 'two-paul-release' and workload['configuration'].get(
             'T3_SHARE_ACTOR_RESOURCES') in ('ON','1','TRUE'):
         if counters.get('shared_actor_resources',0)!=1:

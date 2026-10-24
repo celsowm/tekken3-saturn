@@ -1,3 +1,10 @@
+/* SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
+ * Required Notice: Copyright (c) 2026 n0madic
+ * https://polyformproject.org/licenses/noncommercial/1.0.0/
+ * The double-tap rule (FUN_8002CB08/FUN_8002CBF0) is adapted from the pinned
+ * Tekken3Remake tools/research/fight_sim.py double_tap. Changes: history
+ * ages instead of ring indices. See NOTICE.md and
+ * third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "input_history.h"
 #include <stddef.h>
@@ -47,23 +54,27 @@ t3_command_frame_t t3_history_at(const t3_input_history_t* h, unsigned age) {
                      % T3_INPUT_HISTORY_FRAMES];
 }
 
+/* The tap on this frame, neutral directly before it, then the earlier tap
+ * within a budget of 0x13 frames shared by the neutral gap and that tap. */
 static int double_tap(const t3_input_history_t* h, uint8_t dir) {
-    unsigned i;
-    int phase = 0;
-    if (!h || h->count < 3u ||
-        t3_history_at(h, 0).direction != dir ||
-        t3_history_at(h, 1).direction == dir)
+    unsigned k;
+    int budget = 0x13;
+    if (!h || t3_history_at(h, 0).direction != dir ||
+        t3_history_at(h, 1).direction != 5u)
         return 0;
-    /* Walk newest -> oldest, require release to neutral before prior tap. */
-    for (i = 1u; i < h->count && i < 20u; ++i) {
-        uint8_t d = t3_history_at(h, i).direction;
-        if (!phase) {
-            if (d == 5u) phase = 1;
-        } else if (d == dir) {
-            return 1;
+    for (k = 2u;; ++k) {
+        const uint8_t d = t3_history_at(h, k).direction;
+        if (d != 5u) {
+            if (d != dir) return 0;
+            break;
         }
+        if (--budget <= 0) return 0;
     }
-    return 0;
+    while (t3_history_at(h, k + 1u).direction == dir) {
+        ++k;
+        if (--budget <= 0) break;
+    }
+    return budget > 0;
 }
 
 int t3_command_matches(uint16_t cmd, const t3_input_history_t* h) {

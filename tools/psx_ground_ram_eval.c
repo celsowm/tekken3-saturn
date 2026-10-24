@@ -36,7 +36,7 @@ static void vm_read(t3_move_vm_t* v,unsigned index) {
 }
 int main(int argc,char** argv) {
     uint32_t sx,sz;char line[8192];FILE *list,*out;int starts;
-    t3_psx_ground_tables_t tables={{trig_bytes,sizeof(trig_bytes)},atan_bytes,sizeof(atan_bytes),push_bytes,sizeof(push_bytes)};
+    t3_psx_ground_tables_t tables={{trig_bytes,sizeof(trig_bytes)},atan_bytes,sizeof(atan_bytes),push_bytes,sizeof(push_bytes),NULL};
     if(argc!=9)return 2;
     starts=strcmp(argv[8],"start-ranges-v1")==0;
     if(!read_blob(argv[1],trig_bytes,sizeof(trig_bytes)) || !read_blob(argv[2],atan_bytes,sizeof(atan_bytes)) ||

@@ -343,8 +343,10 @@ static void test_phased_move_lifecycle(void) {
     assert(t3_move_vm_begin(&vm,no_hit)==1 && vm.slot==0 && vm.clock.pose_frame==1);
     assert(t3_move_vm_queue(&vm,1,30,2,1,0));
     unchanged=vm;
-    assert(t3_move_vm_begin(&vm,no_hit)==-1); /* launch physics is not guessed */
-    assert(!memcmp(&vm,&unchanged,sizeof(vm)));
+    /* A launch keeps the old frame: LaunchTrajectory reads it before the
+     * ground start moves the clock to the launch entry frame. */
+    assert(t3_move_vm_begin(&vm,no_hit)==1);
+    assert(vm.current_transition==30 && vm.clock.pose_frame==unchanged.clock.pose_frame);
 
     /* A pressed command during the END row's early look-ahead window
      * queues the continuation stance's command without starting it yet. */

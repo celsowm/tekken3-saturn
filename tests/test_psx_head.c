@@ -6,7 +6,7 @@
 #include <string.h>
 static uint8_t trig[0x2800],atan[1025],sqrt_bytes[384];
 int main(void) {
-    t3_psx_body_tables_t tables={{{trig,sizeof(trig)},atan,sizeof(atan),NULL,0},sqrt_bytes,sizeof(sqrt_bytes)};
+    t3_psx_body_tables_t tables={{{trig,sizeof(trig)},atan,sizeof(atan),NULL,0,NULL},sqrt_bytes,sizeof(sqrt_bytes)};
     t3_psx_joint_t own[T3_PSX_DRAW_PARTS]={0},opponent[T3_PSX_DRAW_PARTS]={0};
     t3_psx_head_t s={0},before;
     t3_psx_matrix_t m={{{4096,0,0},{0,4096,0},{0,0,4096}}},original=m;

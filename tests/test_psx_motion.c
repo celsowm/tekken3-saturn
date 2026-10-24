@@ -176,17 +176,80 @@ static void malformed_streams(void) {
     bytes[139]=3;
     bytes[134+2+50+24+4+2+2]=0; /* corrupt keyed last knot */
     assert(t3_motion_open(&bank,NULL,2u,&stream)==-1);
+    /* The header open skips only the knot sums. */
+    assert(t3_motion_open_header(&bank,NULL,2u,&stream)==1 && stream.frames==12u);
+    bytes[135]=255;
+    assert(t3_motion_open_header(&bank,NULL,2u,&stream)==-1);
+    bytes[135]=12;
     size=make(bytes,99u);
     bytes[134+50+24+4+2+2]=0; /* corrupt first delta lower nibble */
     assert(t3_motion_open(&bank,NULL,2u,&stream)==-1);
     assert(t3_motion_open(NULL,NULL,2u,&stream)==-1);
     assert(t3_motion_sample(NULL,0u,NULL,NULL)==-1);
 }
+/* Random spline streams: every channel keyed, its spans summing to frames-1
+ * as t3_motion_open requires, and a synthetic basis table. */
+static uint32_t lcg=12345u;
+static unsigned rnd(unsigned n) {lcg=lcg*1103515245u+12345u;return (lcg>>8)%n;}
+static uint8_t keyed[2][T3_PSX_POSE_CHANNELS*256*2];
+static void random_stream(t3_motion_stream_t* s,uint8_t* data,unsigned frames) {
+    size_t pos=0;
+    memset(s,0,sizeof(*s));
+    s->data=data;s->length=sizeof(keyed[0]);s->frames=(uint8_t)frames;
+    for(unsigned ch=0;ch<T3_PSX_POSE_CHANNELS;++ch) {
+        /* Knots 1..k-1 carry spans of 1..32 adding up to frames-1. */
+        const unsigned most=frames-1u<60u?frames-1u:60u,least=(frames-1u+31u)/32u;
+        unsigned k=1u+least+rnd(most-least+1u),left=frames-1u;
+        if(k<3u)k=3u;
+        if(k-1u>frames-1u || k==frames)k=frames>3u?frames-1u:3u;
+        s->counts[ch]=(uint8_t)k;s->key_offset[ch]=(uint32_t)pos;
+        put16(data+pos,rnd(65536u));
+        for(unsigned i=1;i<k;++i) {
+            const unsigned after=k-1u-i,low=left>32u*after?left-32u*after:1u;
+            const unsigned high=left-after<32u?left-after:32u;
+            const unsigned span=low+rnd(high-low+1u);
+            put16(data+pos+2u*i,(rnd(2048u)<<5)|(span-1u));
+            left-=span;
+        }
+        assert(left==0u);
+        pos+=2u*k;
+    }
+}
+static unsigned sampled,compared;
+static void same_sample(const t3_motion_stream_t* s,unsigned frame,
+                        const t3_motion_tables_t* t,t3_motion_cursor_t* cursor) {
+    int16_t expected[T3_PSX_POSE_CHANNELS],actual[T3_PSX_POSE_CHANNELS];
+    const int a=t3_motion_sample(s,frame,t,expected),b=t3_motion_sample_cursor(s,frame,t,cursor,actual);
+    assert(a==b);
+    if(a==1)assert(!memcmp(expected,actual,sizeof(expected))),++sampled;
+    ++compared;
+}
+static void knot_cursor(void) {
+    static uint8_t table[T3_PSX_SPLINE_TABLE_BYTES];
+    const t3_motion_tables_t t={table,sizeof(table)};
+    t3_motion_stream_t a,b;
+    t3_motion_cursor_t cursor={0};
+    for(unsigned i=0;i<sizeof(table);++i)table[i]=(uint8_t)rnd(256u);
+    for(unsigned trial=0;trial<40u;++trial) {
+        const unsigned frames=4u+rnd(252u);
+        random_stream(&a,keyed[0],frames);
+        random_stream(&b,keyed[1],4u+rnd(252u));
+        for(unsigned f=0;f<frames;++f)same_sample(&a,f,&t,&cursor);       /* forward */
+        for(unsigned f=frames;f-->0;)same_sample(&a,f,&t,&cursor);        /* backward */
+        for(unsigned n=0;n<200u;++n) {                                    /* jumps, both streams */
+            const t3_motion_stream_t* s=rnd(4u)?&a:&b;
+            same_sample(s,rnd(s->frames+2u),&t,&cursor);
+        }
+    }
+    printf("knot cursor: %u of %u samples succeeded and matched\n",sampled,compared);
+    assert(sampled*10u>=compared*9u);
+}
 int main(void) {
     open_and_sample();
     malformed_streams();
     cache_ownership();
     decoded_sample_cache();
+    knot_cursor();
     puts("PS1 49-channel motion layout and sparse spline sample: passed");
     return 0;
 }

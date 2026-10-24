@@ -32,7 +32,8 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
     case 1: return HAS(f,T3_FACT_CONTACT) && f->contact;
     case 0x18: return HAS(f,T3_FACT_DISTANCE) && f->distance <= (int32_t)p;
     case 0x19: return HAS(f,T3_FACT_DISTANCE) && f->distance >= (int32_t)p;
-    case 0x1A: return HAS(f,T3_FACT_CONTACT) && f->contact && !f->guarded;
+    case 0x1A: return HAS(f,T3_FACT_CONTACT|T3_FACT_OPPONENT) && f->contact &&
+                      !(f->own_attack&f->opponent_guard);
     case 0x1B: return HAS(f,T3_FACT_CONTACT) && f->guarded;
     case 0x1C: return HAS(f,T3_FACT_CONTACT) && f->whiffed;
     case 0x1D: return HAS(f,T3_FACT_OPPONENT) && f->opponent_transition!=0x21u;
@@ -78,7 +79,7 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
     case 0x38: return HAS(f,T3_FACT_OPPONENT|T3_FACT_ORIENTATION) &&
                       (f->opponent_state&4u)!=0 && f->relative_angle>=0x4000u;
     case 0x39: return HAS(f,T3_FACT_CONTACT|T3_FACT_OPPONENT) &&
-                      f->counter_hit && !(f->opponent_state&0x400u);
+                      f->counter_hit && !f->opponent_in_air;
     case 0x3A: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_lp;
     case 0x3B: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_rp;
     case 0x3C: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_both;

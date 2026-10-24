@@ -21,7 +21,9 @@ typedef struct {
 
 /* Apply PS1 basis transforms, then run all four original two-bone solvers.
  * Ten Euler FK slots are supplied by the caller. Successful limbs add
- * (4,5), (8,9), (12,13), and (15,16) to the validity mask.
+ * (4,5), (8,9), (12,13), and (15,16) to the validity mask. A limb too short
+ * to bend adds only its upper slot; the lower slot keeps its input value
+ * (valid only when input_mask had it), as the original slot buffer does.
  * 1: valid source tables and finite values (mask records unsolved limbs);
  * 0: missing tables; -1: corrupt tables / unsupported numerical state.
  * Outputs remain unchanged on 0/-1; game damage is NEVER driven here. */

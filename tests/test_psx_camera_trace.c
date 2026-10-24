@@ -366,8 +366,9 @@ int main(int argc, char** argv) {
             count = (size_t)le32(p); p += 4;
             if (count > 128) { fprintf(stderr, "too many streams\n"); return 2; }
             for (j = 0; j < count; j++, p += 16)
-                g_stream_entries[k][j] = (t3_psx_camera_stream_t){(uint16_t)le32(p), (uint16_t)le32(p + 4),
-                                                                  (uint16_t)le32(p + 8), (uint32_t)le32(p + 12)};
+                g_stream_entries[k][j] = (t3_psx_camera_stream_t){
+                    .offset=(uint16_t)le32(p),.frames=(uint16_t)le32(p + 4),
+                    .yaw_mode=(uint16_t)le32(p + 8),.first=(uint32_t)le32(p + 12)};
             g_streams[k].streams = g_stream_entries[k]; g_streams[k].stream_count = count;
             g_streams[k].sample_count = (size_t)le32(p); p += 4;
             {

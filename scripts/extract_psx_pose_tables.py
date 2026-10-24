@@ -17,8 +17,30 @@ CANONICAL = dict(sine=0x8001E8C4, sqrt=0x800990AC, basis=0x800972D0,
                  skeleton=0x800972F0, limb=0x80097320, spline=0x80096B00,
                  reactions=0x80010CE8,body_sqrt=0x8004B1D8,body_joints=0x80097364,body_radii=0x80097384,
                  common_branches=0x80017C78,atan=0x800210C8,push=0x8001075C,
-                 rsqrt=0x8001A194-384)
+                 rsqrt=0x8001A194-384,launch_push=0x80019D2C,air_kinds=0x8001A630,
+                 close_reactions=0x800177DC,throw_victims=0x800174C4,
+                 builtin_attacks=0x80017BDC)
 BASE, HEADER = 0x80010000, 0x800
+CLOSE_ENTRIES = 64
+# g_throwVictimSlots: 397 s16 slots, then the 21 words a reaction read
+# starting at the last entry reaches.
+THROW_VICTIM_WORDS = 397 + 21
+# The 13 built-in attack descriptors (id, pointer) at 0x80017C10 and the bytes
+# their pointers reach: the game reads past a descriptor into what follows.
+BUILTIN_ATTACK_BYTES = 0x400
+BUILTIN_TABLE, BUILTIN_COUNT = 0x34, 13
+
+
+def builtin_attacks(window, address):
+    """The window with the 13 descriptor pointers rewritten as window offsets."""
+    window = bytearray(window)
+    for i in range(BUILTIN_COUNT):
+        at = BUILTIN_TABLE + 8 * i + 4
+        pointer = struct.unpack_from('<I', window, at)[0]
+        if not address <= pointer < address + BUILTIN_ATTACK_BYTES - 6:
+            raise TableError(f'built-in attack descriptor {i} outside its window')
+        struct.pack_into('<I', window, at, pointer - address)
+    return bytes(window)
 
 
 def mapped(layout, address, size):
@@ -62,7 +84,9 @@ def extract(exe, layout_file, output):
     layout = json.loads(layout_file.read_text())['blocks']['exe']
     if hashlib.sha256(raw[HEADER:]).hexdigest() != layout['sha256']:
         raise TableError('USA executable body does not match release layout')
-    sizes = dict(SIZES, spline=0x660, common_branches=672*12,atan=1025,push=0x58C,body_sqrt=384,body_joints=32,body_radii=4,reactions=633*42,rsqrt=768)
+    sizes = dict(SIZES, spline=0x660, common_branches=672*12,atan=1025,push=0x58C,body_sqrt=384,body_joints=32,body_radii=4,reactions=633*42,rsqrt=768,
+                 launch_push=16,air_kinds=24,close_reactions=CLOSE_ENTRIES*4,
+                 throw_victims=THROW_VICTIM_WORDS*2,builtin_attacks=BUILTIN_ATTACK_BYTES)
     targets = {name: (mapped(layout, address, sizes[name]), sizes[name])
                for name, address in CANONICAL.items()}
     offsets = {name: address - BASE + HEADER for name, (address, _) in targets.items()}
@@ -82,7 +106,9 @@ def extract(exe, layout_file, output):
         raise TableError('limb/skeleton table adjacency changed')
     spline = raw[offsets['spline']:offsets['spline'] + sizes['spline']]
     branches = raw[offsets['common_branches']:offsets['common_branches'] + sizes['common_branches']]
-    ground=raw[offsets['atan']:offsets['atan']+sizes['atan']]+raw[offsets['push']:offsets['push']+sizes['push']]
+    # Ground blob: atan, push tables, the launch push table and the air kinds
+    # (t3_psx_ground_tables_bind).
+    ground=b''.join(raw[offsets[k]:offsets[k]+sizes[k]] for k in ('atan','push','launch_push','air_kinds'))
     if struct.unpack_from('<H', branches, len(branches)-12)[0] != 0xC00D:
         raise TableError('common branch table must end with RETURN')
     output.mkdir(parents=True, exist_ok=True)
@@ -93,7 +119,13 @@ def extract(exe, layout_file, output):
                        ('psx_push.bin',raw[offsets['push']:offsets['push']+sizes['push']])]:
         (output / name).write_bytes(data)
     (output/'psx_ground.bin').write_bytes(ground)
-    reactions=raw[offsets['reactions']:offsets['reactions']+sizes['reactions']]
+    # The 633 reaction records, then g_closeReactions (s16 reaction, s16
+    # distance per move +0x34 index; the banks use indices up to 0x39),
+    # then g_throwVictimSlots (move +0x32 values 0x1nnn), then the built-in
+    # attack descriptor window (move +0x28 ids).
+    reactions=b''.join(raw[offsets[k]:offsets[k]+sizes[k]] for k in ('reactions','close_reactions','throw_victims'))
+    reactions+=builtin_attacks(raw[offsets['builtin_attacks']:offsets['builtin_attacks']+BUILTIN_ATTACK_BYTES],
+                               targets['builtin_attacks'][0])
     (output/'psx_reactions.bin').write_bytes(reactions)
     manifest['reactions_sha256']=hashlib.sha256(reactions).hexdigest()
     body_sqrt=raw[offsets['body_sqrt']:offsets['body_sqrt']+384]

@@ -34,10 +34,11 @@ static void win_start(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2],
     s->counter=0;s->done=0;++s->state;
     win_wait(s,a,f);
 }
-static void camera(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2]) {
+static void camera(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2],
+                   const t3_psx_round_flow_facts_t* f) {
     int selected=-1;
     int assigned=0;
-    if(a[0].wins>=s->to_win || a[1].wins>=s->to_win) {
+    if(!f->team_round && (a[0].wins>=s->to_win || a[1].wins>=s->to_win)) {
         if(!a[0].is_cpu && a[0].win_pose>0){s->camera=3;selected=0;assigned=1;}
         else if(a[1].is_cpu || a[1].win_pose<1) {
             if(a[0].win_pose>0){s->camera=7;selected=1;}
@@ -143,7 +144,7 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
             break;
         }
         x.animate_before_camera=(s.result&1)==0;
-        camera(&s,a);
+        camera(&s,a,f);
         if(s.camera==6 || s.camera==7)for(unsigned i=0;i<2;++i)if(a[i].won<0){
             x.start_slot[i]=(int16_t)(a[i].health?3436:3429);a[i].pose=1;
         }

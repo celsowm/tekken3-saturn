@@ -61,9 +61,26 @@
     X(hit_clean,0xD0u,u8) \
     X(guard,0x66u,u16) \
     X(slide_state,0x82u,u8) \
+    X(slide_step_x,0x78u,i32) \
+    X(slide_step_z,0x7Cu,i32) \
+    X(ground_offset,0x96u,i16) \
+    X(air_speed,0x98u,i16) \
+    X(air_vel_x,0x9Au,i16) \
+    X(air_vel_y,0x9Cu,i16) \
+    X(air_vel_z,0x9Eu,i16) \
+    X(velocity.x,0x3C4u,i32) \
+    X(velocity.y,0x3C8u,i32) \
+    X(velocity.z,0x3CCu,i32) \
+    X(velocity_root.x,0x3B8u,i32) \
+    X(velocity_root.y,0x3BCu,i32) \
+    X(velocity_root.z,0x3C0u,i32) \
+    X(hit_dir.x,0x3DCu,i32) \
+    X(hit_dir.y,0x3E0u,i32) \
+    X(hit_dir.z,0x3E4u,i32) \
     X(slide_to_point,0xBFu,u8) \
     X(throw_state,0x74u,i16) \
     X(juggle_count,0x94u,i16) \
+    X(step_cooldown,0x128u,i16) \
     X(damage_override,0xEAu,i16) \
     X(last_damage,0xE8u,i16) \
     X(push_repeat_transition,0x13Au,i16) \

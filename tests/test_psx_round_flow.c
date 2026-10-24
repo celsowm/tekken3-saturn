@@ -61,6 +61,9 @@ int main(void) {
     a[0].is_cpu=1;a[1].won=-1;a[1].health=0;
     step();assert(s.camera==7 && x.start_slot[1]==3429 && !a[0].active && a[1].active);
     s.counter=59;step();assert(s.state==T3_ROUND_END && s.counter==60);
+    reset();s.state=T3_ROUND_REPLAY_DONE;a[0].wins=2;a[0].won=1;
+    a[0].is_cpu=1;a[1].won=-1;a[1].health=0;f.team_round=1;
+    step();assert(s.camera==3 && x.start_slot[0]==3431 && a[0].active && !a[1].active);
     reset();s.state=T3_ROUND_REPLAY_DONE;a[1].wins=2;a[1].won=1;
     a[1].is_cpu=1;a[0].won=-1;
     step();assert(s.camera==6 && x.start_slot[0]==3436 && a[0].active && !a[1].active);

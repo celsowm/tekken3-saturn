@@ -20,10 +20,10 @@ class WorkloadTests(unittest.TestCase):
     def test_slave_simulation_requires_real_work_and_bounded_storage(self):
         selected={'configuration':{'T3_SLAVE_SIMULATION':'ON'}}
         counters={**{'slave_sim_'+n:1 for n in ('frames','jobs','ticks','pose_tick')},
-                  'slave_sim_pose_lag':2,'slave_sim_stack_used':12000}
+                  'slave_sim_pose_lag':2,'slave_sim_stack_used':4472}
         workload.validate_optimizations(selected,'two-paul-release',counters)
         for name,value in [('slave_sim_frames',0),('slave_sim_jobs',0),
-                ('slave_sim_pose_lag',3),('slave_sim_stack_used',16384)]:
+                ('slave_sim_pose_lag',4),('slave_sim_stack_used',8192)]:
             with self.assertRaises(ValueError):
                 workload.validate_optimizations(selected,'two-paul-release',{**counters,name:value})
 
@@ -137,6 +137,24 @@ class WorkloadTests(unittest.TestCase):
                            ('model_texture_count', 24), ('model_archive_bytes', 87962)]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 workload.validate(good, 'two-paul-release', {**state, key: value})
+
+    def test_paul_law_release_needs_the_law_shape_and_inputs(self):
+        good=self.fixture()
+        good['shape']=dict(workload.PAUL_LAW_SHAPE)
+        good['input_sha256'].update(dict.fromkeys(workload.LAW_INPUTS, 'c' * 64))
+        state=dict(psx_owned_active=1, psx_combat_active=1, psx_round_flow_active=1,
+                   sim_ticks=120, observed_fields=180,
+                   psx_skin_preview_applied=[1, 1], psx_pose_status=[1, 1],
+                   model_texture_count=754, model_archive_bytes=81885)
+        workload.validate(good, 'paul-law-release', state)
+        with self.assertRaises(ValueError):
+            workload.validate(good, 'two-paul-release', state)
+        with self.assertRaises(ValueError):
+            workload.validate({**good, 'shape': dict(workload.PAUL_SHAPE)}, 'paul-law-release')
+        for name in workload.LAW_INPUTS:
+            bad=copy.deepcopy(good);del bad['input_sha256'][name]
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                workload.validate(bad, 'paul-law-release')
 
     def test_procedural_frozen_instrumented_and_disabled_core_are_rejected(self):
         changes=[('T3_RENDER_BENCH_TICK', '120'), ('T3_PERF_MODE', '2'),

@@ -24,9 +24,7 @@ int t3_psx_hit_preview(const t3_move_record_t* move,
     if(!move || !facts || !out || zone>=14u ||
        (facts->defender_guard & (uint16_t)~0x18u) ||
        (facts->attacker_damage && move->close_reaction &&
-        !facts->close_table_available) ||
-       (facts->attacker_damage && move->close_reaction &&
-        !facts->close_threshold))
+        !facts->close_table_available))
         return 0;
     r.zone=(uint8_t)zone;
     r.base_damage=facts->attacker_damage;

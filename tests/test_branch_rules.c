@@ -31,15 +31,19 @@ static void test_conditions(void) {
     assert(t3_branch_condition_matches(0,0,NULL));
     for(type=1;type<0x45;++type)
         assert(!t3_branch_condition_matches((uint8_t)type,999,NULL));
-    f.known=T3_FACT_CONTACT;
-    f.contact=1;f.guarded=0;f.whiffed=1;
+    f.known=T3_FACT_CONTACT|T3_FACT_OPPONENT;
+    f.contact=1;f.guarded=0;f.whiffed=1;f.own_attack=0x10;f.opponent_guard=0x08;
     assert(t3_branch_condition_matches(1,0,&f));
     assert(t3_branch_condition_matches(0x1A,0,&f));
     assert(!t3_branch_condition_matches(0x1B,0,&f));
     assert(t3_branch_condition_matches(0x1C,0,&f));
-    f.guarded=1;
+    f.guarded=1;f.opponent_guard=0x18;
     assert(!t3_branch_condition_matches(0x1A,0,&f));
     assert(t3_branch_condition_matches(0x1B,0,&f));
+    f.counter_hit=1;
+    assert(t3_branch_condition_matches(0x39,0,&f));
+    f.opponent_in_air=1;
+    assert(!t3_branch_condition_matches(0x39,0,&f));
 
     f.known=T3_FACT_DISTANCE;
     f.distance=500;f.adjusted_distance=190;

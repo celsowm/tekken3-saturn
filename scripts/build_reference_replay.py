@@ -16,11 +16,14 @@ def load(root):
         if hashlib.sha256((root/name).read_bytes()).hexdigest()!=manifest.get('files',{}).get(name):
             raise ValueError('changed private reference export: '+name)
     rows=[list(map(int,line.split())) for line in (root/'inputs.tsv').read_text().splitlines()]
-    if not 1<=len(rows)<=6000 or len(rows)!=manifest.get('ticks') or any(len(r)!=10 for r in rows):
+    if not 1<=len(rows)<=6000 or len(rows)!=manifest.get('ticks') or \
+            any(len(r)!=len(rows[0]) for r in rows) or len(rows[0]) not in (10,12):
         raise ValueError('invalid bounded reference input trace')
     if len((root/'expected.sha256').read_bytes())!=32*len(rows):
         raise ValueError('expected digest count differs from input count')
-    if any(not 0<=r[0]<=0xffffffff or any(not 0<=v<=65535 for v in r[1:9]) or not 1<=r[9]<=65535 for r in rows):
+    if any(not 0<=r[0]<=0xffffffff or any(not 0<=v<=65535 for v in r[1:9]) or
+           not 1<=r[9]<=65535 or (len(r)==12 and any(v not in (0,1) for v in r[10:12]))
+           for r in rows):
         raise ValueError('invalid input/frame/field-count word')
     seed=(root/'seed.ranges').read_bytes()
     if len(seed)<12 or seed[:8]!=b'T3RANGES':raise ValueError('invalid compact seed')
@@ -50,7 +53,7 @@ def generate(root,out):
         raise ValueError('invalid seed global addresses')
     events=[];last=None;deltas=bytearray((len(rows)+2)//4)
     for tick,row in enumerate(rows):
-        values=tuple(row[1:9])
+        values=tuple(row[1:9])+(tuple(row[10:12]) if len(row)==12 else (0,0))
         if values!=last:events.append((tick,values));last=values
         if tick:
             delta=row[0]-rows[tick-1][0]
@@ -63,9 +66,10 @@ def generate(root,out):
 #define T3_REFERENCE_FIXTURE_H
 #include <stdint.h>
 #include "psx_match.h"
-typedef struct {uint16_t tick,words[8];} t3_reference_event_t;
+typedef struct {uint16_t tick,words[10];} t3_reference_event_t;
 '''
     text+=f'#define T3_REFERENCE_TICKS {len(rows)}u\n#define T3_REFERENCE_FIRST_FRAME {rows[0][0]}u\n'
+    text+=f'#define T3_REFERENCE_HAS_SIDES {int(len(rows[0])==12)}\n'
     identity=hashlib.sha256((root/'manifest.json').read_bytes()).digest()
     text+='#define T3_REFERENCE_FIXTURE_ID {'+','.join(map(str,identity))+'}\n'
     for name,value in addresses.items():text+=f'#define T3_REFERENCE_{name.upper()} {value}u\n'
@@ -74,7 +78,7 @@ typedef struct {uint16_t tick,words[8];} t3_reference_event_t;
     text+=''.join('    {'+str(t)+',{'+','.join(map(str,v))+'}},\n' for t,v in events)+'};\n#endif\n'
     out.parent.mkdir(parents=True,exist_ok=True);out.write_text(text)
     return dict(ticks=len(rows),events=len(events),seed_bytes=len(seed),delta_bytes=len(deltas),
-        input_bytes=len(events)*18,expected_state_bytes_in_image=0,trace_sha256=manifest['trace_sha256'])
+        input_bytes=len(events)*22,expected_state_bytes_in_image=0,trace_sha256=manifest['trace_sha256'])
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('export',type=Path);p.add_argument('output',type=Path)

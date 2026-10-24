@@ -42,6 +42,8 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "placement.h"
 #include "move_probe.h"
 #include "perf.h"
+#include "sfx.h"
+#include "combat_events.h"
 #if defined(T3_SLAVE_SIMULATION)
 #include <saturn/parallel.h>
 _Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the original single-clip bridge");
@@ -90,24 +92,50 @@ enum { W = 320, H = 224, FACE_CAP = T3_STAGE_SCENE_CAPACITY, HUD_COMMANDS = 192,
 static t3_match_t g_game T3_HOT_WRAM;
 static t3_tick_clock_t g_tick_clock;
 #if defined(T3_SLAVE_SIMULATION)
-enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=2u };
+/* Up to three ticks run after an image is captured, so an image is at most
+ * three ticks behind the simulation. With two, a late image ran its third
+ * tick before the capture while the Master waited, which made the next image
+ * late too (THIRTY_IMAGE_GATE.md). */
+enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=3u };
 typedef struct {
     sat_pad_state_t pads[2];
     uint32_t first,count,epoch;
 } simulation_job_t;
 static simulation_job_t g_simulation_job T3_HOT_WRAM;
-uint8_t g_t3_simulation_stack[16384] __attribute__((aligned(16)));
+/* The Slave's deepest measured use is 4,472 bytes (slave_sim_stack_used); 8 KiB keeps
+ * about 1.8x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
+uint8_t g_t3_simulation_stack[8192] __attribute__((aligned(16)));
 static t3_match_t g_image_match T3_HOT_WRAM;
-static int32_t g_image_round[3];
+static int32_t g_image_round[6];
 static uint32_t g_simulation_epoch=1u,g_slave_simulation_epoch;
 volatile uint32_t g_t3_slave_sim_frames,g_t3_slave_sim_jobs,g_t3_slave_sim_ticks;
 volatile uint32_t g_t3_slave_sim_pose_tick,g_t3_slave_sim_pose_lag;
 volatile uint32_t g_t3_slave_sim_wait_ms,g_t3_slave_sim_max_wait_ms;
 #endif
+/* T3_SLAVE_FRT_PROBE: Slave FRT (/128) totals, read from a Mednafen save
+ * state (scripts/mednafen_state.py): [0] ticks, [1] actor preparation,
+ * [2] stage tables, [3] stage builds by the Slave, [4] by the Master. Off by
+ * default: High WRAM has no room for the code. */
+#if defined(T3_SLAVE_FRT_PROBE)
+volatile uint32_t g_t3_slave_frt[5] __attribute__((section(".wram_l")));
+#define SLAVE_FRT_START(name) const uint16_t name=sat_time_frc()
+#define SLAVE_FRT_ADD(slot,name) (g_t3_slave_frt[slot]+=(uint16_t)(sat_time_frc()-(name)))
+#define SLAVE_FRT_COUNT(slot) (++g_t3_slave_frt[slot])
+#define SLAVE_FRT_RESET() do{for(unsigned i_=0;i_<5u;++i_)g_t3_slave_frt[i_]=0;}while(0)
+#else
+#define SLAVE_FRT_START(name) do{}while(0)
+#define SLAVE_FRT_ADD(slot,name) do{}while(0)
+#define SLAVE_FRT_COUNT(slot) do{}while(0)
+#define SLAVE_FRT_RESET() do{}while(0)
+#endif
 static sat_scene_t g_scene;
 /* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
  * and hot actor data in High WRAM; the linker checks both memory budgets. */
+#if defined(T3_PROJECTED_FACE_QUEUE)
+static sat_scene3d_face_t g_faces[T3_COLD_FACES] __attribute__((section(".wram_l")));
+#else
 static sat_scene3d_face_t g_faces[FACE_CAP] __attribute__((section(".wram_l")));
+#endif
 #if defined(T3_PROJECTED_FACE_QUEUE)
 #if defined(T3_NATIVE_COMMANDS)
 static sat_scene3d_projected_face_t g_projected_faces[FACE_CAP] __attribute__((section(".wram_l")));
@@ -137,7 +165,8 @@ static uint16_t g_stage_count,g_stage_face,g_stage_cursor,g_stage_ready_count;
 static const sat_view_cache_item_t* g_stage_ready;
 static uint8_t g_stage_baking;
 #endif
-#if defined(T3_STAGE_HUD) || defined(T3_NATIVE_WAIT_PROBE) || defined(T3_NATIVE_PHASE_PROBE)
+#if defined(T3_STAGE_HUD) || defined(T3_NATIVE_PHASE_PROBE) || \
+    (defined(T3_NATIVE_WAIT_PROBE) && !defined(T3_NATIVE_WAIT_PROBE_SILENT))
 static uint8_t g_show_profiler=1;
 #else
 static uint8_t g_show_profiler;
@@ -152,6 +181,7 @@ static uint32_t g_t3_native_pre_ticks, g_t3_native_post_ticks;
  * image's tick count (2 or 3+). */
 static uint32_t g_t3_hist[4], g_t3_by_ticks[2][6], g_t3_by_ticks_n[2];
 static uint32_t g_t3_native_painter_ticks, g_t3_native_emit_ticks;
+static uint32_t g_t3_painter_sum, g_t3_emit_sum, g_t3_flush_samples;
 #endif
 #if defined(T3_OVERLAP_VDP1)
 volatile uint32_t g_t3_vdp1_overlap_frames;
@@ -257,12 +287,126 @@ static void box3(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z,
 
 #endif
 
-#if defined(T3_VDP2_FLOOR)
-static void floor_tiles(void) {
-    SAT_PANIC_IF_ERROR(t3_stage_vdp2_prepare(&g_camera,
-        t3_move_probe_world_center(0),t3_move_probe_world_center(2)));
+#if defined(T3_VDP2_FLOOR) && defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
+static int32_t g_stage_input[3]; /* the world centre the image's camera was built around */
+/* Hit and guard sparks: a four-point flash at the defender, 6 images long. The
+ * original spawns effect sprites at the contact point (HitSpawnEffect,
+ * FUN_80076F10); the flash sits on the hitting segment's end point. */
+enum { SPARK_IMAGES = 6 };
+static struct { uint8_t age; uint8_t block; int32_t at[3]; } g_spark[2];
+static void spark_events(uint8_t events) {
+    for(unsigned i=0;i<2u;++i) {
+        const uint8_t mine=(uint8_t)(events>>(T3_EVENT_BITS*i));
+        if(mine&(T3_EVENT_HIT|T3_EVENT_BLOCK)){
+            /* The attacker's hitting segment end, in PS1 world units (as the camera reads it). */
+            g_spark[i].age=1u;g_spark[i].block=(mine&T3_EVENT_BLOCK)!=0u;
+            for(unsigned axis=0;axis<3u;++axis)g_spark[i].at[axis]=t3_move_probe_owned_value(1u-i,27u+axis);
+        }
+        else if(g_spark[i].age&&++g_spark[i].age>SPARK_IMAGES)g_spark[i].age=0u;
+    }
+}
+/* Drawn with the HUD, projected through the image's camera: scene faces in front
+ * of the fighters cost about 2.5 images/s however small they were. */
+static void __attribute__((optimize("Os"))) draw_sparks(void) {
+    for(unsigned i=0;i<2u;++i) {
+        if(!g_spark[i].age)continue;
+        int16_t sx,sy;
+        const sat_fx16_t x=(g_spark[i].at[0]-g_stage_input[0])*96;
+        const sat_fx16_t z=-(g_spark[i].at[2]-g_stage_input[1])*96;
+        const sat_fx16_t y=-g_spark[i].at[1]*96;
+        if(sat_project_to_screen(&g_camera.view_proj,x,y,z,W,H,&sx,&sy)!=SAT_OK)continue;
+        const int arm=6+g_spark[i].age*3,thick=2+g_spark[i].age/2;
+        const uint16_t empty=0,color=g_spark[i].block?SAT_RGB555(14,22,31):SAT_RGB555(31,28,10);
+        SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,sx-arm,sy-thick/2,2*arm,thick,1u,1u,empty,color));
+        SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,sx-thick/2,sy-arm,thick,2*arm,1u,1u,empty,color));
+    }
 }
 #else
+static void spark_events(uint8_t events) { (void)events; }
+static void draw_sparks(void) {}
+#endif
+
+#if defined(T3_VDP2_FLOOR)
+#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
+/* Drop shadows. The original flattens each fighter's PSSDW mesh onto the floor
+ * with the stage light's shear (FighterBuildShadowPrims, opaque POLY_F3/F4, the
+ * stage record's shadow colour); here an octagon of two quads sits under the
+ * root at floor height instead, in the same colour (stage 0: 54, 24, 16).
+ * World units match t3_move_probe_camera: PS1 units * 96. */
+static void __attribute__((optimize("Os"))) drop_shadows(void) {
+    const int32_t R = 420 * 96, S = R * 8 / 10;
+    static const int8_t ring[2][4][2] = {{{-1,-1},{1,-1},{1,1},{-1,1}},{{0,-1},{1,0},{0,1},{-1,0}}};
+    sat_scene3d_material_t m = {0};
+    m.kind = SAT_SCENE3D_RGB;m.rgb555 = SAT_RGB555(54 >> 3, 24 >> 3, 16 >> 3);
+    m.color_calc_slot = SAT_INDEXED_SOLID_OPAQUE;
+    for(unsigned k = 0; k < 4u; ++k) {
+        const unsigned i = k >> 1, shape = k & 1u, r = shape ? R : S;
+        const int32_t x = (t3_move_probe_owned_value(i,1u) - t3_move_probe_world_center(0)) * 96;
+        const int32_t z = -(t3_move_probe_owned_value(i,3u) - t3_move_probe_world_center(2)) * 96;
+        sat_quad3_t q;
+        for(unsigned v = 0; v < 4u; ++v)
+            q.v[v] = (sat_vec3_t){x + ring[shape][v][0] * r, 0, z + ring[shape][v][1] * r};
+        const sat_result_t st = sat_scene_submit_quad(&g_scene, &q, &m, 0);
+        if(st != SAT_OK)SAT_PANIC_IF_ERROR(st);
+    }
+}
+#endif
+/* The inputs are read before the Slave task can start ticking; the tables
+ * are built after the actors, while the Slave runs those ticks. */
+static int32_t g_stage_input[3];
+static void floor_tiles(void) {
+#if defined(T3_PSX_CAMERA)
+    g_stage_input[2]=t3_move_probe_backdrop_turn();
+#else
+    g_stage_input[2]=0;
+#endif
+    g_stage_input[0]=t3_move_probe_world_center(0);
+    g_stage_input[1]=t3_move_probe_world_center(2);
+#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
+    drop_shadows();
+#endif
+}
+/* Set when the Slave's task may build this image's tables after its ticks.
+ * Then whichever CPU gets there first claims them: the Master once it has
+ * flushed the scene and drawn the HUD, the Slave once its ticks are done. */
+static uint8_t g_stage_on_worker,g_stage_by_master;
+static volatile uint8_t g_stage_claim;
+static sat_result_t stage_build(void) {
+    return t3_stage_vdp2_prepare(&g_camera,g_stage_input[0],g_stage_input[1],g_stage_input[2]);
+}
+static void stage_claim_reset(void) {
+    *(volatile uint8_t*)sat_parallel_uncached_address((const void*)&g_stage_claim)=0;
+}
+/* TAS.B is one locked read-modify-write on the bus: true for the first CPU. */
+static int stage_claim(void) {
+    volatile uint8_t* flag=sat_parallel_uncached_address((const void*)&g_stage_claim);
+    int first;
+    __asm__ volatile("tas.b @%1\n\tmovt %0":"=r"(first):"r"(flag):"t","memory");
+    return first;
+}
+static void stage_prepare(void) {
+    if(!g_stage_on_worker)SAT_PANIC_IF_ERROR(stage_build());
+}
+static sat_result_t stage_worker(void) {
+    if(!stage_claim())return SAT_OK;
+    SLAVE_FRT_START(started);
+    const sat_result_t st=stage_build();
+    SLAVE_FRT_ADD(2,started);
+    SLAVE_FRT_COUNT(3);
+    return st;
+}
+static void stage_before_join(void) {
+    g_stage_by_master=stage_claim();
+    if(g_stage_by_master){SAT_PANIC_IF_ERROR(stage_build());SLAVE_FRT_COUNT(4);}
+}
+static sat_result_t stage_sync(void) {return g_stage_by_master?SAT_OK:t3_stage_vdp2_sync();}
+#else
+static void stage_prepare(void) {}
+static uint8_t g_stage_on_worker;
+static void stage_claim_reset(void) {}
+static void stage_before_join(void) {}
+static sat_result_t stage_worker(void) {return SAT_OK;}
+static sat_result_t stage_sync(void) {return SAT_OK;}
 static void floor_tiles(void) {
     int x, z;
 #if defined(T3_NATIVE_COMMANDS)
@@ -291,6 +435,55 @@ static void floor_tiles(void) {
 #endif
 }
 
+#endif
+
+/* Arcade rule: with no pad in port 2 the original CPU opponent plays P2
+ * (difficulty 1, level 4: the defaults the original's options start from).
+ * Recorded and reference replays always drive both fighters themselves. */
+static uint8_t g_arcade_stage;
+
+/* Arcade sequencing: each match the player wins against the CPU raises the
+ * CPU level (4..7); a loss or a draw repeats the stage. Only two fighters
+ * exist, so the opponent is always Law. */
+static void arcade_advance(int winner) {
+    if(winner==0 && g_arcade_stage<3u)++g_arcade_stage;
+}
+
+static void choose_cpu(const sat_pad_state_t* pad1) {
+#if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
+    (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
+#else
+    if(pad1->connected)g_arcade_stage=0u;
+    t3_move_probe_set_cpu(pad1->connected?0u:2u,1u,(uint8_t)(4u+g_arcade_stage));
+#endif
+}
+
+#if defined(T3_TITLE_SCREEN)
+/* Title: waits for START on pad 1, then re-reads port 2 (a pad means VS, an
+ * empty port means ARCADE against the CPU). */
+static void title_screen(void) {
+    for(unsigned blink=0;;++blink) {
+        sat_pad_state_t pad0={0},pad1={0};
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        SAT_PANIC_IF_ERROR(sat_set_clear_color(FRAME_BACKGROUND));
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad0));
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&pad1));
+        SAT_PANIC_IF_ERROR(sat_begin_frame());
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN 3",W/2,70));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PAUL  VS  LAW",W/2,96));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+            pad1.connected?"2 PLAYER VS":"1 PLAYER ARCADE",W/2,128));
+        if(blink&32u)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PRESS START",W/2,160));
+        SAT_PANIC_IF_ERROR(sat_end_frame());
+        if(pad0.pressed&SAT_PAD_START) {
+            choose_cpu(&pad1);
+            t3_move_probe_reset(g_game.round);
+            return;
+        }
+    }
+}
 #endif
 
 static t3_input_t controller(const sat_pad_state_t* pad, int facing) {
@@ -333,14 +526,19 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
         if(st!=SAT_OK)return st;
         g_slave_simulation_epoch=job->epoch;
     }
+    SLAVE_FRT_START(ticks_started);
     for(uint32_t i=0;i<job->count;++i) {
         t3_input_t p1=controller(&job->pads[0],view->fighters[0].facing);
         t3_input_t p2=controller(&job->pads[1],view->fighters[1].facing);
         if(job->first+i) {p1.pressed=0;p2.pressed=0;}
+#if defined(T3_REPLAY_INPUT_TAPE)
+        t3_input_tape_step(view->total_ticks,&p1,&p2);
+#endif
         const sat_result_t st=t3_move_probe_owned_step(p1,p2,view);
         if(st!=SAT_OK)return st;
         t3_move_probe_tick(view);
     }
+    SLAVE_FRT_ADD(0,ticks_started);
     g_t3_slave_sim_ticks=view->total_ticks;
     ++g_t3_slave_sim_jobs;
     *written=sizeof(*view);
@@ -409,6 +607,9 @@ static void capture_image_match(void) {
     g_image_round[0]=t3_move_probe_round_value(0);
     g_image_round[1]=t3_move_probe_round_value(1);
     g_image_round[2]=t3_move_probe_round_value(4);
+    g_image_round[3]=t3_move_probe_round_value(11);
+    g_image_round[4]=t3_move_probe_round_value(10);
+    g_image_round[5]=t3_move_probe_round_value(12);
     g_t3_slave_sim_pose_tick=g_game.total_ticks;
 }
 
@@ -423,18 +624,47 @@ static sat_parallel_handle_t g_prepare_handle;
 static sat_result_t prepare_simulation_entry(const void* input,uint32_t bytes,void* output,
         uint32_t capacity,uint32_t* written) {
     sat_parallel_purge_cache(); /* the worker reads the Master's cached data */
+    SLAVE_FRT_START(prep_started);
     t3_characters_prepare_worker();
-    return t3_simulation_task_entry(input,bytes,output,capacity,written);
+    SLAVE_FRT_ADD(1,prep_started);
+    const sat_result_t st=t3_simulation_task_entry(input,bytes,output,capacity,written);
+    /* The Master is still drawing; its camera and stage inputs are final. */
+    return st==SAT_OK && g_stage_on_worker?stage_worker():st;
 }
 
 static sat_result_t start_prepare_simulation(void) {
     capture_image_match();
+    g_stage_on_worker=T3_PERF_MODE!=1;
+    stage_claim_reset();
     g_simulation_job=g_prepare_job;
     return sat_parallel_submit(PREPARE_SIMULATION_TASK,&g_simulation_job,
         sizeof(g_simulation_job),&g_game,sizeof(g_game),&g_prepare_handle);
 }
 #endif
 #endif
+
+/* Health bars as FUN_8004E55C draws them: player 1's is anchored at its inner
+ * end and shrinks outwards, player 2's mirrors it. Behind the health sits the
+ * "recent damage" length, which closes on it by 1/16 of the difference per
+ * 60 Hz frame (about 1/8 per displayed image, as the HUD is drawn at 30 Hz).
+ * Rounds refill it with the health. */
+enum { BAR_WIDTH = 140, BAR_Y = 19, BAR_HEIGHT = 8 };
+static int g_recent_damage[2];
+static void health_bar(int x, int inner_right, int health, int* recent) {
+    int length = (health * BAR_WIDTH + T3_MAX_HEALTH - 1) / T3_MAX_HEALTH;
+    const uint16_t empty = SAT_RGB555(13,4,4);
+    if (length < 0) length = 0;
+    if (length > BAR_WIDTH) length = BAR_WIDTH;
+    if (*recent < length) *recent = length;
+    else if (*recent > length) *recent -= (*recent - length + 7) / 8;
+    SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, x, BAR_Y, BAR_WIDTH, BAR_HEIGHT, 0, 1u, empty, empty));
+    if (*recent > 0)
+        SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, inner_right ? x + BAR_WIDTH - *recent : x,
+            BAR_Y, *recent, BAR_HEIGHT, 1u, 1u, empty, SAT_RGB555(28,22,4)));
+    if (length > 0)
+        SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, inner_right ? x + BAR_WIDTH - length : x,
+            BAR_Y, length, BAR_HEIGHT, 1u, 1u, empty, SAT_RGB555(6,27,12)));
+}
 
 static void draw_hud(void) {
 #if defined(T3_SLAVE_SIMULATION)
@@ -451,13 +681,10 @@ static void draw_hud(void) {
 #endif
 #endif
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
-    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P2", 288, 5));
-    SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, 8, 19, 140, 8,
-        (uint32_t)game->fighters[0].health, T3_MAX_HEALTH,
-        SAT_RGB555(13,4,4), SAT_RGB555(6,27,12)));
-    SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud, 172, 19, 140, 8,
-        (uint32_t)game->fighters[1].health, T3_MAX_HEALTH,
-        SAT_RGB555(13,4,4), SAT_RGB555(6,27,12)));
+    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_cpu_mask()&2u?"CPU":"P2", 288, 5));
+    health_bar(8,1,game->fighters[0].health,&g_recent_damage[0]);
+    health_bar(172,0,game->fighters[1].health,&g_recent_damage[1]);
+    draw_sparks();
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", game->round, 8, 35));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[0], 8, 47));
@@ -479,26 +706,41 @@ static void draw_hud(void) {
 #if defined(T3_SLAVE_SIMULATION)
     const int replay=g_image_round[2];
     const int round_active=g_image_round[0],round_state=g_image_round[1];
+    const int intro_frame=g_image_round[3],round_number=g_image_round[4],final_round=g_image_round[5];
 #else
     const int replay=t3_move_probe_round_value(4);
     const int round_active=t3_move_probe_round_value(0),round_state=t3_move_probe_round_value(1);
+    const int intro_frame=t3_move_probe_round_value(11),round_number=t3_move_probe_round_value(10);
+    const int final_round=t3_move_probe_round_value(12);
 #endif
     if(replay>=1 && replay<=4)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"REPLAY",W/2,85));
-    else if(round_active && round_state==0)
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"READY",W/2,85));
-    else if (game->match_done)
+    else if(round_active && round_state==0) {
+        /* hud.md: the round name from the intro's start, READY? from frame 106 (46 after round 1). */
+        if(intro_frame<(round_number==1?106:46)) {
+            if(final_round)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"FINAL ROUND",W/2,70));
+            else SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"ROUND ",(uint32_t)round_number,W/2-36,70));
+        } else SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"READY?",W/2,85));
+    } else if(round_active && round_state==1 && round_number==1 && intro_frame<45 && !game->round_done) {
+        /* Round 1 starts in the fight itself (psx_match.c); announce it as it begins. */
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"FIGHT!",W/2,70));
+    } else if (game->match_done || game->round_done) {
+        /* hud.md: K.O. / DOUBLE K.O. / TIME UP, then the winner. */
+        const int down0=game->fighters[0].health<=0,down1=game->fighters[1].health<=0;
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            game->winner < 0 ? "MATCH DRAW" :
-            (game->winner == 0 ? "PLAYER 1 WINS!" : "PLAYER 2 WINS!"), W/2, 85));
-    else if (game->round_done)
+            down0&&down1?"DOUBLE K.O.":down0||down1?"K.O.":"TIME UP",W/2,70));
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            game->winner < 0 ? "DRAW" :
-            (game->winner == 0 ? "PLAYER 1 ROUND" : "PLAYER 2 ROUND"), W/2, 85));
-    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_combat()?"X HIGH  DF+X MID  D+A LOW":t3_move_probe_owned()?
-        "X/Y PUNCH  A/B KICK":"X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
-    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_owned()?
-        "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
+            game->match_done?(game->winner<0?"MATCH DRAW":game->winner==0?"PLAYER 1 WINS!":"PLAYER 2 WINS!"):
+            (game->winner<0?"DRAW":game->winner==0?"PLAYER 1 ROUND":"PLAYER 2 ROUND"),W/2,90));
+    }
+    /* The original has no control hints; each glyph is a VDP1 command the
+     * Master writes, so show them only while a round is introduced. */
+    if(!round_active || round_state==0) {
+        SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_combat()?"X HIGH  DF+X MID  D+A LOW":t3_move_probe_owned()?
+            "X/Y PUNCH  A/B KICK":"X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
+        SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_owned()?
+            "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
+    }
 }
 
 static void prepare_scene(void) {
@@ -540,17 +782,29 @@ static void prepare_scene(void) {
         floor_tiles();
         T3_PERF_ADD(stage,stage_started);
         SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
+        T3_PERF_START(stage_late_started);
+        stage_prepare();
+        T3_PERF_ADD(stage,stage_late_started);
     }
 }
+
+/* The most cold (clipping-fallback) scene records one frame has used:
+ * clipped faces and emitted fallbacks, for sizing the cold store. */
+volatile uint16_t g_t3_cold_peak[2] __attribute__((section(".wram_l")));
 
 static void flush_scene(void) {
     T3_PERF_START(flush_started);
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
+    if(g_scene.faces.clipped_faces>g_t3_cold_peak[0])g_t3_cold_peak[0]=g_scene.faces.clipped_faces;
+    if(g_scene.faces.fallback_faces>g_t3_cold_peak[1])g_t3_cold_peak[1]=g_scene.faces.fallback_faces;
 #if defined(T3_NATIVE_WAIT_PROBE)
     sat_scene3d_profile_t scene_profile={0};
     if(sat_scene3d_profile_get(&scene_profile)==SAT_OK) {
         g_t3_native_painter_ticks=scene_profile.painter_ticks;
         g_t3_native_emit_ticks=scene_profile.emission_ticks;
+        g_t3_painter_sum+=scene_profile.painter_ticks;
+        g_t3_emit_sum+=scene_profile.emission_ticks;
+        ++g_t3_flush_samples;
     }
 #endif
 #if defined(T3_NATIVE_COMMANDS)
@@ -828,6 +1082,12 @@ int main(void) {
     t3_sim_init();
     g_font=(sat_ascii_font_t){0};
     SAT_PANIC_IF_ERROR(sat_hud_init_default(&g_hud, &g_font));
+#if defined(T3_MEMORY_PROBE)
+    {
+        void t3_memory_probe(void);
+        t3_memory_probe();
+    }
+#endif
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
 #if defined(T3_NATIVE_COMMANDS)
@@ -837,6 +1097,7 @@ int main(void) {
 #if defined(T3_PROJECTED_FACE_QUEUE)
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_storage(
         &g_scene.faces,g_projected_faces,FACE_CAP));
+    g_scene.faces.cold_capacity=T3_COLD_FACES;
 #if defined(T3_DIRECT_FACE_SPANS)
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_use_projected_indices(
         &g_scene.faces,g_projected_indices,FACE_CAP));
@@ -852,8 +1113,18 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_characters_init(character_loading_progress, NULL));
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_cold_data_load());
+#if defined(T3_REFERENCE_REPLAY)
+    /* The reference fixture owns both pads from the very first match init. */
+    choose_cpu(NULL);
+#endif
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
 #if !defined(T3_REFERENCE_REPLAY)
+    {
+        sat_pad_state_t boot_pad1={0};
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&boot_pad1));
+        choose_cpu(&boot_pad1);
+    }
     /* The reference initializer already applied its single original seed. */
     t3_move_probe_reset(g_game.round);
 #endif
@@ -866,15 +1137,21 @@ int main(void) {
 #if defined(T3_CPU_DIAGNOSTICS)
     capture_boot_cache();
 #endif
+#if defined(T3_TITLE_SCREEN)
+    title_screen();
+#endif
 #if defined(T3_VDP2_FLOOR)
     loading_frame(BOOT_POSES, "PAUL STAGE");
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
 #endif
+    /* The face store is idle until the first scene: it holds the sound file. */
+    SAT_PANIC_IF_ERROR(t3_sfx_init(g_faces,sizeof g_faces));
     loading_frame(BOOT_READY, "READY");
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
         g_t3_simulation_stack[stack_byte]=0xA5u;
     SAT_PANIC_IF_ERROR(sat_parallel_register_task(SIMULATION_TASK,t3_simulation_task_entry));
+    SLAVE_FRT_RESET(); /* NOLOAD Low WRAM */
 #if defined(T3_FUSED_ACTOR_PREPARATION)
     SAT_PANIC_IF_ERROR(sat_parallel_register_task(PREPARE_SIMULATION_TASK,prepare_simulation_entry));
 #endif
@@ -925,12 +1202,21 @@ int main(void) {
             SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));
             ++g_simulation_epoch;
 #endif
+            if(g_game.match_done)arcade_advance(g_game.winner);
+            t3_combat_events_reset();
             t3_match_reset(&g_game);
+            choose_cpu(&pad1);
             t3_move_probe_reset(g_game.round);
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
             t3_input_tape_reset();
 #endif
             SAT_PANIC_IF_ERROR(t3_characters_reset());
+        }
+        {
+            const uint8_t events=t3_combat_events_poll();
+            t3_sfx_play_events(events);
+            t3_sfx_round_update();
+            spark_events(events);
         }
         now = display_fields();
         elapsed = now - prev_frame;
@@ -997,7 +1283,7 @@ int main(void) {
         g_t3_native_pre_ticks=(uint16_t)(native_prepare_started-native_loop_started);
 #endif
 #if defined(T3_SLAVE_SIMULATION) && defined(T3_FUSED_ACTOR_PREPARATION)
-        g_prepare_handle=0;
+        g_prepare_handle=0;g_stage_on_worker=0;
         if(deferred) {
             g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch};
             t3_characters_set_worker_start(start_prepare_simulation);
@@ -1034,7 +1320,12 @@ int main(void) {
 #if defined(T3_NATIVE_WAIT_PROBE)
             const uint16_t native_join_started=sat_time_frc();
 #endif
+            if(g_stage_on_worker)stage_before_join();
             SAT_PANIC_IF_ERROR(simulation_join(simulation_handle,deferred));
+            if(g_stage_on_worker) {
+                SAT_PANIC_IF_ERROR(stage_sync());
+                g_stage_on_worker=0;
+            }
 #if defined(T3_NATIVE_WAIT_PROBE)
             g_t3_native_join_ticks=(uint16_t)(sat_time_frc()-native_join_started);
 #endif
@@ -1060,6 +1351,7 @@ int main(void) {
         T3_PERF_ADD(diagnostics,diagnostics_started);
         T3_PERF_START(present_started);
 #if defined(T3_VDP2_FLOOR)
+        SAT_PANIC_IF_ERROR(t3_stage_vdp2_present());
 #if defined(T3_NATIVE_WAIT_PROBE)
         const uint16_t submit_started=sat_time_frc();
 #endif
@@ -1069,7 +1361,6 @@ int main(void) {
         g_t3_submit_ticks_sum+=g_t3_submit_ticks_last;
         ++g_t3_submit_ticks_count;
 #endif
-        SAT_PANIC_IF_ERROR(t3_stage_vdp2_present());
 #else
         SAT_PANIC_IF_ERROR(sat_end_frame());
 #endif

@@ -169,12 +169,12 @@ int t3_psx_body_shapes(t3_psx_body_actor_t* a,const t3_psx_joint_t parts[T3_PSX_
             ((uint32_t)tables[4*k+2]<<16)|((uint32_t)tables[4*k+3]<<24);
         int32_t radius=le16(tables+32+2*k),r0=le16(tables+32),r3=le16(tables+38);
         int zero=0;
-        if(joint>=T3_PSX_DRAW_PARTS || !(mask&(1u<<joint)) || radius<0)return 0;
+        if(joint>=T3_PSX_DRAW_PARTS || !(mask&t3_psx_bit(joint)) || radius<0)return 0;
         switch(profile&15) {
         case 0: {
             int drop=!(profile&0x1000) || !m->active_first ||
                 (m->active_first-8<frame && frame<m->active_last);
-            if(drop && ((profile>>(k+4))&1))radius=0;
+            if(drop && ((uint32_t)profile&t3_psx_bit(k+4)))radius=0;
             break;
         }
         case 1:radius=k==0?r0:k==3?r3:1;break;

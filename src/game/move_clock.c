@@ -74,7 +74,7 @@ int t3_move_clock_begin(t3_move_clock_t* c,const t3_move_start_t* s) {
        s->branch_kind>4u || s->same_animation>1u || s->got_hit>1u || s->alive>1u ||
        c->ballistic>1u || c->move_changed>1u)return -1;
     code=s->transition;
-    if(!(code<=29u || code==35u || (code>=37u && code<=43u)))return -1;
+    if(!(code<=30u || code==33u || code==34u || code==35u || code==36u || (code>=37u && code<=43u)))return -1;
     n=*c;n.hold_frames=-1;n.frame_step=1;n.hit_freeze=0;
     if(!s->got_hit)n.ballistic=0;
     if(s->got_hit && s->alive)n.hit_freeze=s->hit_freeze_in;
@@ -100,6 +100,9 @@ int t3_move_clock_begin(t3_move_clock_t* c,const t3_move_start_t* s) {
         n.root_frame=n.pose_frame;n.frame_step=-1;
     } else if(code==17u) {
         bind=0;
+    } else if(code==30u || code==36u) {
+        /* LaunchTrajectory reads the old frame; the ground start then moves
+         * pose and root to the launch entry frame. */
     } else if(code==26u || code==27u) {
         n.pose_frame=add16(n.pose_frame,1);n.root_frame=add16(n.root_frame,1);
         if(n.pose_frame>s->next_length)n.pose_frame=n.root_frame=s->next_length;

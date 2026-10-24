@@ -17,7 +17,10 @@ directory):
 A line holding only `<<<`, `===` or `>>>` is a marker, so those lines
 cannot appear in the texts themselves. An empty new text deletes the old one.
 
-    scripts/edit_once.py SPEC [--dry-run]
+    scripts/edit_once.py SPEC [--dry-run] [--reverse]
+
+--reverse undoes an applied spec: it swaps each old and new text and
+applies the edits last to first.
     scripts/edit_once.py - < SPEC
 """
 import argparse
@@ -53,10 +56,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("spec", help="spec file, or - for stdin")
     parser.add_argument("--dry-run", action="store_true", help="check only")
+    parser.add_argument("--reverse", action="store_true", help="undo an applied spec")
     args = parser.parse_args()
     spec = sys.stdin.read() if args.spec == "-" else open(args.spec).read()
+    edits = parse(spec)
+    if args.reverse:
+        edits = [(path, new, old, number) for path, old, new, number in reversed(edits)]
     files, failed = {}, 0
-    for path, old, new, number in parse(spec):
+    for path, old, new, number in edits:
         if path not in files:
             files[path] = open(path).read()
         count = files[path].count(old) if old else 0

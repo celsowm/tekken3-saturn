@@ -22,7 +22,7 @@ _t3_simulation_task_entry:
     nop
     .align 2
 .Lsimulation_stack_top:
-    .long _g_t3_simulation_stack+16384
+    .long _g_t3_simulation_stack+8192
 .Lsimulation_body:
     .long _t3_simulation_task_body
     .size _t3_simulation_task_entry,.-_t3_simulation_task_entry

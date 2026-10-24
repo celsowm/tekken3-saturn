@@ -4,6 +4,8 @@ static uint8_t reference_seed_reads[0x200000];
 static int reference_record_reads;
 static const char* reference_output;
 static FILE *reference_hashes,*reference_inputs;
+static FILE *reference_debug_values;
+static int reference_debug_done;
 static t3_sha256_t reference_digest;
 static uint32_t reference_value_count;
 static void reference_read(uint32_t address,unsigned n) {
@@ -14,6 +16,7 @@ static void reference_read(uint32_t address,unsigned n) {
 static void reference_value(int64_t value) {
     uint8_t bytes[8];uint64_t bits=(uint64_t)value;
     for(unsigned k=0;k<8;++k)bytes[k]=(uint8_t)(bits>>(56-8*k));
+    if(reference_debug_values && !reference_debug_done)fwrite(bytes,1,8,reference_debug_values);
     t3_sha256_update(&reference_digest,bytes,8);++reference_value_count;
 }
 static FILE* reference_file(const char* name) {

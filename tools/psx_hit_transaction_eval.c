@@ -28,7 +28,7 @@ int main(int argc,char** argv) {
     config.bank=&bank;config.common=&common;config.enable_combat=1;
     config.max_health_q16=i32(0x800A9228u+0x3F8u);config.chip_enabled=u32(0x800AFA58u)!=0;
     config.collapse_on_ko=u8(0x800AFA93u);config.scale_percent=100;
-    config.ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),push,sizeof(push)};
+    config.ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),push,sizeof(push),NULL};
     config.reactions=sparse;config.reactions_size=sizeof(sparse);match.config=&config;
     for(unsigned i=0;i<2;++i) {
         uint32_t b=0x800A9228u+i*0x188Cu;

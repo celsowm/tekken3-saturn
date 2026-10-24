@@ -42,9 +42,14 @@ typedef struct t3_branch_context {
     int16_t throw_situation; /* -1 = none */
     uint8_t opponent_bank;
     uint8_t facing_quadrant, opponent_quadrant, side_flag;
+    /* contact/whiffed are the fighter's own (+0xD1/+0xD2); guarded and
+     * counter_hit are the opponent's last applied hit (+0xCF/+0xD3). */
     uint8_t contact, guarded, whiffed, counter_hit;
+    uint8_t opponent_in_air;
+    uint16_t opponent_guard; /* +0x9C guard bits, matched against own_attack */
     uint8_t body_contact, tap_lp, tap_rp, tap_both;
     uint8_t launch_armed;
+    int16_t step_cooldown; /* +0x128: rows flagged 0x1C are skipped while non-zero */
 } t3_branch_context_t;
 
 int t3_branch_restriction_matches(uint8_t restriction, uint8_t own_bank,

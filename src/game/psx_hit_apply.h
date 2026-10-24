@@ -46,6 +46,11 @@ typedef struct {
     int16_t extra_damage, slot_damage, total_damage;
     uint8_t ko_started, hit_clean, guarded, close, counter;
     uint8_t reaction_known;       /* false until original table/facts match */
+    /* What the CPU opponent still sees: InputSource runs before MoveStep,
+     * which in the original queues a counter hit's reaction and runs the
+     * KO collapse. These hold the fighter as it was before them. */
+    uint8_t prior_pending_valid,collapsed;
+    uint16_t prior_pending_slot,prior_slot,prior_pose_frame,prior_attack_word;
     t3_psx_reaction_pick_t reaction;
 } t3_psx_hit_apply_result_t;
 

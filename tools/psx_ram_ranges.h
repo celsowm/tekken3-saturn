@@ -21,6 +21,13 @@ static const uint8_t* at(uint32_t address,unsigned size) {
     }
     bad=1;return ram;
 }
+/* Whether the snapshot holds the bytes, without marking it bad. */
+static inline int has(uint32_t address,unsigned size) {
+    for(unsigned i=0;i<range_count;++i)
+        if(address>=ranges[i].address && size<=ranges[i].size &&
+           address-ranges[i].address<=ranges[i].size-size)return 1;
+    return 0;
+}
 static uint8_t u8(uint32_t a) {return *at(a,1);}
 static uint16_t u16(uint32_t a) {const uint8_t* p=at(a,2);return (uint16_t)(p[0]|(p[1]<<8));}
 static int16_t i16(uint32_t a) {uint16_t u=u16(a);return (int16_t)(u<32768u?(int32_t)u:(int32_t)u-65536);}

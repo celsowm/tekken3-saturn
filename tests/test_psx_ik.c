@@ -120,52 +120,95 @@ static void failure_contract(void) {
     assert(t3_psx_pose_ik(pose,&table,slots,0u,slots,&mask)==-1);
     assert(mask==12345u);
 }
+/* A raw stream of N frames: channel 3 (odd, so read in reverse) holds one key
+ * per frame, the other limb channels are constant. Frame 0 reads key N-1,
+ * which is zero: a singular limb. */
+enum {STREAM_FRAMES=200};
+static uint8_t stream_bytes[(STREAM_FRAMES+8)*2];
+static t3_motion_stream_t make_stream(void) {
+    t3_motion_stream_t s={0};
+    s.data=stream_bytes;s.length=sizeof(stream_bytes);s.frames=STREAM_FRAMES;
+    for(unsigned f=0;f<STREAM_FRAMES;++f)
+        wr16(stream_bytes+8+f*2u,(uint16_t)(f==STREAM_FRAMES-1u?0:150u+f));
+    wr16(stream_bytes+0,300);wr16(stream_bytes+2,480);
+    s.counts[3]=STREAM_FRAMES;s.key_offset[3]=8;
+    s.counts[6]=1;s.key_offset[6]=0;
+    s.counts[9]=s.counts[12]=1;s.key_offset[9]=s.key_offset[12]=2;
+    return s;
+}
+static void expect(const t3_motion_stream_t* s,unsigned frame,const t3_psx_ik_tables_t* table,
+                   int16_t pose[T3_PSX_POSE_CHANNELS],t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],
+                   uint32_t* mask) {
+    assert(t3_motion_sample(s,frame,NULL,pose)==1);
+    assert(t3_psx_pose_full(pose,table,slots,mask)==1);
+}
 static void local_pose_cache(void) {
+    static t3_psx_local_pose_entry_t entries[256];
     t3_psx_ik_tables_t table={{sine,sizeof(sine)},ik,sizeof(ik)};
-    t3_psx_local_pose_entry_t entries[2];t3_psx_local_pose_cache_t cache;
+    t3_psx_local_pose_cache_t cache;
+    t3_motion_stream_t stream=make_stream();
     t3_psx_matrix_t expected[T3_PSX_ROTATION_SLOTS],actual[T3_PSX_ROTATION_SLOTS];
-    int16_t pose[T3_PSX_POSE_CHANNELS]={0},root;
+    int16_t want[T3_PSX_POSE_CHANNELS],pose[T3_PSX_POSE_CHANNELS],root;
     uint32_t expected_mask,mask,fk;
-    fixtures();pose[3]=600;pose[6]=600;pose[9]=960;pose[12]=960;
-    t3_psx_local_pose_cache_init(&cache,entries,2);
-    assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.misses==1 && !cache.hits && mask==expected_mask);
-    assert(fk==0x24CCFu && root==4096 && !memcmp(expected,actual,sizeof(actual)));
-    /* Mutating the returned buffer cannot corrupt the retained local pose. */
-    memset(actual,0,sizeof(actual));
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.hits==1 && !memcmp(expected,actual,sizeof(actual)));
-    pose[3]=0; /* Singular limb: incomplete masks are retained exactly. */
-    assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.misses==2 && mask==expected_mask && !memcmp(expected,actual,sizeof(actual)));
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.hits==2 && mask==expected_mask);
-    pose[3]=300;
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.evictions==1);
-    /* A matching fingerprint alone must never return another pose's data. */
-    entries[1].fingerprint=entries[0].fingerprint;entries[0].valid=0;
-    assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(cache.misses==4 && cache.hits==2);
+#define LOCAL(s,frame,c) t3_psx_local_pose((s),(frame),NULL,&table.trig,&table,(c),pose,actual,&fk,&mask,&root)
+#define SAME() (mask==expected_mask && !memcmp(expected,actual,sizeof(actual)) && \
+                !memcmp(want,pose,sizeof(pose)))
+    fixtures();
+    t3_psx_local_pose_cache_init(&cache,entries,2); /* one set of two ways */
+    assert(cache.sets==1 && cache.ways==2);
+    expect(&stream,5,&table,want,expected,&expected_mask);
+    assert(LOCAL(&stream,5,&cache));
+    assert(cache.misses==1 && !cache.hits && SAME());
+    assert(fk==0x24CCFu && root==4096 && pose[3]==2*(150+194));
+    /* Mutating the returned buffers cannot corrupt the retained entry. */
+    memset(actual,0,sizeof(actual));memset(pose,0,sizeof(pose));
+    assert(LOCAL(&stream,5,&cache) && cache.hits==1 && SAME());
+    /* Frames clamp to N-1 before keying; frame 0 is a singular limb whose
+     * incomplete mask is retained exactly. */
+    expect(&stream,0,&table,want,expected,&expected_mask);
+    assert(expected_mask!=0x3FFFFu);
+    assert(LOCAL(&stream,0,&cache) && cache.misses==2 && SAME());
+    assert(LOCAL(&stream,0,&cache) && cache.hits==2 && SAME());
+    expect(&stream,STREAM_FRAMES-1u,&table,want,expected,&expected_mask);
+    assert(LOCAL(&stream,1000,&cache) && cache.misses==3 && cache.evictions==1 && SAME());
+    /* The way used last survives: frame 5 was replaced, not frame 0. */
+    assert(LOCAL(&stream,STREAM_FRAMES-1u,&cache) && cache.hits==3 && SAME());
+    expect(&stream,5,&table,want,expected,&expected_mask);
+    assert(LOCAL(&stream,5,&cache) && cache.hits==3 && cache.misses==4 && SAME());
+    /* Another stream in the same bytes is told apart by its first key. */
+    t3_motion_stream_t other=stream;
+    other.key_offset[0]=4;
+    assert(LOCAL(&other,5,&cache) && cache.misses==5 && SAME());
     /* Changing table bounds invalidates a previous hit and fails atomically. */
-    memcpy(expected,actual,sizeof(expected));table.ik_size=0;fk=123;mask=456;root=789;
-    assert(!t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-    assert(fk==123 && mask==456 && root==789 && !memcmp(expected,actual,sizeof(actual)));
+    memcpy(want,pose,sizeof(pose));memcpy(expected,actual,sizeof(expected));
+    table.ik_size=0;fk=123;mask=456;root=789;
+    assert(!LOCAL(&stream,5,&cache));
+    assert(fk==123 && mask==456 && root==789 && !memcmp(expected,actual,sizeof(actual)) &&
+           !memcmp(want,pose,sizeof(pose)));
     table.ik_size=sizeof(ik);
-    t3_psx_local_pose_cache_init(&cache,entries,2); /* Same-address table reload. */
-    assert(!cache.hits && !cache.misses && !entries[0].valid && !entries[1].valid);
-    assert(t3_psx_local_pose(pose,&table.trig,&table,NULL,actual,&fk,&mask,&root));
-    assert(!memcmp(expected,actual,sizeof(actual)));
-    for(unsigned i=0;i<200;++i) {
-        pose[0]=(int16_t)((int)i-100);pose[3]=(int16_t)(300+i);
-        assert(t3_psx_pose_full(pose,&table,expected,&expected_mask)==1);
-        for(unsigned repeat=0;repeat<2;++repeat) {
-            assert(t3_psx_local_pose(pose,&table.trig,&table,&cache,actual,&fk,&mask,&root));
-            assert(mask==expected_mask && !memcmp(expected,actual,sizeof(actual)));
-        }
+    assert(LOCAL(&stream,5,&cache) && cache.hits==3 && cache.misses==7);
+    t3_psx_local_pose_cache_init(&cache,entries,2); /* Same-address bytes reload. */
+    assert(!cache.hits && !cache.misses && !entries[0].stream && !entries[1].stream);
+    expect(&stream,7,&table,want,expected,&expected_mask);
+    assert(LOCAL(&stream,7,NULL) && SAME());
+    /* Two hundred frames fit 128 two-way sets: the second pass only hits. */
+    t3_psx_local_pose_cache_init(&cache,entries,256);
+    assert(cache.sets==128 && cache.ways==2);
+    for(unsigned pass=0;pass<2;++pass)for(unsigned f=0;f<STREAM_FRAMES;++f) {
+        expect(&stream,f,&table,want,expected,&expected_mask);
+        assert(LOCAL(&stream,f,&cache) && SAME());
     }
+    assert(cache.misses==STREAM_FRAMES && cache.hits==STREAM_FRAMES && !cache.evictions);
+    /* A capacity that is not a power of two is one set with rotating ways. */
+    t3_psx_local_pose_cache_init(&cache,entries,3);
+    assert(cache.sets==1 && cache.ways==3);
+    for(unsigned f=0;f<8;++f) {
+        expect(&stream,f,&table,want,expected,&expected_mask);
+        assert(LOCAL(&stream,f,&cache) && SAME());
+    }
+    assert(cache.misses==8 && cache.evictions==5);
+#undef SAME
+#undef LOCAL
 }
 int main(void) {
     end_to_end();

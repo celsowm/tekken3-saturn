@@ -1,4 +1,5 @@
 #include "move_probe.h"
+#include "saturn/time.h"
 #if defined(T3_LOCAL_DIVMOT_ENABLED)
 #include "t3_local_divmot.h"
 #if defined(T3_POSE_TRACE)
@@ -23,12 +24,23 @@ static uint32_t g_t3_pose_trace_tick;
 
 #include "placement.h"
 
-static t3_divmot_t g_bank, g_common;
+static t3_divmot_t g_bank __attribute__((section(".wram_l")));
+static t3_divmot_t g_common;
+#if defined(T3_SECOND_CHARACTER)
+/* P2's own character bank (MOTION.BIN version 2). */
+static t3_divmot_t g_second;
+#endif
 #if defined(T3_BRANCH_INPUT_FILTER)
 #include "branch_input_filter.h"
+#if defined(T3_SECOND_CHARACTER)
+/* Paul and Law need 1,680 words (branch_filter_words in the probe); a bank that
+ * needs more makes build_input_filter fail, so the table cannot overrun. */
+enum { BRANCH_FILTER_WORDS=1792 };
+#else
 enum { BRANCH_FILTER_WORDS=2048 };
+#endif
 static uint32_t g_branch_filter_words[BRANCH_FILTER_WORDS] T3_HOT_WRAM;
-static t3_branch_input_filter_t g_branch_filters[3];
+static t3_branch_input_filter_t g_branch_filters[4] __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_branch_filter_ready,g_t3_branch_filter_words;
 static int build_input_filter(unsigned slot,const uint8_t* rows,size_t bytes) {
     const unsigned needed=(unsigned)((bytes/12u+31u)/32u)*T3_BRANCH_INPUT_CLASSES;
@@ -51,15 +63,52 @@ static t3_motion_cache_t g_pose_cache[2],g_root_cache[2];
 /* The generated tables with the build's own trig, atan (ground) and square
  * root (body) tables. */
 static t3_psx_camera_tables_t g_camera_tables;
-static t3_psx_trig_t g_camera_trig;
+static t3_psx_trig_t g_camera_trig __attribute__((section(".wram_l")));
 static t3_psx_fight_camera_config_t g_camera_config;
+#endif
+#if defined(T3_ENABLE_PSX_OWNED_MATCH) && defined(T3_ENABLE_PSX_COMBAT) && \
+    defined(T3_LOCAL_AI_TABLE_BYTES) && T3_LOCAL_AI_TABLE_BYTES > 0
+#define T3_CPU_AI 1
+#include "psx_ai_game.h"
+/* The CPU opponent; its fighters, difficulty and level apply at reset. High
+ * WRAM: the AI reads its state every tick, and Low WRAM costs four times as
+ * much per access. */
+static t3_psx_ai_game_t g_ai;
+/* AiUpdate cost on the Slave, in FRT ticks (prescaler /128: 3,728 per 60 Hz frame). */
+volatile uint32_t g_t3_ai_calls,g_t3_ai_ticks,g_t3_ai_max_ticks,g_t3_ai_reads,g_t3_ai_conditions;
+static uint16_t g_ai_started;
+#if defined(T3_CAPTURE_INPUT_TAPE)
+/* tick, held, pressed of each change of the CPU's input (Slave-written). */
+volatile uint32_t g_t3_cpu_tape_count,g_t3_cpu_tape_overflow;
+volatile uint16_t g_t3_cpu_tape[640][3] __attribute__((section(".wram_l")));
+static void t3_cpu_tape_step(uint32_t tick,t3_input_t in) {
+    const uint32_t n=g_t3_cpu_tape_count;
+    if(n && g_t3_cpu_tape[n-1u][1]==in.held && g_t3_cpu_tape[n-1u][2]==in.pressed)return;
+    if(n>=640u || tick>0xFFFFu){g_t3_cpu_tape_overflow=1;return;}
+    g_t3_cpu_tape[n][0]=(uint16_t)tick;g_t3_cpu_tape[n][1]=in.held;g_t3_cpu_tape[n][2]=in.pressed;
+    g_t3_cpu_tape_count=n+1u;
+}
+#endif
+static void ai_clock(t3_psx_ai_game_t* ai,unsigned fighter,int after) {
+    (void)fighter;
+    if(!after){g_ai_started=sat_time_frc();return;}
+    const uint32_t spent=(uint16_t)(sat_time_frc()-g_ai_started);
+    ++g_t3_ai_calls;g_t3_ai_ticks+=spent;
+    g_t3_ai_reads=ai->reads;g_t3_ai_conditions=ai->conditions;
+    if(spent>g_t3_ai_max_ticks)g_t3_ai_max_ticks=spent;
+}
+static uint8_t g_cpu_mask=2u,g_cpu_level=4u;
+static uint16_t g_cpu_difficulty=1u;
 #endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_psx_match_t g_owned_match T3_HOT_WRAM;
 /* Reset assigns the entire object before match initialization. */
 static t3_psx_match_config_t g_owned_config T3_HOT_WRAM;
-/* Shared immutable motion samples; no live matrices or actor state. */
+#if T3_LOCAL_POSE_CACHE_ENTRIES == 0 && !defined(T3_REFERENCE_TRACE_HIGH)
+/* Shared immutable motion samples; no live matrices or actor state. The
+ * local pose cache holds its own samples. */
 static t3_motion_sample_cache_t g_sample_cache T3_HOT_WRAM;
+#endif
 #if T3_WORLD_POSE_CACHE_ENTRIES > 0
 static t3_psx_world_pose_cache_t g_world_pose_cache T3_HOT_WRAM;
 static t3_psx_world_pose_entry_t g_world_pose_entries[T3_WORLD_POSE_CACHE_ENTRIES]
@@ -99,6 +148,9 @@ static int16_t g_fk_root_xx[2];
 sat_result_t t3_move_probe_simulation_sync(int full) {
     const struct {const void* address;uint32_t size;} query[]={
         {&g_owned_match,sizeof(g_owned_match)},
+#if defined(T3_CPU_AI)
+        {&g_ai,sizeof(g_ai)},
+#endif
         {&g_round,sizeof(g_round)},
         {g_segments,sizeof(g_segments)},
         {g_move_event_status,sizeof(g_move_event_status)},
@@ -122,10 +174,14 @@ sat_result_t t3_move_probe_simulation_sync(int full) {
     if(full) {
         const struct {const void* address;uint32_t size;} reset[]={
             {&g_bank,sizeof(g_bank)},{&g_common,sizeof(g_common)},
+#if defined(T3_SECOND_CHARACTER)
+            {&g_second,sizeof(g_second)},
+#endif
             {&g_owned_config,sizeof(g_owned_config)},
             {&g_active,sizeof(g_active)},{&g_start_slot,sizeof(g_start_slot)},
+#if T3_LOCAL_POSE_CACHE_ENTRIES == 0 && !defined(T3_REFERENCE_TRACE_HIGH)
             {&g_sample_cache,sizeof(g_sample_cache)},
-#if T3_LOCAL_POSE_CACHE_ENTRIES > 0
+#elif T3_LOCAL_POSE_CACHE_ENTRIES > 0
             {g_local_pose_entries,sizeof(g_local_pose_entries)},
 #endif
 #if T3_WORLD_POSE_CACHE_ENTRIES > 0
@@ -176,6 +232,15 @@ static uint32_t g_shadow_last_injected_epoch;
 sat_result_t t3_move_probe_init(void) {
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
         return SAT_ERR_INVALID_ARG;
+#if defined(T3_SECOND_CHARACTER)
+    if (!t3_divmot_open(&g_second,t3_local_second_bank,T3_LOCAL_SECOND_BANK_BYTES))
+        return SAT_ERR_INVALID_ARG;
+#if T3_LOCAL_COMMON_BRANCH_BYTES > 0
+    if (!t3_divmot_set_common_branches(&g_second,t3_local_common_branches,
+                                       T3_LOCAL_COMMON_BRANCH_BYTES))
+        return SAT_ERR_INVALID_ARG;
+#endif
+#endif
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
     if (!t3_divmot_open(&g_common,t3_local_common,T3_LOCAL_DIVMOT_COMMON_BYTES))
         return SAT_ERR_INVALID_ARG;
@@ -206,6 +271,12 @@ sat_result_t t3_move_probe_init(void) {
 #endif
     if(!t3_divmot_set_input_filters(&g_bank,&g_branch_filters[0],common_filter))
         return SAT_ERR_INVALID_ARG;
+#if defined(T3_SECOND_CHARACTER)
+    if(!build_input_filter(3,g_second.data+g_second.sections[0],g_second.branch_count*12u))
+        return SAT_ERR_CAPACITY;
+    if(!t3_divmot_set_input_filters(&g_second,&g_branch_filters[3],common_filter))
+        return SAT_ERR_INVALID_ARG;
+#endif
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
     if(!t3_divmot_set_input_filters(&g_common,&g_branch_filters[1],common_filter))
         return SAT_ERR_INVALID_ARG;
@@ -238,7 +309,9 @@ void t3_move_probe_reset(unsigned round) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
+#if T3_LOCAL_POSE_CACHE_ENTRIES == 0 && !defined(T3_REFERENCE_TRACE_HIGH)
     g_owned_config.sample_cache=&g_sample_cache;
+#endif
 #if T3_WORLD_POSE_CACHE_ENTRIES > 0
     t3_psx_world_pose_cache_init(&g_world_pose_cache,g_world_pose_entries,T3_WORLD_POSE_CACHE_ENTRIES);
     g_owned_config.world_pose_cache=&g_world_pose_cache;
@@ -248,19 +321,35 @@ void t3_move_probe_reset(unsigned round) {
     t3_psx_local_pose_cache_init(&g_local_pose_cache,g_local_pose_entries,T3_LOCAL_POSE_CACHE_ENTRIES);
     g_owned_config.local_pose_cache=&g_local_pose_cache;
 #endif
-    g_owned_config.ground_tables=(t3_psx_ground_tables_t){
-        {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ground_blob,1025u,
-        t3_local_ground_blob+1025u,T3_LOCAL_GROUND_BYTES-1025u};
+    if(!t3_psx_ground_tables_bind((t3_psx_trig_t){t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},
+            t3_local_ground_blob,T3_LOCAL_GROUND_BYTES,&g_owned_config.ground_tables)){g_active=0;return;}
     g_owned_config.spline=(t3_motion_tables_t){t3_local_spline_blob,T3_LOCAL_SPLINE_BYTES};
     g_owned_config.sequences=t3_local_sequences;g_owned_config.sequence_count=T3_LOCAL_SEQUENCE_COUNT;
     g_owned_config.enable_body=1;
 #if defined(T3_ENABLE_PSX_COMBAT)
     g_owned_config.enable_combat=1;
+    g_owned_config.all_attacks=1; /* docs/FIGHT_ORACLE.md */
+#if defined(T3_SECOND_CHARACTER)
+    /* P2 plays the second character; the merged move index links the two. */
+    g_owned_config.actor_bank[1]=&g_second;
+    g_owned_config.character[1]=T3_SECOND_CHARACTER_ID;
+    g_bank.linked=&g_second;g_second.linked=&g_bank;
+    if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)
+        g_second.builtin_attacks=t3_local_combat_attacks;
+#else
+    g_bank.linked=&g_bank; /* the merged move index of a mirror match */
+#endif
+    if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)
+        g_bank.builtin_attacks=g_common.builtin_attacks=t3_local_combat_attacks;
     g_owned_config.enable_rounds=2;
     g_owned_config.replay_storage=&g_replay_history;
     g_owned_config.collapse_on_ko=1; /* measured USA VS regional policy */
     g_owned_config.reactions=t3_local_combat_reactions;
     g_owned_config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
+    g_owned_config.close_reactions=t3_local_combat_close;
+    g_owned_config.close_reactions_size=T3_LOCAL_COMBAT_CLOSE_BYTES;
+    g_owned_config.throw_victim_slots=t3_local_combat_throws;
+    g_owned_config.throw_victim_slots_size=T3_LOCAL_COMBAT_THROW_BYTES;
 #endif
     g_owned_config.parts[0]=t3_private_actor_parts[0];g_owned_config.parts[1]=t3_private_actor_parts[1];
     g_owned_config.ik=(t3_psx_ik_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
@@ -277,9 +366,31 @@ void t3_move_probe_reset(unsigned round) {
     g_camera_tables=t3_local_camera_tables;g_camera_tables.trig=&g_camera_trig;
     g_camera_tables.atan=t3_local_ground_blob;
     g_camera_tables.sqrt=t3_local_body_blob;g_camera_tables.sqrt_size=384u;
-    g_camera_config=(t3_psx_fight_camera_config_t){&g_camera_tables,t3_local_camera_bank_choices,
-        T3_LOCAL_CAMERA_BANK_CHOICES,&t3_local_camera_bank_streams};
+    g_camera_config=(t3_psx_fight_camera_config_t){
+        .tables=&g_camera_tables,
+        .bank_choices=t3_local_camera_bank_choices,
+        .bank_choice_count=T3_LOCAL_CAMERA_BANK_CHOICES,
+        .bank_streams=&t3_local_camera_bank_streams,
+        .spline=&g_owned_config.spline};
+#if defined(T3_LOCAL_SECOND_CAMERA_BANK_CHOICES)
+    g_camera_config.second_bank_choices=t3_local_second_camera_bank_choices;
+    g_camera_config.second_bank_choice_count=T3_LOCAL_SECOND_CAMERA_BANK_CHOICES;
+    g_camera_config.second_bank_streams=&t3_local_second_camera_bank_streams;
+#endif
     g_owned_config.camera=&g_camera_config;
+#endif
+#if defined(T3_CPU_AI)
+    if(g_cpu_mask) {
+        if(!t3_psx_ai_game_init(&g_ai,t3_local_ai_tables,T3_LOCAL_AI_TABLE_BYTES,g_cpu_mask,
+                                g_cpu_difficulty,g_cpu_level)){g_active=0u;return;}
+#if defined(T3_SECOND_CHARACTER)
+        t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_second.bank_type,0);
+#else
+        t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_bank.bank_type,1);
+#endif
+        g_ai.observe=ai_clock;
+        g_owned_config.ai=&g_ai;
+    }
 #endif
 #if defined(T3_REFERENCE_REPLAY)
     if(!reference_prepare_config()){g_active=0u;g_reference_error=1;return;}
@@ -835,6 +946,19 @@ int32_t t3_move_probe_owned_value(unsigned i,unsigned field) {
         case 23:return f->hit.guarded;
         case 24:return f->hit.ko_started;
         case 25:return f->ko_collapse;
+        case 26:return f->strike_joint;
+        case 27:case 28:case 29: {
+            /* The contact point: the hitting segment's end (as the camera reads it). */
+            const int seg=f->hit_gate.segment>=0 && f->hit_gate.segment<f->strike.segment_count?f->hit_gate.segment:0;
+            const t3_vec3i_t* p=&f->strike.segments[seg].end;
+            return field==27?p->x:field==28?p->y:p->z;
+        }
+        case 30:{
+            /* Inside an attack window, from the frame before it opens. */
+            const t3_move_record_t* m=&f->vm.move;
+            return m->active_first>0 && m->active_last>=m->active_first &&
+                   f->vm.clock.pose_frame+1>=m->active_first && f->vm.clock.pose_frame<=m->active_last;
+        }
         }
     }
 #else
@@ -876,6 +1000,9 @@ sat_result_t t3_move_probe_camera(sat_camera3d_t* camera) {
     projection.m[5]=(sat_fx16_t)(((int64_t)PSX_ROW1*h<<16)/(240*4096));
     return sat_mat4_multiply(&camera->view_proj,&projection,&view);
 }
+int32_t t3_move_probe_backdrop_turn(void) {
+    return g_active && g_owned_match.camera.started?g_owned_match.camera.backdrop.angle:0;
+}
 #endif
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
@@ -899,6 +1026,9 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
         g_reference_error=3;return SAT_ERR_INVALID_ARG;
     }
 #endif
+#if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
+    const uint32_t cpu_tick=g_owned_match.ticks,cpu_calls=g_t3_ai_calls;
+#endif
     /* Any failure is fatal to the frontend, so step the match in place. */
     if(!t3_psx_match_step_original_in_place(&g_owned_match,p0,p1,&frame)) {
 #if defined(T3_REFERENCE_REPLAY)
@@ -914,6 +1044,10 @@ reference_complete:;
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
 #endif
     view->total_ticks=g_owned_match.ticks;
+#if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
+    /* The CPU's P2 input of this tick, for a pad replay of the same fight. */
+    t3_cpu_tape_step(cpu_tick,g_t3_ai_calls!=cpu_calls?g_ai.pad[1]:(t3_input_t){0});
+#endif
 #if T3_WORLD_POSE_CACHE_ENTRIES > 0
     g_t3_world_cache_hits=g_world_pose_cache.hits;
     g_t3_world_cache_misses=g_world_pose_cache.misses;
@@ -952,6 +1086,20 @@ reference_complete:;
     (void)p0;(void)p1;(void)view;return SAT_ERR_INVALID_ARG;
 #endif
 }
+void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
+#if defined(T3_CPU_AI)
+    g_cpu_mask=mask&3u;g_cpu_difficulty=difficulty;g_cpu_level=level;
+#else
+    (void)mask;(void)difficulty;(void)level;
+#endif
+}
+uint8_t t3_move_probe_cpu_mask(void) {
+#if defined(T3_CPU_AI)
+    return g_cpu_mask;
+#else
+    return 0u;
+#endif
+}
 int32_t t3_move_probe_round_value(unsigned field) {
 #if defined(T3_ENABLE_PSX_COMBAT)
     switch(field) {
@@ -965,6 +1113,14 @@ int32_t t3_move_probe_round_value(unsigned field) {
     case 7:return g_owned_match.replay.mark;
     case 8:return g_owned_match.replay.recorded;
     case 9:return (int32_t)g_owned_match.replay.epoch;
+    case 10:return g_owned_match.flow.played;
+    case 11:return g_owned_match.flow.frame;
+    case 12:{
+        /* The deciding round: both fighters one win from taking the match. */
+        const t3_psx_round_flow_t* flow=&g_owned_match.flow;
+        return flow->to_win>0 && g_owned_match.round_actor[0].wins==flow->to_win-1 &&
+               g_owned_match.round_actor[1].wins==flow->to_win-1;
+    }
     }
 #else
     (void)field;

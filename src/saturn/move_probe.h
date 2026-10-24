@@ -18,6 +18,11 @@ uint8_t t3_move_probe_active(void);
 uint8_t t3_move_probe_owned(void);
 uint8_t t3_move_probe_combat(void);
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view);
+/* The fighters the CPU opponent drives (bit 0 P1, bit 1 P2), its difficulty
+ * and level; they apply at the next reset. Builds without the private AI
+ * tables have no CPU opponent (mask 0). */
+void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level);
+uint8_t t3_move_probe_cpu_mask(void);
 #if defined(T3_SLAVE_SIMULATION)
 /* Cache ownership only; caller has joined the previous simulation job.
  * Full transfer is required across Master reset; ordinary consumption needs
@@ -31,6 +36,8 @@ int32_t t3_move_probe_world_center(unsigned axis);
  * skin's world (x, -y, -z around the fighters' centre, 96 fx16 per unit).
  * Sets eye, target, up, fov_y, aspect and view_proj; near/far are kept. */
 sat_result_t t3_move_probe_camera(sat_camera3d_t* camera);
+/* The panorama's turn after the last frame (4096 a turn). */
+int32_t t3_move_probe_backdrop_turn(void);
 #endif
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 int32_t t3_move_probe_round_value(unsigned field);

@@ -5,9 +5,11 @@ from pathlib import Path
 
 STAGES=('tick','match','copy','move_begin','ground','root','motion','fk','ik',
         'blend','head','parts','compose','bodies','contact','hits','branch',
-        'branch_rows','command_calls','bridge','cache_hit','cache_miss')
+        'branch_rows','command_calls','bridge','cache_hit','cache_miss',
+        'step','ai','camera','local_pose','world_root','slots','shapes','sample')
 ACTORS=('p1','p2','shared')
-CAPACITY=128
+
+CAPACITY=128 # default retained rows; the header gives each capture's own
 EVENTS={'branch_rows','command_calls','cache_hit','cache_miss'}
 
 class IncompleteProfileError(ValueError):
@@ -15,14 +17,14 @@ class IncompleteProfileError(ValueError):
 
 def decode(raw):
     counters=len(STAGES)*len(ACTORS);row_words=7+3*counters
-    expected=4*(11+3*counters+CAPACITY*row_words)
-    if len(raw)!=expected:raise ValueError('invalid simulation profile size')
     magic,version,hz,count,cursor,epoch,warmup,stages,actors,capacity,errors=struct.unpack_from('>11I',raw)
-    if (magic,version,stages,actors,capacity)!=(0x54335350,1,len(STAGES),len(ACTORS),CAPACITY):
+    if (magic,version,stages,actors)!=(0x54335350,1,len(STAGES),len(ACTORS)) or not capacity:
         raise ValueError('unsupported simulation profile schema')
+    # T3_SIM_PROFILE_CAPACITY retained rows (CAPACITY unless a build lowers it).
+    if len(raw)!=4*(11+3*counters+capacity*row_words):raise ValueError('invalid simulation profile size')
     if errors:raise ValueError('guest profiler error: '+hex(errors))
     if epoch&1:raise IncompleteProfileError('guest stopped inside profiler publication')
-    if not hz or not count or cursor!=count%CAPACITY or epoch!=(2*count)&0xffffffff:
+    if not hz or not count or cursor!=count%capacity or epoch!=(2*count)&0xffffffff:
         raise ValueError('unpublished simulation profile')
     def table(at):
         values=struct.unpack_from('>'+str(3*counters)+'I',raw,at)
@@ -42,7 +44,7 @@ def decode(raw):
                 raise ValueError('event counters must not contain timings')
     totals=table(44);validate(totals,count)
     rows=[];base=44+12*counters
-    indices=range(count) if count<CAPACITY else [(cursor+i)%CAPACITY for i in range(CAPACITY)]
+    indices=range(count) if count<capacity else [(cursor+i)%capacity for i in range(capacity)]
     for i in indices:
         at=base+4*row_words*i
         field,tick,state,replay,active,error,depth=struct.unpack_from('>7I',raw,at)
@@ -109,5 +111,10 @@ def analyze(capture):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--capture',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
-    a=p.parse_args();a.out.write_text(json.dumps(analyze(a.capture),indent=2)+'\n')
+    p.add_argument('--capture',type=Path,help='saturn_probe output with symbol dumps')
+    p.add_argument('--raw',type=Path,help='raw g_t3_sim_profile bytes, e.g. mednafen_state.py --dump')
+    p.add_argument('--out',type=Path,required=True)
+    a=p.parse_args()
+    if bool(a.capture)==bool(a.raw):p.error('give exactly one of --capture and --raw')
+    report=analyze(a.capture) if a.capture else summarize(decode(a.raw.read_bytes()))
+    a.out.write_text(json.dumps(report,indent=2)+'\n')

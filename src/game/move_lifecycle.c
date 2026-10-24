@@ -10,13 +10,14 @@
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "move_vm.h"
+#include "branch_rules.h"
 #include "psx_motion.h"
 
 int t3_move_vm_start_phased(t3_move_vm_t* vm,const t3_divmot_t* bank,
                             const t3_divmot_t* common,unsigned slot) {
     if(!t3_move_vm_start(vm,bank,common,slot))return 0;
     t3_move_clock_reset(&vm->clock,1);
-    vm->phased=1u;vm->last_entry_frame=1;
+    vm->phased=1u;vm->last_entry_frame=1;vm->branch_window=-1;
     return 1;
 }
 static unsigned remap(unsigned code,const t3_move_record_t* m,int16_t entry) {
@@ -42,9 +43,10 @@ int t3_move_vm_queue(t3_move_vm_t* vm,unsigned slot,unsigned transition,
     return 1;
 }
 static int same_animation(const t3_move_vm_t* vm) {
+    /* Both streams were resolved in full when their moves were loaded. */
     t3_motion_stream_t current,next;
-    const int a=t3_motion_open(vm->active_bank,vm->common,vm->move.animation_offset,&current);
-    const int b=t3_motion_open(vm->pending_bank,vm->common,vm->pending_move.animation_offset,&next);
+    const int a=t3_motion_open_header(vm->active_bank,vm->common,vm->move.animation_offset,&current);
+    const int b=t3_motion_open_header(vm->pending_bank,vm->common,vm->pending_move.animation_offset,&next);
     if(a<0 || b<0)return -1;
     if(a==1 && b==1)return current.data==next.data &&
         current.key_offset[0]==next.key_offset[0];
@@ -101,6 +103,7 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
     uint8_t flags;
     if(!vm || !vm->phased || !input)return -1;
     if(vm->pending_valid)return 0;
+    vm->branch_window=-1; /* MoveBranchStep (0x8002DC3C) */
     if(!t3_divmot_branch_find_ex(vm->active_bank,vm->move,input,
             (uint16_t)vm->clock.pose_frame,vm->bank->bank_type,facts,
             sequences,sequence_count,&branch))return 0;
@@ -114,13 +117,30 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
                          vm->clock.frame_step>0);
         if(look) {
             t3_branch_record_t found;
-            if(!t3_move_vm_resolve(vm->bank,vm->common,branch.target_slot,&target,&owner))return -1;
-            if(t3_divmot_branch_find_ex(owner,target,input,1u,vm->bank->bank_type,facts,
+            const t3_branch_context_t* ahead_facts=facts;
+            t3_branch_context_t turned;
+            /* Peeked, not resolved: this runs every frame of the window, and
+             * a target that is queued is resolved in full there. */
+            if(!t3_move_vm_peek(vm->bank,vm->common,branch.target_slot,&target,&owner))return -1;
+            /* MoveBranchStep temporarily adds the running move's end turn
+             * before searching the continuation, then restores the heading.
+             * The target direction and opponent heading stay fixed here. */
+            if(facts && vm->move.end_turn) {
+                const uint16_t angle=(uint16_t)(facts->heading_delta+(uint16_t)vm->move.end_turn);
+                const uint16_t q=(uint16_t)(angle+0x2000u);
+                turned=*facts;
+                turned.heading_delta=angle;
+                turned.relative_angle=angle&0x8000u?(uint16_t)~angle:angle;
+                turned.facing_quadrant=q<0x4000u?0u:q<0x8000u?1u:q<0xC000u?2u:3u;
+                ahead_facts=&turned;
+            }
+            if(t3_divmot_branch_find_ex(owner,target,input,1u,vm->bank->bank_type,ahead_facts,
                     sequences,sequence_count,&found) && found.command!=0xC000u) {
-                if(!t3_move_vm_resolve(vm->bank,vm->common,found.target_slot,&target,&owner))return -1;
+                if(!t3_move_vm_peek(vm->bank,vm->common,found.target_slot,&target,&owner))return -1;
                 transition=remap(found.flags&63u,&target,vm->last_entry_frame);
+                vm->branch_window=(int16_t)(found.last_frame-pose);
                 if(!t3_move_vm_queue(vm,found.target_slot,transition,3u,branch.first_frame,
-                        (int16_t)(found.last_frame-pose)))return -1;
+                        vm->branch_window))return -1;
                 vm->pending_flags=(uint8_t)((found.flags&~64u)|(branch.flags&64u));
                 return 1;
             }
@@ -132,10 +152,10 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
         if(entry==255)entry=vm->move.length;
         window=(int16_t)(branch.last_frame-vm->clock.pose_frame);
     }
-    if(!t3_move_vm_resolve(vm->bank,vm->common,branch.target_slot,&target,&owner))return -1;
+    if(!t3_move_vm_peek(vm->bank,vm->common,branch.target_slot,&target,&owner))return -1;
     transition=remap(branch.flags&63u,&target,vm->last_entry_frame);
     flags=branch.flags;
     if(!t3_move_vm_queue(vm,branch.target_slot,transition,kind,entry,window))return -1;
-    vm->pending_flags=flags;
+    vm->pending_flags=flags;vm->branch_window=window;
     return 1;
 }

@@ -2,6 +2,7 @@
 #include "divmot.h"
 #include "branch_rules.h"
 #include "branch_input_filter.h"
+#include "move_index.h"
 #include <stddef.h>
 
 static uint16_t le16(const uint8_t* p) {
@@ -45,6 +46,8 @@ int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length) {
     out->common_branches = NULL;
     out->common_branch_count = 0u;
     out->input_filter=out->common_input_filter=NULL;
+    out->linked=NULL;
+    out->builtin_attacks=NULL;
     return 1;
 }
 
@@ -86,7 +89,7 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
     out->branch_index = le32(p+12);
     out->stance_slot = le16(p+16);
     out->end_turn = (int16_t)le16(p+18);
-    out->damage_class = le16(p+20);
+    out->damage_class = t3_move_total_damage(bank,le16(p+20),le32(p+32));
     out->step = (int16_t)le16(p+22);
     out->length = p[24];
     out->air_start = p[25];
@@ -132,9 +135,7 @@ int t3_divmot_slot_resolve(const t3_divmot_t* bank,
     if (owner) *owner = NULL;
     if (!bank || !out || !bank->data || bank->bank_type==99u ||
         slot>=T3_DIVMOT_MOVE_SLOTS) return -1;
-    id=le32(bank->data+bank->sections[2]+slot*4u);
-    if (id==T3_DIVMOT_EMPTY_SLOT) return 0;
-    selected=bank;
+    if (!t3_move_index_entry(bank,slot,&selected,&id)) return 0;
     if (id>=0x40000000u) {
         if (!common || common->bank_type!=99u || !common->data) return 0;
         selected=common;
@@ -225,6 +226,9 @@ static int T3_SIM_IMPL(branch_find)(const t3_divmot_t* bank, t3_move_record_t cu
                 if (return_end || frame>=current.length) {*picked=row;return 1;}
                 return 0;
             }
+            /* BranchFind skips a matched side-step row (flag 0x1C) while the
+             * fighter's step cooldown runs. */
+            if(row.flags==0x1Cu && facts && facts->step_cooldown)continue;
             *picked=row;return 1;
         }
     }

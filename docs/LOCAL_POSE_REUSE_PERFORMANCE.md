@@ -9,10 +9,20 @@ still run in original actor order on every committed tick.
 ## Ownership and exactness
 
 `psx_local_pose.c` has no allocation or shared global state. A caller supplies
-entries, capacity and immutable table lifetime. Each key contains all 49 signed
-pose channels and the pointer/size identities of the FK trig, IK trig and IK
-blob. A fingerprint rejects nonmatching candidates cheaply; every potential
-hit also compares all channels. Hash collisions cannot select another pose.
+entries, capacity and immutable table lifetime. Since 2026-10-23 the key is a
+stream frame, not the pose. That key is the address of the stream's first key
+(which identifies the opened animation header in its bank), the clamped frame
+and the frame count. The pointer/size identities of the FK trig, the IK trig,
+the IK blob and the spline tables invalidate the cache when they change.
+
+An entry also holds the sampled pose. A hit therefore replaces the spline
+sample as well as FK and IK, and the separate sample cache is not built. A
+power-of-two capacity is two-way set-associative, with consecutive frames of
+a stream in consecutive sets. Two looping streams shorter than the set count
+then never evict each other. With a full set, the way not used last is
+replaced. The earlier pose-keyed FIFO of 128 entries held none of Paul's and
+Law's 152 idle poses (`THIRTY_IMAGE_GATE.md`, "Paul vs Law"). The figures
+below are for that earlier pose-keyed version.
 
 The retained output includes all 18 local matrices, FK/full validity masks and
 the pre-IK FK root-XX diagnostic. Consumers receive copies, so applying blend

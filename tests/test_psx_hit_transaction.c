@@ -24,7 +24,7 @@ static void setup(t3_divmot_t* bank,t3_psx_match_config_t* c,t3_psx_match_t* gam
     p16(reactions,7);for(unsigned i=0;i<14;++i)p16(reactions+2+2*i,21);
     assert(t3_divmot_open(bank,bytes,sizeof(bytes)));
     *c=(t3_psx_match_config_t){0};c->bank=bank;c->max_health_q16=140*65536;c->scale_percent=100;
-    c->ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),NULL,0};
+    c->ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),NULL,0,NULL};
     c->spawn[0]=(t3_psx_spawn_t){{-100,0,0},{-100,0,0},0x4000,0x4000};
     c->spawn[1]=(t3_psx_spawn_t){{100,0,0},{100,0,0},0xC000,0xC000};
     assert(t3_psx_match_init(game,c));
@@ -46,6 +46,10 @@ int main(void) {
     assert(game.fighter[0].hit_done && game.fighter[1].got_hit && game.fighter[1].hit_freeze_in==3);
     assert(game.fighter[1].vm.pending_slot==21 && game.fighter[1].vm.queued.transition==42);
     assert(game.fighter[1].vm.queued.branch_kind==1 && game.fighter[1].ground.last_damage==13);
+    game.fighter[0].hit_gate.status=T3_HIT_GATE_NO_ATTACK;
+    game.fighter[1].last_counter=1;
+    assert(t3_psx_match_apply_hits(&game));
+    assert(!game.fighter[1].last_counter && !game.fighter[1].last_guarded);
     setup(&bank,&c,&game);game.fighter[1].ground.guard=0x10;
     assert(t3_psx_match_apply_hits(&game));
     assert(game.fighter[1].health_q16==140*65536 && game.fighter[1].hit.guarded);

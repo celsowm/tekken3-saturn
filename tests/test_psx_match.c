@@ -32,7 +32,7 @@ int main(void) {
     p16(bytes+B0+24,0xC000);p16(bytes+B0+30,3);bytes[B0+32]=6;
     p16(trig+0x800,4096);p16(trig+0x1800,(uint16_t)-4096);
     assert(t3_divmot_open(&bank,bytes,sizeof(bytes)));
-    c.bank=&bank;c.ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),push,sizeof(push)};
+    c.bank=&bank;c.ground_tables=(t3_psx_ground_tables_t){{trig,sizeof(trig)},atan_bytes,sizeof(atan_bytes),push,sizeof(push),NULL};
     c.scale_percent=100;c.max_health_q16=140*65536;
     c.spawn[0]=(t3_psx_spawn_t){{-100,0,0},{-100,0,0},0x4000,0x4000};
     c.spawn[1]=(t3_psx_spawn_t){{100,0,0},{100,0,0},0xC000,0xC000};
@@ -85,17 +85,26 @@ int main(void) {
     assert(game.flow.state==T3_ROUND_REPLAY_DONE && game.flow.replay_request);
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.flow.state==T3_ROUND_WIN_WAIT && game.replay.mode==5 && game.flow.hold==299);
-    game.flow.state=T3_ROUND_END;before=game;
+    game.flow.state=T3_ROUND_END;
+    /* FightMain states 5 and 6 run no FightFrame; the clock still advances. */
+    for(unsigned i=0;i<2;++i) {
+        const uint32_t ticks=game.ticks;
+        assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+        assert(game.flow.state==T3_ROUND_END && game.ticks==ticks+1 && game.round_gap==i+1);
+    }
+    before=game;
     /* The public synthetic bank initially lacks the required intro slot. */
     assert(!t3_psx_match_step_original(&game,neutral,neutral,&video));
     assert(!memcmp(&game,&before,sizeof(game)));
     p32(bytes+B2+1*4,0);
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
-    assert(game.flow.played==2 && game.flow.state==T3_ROUND_INTRO && game.flow.frame==1);
+    assert(game.flow.played==2 && game.flow.state==T3_ROUND_INTRO && game.flow.frame==0); /* placed; FightFrame resumes next */
     assert(game.flow.timer==2400 && game.round_actor[0].wins==1 && game.round_actor[1].wins==1);
     assert(game.fighter[0].health_q16==c.max_health_q16 && game.fighter[1].health_q16==c.max_health_q16);
     assert(game.fighter[0].ground.anchor.x==-1000 && game.fighter[1].ground.anchor.x==1000);
     assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.state==T3_ROUND_INTRO && game.flow.frame==1);
     assert(game.flow.camera==1 && !game.flow.no_damage);
     game.flow.state=T3_ROUND_REPLAY_DONE;game.flow.result=10;game.flow.replay_request=1;
     game.replay.mark=0;before=game;

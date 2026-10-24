@@ -26,6 +26,9 @@ typedef struct {
     t3_move_start_t queued;
     uint16_t root_slot,pending_slot,previous_slot;
     int16_t last_entry_frame;
+    /* +0x6C: MoveBranchStep resets it, a found branch sets it; a reaction
+     * queued later keeps it even after that branch's move started. */
+    int16_t branch_window;
     uint8_t phased,pending_valid,pending_flags;
     uint8_t current_transition,current_branch_kind;
 } t3_move_vm_t;
@@ -36,6 +39,11 @@ typedef struct {
 int t3_move_vm_resolve(const t3_divmot_t* bank,const t3_divmot_t* common,
                         unsigned slot,t3_move_record_t* record,
                         const t3_divmot_t** owner);
+/* t3_move_vm_resolve checking only the stream header (t3_motion_open_header).
+ * For a target that t3_move_vm_queue resolves in full before it is used. */
+int t3_move_vm_peek(const t3_divmot_t* bank,const t3_divmot_t* common,
+                    unsigned slot,t3_move_record_t* record,
+                    const t3_divmot_t** owner);
 
 /* start_slot normally 3 for standing stance, but caller selects by character. */
 int t3_move_vm_start(t3_move_vm_t* vm, const t3_divmot_t* bank,

@@ -65,6 +65,47 @@ integration are the next gates.
 - SCSP SFX/voice/music budget and controlled CD reads, with fallbacks.
 - Profile 30/60 fps render modes independently from the fixed 60 Hz logic.
 
+Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.md`):
+
+- [x] Original fight camera, VDP2 floor and panorama, Paul and Law, owned combat.
+- [x] CPU opponent bit-exact against the original AI; Arcade level steps.
+- [ ] CPU AI cost on the Slave (probe counters `ai_calls/ai_ticks/ai_max_ticks`, FRT /128 = 3,728
+  ticks per 60 Hz frame): 7.4 ms per update at first, 3.7 ms (max about 18 ms) after direct
+  read windows over constant rows and the AI block (same AI pad hash over 1,000 updates).
+  Control: the CPU's P2 input captured on the Slave (`T3_CAPTURE_INPUT_TAPE`, CPU tape in
+  `move_probe.c`) and replayed as a pad with the AI off runs the same round-1 fight at
+  1.00 ticks/vblank and 30.7 img/s; with the AI, 0.97 and 23.5 img/s. At that
+  checkpoint, the gap came from the AI. A fixed Slave delay in that replay gave
+  the budget: +1 ms per tick 29.5 img/s, +2 ms 27.3, +3 ms 24.2. Subsequent
+  renderer work crossed 30 img/s without a 4-7x AI cut; AI cost still needs
+  improvement to create margin.
+- [x] 30 img/s for Paul vs Law in the measured 25–40 s round-1 Mednafen window.
+  Ymir without cache emulation
+  overstates it by about a third (`THIRTY_IMAGE_GATE.md`, "Paul vs Law"). Mednafen, round 1:
+  - neutral input: 17.5 img/s at first, 22.3 after the pose cache and stage claim, 26.4 after
+    the geometry change, 29.2 after skinning straight to screen, 29.9 before the latest face change
+  - CPU P2: about 15, then 17.0, then 20.9, then 22.7, then 25.9, 26.0 (motion look-ahead peeks), 26.7 (knot cursor), 29.47 before one-pass screen culling, now 30.13 in the 25–40 s round-1 window (`THIRTY_IMAGE_GATE.md`, "One-pass screen culling")
+  - two Pauls: 26.7 (before the geometry change)
+
+  The latest measured gain comes from LibSaturn appending screen-culled faces in
+  one pass. The preceding deferred-tick and Master-face changes stopped late
+  images from repeatedly causing a third tick. There is little headroom:
+  the silent Mednafen probe measured a two-tick Master image near 7,000 of the
+  7,465 FRT/128 available in two vblanks (`THIRTY_IMAGE_GATE.md`). A longer
+  CPU-Law CD run now measures 920 images / 30 s (30.67 img/s) in the active
+  round-1 fight, from 25 to 55 s; the 25–65 s window including timeout is
+  1222 / 40 s (30.55 img/s). The same ELF reached round 2 in a 4,200-field
+  cache-on Ymir run with 3,799 scheduled/committed ticks and no discarded
+  fields. Actual displayed image changes, real-hardware cadence and other
+  matchups remain unmeasured.
+- [~] Drop shadows: a blob under each fighter, not the PSSDW mesh.
+- [ ] Floor distance shading (VDP2 has no per-line brightness ramp without losing texture contrast).
+- [~] Sound: swing, hand/foot guard and hit samples from VAB 0, plus Paul's and Law's shouts and hurt voices; no KO or result voices, music or most effects.
+- [~] Effects: a hit/guard spark at the contact point (HUD cross); the original effect sprites are not ported.
+- [~] HUD: original bar behaviour; text instead of the system-texture sprites.
+- [~] Menus: an optional title screen (`T3_TITLE_SCREEN`); no select or mode menus.
+- [ ] More stages and characters (the private import covers Paul, Law and stage 0).
+
 ## Milestone 4: completeness and fidelity
 
 Arcade, VS, Team Battle, Time Attack, Survival, Practice, character selection,

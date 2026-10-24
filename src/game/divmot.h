@@ -14,7 +14,7 @@ enum {
 /* Validated zero-copy view of one unrelocated PS1 bank (little-endian).
  * No pointer relocation, malloc or ROM/code emulation. */
 struct t3_branch_input_filter;
-typedef struct {
+typedef struct t3_divmot {
     const uint8_t* data;
     size_t size;
     uint32_t sections[T3_DIVMOT_SECTIONS];
@@ -24,6 +24,12 @@ typedef struct {
     const uint8_t* common_branches; /* optional private EXE 12-byte rows */
     uint16_t common_branch_count;
     const struct t3_branch_input_filter *input_filter,*common_input_filter;
+    /* Optional opponent bank for the merged move index (move_index.h): a
+     * mirror match links a bank to itself. NULL: empty slots stay absent. */
+    const struct t3_divmot* linked;
+    /* Optional private EXE window of the 13 built-in attack descriptors
+     * (attack_records.h). NULL: built-in descriptors decode as inactive. */
+    const uint8_t* builtin_attacks;
 } t3_divmot_t;
 
 typedef struct {
@@ -67,7 +73,8 @@ int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
  * resolves to common bank when supplied (bank_type 99). */
 int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,
                    unsigned slot, t3_move_record_t* out);
-/* Also return the containing bank: common-bank moves use common branch rows. */
+/* Also return the containing bank: common-bank moves use common branch rows.
+ * Empty slots follow the merged move index when the bank is linked. */
 int t3_divmot_slot_resolve(const t3_divmot_t* bank,
                             const t3_divmot_t* common,
                             unsigned slot, t3_move_record_t* out,
