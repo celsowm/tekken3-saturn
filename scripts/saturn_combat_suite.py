@@ -209,11 +209,17 @@ def execute(args):
                 and replay['wins0']==1 and replay['psx_health_q16'][1]==0,
                 'KO must play the native history before victory')
         victory=None;victory_end=0
-        for offset in range(300,1801,60):
-            name='victory-search-'+str(offset)
-            observed=case(name,tape,end+offset);results.pop(name)
+        # Do not name this loop `offset`: `case()` closes over the measured
+        # input offset, and rebinding it here would double-delay the tape and
+        # leave every later case with the last probe's delay. A late KO
+        # victim's pose frame can make the native replay walk most of its 600
+        # half-frames; with one delay the search steps 60 ticks against a
+        # ~75-tick state-6 window, so it cannot step over the victory.
+        for probe in range(300,1801,60):
+            name='victory-search-'+str(probe)
+            observed=case(name,tape,end+probe);results.pop(name)
             if observed['psx_round_state']==6:
-                victory=observed;victory_end=end+offset;break
+                victory=observed;victory_end=end+probe;break
         require(victory is not None,'native replay must restore the live fight and start victory')
         victory=case('ko-victory',tape,victory_end)
         require(victory['psx_round_state']==6 and victory['psx_replay_mode']==5 and victory['psx_move_slot'][0] in range(3431,3435)
