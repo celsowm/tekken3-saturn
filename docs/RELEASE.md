@@ -31,3 +31,9 @@ Controls: D-pad move/guard, X/Y punch, A/B kick, START resets the match (the
 title screen, when built in, waits for START first). With port 2 empty the CPU
 plays Law and gets stronger after each match you win; with a pad in port 2 it
 is a 2 player match.
+
+The original fight HUD's bar, mark and timer patterns can be extracted from
+the same private USA executable with `python3 scripts/extract_psx_hud.py`.
+The ignored `assets/imported/tekken3-usa/hud/manifest.json` records their
+source hash, dimensions and palettes. The current disc still renders its
+existing HUD until the extracted sprites are wired into the runtime.
