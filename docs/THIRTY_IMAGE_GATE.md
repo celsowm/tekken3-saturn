@@ -510,3 +510,67 @@ measurement. Its private observation is in `assets/imported/t30-sustain-probe`.
   was deleted by mistake; the result is recorded above.
 - The earlier `mwf-combat` output was deleted after the current suite passed
   the same 24 cases.
+
+## Trusted scene flush (2026-10-24)
+
+The two-tick phase rows in the silent probe were being read as a 7,527-unit
+total, but JOIN is part of the same two ticks that PREP already covers.
+The rows sum to **7,067** against the 7,465-unit image budget: PRE 282,
+PREP 4,210, FLUSH 1,730, HUD 202, JOIN 460, POST 183. The candidate therefore
+had about 398 units (~1.8 ms) of margin, not 62. Balancing is at its limit:
+the Master runs ~6,884 units including its wait and the Slave ~5,719, and
+moving actor 1's face pass to the Slave would make the Slave critical for a
+net gain of about 65 units.
+
+The cache-on Ymir profile of the same build put the projected-queue census at
+**19,364 Master cycles per frame (4.3% of traced Master cycles)**:
+`projected_census` re-read all 24-byte queue records, dereferenced each
+program and texture, and checked `texture->valid` on every image. The two
+fighters' textures and compiled programs are uploaded once by
+`t3_characters_init` and the binding is immutable afterwards, so that pass
+revalidated something that cannot change. The stage and the shadows submit
+resident RGB faces, and the HUD is drawn outside the scene.
+
+LibSaturn gained `sat_scene_flush_trusted`, which skips the per-face census
+and hands the queue to the same painter emission with `queue_valid=true`.
+The caller promises that every queued material and texture stays resident
+until the call returns; the HUD reservation gate, owner-span generations and
+the frame-local checkpoint/rollback still apply. The admission estimate uses
+the queue length, an upper bound on the one-command subset (only clipped
+fallbacks can emit fewer), so the gate stays conservative. The untrusted
+`sat_scene_flush` is unchanged. Both are host-tested in
+`test_scene_api.cpp`: the trusted path runs no census, forwards
+`queue_valid`, and still refuses a queue that does not fit before the first
+command. LibSaturn's `make test` passes with the asset Python environment.
+
+Mednafen, round 1, CPU Law, neutral P1, 45 s recordings, same sources and SDK
+except for the option:
+
+| Build | FRAME 25 s | FRAME 43 s | Images / 18 s | Rate |
+| --- | ---: | ---: | ---: | ---: |
+| `flush-control` (`T3_TRUSTED_SCENE_FLUSH=OFF`) | 75 | 617 | 542 | 30.11 |
+| `flush-trusted` (`=ON`) | 78 | 635 | 557 | **30.94** |
+
+Both screenshots show round 1 with the round timer at 38 s and then 20 s, so
+the logic ticks match and the gain is not a different simulation cadence;
+15 images is well beyond the ±1.3-image noise of an 18 s window at this rate.
+The option now defaults to ON for the projected queue; a build that releases
+textures between submit and flush must turn it off.
+
+The 3,000-tick continuous Paul-vs-Law reference suite also passes
+3,000/3,000 on the trusted build (`flush-trusted-reference-run`,
+`fc7c18ee…`). That oracle cannot be built from the current release layout
+as-is: its 96 KB digest trace and 16 KiB Master stack reserve no longer fit
+in High WRAM while the 110 KB local pose cache is resident. The run used the
+morning's verified oracle configuration (`T3_LOCAL_POSE_CACHE_ENTRIES=0`,
+`T3_PSX_CAMERA=OFF`, `T3_REFERENCE_TRACE_HIGH=ON`, `T3_COLD_FACES=320`,
+`T3_HIGH_TEXTURE_DESCRIPTORS=OFF`, `T3_BRANCH_INPUT_FILTER=OFF`, no raw
+actor-0 KMD). The game host CTest still passes 55/55.
+
+Evidence: `assets/imported/flush-control-cd` and
+`assets/imported/flush-trusted-cd` keep the screenshots, `run.json` and
+hashes (their `run.mov` files were deleted after inspection);
+`assets/imported/flush-trusted-reference-run` keeps the oracle result. The
+current candidate is `build/flush-trusted` (`d60c58e0…`) and its control
+`build/flush-control` (`8eaab95b…`). The earlier `build/t30-face` baseline
+predates the promoted default and is superseded.

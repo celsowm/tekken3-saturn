@@ -1,7 +1,14 @@
 # Harness-led Saturn performance work
 
-Latest: [1,800-image Mednafen gate reached](THIRTY_IMAGE_GATE.md). The Slave now
-runs its actor preparation and the deferred simulation ticks as one task.
+Latest: [trusted scene flush](THIRTY_IMAGE_GATE.md#trusted-scene-flush-2026-10-24).
+The flush no longer revalidates per-face texture residency; the game's assets
+are uploaded once and the binding is immutable. A matched Mednafen A/B gives
+**30.94 versus 30.11 images/s** over the same 18 s round-1 window (+2.8%).
+The corrected two-tick accounting is 7,067 of the 7,465-unit image budget.
+The 3,000-tick reference suite and the 55 host CTests pass.
+
+Previous: [1,800-image Mednafen gate reached](THIRTY_IMAGE_GATE.md). The Slave
+now runs its actor preparation and the deferred simulation ticks as one task.
 FRAME advances 1,844 over 60 s (gate 1,800), with exact frozen pixels,
 reference replays and all 24 combat cases.
 

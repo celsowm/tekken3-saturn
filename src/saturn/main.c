@@ -795,7 +795,16 @@ volatile uint16_t g_t3_cold_peak[2] __attribute__((section(".wram_l")));
 
 static void flush_scene(void) {
     T3_PERF_START(flush_started);
+#if defined(T3_TRUSTED_SCENE_FLUSH)
+    /* Both actors' textures and materials are uploaded once and the binding
+     * is immutable after t3_characters_init, so the flush census revalidated
+     * residency that cannot change: one 24-byte record per face every image.
+     * The stage and shadows submit resident RGB faces, and the HUD is drawn
+     * outside the scene. */
+    SAT_PANIC_IF_ERROR(sat_scene_flush_trusted(&g_scene));
+#else
     SAT_PANIC_IF_ERROR(sat_scene_flush(&g_scene));
+#endif
     if(g_scene.faces.clipped_faces>g_t3_cold_peak[0])g_t3_cold_peak[0]=g_scene.faces.clipped_faces;
     if(g_scene.faces.fallback_faces>g_t3_cold_peak[1])g_t3_cold_peak[1]=g_scene.faces.fallback_faces;
 #if defined(T3_NATIVE_WAIT_PROBE)
