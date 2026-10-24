@@ -103,3 +103,47 @@ python3 ../lib-saturn/harness/scripts/analyze_video_observations.py \
   --probe-report assets/imported/visible-on-submit-3901/ymir.json \
   --after-field 300 --out assets/imported/visible-on-submit-3901/video-summary.json
 ```
+
+## Per-face ordering bias (measured, not ported)
+
+Tekken 3 does not sort fighter faces by exact depth. Each KMD face's flags word
+carries a signed ordering-table bias in bits 25–31, and the original links the
+face at `Z[a] + Z[b] − bias` with `Z = SZ/32`, masked to 11 bits; for a
+double-sided face the NCLIP sign chooses the bias sign
+([`3dmk-models.md`](../third_party/Tekken3Remake/docs/research/formats/3dmk-models.md#face-block-faces)).
+The bias is authored data, not a rounding detail: one step moves a face one
+ordering bucket, which equals two depth units on the averaged corner depth, so
+the observed ±2…8 spans up to eight buckets.
+
+The two render meshes this disc uses carry it:
+
+| Mesh | Faces | Biased | Bias values (faces) |
+| --- | ---: | ---: | --- |
+| Paul `071.bin` | 773 | 127 (16%) | −2 (32), +2 (76), +4 (15), +8 (4) |
+| Law `079.bin` | 768 | 248 (32%) | −6 (32), −2 (128), +2 (26), +4 (62) |
+
+The importer keeps the double-sided bit but not the bias
+(`scripts/kmd_to_ska.py`, `parse_faces`), and LibSaturn's scene painter orders
+by the four-corner average camera depth at 1/4096 world unit with an 8-bit
+`pass` in the high key bits. With exact depth, a bias is only observable where
+two faces are within a few units — hair, belt, trim and clothing seams.
+
+Not ported yet, for three reasons that must be settled together:
+
+- the bias needs a per-face channel through every submission path (the
+  compiled-program fast path, direct projected spans and the general loop),
+  because the key is written inside those kernels, not once per frame;
+- one PS1 depth unit is not automatically one Saturn world unit: the KMD bind
+  is applied with a ×6 model scale, and the camera framing that pairs with it
+  has not been shown to be the PS1 view scaled by the same factor;
+- there is no original-render oracle. `fight_harness.py` stubs
+  `DrawSkinnedPart` and `FighterUploadTextures`, so packet-level reference
+  pictures exist for the 2D screens but not for the fighters. Without one,
+  applying the bias could only be judged by eye, and it would move layering on
+  a third of Law's faces at once.
+
+The exact-depth painter is therefore retained. Qualifying the bias needs a
+fighter draw oracle (real `DrawSkinnedPart`, GTE and packet capture) or a
+matched original screenshot of a pose whose biased faces overlap; then the
+same frozen-pixel and visual gate used for screen culling can decide it.
+
