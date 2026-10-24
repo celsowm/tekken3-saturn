@@ -4,6 +4,52 @@ Run these from the repository root. Saved-run inspection uses only Python's
 standard library and does not launch an emulator. GitHub monitoring requires
 an authenticated `gh` executable.
 
+## Run the release gate
+
+`saturn_regression.py` runs the gates of [RELEASE.md](RELEASE.md) against one
+built disc and writes a single verdict. It runs `ctest` for each configured
+host build (`build/host`, plus `build/host-law` when that private bank is
+configured), the 24-case live combat suite with KO and timeout cases, the
+3,000-tick reference replay, and optionally one frozen-pixel pair. Each gate
+is a subprocess with its own log; the summary is rewritten after every stage,
+so an interrupted run still records what it had proved.
+
+```sh
+build/asset-venv/bin/python scripts/saturn_regression.py \
+  --build build/flush-trusted \
+  --out assets/imported/regression-flush-trusted \
+  --bios assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin \
+  --reference-build build/flush-trusted-reference \
+  --reference-export assets/imported/paul-law-reference-export
+```
+
+Add `--frozen-baseline A --frozen-candidate B` to compare two captures of the
+same committed tick and probe configuration (see
+[Compare frozen presentation](#compare-frozen-presentation)); `--include-cached-stage-faces`
+forwards the reconciling mode described there.
+
+`<out>/summary.json` holds `passed`, the per-stage status, command, log path
+and the gate's own numbers: the CTest census and build identity; combat case
+names, measured input offset and the KO/timeout assertions; reference ticks,
+matching prefix and trace digests; the frozen comparator's report. The process
+exits nonzero if any selected gate fails. `--skip-host`, `--skip-combat` and
+`--skip-reference` narrow the run; `--fail-fast` stops at the first failure
+instead of collecting all of them. A non-empty `--out` is refused unless
+`--force` is given, so a stale `suite.json` cannot stand in for a gate that
+never ran. Pillow is needed only for the frozen comparison, hence the asset
+Python environment.
+
+Inspect a completed or still running gate with
+`python3 scripts/report_saturn_runs.py <out>`. It reports completed stages,
+their key results and whether the whole gate is complete. This also exits
+nonzero until all selected gates pass.
+
+The wrapper certifies host behavior, live Ymir gameplay and the selected
+fixtures. It does not boot the CD, measure display cadence or replace
+`t3_capture_input_tape`/Mednafen evidence. The reference replay compares
+match state with original-code output under exported camera screen positions
+and sparse previous views; it does not establish independent camera parity.
+
 ## Inspect saved runs
 
 Pass capture directories or explicit JSON files. Probe reports expose the HUD's

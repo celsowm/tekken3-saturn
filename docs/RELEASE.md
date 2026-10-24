@@ -22,6 +22,11 @@ Tekken 3 import (`scripts/psx_disc_import.py`, then the `build_local_*` and
    - `python3 scripts/saturn_combat_suite.py --workload paul-law-release
      --with-ko --with-timeout ...` (24 cases).
 
+   `scripts/saturn_regression.py` runs the CTest builds and the 24-case suite
+   in one command and writes a single JSON verdict; see
+   [SATURN_VALIDATION_SCRIPTS.md](SATURN_VALIDATION_SCRIPTS.md#run-the-release-gate).
+   The standalone commands remain the reference for what each gate asserts.
+
 Controls: D-pad move/guard, X/Y punch, A/B kick, START resets the match (the
 title screen, when built in, waits for START first). With port 2 empty the CPU
 plays Law and gets stronger after each match you win; with a pad in port 2 it
