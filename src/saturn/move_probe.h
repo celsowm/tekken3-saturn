@@ -3,6 +3,9 @@
 #include "fight.h"
 #include "psx_pose.h"
 #include "psx_trace.h"
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+#include "psx_hud_bar.h"
+#endif
 #include "saturn/core.h"
 
 /* Optional PS1 DIVMOT logic interpreter, isolated from combat gameplay.
@@ -40,6 +43,10 @@ sat_result_t t3_move_probe_camera(sat_camera3d_t* camera);
 int32_t t3_move_probe_backdrop_turn(void);
 #endif
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+/* Original 60 Hz HUD lengths, copied only at a committed simulation boundary. */
+void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]);
+#endif
 int32_t t3_move_probe_round_value(unsigned field);
 uint16_t t3_move_probe_slot(unsigned fighter);
 uint16_t t3_move_probe_frame(unsigned fighter);

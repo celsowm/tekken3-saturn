@@ -22,6 +22,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_ca
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_local_pose.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_hud_bar.c)
 target_sources(tekken3_fight PRIVATE src/game/branch_input_filter.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_world_pose.c)
 
@@ -1101,6 +1102,14 @@ else()
                      ${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_body_sqrt.bin)
             set_tests_properties(ps1_original_camera_trace_${_t3_camera_trace} PROPERTIES SKIP_RETURN_CODE 77)
         endforeach()
+        add_executable(t3_psx_hud_bar_eval tools/psx_hud_bar_eval.c)
+        target_link_libraries(t3_psx_hud_bar_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_psx_hud_bar_eval PRIVATE -Wall -Wextra -Werror)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME ps1_original_hud_bar_trace
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_psx_hud_bar_trace.py"
+                --runner "$<TARGET_FILE:t3_psx_hud_bar_eval>")
+        set_tests_properties(ps1_original_hud_bar_trace PROPERTIES SKIP_RETURN_CODE 77)
         # The owned match with the original camera on private data, as on the Saturn.
         if(T3_PRIVATE_REPLAY_ASSET_DIR AND T3_LOCAL_CAMERA_BANK)
             add_executable(t3_match_camera_eval tools/psx_match_camera_eval.c

@@ -15,7 +15,7 @@ Tekken 3 import (`scripts/psx_disc_import.py`, then the `build_local_*` and
 3. `cmake --build <build>` writes `<build>/disc/tekken3_saturn.cue` (+ `.bin`).
 4. Gate before sharing a disc image with anyone (it contains retail data and
    must not be published):
-   - `ctest --test-dir build/host` (55 tests) and the oracle cases of
+   - `ctest --test-dir build/host` and the oracle cases of
      `docs/FIGHT_ORACLE.md` (`build/host`, `build/host-law`);
    - `python3 scripts/saturn_probe.py --workload paul-law-release ...`
      (`first_error` 0, `loop_rate_x10` near 300);

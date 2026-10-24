@@ -104,9 +104,10 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
 - [~] Effects: a hit/guard spark at the contact point (HUD cross); the original effect sprites are not ported.
 - [~] HUD: private original system-texture bar caps/fills, round marks and timer
   digits upload to VDP1 with `T3_ORIGINAL_HUD=ON` and draw during gameplay.
-  The runtime scales them to the Saturn's 320 × 224 display; exact original
-  384 × 480 placement, three-length bar animation, name plates, font and
-  round messages remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
+  The runtime scales them to the Saturn's 320 × 224 display. The original
+  four-field health-bar transition now advances at 60 Hz and matches 33,575
+  original trace transitions; exact original 384 × 480 placement, name plates,
+  font and round messages remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
 - [~] Menus: an optional title screen (`T3_TITLE_SCREEN`); no select or mode menus.
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 

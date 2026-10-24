@@ -109,6 +109,9 @@ static simulation_job_t g_simulation_job T3_HOT_WRAM;
  * about 1.8x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
 uint8_t g_t3_simulation_stack[8192] __attribute__((aligned(16)));
 static t3_match_t g_image_match T3_HOT_WRAM;
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+static t3_psx_hud_bar_t g_image_hud_bars[2];
+#endif
 static int32_t g_image_round[6];
 static uint32_t g_simulation_epoch=1u,g_slave_simulation_epoch;
 volatile uint32_t g_t3_slave_sim_frames,g_t3_slave_sim_jobs,g_t3_slave_sim_ticks;
@@ -608,6 +611,9 @@ static sat_result_t simulation_join(sat_parallel_handle_t handle,uint32_t count)
 
 static void capture_image_match(void) {
     g_image_match=g_game;
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+    t3_move_probe_hud_bars(g_image_hud_bars);
+#endif
     g_image_round[0]=t3_move_probe_round_value(0);
     g_image_round[1]=t3_move_probe_round_value(1);
     g_image_round[2]=t3_move_probe_round_value(4);
@@ -647,11 +653,9 @@ static sat_result_t start_prepare_simulation(void) {
 #endif
 #endif
 
-/* Health bars as FUN_8004E55C draws them: player 1's is anchored at its inner
- * end and shrinks outwards, player 2's mirrors it. Behind the health sits the
- * "recent damage" length, which closes on it by 1/16 of the difference per
- * 60 Hz frame (about 1/8 per displayed image, as the HUD is drawn at 30 Hz).
- * Rounds refill it with the health. */
+/* The Saturn HUD scales the PS1 bar geometry into 320x224. The original-HUD
+ * build keeps FUN_8004E55C's lengths in 152-pixel units at 60 Hz and only
+ * converts them here for the VDP1 sprite width. */
 enum { BAR_WIDTH = 140, BAR_Y = 19, BAR_HEIGHT = 8 };
 static int g_recent_damage[2];
 static void health_bar(int x, int inner_right, int health, int* recent) {
@@ -690,8 +694,22 @@ static void draw_hud(void) {
 #endif
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_cpu_mask()&2u?"CPU":"P2", 288, 5));
+#if defined(T3_ORIGINAL_HUD_BARS) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+#if defined(T3_SLAVE_SIMULATION)
+    const t3_psx_hud_bar_t* bars=g_image_hud_bars;
+#else
+    t3_psx_hud_bar_t current_bars[2];
+    t3_move_probe_hud_bars(current_bars);
+    const t3_psx_hud_bar_t* bars=current_bars;
+#endif
+    SAT_PANIC_IF_ERROR(t3_original_hud_bar(8,BAR_Y,BAR_WIDTH,
+        bars[0].drawn*BAR_WIDTH/152,bars[0].recent*BAR_WIDTH/152,1));
+    SAT_PANIC_IF_ERROR(t3_original_hud_bar(172,BAR_Y,BAR_WIDTH,
+        bars[1].drawn*BAR_WIDTH/152,bars[1].recent*BAR_WIDTH/152,0));
+#else
     health_bar(8,1,game->fighters[0].health,&g_recent_damage[0]);
     health_bar(172,0,game->fighters[1].health,&g_recent_damage[1]);
+#endif
     draw_sparks();
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", game->round, 8, 35));
 #if defined(T3_ORIGINAL_HUD)

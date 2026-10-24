@@ -129,6 +129,18 @@ static t3_move_vm_t g_preview_vms[2];
 #define VM(i) (g_preview_vms[(i)])
 #endif
 static uint8_t g_active, g_round;
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+/* sat_parallel_cache_sync_range invalidates whole 16-byte SH-2 lines.
+ * Keep this Slave-owned state on two exclusive lines so syncing it cannot
+ * evict adjacent Master-owned move-probe globals. */
+typedef struct {
+    t3_psx_hud_bar_t bars[2];
+    uint8_t round;
+    uint8_t padding[7];
+} t3_hud_bar_shared_t;
+_Static_assert(sizeof(t3_hud_bar_shared_t)==32,"HUD state owns two cache lines");
+static t3_hud_bar_shared_t g_hud_bar_shared __attribute__((aligned(16)));
+#endif
 static unsigned g_start_slot;
 static uint8_t g_segments[2];
 static uint8_t g_move_event_status[2],g_move_extra_kind[2],g_move_extra_damage[2];
@@ -148,6 +160,9 @@ static int16_t g_fk_root_xx[2];
 sat_result_t t3_move_probe_simulation_sync(int full) {
     const struct {const void* address;uint32_t size;} query[]={
         {&g_owned_match,sizeof(g_owned_match)},
+#if 0 /* diagnostic: isolate HUD cache transfer from transition cost */
+        {&g_hud_bar_shared,sizeof(g_hud_bar_shared)},
+#endif
 #if defined(T3_CPU_AI)
         {&g_ai,sizeof(g_ai)},
 #endif
@@ -306,6 +321,10 @@ void t3_move_probe_reset(unsigned round) {
     unsigned i;
     if (!g_active) return;
     g_round=(uint8_t)round;
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+    for(unsigned p=0;p<2;++p)t3_psx_hud_bar_reset(&g_hud_bar_shared.bars[p]);
+    g_hud_bar_shared.round=0;
+#endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
@@ -1043,6 +1062,17 @@ reference_complete:;
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
 #endif
+#if defined(T3_ORIGINAL_HUD)
+    const uint8_t hud_round=(uint8_t)g_owned_match.flow.played;
+    if(g_hud_bar_shared.round!=hud_round) {
+        for(unsigned p=0;p<2;++p)t3_psx_hud_bar_reset(&g_hud_bar_shared.bars[p]);
+        g_hud_bar_shared.round=hud_round;
+    }
+    for(unsigned p=0;p<2;++p)
+        if(!t3_psx_hud_bar_step(&g_hud_bar_shared.bars[p],
+                g_owned_match.fighter[p].health_q16,g_owned_config.max_health_q16))
+            return SAT_ERR_INVALID_ARG;
+#endif
     view->total_ticks=g_owned_match.ticks;
 #if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
     /* The CPU's P2 input of this tick, for a pad replay of the same fight. */
@@ -1086,6 +1116,12 @@ reference_complete:;
     (void)p0;(void)p1;(void)view;return SAT_ERR_INVALID_ARG;
 #endif
 }
+#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
+void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]) {
+    if(!out)return;
+    out[0]=g_hud_bar_shared.bars[0];out[1]=g_hud_bar_shared.bars[1];
+}
+#endif
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
 #if defined(T3_CPU_AI)
     g_cpu_mask=mask&3u;g_cpu_difficulty=difficulty;g_cpu_level=level;

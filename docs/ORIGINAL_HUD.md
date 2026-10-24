@@ -48,9 +48,34 @@ The same candidate passed both host CTest builds (55/55 and 54/54), and
 `scripts/saturn_combat_suite.py --with-ko --with-timeout` passed all 24 live
 cases. Its private verdict is `assets/imported/hud-original-combat/suite.json`.
 
-The current HUD keeps the port's 320 × 224 layout and local health animation.
-Original PS1 layout is 384 × 480 interlaced with 152-pixel fills and 24-pixel
-bar height; precise placement and timing have not been ported. Player names,
-original text fonts and round/result messages are still rendered by the port
-or absent. This slice establishes asset decoding, upload, and measured runtime
-cost while those parts are implemented.
+## 60 Hz bar state
+
+`src/game/psx_hud_bar.c` ports the original four-field state transition:
+health-to-152-pixel target, immediate damage drop, 3 pixels of refill per
+logic tick, and recent damage closing by 1/16 of the gap rounded up. The
+state advances in the native owned-match simulation tick, including ticks
+between submitted images. The image snapshot carries the matching lengths
+to VDP1; render cadence no longer changes the animation speed. Round changes
+reset the bar state so each new round refills from empty.
+
+`tests/test_psx_hud_bar_trace.py` checks the C transition against the original
+after-frame HUD RAM in three pinned Tekken3Remake fight traces. It matched
+33,575 transitions across Paul–Law, Lei–King and the long match, including 133
+health changes, 816 refill steps and 1776 recent-damage closing steps. This
+checks the bar step with the original fighter health and maximum; Saturn gameplay
+still needs a whole-frame HUD parity comparison.
+
+The `hud-bar-tick` candidate ELF SHA-256 is
+`e071ed39b1922f4a7909246b104888cc8df8cd8e946acca2ce5e516a4d161eab`.
+Its cache-on Ymir 1200→3000 field interval advanced 1800 logic ticks in
+1799 vblanks, submitted 1195 images and discarded zero fields (60.03 ticks/s,
+39.86 images/s). The original HUD control submitted 1197 images in 1801
+vblanks. In an actual Mednafen CD run, saved `frame-35.png` and
+`frame-65.png` show FRAME 153→1081: 928 submissions in 30 seconds (30.93/s).
+The private screenshots and metadata are in `assets/imported/hud-bar-tick-cd`;
+`run.mov` was deleted.
+
+The HUD still scales into the port's 320 × 224 layout. Original PS1 layout
+is 384 × 480 interlaced with 152-pixel fills and 24-pixel bar height;
+precise screen placement has not been ported. Player names, original text
+fonts and round/result messages are still rendered by the port or absent.
