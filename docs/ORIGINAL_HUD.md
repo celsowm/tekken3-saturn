@@ -122,6 +122,19 @@ state's diagnostics (v23) read back 1.00 ticks per vblank with 285
 submitted images over the 522-vblank gameplay window (about 32/s, matching
 the previous candidate's 30.93/s window). The recording videos were deleted.
 
+The full release gate was then re-run on this commit for both release
+configs and both summaries pass: `flush-trusted-hudnames` (the HUD-off
+control `build/flush-trusted`, rebuilt with the new fallback bar geometry,
+ELF `40e12eaafc2a2bf5966fed0f1f86cc5a11fbf736c8ad944becf6a3d4b522bf74`) and
+`hudbar-hudnames` (this candidate). Each gate ran 56 + 55 host CTest, all
+26 combat cases (throw, throw-damage, ko-replay, ko-victory, next-round,
+match-end and the timeout checkpoints, with measured input offsets), and
+3,000/3,000 reference ticks against `build/flush-trusted-reference` (ELF
+`2974df5c590d010043c60a53596ed29c27628e3d910ac102fc68c20ede661d1f`) with no
+first difference and identical trace digests. The verdicts are
+`assets/imported/regression-flush-trusted` and
+`assets/imported/regression-hudbar-throw`.
+
 Player names, plates and the exact original placement are therefore done.
 The original text font, the round messages ("ROUND n", "READY?", "K.O.",
 result texts) and the mode lines remain pending.

@@ -62,8 +62,12 @@ verified converter), the mapping and the evidence. The candidate
 (ELF `ad1f402a…e0d7`) boots from CD in Mednafen with all pieces verified
 programmatically at their positions and the save state's diagnostics
 reading 1.00 ticks per vblank and about 32 submitted images per second —
-no cadence change from the previous HUD candidate. The original text
-font and round messages remain open.
+no cadence change from the previous HUD candidate. The full release gate
+then passed on this commit for both release configs (`flush-trusted-hudnames`,
+control ELF `40e12eaa…bf74`; `hudbar-hudnames`, this candidate): 56 + 55
+host CTest, all 26 combat cases including the throw and timeout
+checkpoints, and 3,000/3,000 reference ticks with no first difference.
+The original text font and round messages remain open.
 
 ## Boot loading screen (2026-10-19)
 
