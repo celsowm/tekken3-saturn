@@ -653,10 +653,12 @@ static sat_result_t start_prepare_simulation(void) {
 #endif
 #endif
 
-/* The Saturn HUD scales the PS1 bar geometry into 320x224. The original-HUD
- * build keeps FUN_8004E55C's lengths in 152-pixel units at 60 Hz and only
- * converts them here for the VDP1 sprite width. */
-enum { BAR_WIDTH = 140, BAR_Y = 19, BAR_HEIGHT = 8 };
+/* The Saturn HUD maps the original 384x480 fight screen (visible 368x448 from
+ * (8,20), hud.md) into 320x224: x' = (x-8)*20/23, y' = (y-20)/2. The
+ * original-HUD build keeps FUN_8004E55C's lengths in 152-pixel units at 60 Hz
+ * and only converts them here for the VDP1 sprite width. */
+enum { BAR_X0 = 2, BAR_X1 = 169, BAR_WIDTH = 136, BAR_FILL = 132,
+       BAR_Y = 10, BAR_HEIGHT = 12 };
 static int g_recent_damage[2];
 static void health_bar(int x, int inner_right, int health, int* recent) {
     int length = (health * BAR_WIDTH + T3_MAX_HEALTH - 1) / T3_MAX_HEALTH;
@@ -692,8 +694,10 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"RENDER BENCHMARK",80,65));
 #endif
 #endif
+#if !defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_cpu_mask()&2u?"CPU":"P2", 288, 5));
+#endif
 #if defined(T3_ORIGINAL_HUD_BARS) && defined(T3_ENABLE_PSX_OWNED_MATCH)
 #if defined(T3_SLAVE_SIMULATION)
     const t3_psx_hud_bar_t* bars=g_image_hud_bars;
@@ -702,22 +706,32 @@ static void draw_hud(void) {
     t3_move_probe_hud_bars(current_bars);
     const t3_psx_hud_bar_t* bars=current_bars;
 #endif
-    SAT_PANIC_IF_ERROR(t3_original_hud_bar(8,BAR_Y,BAR_WIDTH,
-        bars[0].drawn*BAR_WIDTH/152,bars[0].recent*BAR_WIDTH/152,1));
-    SAT_PANIC_IF_ERROR(t3_original_hud_bar(172,BAR_Y,BAR_WIDTH,
-        bars[1].drawn*BAR_WIDTH/152,bars[1].recent*BAR_WIDTH/152,0));
+    SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X0,BAR_Y,BAR_WIDTH,
+        bars[0].drawn*BAR_FILL/152,bars[0].recent*BAR_FILL/152,1));
+    SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X1,BAR_Y,BAR_WIDTH,
+        bars[1].drawn*BAR_FILL/152,bars[1].recent*BAR_FILL/152,0));
 #else
-    health_bar(8,1,game->fighters[0].health,&g_recent_damage[0]);
-    health_bar(172,0,game->fighters[1].health,&g_recent_damage[1]);
+    health_bar(BAR_X0,1,game->fighters[0].health,&g_recent_damage[0]);
+    health_bar(BAR_X1,0,game->fighters[1].health,&g_recent_damage[1]);
 #endif
     draw_sparks();
+#if !defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "ROUND ", game->round, 8, 35));
+#endif
 #if defined(T3_ORIGINAL_HUD)
-    SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,147,3));
+    /* FUN_8004E410/FUN_8004E87C: digits at original x 184/169, y 22; marks
+     * from x 151/202 at y 70, 14 apart. FUN_8004EB9C: names at 14 and
+     * 354-width, y 66, on plates from four pixels outside the name, rows
+     * y+9..y+19. */
+    SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,139,1));
     for(unsigned mark=0;mark<2;++mark) {
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,136-12*(int)mark,35));
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,172+12*(int)mark,35));
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,124-12*(int)mark,25));
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,169+12*(int)mark,25));
     }
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(2,27,35));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,5,23,28));
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(275,27,30));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,272,23,28));
 #else
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
 #endif

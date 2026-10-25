@@ -27,6 +27,25 @@ PIECES = (
     ('mark_won', 832, 0, 0xF0, 0xA8, 15, 18, 0x7F18),
     ('mark_empty', 832, 0, 0xF0, 0xA8, 15, 18, 0x7F19),
     *((f'digit_{d}', 896, 0, 16 * d, 0xD0, 16, 46, 0x7F1C) for d in range(12)),
+    # FUN_8004EB9C's plate backing: a 2 x 10 quad stretched over the name.
+    ('plate_0', 832, 0, 0xDC, 0xA8, 2, 10, 0x7F11),
+)
+
+# FUN_8004EB9C's name sprites: page 2 (word 448) of each fighter's costume
+# texture ARC, U 0x40, 16 rows, through the system CLUT 0x7F10 (costume 0).
+# The widths are the character records' byte +5 (COSTUME_KEYS 0x80095CE8 key
+# 0 for Paul and key 4 for Law, CHAR_RECORDS 0x80098120), read through the
+# pinned remake's canonical-rebased USA disc; the extracted pixels are
+# byte-identical to its verified hud.py converter. P1's name is left-anchored
+# at x 14 and P2's right-anchored at 354, so each pads to the 8-texel VDP1
+# width on its outer side and the inner art stays flush with its anchor.
+NAME_CLUT = 0x7F10
+NAME_PAGE_WORD = 448
+NAME_U = 0x40
+NAME_HEIGHT = 16
+NAMES = (
+    ('name_paul', 'actor0_arc', 32, 'left'),
+    ('name_law', 'actor1_arc', 26, 'right'),
 )
 
 
@@ -65,21 +84,64 @@ def extract(vram, spec):
                                           height=height, clut=clut, visible_pixels=visible)
 
 
+def extract_name(char_vram, system_vram, spec):
+    """One fighter's name sprite: page 2 of the costume ARC, zero-padded
+    towards the sprite's outer side so the art stays flush with its anchor
+    when the padded sheet is drawn scaled (FUN_8004EB9C, hud.py)."""
+    name, _, width, align = spec
+    clut_x, clut_y = 16 * (NAME_CLUT & 63), (NAME_CLUT >> 6) & 511
+    palette = [word(system_vram, clut_x + i, clut_y) for i in range(16)]
+    if palette[0] != 0:
+        raise ValueError(f'{name}: transparent palette entry is not zero')
+    padded_width = (width + 7) & ~7
+    pixels = bytearray()
+    visible = 0
+    for y in range(NAME_HEIGHT):
+        indices = []
+        for x in range(width):
+            packed = char_vram[y * 1024 + NAME_PAGE_WORD + (NAME_U + x) // 4]
+            index = (packed >> (4 * ((NAME_U + x) & 3))) & 15
+            visible += palette[index] != 0
+            indices.append(index)
+        pad = [0] * (padded_width - width)
+        indices = pad + indices if align == 'right' else indices + pad
+        pixels += bytes((indices[i] << 4) | indices[i + 1]
+                        for i in range(0, padded_width, 2))
+    lut = b''.join(struct.pack('<H', (value & 0x7FFF) | 0x8000 if value else 0)
+                   for value in palette)
+    return name, bytes(pixels), lut, dict(width=width, padded_width=padded_width,
+                                         height=NAME_HEIGHT, clut=NAME_CLUT,
+                                         visible_pixels=visible, align=align)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--exe', type=Path, default=ROOT / 'assets/imported/tekken3-usa/SLUS_004.02')
     parser.add_argument('--out', type=Path, default=ROOT / 'assets/imported/tekken3-usa/hud')
+    parser.add_argument('--actor0-arc', type=Path, required=True,
+                        help="player 1's costume texture ARC (the shared character archive)")
+    parser.add_argument('--actor1-arc', type=Path, required=True,
+                        help="player 2's costume texture ARC")
     args = parser.parse_args()
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    from psx_character_textures import load_character_vram
     exe = args.exe.read_bytes()
     tims = system_textures.members(exe, 'usa')
     if len(tims) != 127:
         raise ValueError(f'expected 127 USA system texture members, got {len(tims)}')
     vram = system_textures.build_vram(tims)
     images = {}
-    packed = bytearray(b'T3HUD01\0' + struct.pack('<HH', len(PIECES), 0))
+    packed = bytearray(b'T3HUD02\0' + struct.pack('<HH', len(PIECES) + len(NAMES), 0))
     args.out.mkdir(parents=True, exist_ok=True)
-    for spec in PIECES:
-        name, pixels, lut, info = extract(vram, spec)
+    for spec in PIECES + NAMES:
+        if spec in NAMES:
+            arc_path = getattr(args, spec[1].replace('-', '_'))
+            arc = arc_path.read_bytes()
+            char_vram, _ = load_character_vram(arc)
+            name, pixels, lut, info = extract_name(char_vram, vram, spec)
+            info = dict(info, arc_sha256=hashlib.sha256(arc).hexdigest())
+        else:
+            name, pixels, lut, info = extract(vram, spec)
         if not info['visible_pixels']:
             raise ValueError(f'{name} has no visible texels')
         filename, palette_file = name + '.lut4', name + '.clut555'
@@ -93,7 +155,7 @@ def main():
         packed += struct.pack('<HHHH', info['width'], info['padded_width'], info['height'], len(pixels))
         packed += lut + pixels
     (args.out / 'HUD.BIN').write_bytes(packed)
-    manifest = dict(schema=1, source='Tekken 3 USA executable system textures',
+    manifest = dict(schema=2, source='Tekken 3 USA system textures and costume texture archives',
                     exe_sha256=hashlib.sha256(exe).hexdigest(),
                     format='VDP1 LUT4, left texel in high nibble; RGB555 LE CLUT with bit15 visible',
                     disc_file='HUD.BIN', disc_sha256=hashlib.sha256(packed).hexdigest(),

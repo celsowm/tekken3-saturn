@@ -1,17 +1,19 @@
 # Original fight HUD sprite slice
 
-The optional `T3_ORIGINAL_HUD` build extracts 19 private sprites from the USA
-`SLUS_004.02`: two health-bar caps, three bar fills, two round-mark palettes
-and twelve timer digits. `scripts/extract_psx_hud.py` writes a versioned
-`HUD.BIN` with dimensions, LUT4 texels and RGB555 palettes. The Saturn loads it
-from CD into VDP1 at startup. The original source coordinates and palettes are
-documented in pinned Tekken3Remake `docs/research/code/hud.md` and
-`tools/remake_import/hud.py`; the Saturn code is an attributed C adaptation.
-Retail pixels and the generated file remain outside git.
+The optional `T3_ORIGINAL_HUD` build extracts 22 private sprites from the USA
+`SLUS_004.02` and the two fighters' costume texture archives: two health-bar
+caps, three bar fills, two round-mark palettes, twelve timer digits, the name
+plate backing and both fighters' name sprites. `scripts/extract_psx_hud.py`
+writes a versioned `HUD.BIN` (schema 2, `T3HUD02`) with dimensions, LUT4
+texels and RGB555 palettes. The Saturn loads it from CD into VDP1 at startup.
+The original source coordinates and palettes are documented in pinned
+Tekken3Remake `docs/research/code/hud.md` and `tools/remake_import/hud.py`;
+the Saturn code is an attributed C adaptation. Retail pixels and the
+generated file remain outside git.
 The tested USA executable SHA-256 is
 `fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c`;
-its packed `HUD.BIN` SHA-256 is
-`fa9b17b970eedeb496aa4dfd25bb41121c39a7aff5ed6f1ef8ff5f3049ea5c72`.
+its packed schema-2 `HUD.BIN` SHA-256 is
+`e905345b0cfcb6897db02bd6c2cec6276ca8012337fd73c89c7f2f2266cfc8fe`.
 
 ## Reproduce
 
@@ -75,7 +77,51 @@ vblanks. In an actual Mednafen CD run, saved `frame-35.png` and
 The private screenshots and metadata are in `assets/imported/hud-bar-tick-cd`;
 `run.mov` was deleted.
 
-The HUD still scales into the port's 320 × 224 layout. Original PS1 layout
-is 384 × 480 interlaced with 152-pixel fills and 24-pixel bar height;
-precise screen placement has not been ported. Player names, original text
-fonts and round/result messages are still rendered by the port or absent.
+At the bar-tick checkpoint the HUD still scaled into the port's approximate
+320 × 224 layout. Original PS1 layout is 384 × 480 interlaced with
+152-pixel fills and 24-pixel bar height; precise screen placement, player
+names, original text fonts and round/result messages were still open.
+
+## Name plates and exact placement (2026-10-25)
+
+`extract_psx_hud.py` now also writes the plate backing (2 × 10 at UV
+(0xDC, 0xA8) through CLUT 0x7F11) and both fighters' name sprites: page 2
+(word 448) of each costume texture ARC at U 0x40, sixteen rows, through the
+system CLUT 0x7F10. The widths are the character records' byte +5 read
+through the pinned remake's canonical-rebased USA disc (COSTUME_KEYS
+0x80095CE8 key 0 for Paul and key 4 for Law, into CHAR_RECORDS 0x80098120):
+Paul 32, Law 26, costume-0 plates for both. The extracted texel indices and
+RGB555 palettes are byte-identical to the remake's verified `hud.py`
+converter output for both names. P1's sheet pads right and P2's pads left,
+so each name stays flush with its anchor when the 32-texel sheet is drawn
+scaled; CMake passes the costume ARCs through
+`T3_LOCAL_HUD_ACTOR0_ARC`/`T3_LOCAL_HUD_ACTOR1_ARC`.
+
+The draw code now follows the original positions exactly. The original
+384 × 480 fight screen shows 368 × 448 from (8, 20), so the Saturn's
+320 × 224 maps x' = (x − 8) · 20/23 and y' = (y − 20)/2: the bars sit at
+x 2 and 169, y 10 (five-pixel caps, the original 152 fill units mapping to
+132), the timer digits at 139/152, y 1 (14 × 23), the round marks from
+124/169 at y 25 (13 × 9, twelve apart), and FUN_8004EB9C's plates and
+names at y 27 (five rows) and y 23 (28 × 8), P1 anchored at x 5 and P2's
+right edge at 300. The port-only "P1"/"CPU" labels and "ROUND n" text no
+longer draw under `T3_ORIGINAL_HUD`; the name plates carry both sides. The
+FRAME submission counter stays.
+
+Evidence: candidate ELF SHA-256
+`ad1f402aac99288c949193851f5b585c58ccd3a9ec0e98b45b7e8eb54887e0d7`
+(app 571,348 bytes). A 900-field Ymir probe
+(`assets/imported/hud-names-probe`) is clean: first_error 0, no rejected
+faces, draw timeouts or discarded fields, 746/2048 commands. Programmatic
+pixel checks against the extracted palettes find every piece at its mapped
+position in the native screenshot: both names (184 and 167 palette pixels),
+both plates, the moved timer, marks and bars. A 40-second Mednafen CD boot
+(`assets/imported/hud-names-cd`, `assets/imported/hud-names-cd-state`)
+exits 0; the same palette check passes on its screenshots, and the save
+state's diagnostics (v23) read back 1.00 ticks per vblank with 285
+submitted images over the 522-vblank gameplay window (about 32/s, matching
+the previous candidate's 30.93/s window). The recording videos were deleted.
+
+Player names, plates and the exact original placement are therefore done.
+The original text font, the round messages ("ROUND n", "READY?", "K.O.",
+result texts) and the mode lines remain pending.

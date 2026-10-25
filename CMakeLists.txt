@@ -447,19 +447,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE T3_SFX=1)
     endif()
     set(T3_LOCAL_HUD_EXE "" CACHE FILEPATH "Private USA SLUS_004.02 for original fight HUD sprites")
+    set(T3_LOCAL_HUD_ACTOR0_ARC "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/raw/073.bin"
+        CACHE FILEPATH "Private P1 costume texture ARC for the original name plate")
+    set(T3_LOCAL_HUD_ACTOR1_ARC "${CMAKE_SOURCE_DIR}/assets/imported/law-import/raw/081.bin"
+        CACHE FILEPATH "Private P2 costume texture ARC for the original name plate")
     option(T3_ORIGINAL_HUD "Draw private original fight HUD bar, timer and mark sprites" OFF)
     if(T3_ORIGINAL_HUD)
         option(T3_ORIGINAL_HUD_BARS "Draw original health bar sprites (off isolates their cost)" ON)
         if(NOT T3_LOCAL_HUD_EXE OR NOT EXISTS "${T3_LOCAL_HUD_EXE}")
             message(FATAL_ERROR "T3_ORIGINAL_HUD requires T3_LOCAL_HUD_EXE")
         endif()
+        foreach(_t3_hud_arc T3_LOCAL_HUD_ACTOR0_ARC T3_LOCAL_HUD_ACTOR1_ARC)
+            if(NOT EXISTS "${${_t3_hud_arc}}")
+                message(FATAL_ERROR "T3_ORIGINAL_HUD requires ${_t3_hud_arc}")
+            endif()
+        endforeach()
         set(_t3_hud_gen "${CMAKE_BINARY_DIR}/generated/private_hud")
         add_custom_command(OUTPUT "${_t3_hud_gen}/HUD.BIN"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
                 --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_hud_gen}"
+                --actor0-arc "${T3_LOCAL_HUD_ACTOR0_ARC}"
+                --actor1-arc "${T3_LOCAL_HUD_ACTOR1_ARC}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
                 "${T3_LOCAL_HUD_EXE}"
+                "${T3_LOCAL_HUD_ACTOR0_ARC}" "${T3_LOCAL_HUD_ACTOR1_ARC}"
             VERBATIM)
         target_sources(tekken3_saturn PRIVATE src/saturn/original_hud.c
             "${_t3_hud_gen}/HUD.BIN")

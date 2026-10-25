@@ -9,7 +9,8 @@
 #include <stdint.h>
 
 enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY,
-       MARK_WON, MARK_EMPTY, DIGIT_FIRST, DIGIT_LAST=18, PIECES=19 };
+       MARK_WON, MARK_EMPTY, DIGIT_FIRST, DIGIT_LAST=18, PLATE, NAME_P1, NAME_P2,
+       PIECES=22 };
 /* Immutable descriptors fit the release build's narrow Low WRAM margin.
  * Startup-only upload scratch sits in High WRAM, with its reclaimed pose
  * cache capacity in the opt-in build. */
@@ -34,7 +35,7 @@ sat_result_t t3_original_hud_init(void) {
     SAT_TRY(sat_cdfs_lookup(volume,"HUD.BIN",&file));
     if(file.size<12)return SAT_ERR_VERSION;
     SAT_TRY(read_at(volume,&file,0,header,sizeof header));
-    static const uint8_t magic[8]={'T','3','H','U','D','0','1',0};
+    static const uint8_t magic[8]={'T','3','H','U','D','0','2',0};
     for(unsigned j=0;j<8;++j)if(header[j]!=magic[j])return SAT_ERR_VERSION;
     if(u16(header+8)!=PIECES || u16(header+10))return SAT_ERR_VERSION;
     for(unsigned i=0;i<PIECES;++i) {
@@ -62,29 +63,45 @@ static sat_result_t draw(unsigned piece,int x,int y,int width,int height) {
 }
 
 sat_result_t t3_original_hud_bar(int x,int y,int width,int length,int recent,int inner_right) {
-    const int cap=5,fill=width-2*cap,height=11;
-    if(width<2*cap || length<0 || recent<0 || length>width || recent>width)return SAT_ERR_INVALID_ARG;
+    /* FUN_8004E55C: the caps overlap the fill by two original pixels, so the
+     * fill spans x+2..width-2; `length` and `recent` are already in those
+     * fill pixels (152 original units mapped by the caller). */
+    const int cap=5,fill=width-4,height=12;
+    if(width<2*cap || length<0 || recent<0 || length>fill || recent>fill)return SAT_ERR_INVALID_ARG;
     SAT_TRY(draw(CAP_LEFT,x,y,cap,height));
     SAT_TRY(draw(CAP_RIGHT,x+width-cap,y,cap,height));
-    SAT_TRY(draw(EMPTY,x+cap,y,fill,height));
-    if(recent>0) {
-        const int amount=recent*fill/width;
-        if(amount)SAT_TRY(draw(DAMAGE,inner_right?x+cap+fill-amount:x+cap,y,amount,height));
-    }
-    if(length>0) {
-        const int amount=length*fill/width;
-        if(amount)SAT_TRY(draw(HEALTH,inner_right?x+cap+fill-amount:x+cap,y,amount,height));
-    }
+    SAT_TRY(draw(EMPTY,x+2,y,fill,height));
+    if(recent>0)
+        SAT_TRY(draw(DAMAGE,inner_right?x+2+fill-recent:x+2,y,recent,height));
+    if(length>0)
+        SAT_TRY(draw(HEALTH,inner_right?x+2+fill-length:x+2,y,length,height));
     return SAT_OK;
 }
 
 sat_result_t t3_original_hud_timer(unsigned seconds,int x,int y) {
     if(seconds>99)seconds=99;
-    SAT_TRY(draw(DIGIT_FIRST+seconds/10,x,y,13,21));
-    return draw(DIGIT_FIRST+seconds%10,x+13,y,13,21);
+    /* FUN_8004E410: 16x46 digits fifteen original pixels apart. */
+    SAT_TRY(draw(DIGIT_FIRST+seconds/10,x,y,14,23));
+    return draw(DIGIT_FIRST+seconds%10,x+13,y,14,23);
 }
 
 sat_result_t t3_original_hud_mark(unsigned player,unsigned won,int x,int y) {
     (void)player;
-    return draw(won?MARK_WON:MARK_EMPTY,x,y,12,8);
+    /* FUN_8004E87C: 15x18 marks. */
+    return draw(won?MARK_WON:MARK_EMPTY,x,y,13,9);
+}
+
+sat_result_t t3_original_hud_plate(int x,int y,int width) {
+    /* FUN_8004EB9C: the 2x10 plate quad stretched under the name; the
+     * original rows y+9..y+19 halve to five screen rows. */
+    if(width<=0)return SAT_ERR_INVALID_ARG;
+    return draw(PLATE,x,y,width,5);
+}
+
+sat_result_t t3_original_hud_name(unsigned player,int x,int y,int width) {
+    /* FUN_8004EB9C: the padded name sheet, 16 rows halved to eight. P1's
+     * art is flush left in its sheet and P2's flush right (hud.py), so the
+     * drawn width is the padded sheet scaled by the screen mapping. */
+    if(width<=0)return SAT_ERR_INVALID_ARG;
+    return draw(player?NAME_P2:NAME_P1,x,y,width,8);
 }

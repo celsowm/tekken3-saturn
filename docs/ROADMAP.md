@@ -103,11 +103,12 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
 - [~] Sound: swing, hand/foot guard and hit samples from VAB 0, plus Paul's and Law's shouts and hurt voices; no KO or result voices, music or most effects.
 - [~] Effects: a hit/guard spark at the contact point (HUD cross); the original effect sprites are not ported.
 - [~] HUD: private original system-texture bar caps/fills, round marks and timer
-  digits upload to VDP1 with `T3_ORIGINAL_HUD=ON` and draw during gameplay.
-  The runtime scales them to the Saturn's 320 × 224 display. The original
-  four-field health-bar transition now advances at 60 Hz and matches 33,575
-  original trace transitions; exact original 384 × 480 placement, name plates,
-  font and round messages remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
+  digits upload to VDP1 with `T3_ORIGINAL_HUD=ON` and draw during gameplay at
+  the exact mapped original 384 × 480 positions, with both fighters' original
+  name sprites on their plates. The original four-field health-bar transition
+  advances at 60 Hz and matches 33,575 original trace transitions. The
+  original text font, round messages ("ROUND n", "READY?", "K.O.", result
+  texts) and mode lines remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
 - [~] Menus: an optional title screen (`T3_TITLE_SCREEN`); no select or mode menus.
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 

@@ -52,6 +52,19 @@ performance target and presentation-camera calibration remain open.
   escapes, reversals, multiple stances, knockdown/get-ups and
   posture/evades.
 
+## Original HUD name plates and exact placement (2026-10-25)
+
+The original-HUD build now extracts and draws the fighters' original name
+sprites and plates and places every HUD element at the mapped original
+384 × 480 coordinates; see [ORIGINAL_HUD.md](ORIGINAL_HUD.md) for the
+extraction (schema-2 HUD.BIN, byte-identical to the pinned remake's
+verified converter), the mapping and the evidence. The candidate
+(ELF `ad1f402a…e0d7`) boots from CD in Mednafen with all pieces verified
+programmatically at their positions and the save state's diagnostics
+reading 1.00 ticks per vblank and about 32 submitted images per second —
+no cadence change from the previous HUD candidate. The original text
+font and round messages remain open.
+
 ## Boot loading screen (2026-10-19)
 
 The Saturn frontend presents `TEKKEN 3 / LOADING` with the shared LibSaturn
