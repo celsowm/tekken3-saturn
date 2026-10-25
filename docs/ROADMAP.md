@@ -158,7 +158,12 @@ copyrighted assets and must not be distributed without permission.
 - [ ] Feed real 24-joint PS1 animation poses into hurt cylinders in the Saturn build.
 - [ ] Validate exact PS1 collision arithmetic, body spheres and reaction logic against an oracle.
 - [ ] Per-frame original movement, collision, hit segments, counters and juggles.
-- [ ] Throws, reversals, multiple stances, knockdown/get-ups and posture/evades.
+- [x] Throws: SituationClassify (0x800313B0), ThrowVictimStart pairing, the
+      counter-throw victim marking (transition 0x22, +0xBD) and Paul's authored
+      d/f+1+2 (follow-up 2848, victim slot 3143 through the merged index's
+      fallback, authored 40 damage, throw-camera preset handoff) run in the
+      live suite (`throw`, `throw-damage`).
+- [ ] Reversals, multiple stances, knockdown/get-ups and posture/evades.
 - [ ] Motion decode, model variants, effects, audio, original camera/round flow.
 - [ ] CPU AI, Tekken Force/Ball, team, practice, replay, character selection and modes.
 - [ ] Real-game oracle harness and frame-by-frame regression parity across characters.

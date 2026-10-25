@@ -8,6 +8,50 @@ provisional preview and query-only owned configurations remain separate.
 The declared continuous PS1/host/Saturn comparison now passes. The live
 performance target and presentation-camera calibration remain open.
 
+## Original throw mechanics (2026-10-24)
+
+- The owned match now ports the original throw path. `t3_psx_throw_situation`
+  (SituationClassify 0x800313B0) classifies branch conditions 2..0x17 from a
+  four-posture/four-quadrant table with the corrected column order
+  `{2,4,3,5}` per row, covered by host unit tests together with the
+  behind/air/no-contact/quadrant-overflow edge cases. Transition 0x22 (+0xBD) marks the counter throw: the victim's previous row
+  carried a damage word but had not yet reached its active window (still in
+  attack startup), or the thrower had power, so `attack_pending` latches on
+  the victim's ground state. The move-start facts
+  now carry the victim's pre-restart pose frame, which the collapse restart
+  also uses. Diagnostics v23 add both fighters' `throw_state`, `in_throw`
+  and `attack_pending` plus the camera's `throw_player`/`thrower`.
+- The live suite drives Paul's d/f+1+2 across a five-field stance window.
+  Situation 2 (front, standing) selects follow-up 2848; its reaction entry
+  0x10D0 asks for victim slot 3143, empty in both banks and filled from the
+  merged index's fallback slot as the original does. The suite requires both
+  fighters paired, the camera handed to its throw preset, the victim playing
+  3143, and the follow-up's authored event dealing its 40 damage
+  (`throw`, `throw-damage`).
+- Evidence: `assets/imported/regression-flush-trusted` (label
+  `flush-trusted-throw`, ELF SHA256
+  `68245a086073ac2af836f48922bdd99000a855e3464e4e75a46bfe162c67a717`) passes
+  all **26 live combat cases** — including `throw`, `throw-damage`,
+  `ko-replay`, `ko-victory`, `ko-victory-hold`, `next-round`, `match-end`
+  and both timeout cases — plus **56** (`build/host`) and **55**
+  (`build/host-law`) CTest checks and the **3,000-tick** Paul–Law reference
+  replay with a full matching prefix. The original-HUD release candidate
+  (`build/hud-bar-tick`, `T3_ORIGINAL_HUD=ON`, 571,328 initialized bytes)
+  passes the same four-stage gate in `assets/imported/regression-hudbar-throw`
+  (label `hudbar-throw`, ELF SHA256
+  `26b728cb385a1a74552526134ddfba13f29952bb572b2efe56d46ed45d40cbcb`):
+  the same 26 combat cases, 56 + 55 host checks and the 3,000-tick reference
+  replay. Its KO captures confirm the native replay even when the victim's
+  pose frame at the mark makes the walk cover nearly all 600 half-frames:
+  `ko-replay` still holds round 1 in playback, and the victory that follows
+  is round 1's win pose (3432, winner advancing, loser clock frozen). The
+  victory search needed a fix first: its loop reused the measured
+  input-offset name, double-delaying the tape on late probes and validating
+  a timeout victory instead (`527d1ce`).
+- Still open: other command throws and their follow-up branches, throw
+  escapes, reversals, multiple stances, knockdown/get-ups and
+  posture/evades.
+
 ## Boot loading screen (2026-10-19)
 
 The Saturn frontend presents `TEKKEN 3 / LOADING` with the shared LibSaturn
