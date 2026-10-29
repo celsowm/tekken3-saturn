@@ -25,6 +25,8 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
  * and level; they apply at the next reset. Builds without the private AI
  * tables have no CPU opponent (mask 0). */
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level);
+/* Original physical face/shoulder bits sampled at first-round placement. */
+void t3_move_probe_set_start_buttons(uint16_t first,uint16_t second);
 uint8_t t3_move_probe_cpu_mask(void);
 #if defined(T3_SLAVE_SIMULATION)
 /* Cache ownership only; caller has joined the previous simulation job.
@@ -32,13 +34,39 @@ uint8_t t3_move_probe_cpu_mask(void);
  * only the match and query counters, not the Slave-owned cache/history data. */
 sat_result_t t3_move_probe_simulation_sync(int full);
 #endif
+#if defined(T3_PARTICLE_IMAGE_SNAPSHOT)
+#include "psx_particle_snapshot.h"
+#include "psx_camera.h"
+typedef struct {
+    t3_psx_particle_snapshot_t sprites;
+    t3_psx_camera_view_t camera;
+    uint32_t frame_counter;
+} t3_particle_image_t;
+extern t3_particle_image_t g_t3_particle_image;
+extern volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;
+sat_result_t t3_move_probe_capture_particles(void);
+#if defined(T3_PARTICLE_PREPARE)
+const t3_psx_trig_t* t3_move_probe_particle_trig(void);
+#endif
+#endif
 int32_t t3_move_probe_world_center(unsigned axis);
 #if defined(T3_PSX_CAMERA)
 #include "saturn/scene3d.h"
+#include "psx_camera.h"
 /* The owned match's original fight camera as the Saturn camera, in the
  * skin's world (x, -y, -z around the fighters' centre, 96 fx16 per unit).
  * Sets eye, target, up, fov_y, aspect and view_proj; near/far are kept. */
 sat_result_t t3_move_probe_camera(sat_camera3d_t* camera);
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+/* Snapshot before dispatching the worker and its deferred simulation. */
+int t3_move_probe_camera_matrix(t3_psx_camera_matrix_t* out);
+#if defined(T3_VDP1_FLOOR_PROBE)
+int t3_move_probe_floor_center(int32_t out[2]);
+#endif
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+int t3_move_probe_floor_camera_distance(uint32_t* out);
+#endif
+#endif
 /* The panorama's turn after the last frame (4096 a turn). */
 int32_t t3_move_probe_backdrop_turn(void);
 #endif

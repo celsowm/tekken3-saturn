@@ -1,0 +1,7 @@
+# Main-loop frame, original physical P1/P2 pad words. Authored input only.
+1 0x80 0x40
+2 0 0
+149 0x2080 0
+170 0 0
+175 0x2080 0
+195 0 0

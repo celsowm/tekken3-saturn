@@ -15,6 +15,11 @@
 #include "psx_head.h"
 #include "psx_local_pose.h"
 #include "psx_world_pose.h"
+#include "psx_hud_bar.h"
+#include "psx_tap_latch.h"
+#include "psx_blink.h"
+#include "psx_fighter_sounds.h"
+#include "psx_effect_pool.h"
 #include "psx_fight_camera.h"
 
 /* Throw situation code (0x800313B0), branch conditions 2..0x17. */
@@ -48,15 +53,21 @@ typedef struct {
     uint8_t enable_body,enable_combat;
     /* 1: every attack may start (matched against original-code fights,
      * docs/FIGHT_ORACLE.md); 0: only the first qualified Paul attacks
-     * (slots 295, 355, 357). Reversals are not yet ported. */
+     * (slots 295, 355, 357). Reversal rows need the private tag lists. */
     uint8_t all_attacks;
     const uint8_t* reactions;size_t reactions_size;
     /* g_closeReactions: s16 reaction, s16 distance per move +0x34 index. */
     const uint8_t* close_reactions;size_t close_reactions_size;
     /* g_throwVictimSlots (0x800174C4): s16 victim slots of move +0x32 0x1nnn. */
     const uint8_t* throw_victim_slots;size_t throw_victim_slots_size;
+    const uint8_t* reversal_lists;size_t reversal_lists_size;
     uint8_t chip_enabled,collapse_on_ko;
     uint8_t enable_rounds; /* 0 none, 1 bounded slice, 2 original frame API. */
+    /* Production round-one placement/intro. Zero preserves the neutral
+     * mid-fight initializer used by existing oracle seeds. */
+    uint8_t start_intro;
+    uint16_t start_physical[2]; /* Original PsyQ buttons at first placement. */
+    uint32_t start_seed; /* srand seed; zero is a valid original seed. */
     t3_psx_replay_storage_t* replay_storage;
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
     t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */
@@ -66,11 +77,17 @@ typedef struct {
     /* Optional CPU opponents (psx_ai_game.h), caller-owned mutable storage
      * like replay_storage; requires enable_rounds=2 and combat. */
     struct t3_psx_ai_game* ai;
+    t3_psx_sound_tables_t sound_tables;
+    uint8_t sound_voice_set[2]; /* private metadata, not inferred from costume */
+    t3_psx_effect_pool_t* effects;
+    const uint8_t* effect_tables;size_t effect_table_bytes;
 } t3_psx_match_config_t;
 typedef struct {
     t3_move_vm_t vm;
     t3_psx_ground_state_t ground;
     t3_input_history_t input;
+    t3_psx_tap_latch_t taps;
+    t3_psx_blink_t blink;
     t3_motion_cache_t root_cache,pose_cache;
     t3_psx_joint_t world[T3_PSX_DRAW_PARTS]; /* Original joint-slot order, not KMD mesh order. */
     int16_t pose[T3_PSX_POSE_CHANNELS],fk_root_xx;
@@ -95,6 +112,7 @@ typedef struct {
     /* Diagnostics: the last move dropped as unsupported. */
     uint16_t unsupported_slot,unsupported_transition;
     uint8_t side_flag; /* +0xC6, FighterUpdateSide: the stick mirrors on side 1 */
+    uint8_t last_attacker,last_hit_target; /* FighterOpponent's persistent indices. */
     uint8_t hit_done,contact,contact_this_move,whiffed,ko_collapse;
     t3_psx_hit_apply_result_t hit;
     t3_psx_move_events_t events;
@@ -107,10 +125,16 @@ typedef struct {
 typedef struct t3_psx_match {
     const t3_psx_match_config_t* config;
     t3_psx_fighter_t fighter[2];
+    t3_psx_sound_state_t sound[2];
     uint32_t ticks;
+    uint32_t input_frame_seen;
     t3_psx_round_t round;
     t3_psx_round_flow_t flow;
     t3_psx_round_actor_t round_actor[2];
+    /* HUD state is advanced after RoundFlow and before this tick's combat,
+     * then published with the same committed match as the fighter image. */
+    t3_psx_hud_bar_t hud_bars[2];
+    uint8_t hud_replay_entry;
     uint32_t fight_clock;
     t3_psx_replay_t replay;
     int32_t intro_camera_left,replay_skip;
@@ -126,6 +150,7 @@ typedef struct t3_psx_match {
     /* Fighters in a throw after MoveStartAll (0x800958C4), the count the link
      * last saw, and the link that moves both by arena corrections. */
     uint8_t throw_count,throw_count_seen,throw_link;
+    uint8_t reversal_cancelled; /* consumed by HitApply: slots bits 0/1, contact bits 2/3 */
     t3_psx_fight_camera_t camera;
 } t3_psx_match_t;
 typedef struct {
@@ -141,7 +166,13 @@ typedef struct {
      * (0x800AE2E8 with H), which a draw before CameraFrame uses; NULL when
      * unknown. */
     const t3_psx_camera_matrix_t* fighter_view;
+    /* Default PS1 physical controls mapped at InputSource, after drawing.
+     * Requires the owned camera; p0/p1 retain only optional port aliases. */
+    uint8_t physical_inputs;
 } t3_psx_match_frame_t;
+int t3_psx_match_effects_update(t3_psx_match_t* match,int replay);
+int t3_psx_match_effects_hit(t3_psx_match_t* match,unsigned defender);
+void t3_psx_match_effects_sound(void* match,unsigned kind,unsigned player,uint16_t code);
 
 static inline const t3_divmot_t* t3_psx_match_bank(const t3_psx_match_config_t* c,unsigned i) {
     return c->actor_bank[i]?c->actor_bank[i]:c->bank;
@@ -158,6 +189,9 @@ int t3_psx_match_init(t3_psx_match_t* match,const t3_psx_match_config_t* config)
  * two current gates and MoveEvents facts. Normal reactions are queued; USA VS
  * KO collapse starts immediately. No physics/input step is advanced. */
 int t3_psx_match_apply_hits(t3_psx_match_t* match);
+/* Internal FightFrame phase, after current HitTest and before HitApply.
+ * Mutates in place; the outer match step owns transactional publication. */
+int t3_psx_match_reversals(t3_psx_match_t* match);
 /* BranchCondition's facts for fighter i from the current state (combat). */
 void t3_psx_match_branch_facts(const t3_psx_match_t* match,unsigned i,struct t3_branch_context* facts);
 int t3_psx_match_step(t3_psx_match_t* match,t3_input_t first,t3_input_t second);

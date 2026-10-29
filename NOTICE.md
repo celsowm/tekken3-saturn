@@ -13,7 +13,52 @@ implementation of Tekken3Remake.
   https://github.com/n0madic/Tekken3Remake . Its current project source is
   licensed under PolyForm Noncommercial 1.0.0 and carries the required notice
   "Copyright (c) 2026 n0madic". It is pinned under `third_party/Tekken3Remake` as a separate Git submodule. The upstream license and notices still apply to its checkout and adapted code.
-- **Original engine adaptations**: `src/game/move_clock.c`,
+- **Original engine adaptations**: `src/game/psx_fighter_sounds.c` and
+  `scripts/extract_psx_sound_tables.py` (fighter sound state, scripts, voice
+  selection and shared RNG from `remake/core/fighter/fighter_sounds.gd`,
+  `docs/research/code/sound.md` and `tools/remake_import/tables.py`),
+  `src/game/psx_replay_sounds.c` (sound ring scheduling and half-frame playback
+  from `remake/core/fight/replay_state.gd` and `docs/research/code/sound.md`),
+  `src/game/psx_spark.c` (normal/power hit-spark phases and integer trajectories
+  from `remake/core/effects/effect_objects.gd` and `docs/research/code/effects.md`),
+  `src/game/psx_effect_pool.c`, `src/game/psx_match_effects.c` and
+  `scripts/extract_psx_effect_tables.py` (effect allocation/update ordering,
+  power glows/particles, hit spawning and metadata from the same effect
+  sources, plus `fight_simulation.gd`, `combat.gd` and `tables.py`),
+  `scripts/extract_psx_particle_assets.py` and
+  `scripts/audit_psx_particle_assets.py` (private sprite/CLUT/model extraction
+  and independent asset checks from `tools/remake_import/effects.py`,
+  `tools/research/system_textures.py` and `docs/research/code/effects.md`),
+  `src/game/psx_particle_assets.c`, `src/game/psx_particle_snapshot.c`,
+  `src/game/psx_particle_prepare.c`, `src/game/psx_particle_order.c`,
+  `src/game/psx_scene_ot.c` and
+  `src/game/psx_particle_tile.c` (private asset access, sprite-list selection,
+  original sprite/model conventions, particle ordering and diagnostic tiles),
+  `src/saturn/particle_prepare.c` (native preparation using those particle assets),
+  `src/game/psx_vertex_exchange.c` (projected vertex seam and exchange rules
+  from `docs/research/formats/3dmk-models.md` and `tools/research/verify_kmd_skin.py`),
+  `src/game/psx_fighter_ot.c`, `src/game/psx_face_coverage.c` and
+  `scripts/audit_psx_fighter_particle_order.py`
+  (original fighter ordering-table arithmetic, packed face selection and
+  observed fighter/effect links),
+  `scripts/kmd_to_ska.py` and `scripts/build_local_kmd_assets.py` (preservation
+  of original KMD face type and ordering flags),
+  `src/game/psx_particle_projection.c` (billboard transform, signed relative
+  coordinates and OT insertion rules from `docs/research/code/effects.md`
+  and `tools/research/projection_sim.py`, checked against original code),
+  `src/game/psx_blink.c` (eye timer and
+  shared RNG from `remake/core/fighter/fighter_animation.gd`), `src/game/move_clock.c`,
+  `src/game/psx_tap_latch.c` (button tap retention and original bug #52 from
+  `remake/core/fighter/fighter_input.gd`),
+  `src/game/psx_reversal.c` (reversal predicates from
+  `remake/core/fighter/move_system.gd`),
+  `src/game/psx_match_reversal.c` (reversal selection/hit replacement and
+  FighterOpponent from `move_system.gd` and `fight_state.gd`),
+  `src/game/psx_hud_messages.c` (normal round text selection from
+  `remake/core/fight/round_hud.gd` and the replay label from `fight-frame.md`),
+  `src/saturn/original_hud.c`, `scripts/extract_psx_hud.py` (HUD sprites,
+  font texels, metrics and CLUT rules from `docs/research/code/hud.md`
+  and `tools/remake_import/hud.py`),
   `src/game/move_lifecycle.c`, `src/game/psx_ground.c`,
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
@@ -42,6 +87,8 @@ implementation of Tekken3Remake.
   `remake/core/camera/camera_director.gd`, `camera_math.gd`,
   `view_matrix.gd`, `backdrop_turn.gd`, `camera_reel.gd`, `camera_phase.gd`
   and `camera_shake.gd`, the GTE projection from `remake/core/math/gte.gd`,
+  with original camera edge bugs 53/54/55 from
+  `docs/research/code/game-bugs.md` preserved in faithful mode,
   and the camera's place in the fight frame (its fighter inputs, the screen
   joint and the landing and move-event shakes) from
   `remake/core/fight/fight_simulation.gd` and
@@ -68,6 +115,14 @@ implementation of Tekken3Remake.
   Its header identifies the changes. Builds linking this adaptation include
   that separately licensed component; the local MIT license does not replace
   its terms.
+
+The projected fighter vertex exchange and per-part projection in
+`src/game/psx_vertex_exchange.[ch]`, `src/game/psx_vertex_project.[ch]`,
+and `src/game/psx_projected_mesh.[ch]`,
+and camera/joint matrix composition in `src/game/psx_camera.c`, adapt the
+Tekken3Remake research in `docs/research/formats/3dmk-models.md` and
+`tools/research/projection_sim.py`. Required Notice: Copyright (c) 2026
+n0madic. These adaptations are subject to PolyForm Noncommercial 1.0.0.
 
 MIT terms on this project's independently written code do not relicense or
 grant permissions for Tekken 3 data, LibSaturn, or Tekken3Remake code.

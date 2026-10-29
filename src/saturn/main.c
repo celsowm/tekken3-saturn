@@ -13,6 +13,9 @@
 #include "input_tape.h"
 #endif
 #include "characters.h"
+#if defined(T3_VDP1_COVERAGE_PROBE)
+#include "coverage_probe.h"
+#endif
 #include "saturn/app.h"
 #include "saturn/color.h"
 #if defined(T3_DMA_COMMAND_LIST)
@@ -45,14 +48,228 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "sfx.h"
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
+#include "psx_hud_messages.h"
 #endif
 #include "combat_events.h"
+#if defined(T3_PARTICLE_PREPARE)
+#include "particle_prepare.h"
+#if defined(T3_PARTICLE_TICK_AUDIT)
+/* First visible prepared images: game tick, source frame, visible count. */
+volatile uint32_t g_t3_particle_tick_audit[32][3];
+volatile uint32_t g_t3_particle_tick_audit_count;
+#endif
+#endif
 #if defined(T3_SLAVE_SIMULATION)
 #include <saturn/parallel.h>
 _Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the original single-clip bridge");
 #endif
 #if defined(T3_VDP2_FLOOR)
 #include "stage_vdp2.h"
+#endif
+#if defined(T3_VDP1_FLOOR_PROBE)
+#include "psx_viewport.h"
+#include "stage_floor_visibility.h"
+#include "floor_command_budget.h"
+/* Grid placement follows Tekken3Remake stages.md / FloorDrawGrid.
+ * Copyright (c) 2026 n0madic, PolyForm Noncommercial; see NOTICE.md. */
+static int32_t g_floor_projected[121][3];
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+static uint16_t g_floor_vertex_shade[121];
+#endif
+static int32_t floor_grid_center(int32_t position) {
+    int32_t rounded=position+900;
+    int32_t tile=rounded/1800;
+    if(rounded<0)--tile; /* Original truncates and then adjusts negatives. */
+    return tile*1800;
+}
+#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
+/* Experimental counters: subdivided quads, single quads, capacity fallbacks,
+ * and maximum command occupancy observed at diagnostics publication. */
+volatile uint32_t g_t3_floor_split_stats[4];
+static uint16_t floor_half_colour(uint16_t a,uint16_t b) {
+    unsigned r=((a&31u)+(b&31u))/2u;
+    unsigned g=(((a>>5)&31u)+((b>>5)&31u))/2u;
+    unsigned blue=(((a>>10)&31u)+((b>>10)&31u))/2u;
+    return (uint16_t)(r|(g<<5)|(blue<<10));
+}
+#if T3_VDP1_FLOOR_SPLIT_MIN_AREA > 0
+static unsigned floor_visible_bbox_area(const sat_distorted_sprite_cmd_t* cmd) {
+    int x0=cmd->x[0],x1=x0,y0=cmd->y[0],y1=y0;
+    for(unsigned i=1;i<4;++i) {
+        if(cmd->x[i]<x0)x0=cmd->x[i];
+        if(cmd->x[i]>x1)x1=cmd->x[i];
+        if(cmd->y[i]<y0)y0=cmd->y[i];
+        if(cmd->y[i]>y1)y1=cmd->y[i];
+    }
+    if(x0< -160)x0=-160;
+    if(x1>159)x1=159;
+    if(y0< -112)y0=-112;
+    if(y1>111)y1=111;
+    return x0>x1 || y0>y1?0u:(unsigned)(x1-x0+1)*(unsigned)(y1-y0+1);
+}
+#endif
+static sat_result_t floor_draw_quarters(const sat_distorted_sprite_cmd_t* full,const uint16_t colour[4]) {
+    sat_vdp1_command_checkpoint_t checkpoint;
+    sat_result_t status=sat_vdp1_command_checkpoint(&checkpoint);
+    if(status!=SAT_OK)return status;
+    /* 3x3 grid: the centre lies on the PS1 B-D triangle diagonal. */
+    int16_t x[9]={full->x[0],(full->x[0]+full->x[1])/2,full->x[1],
+        (full->x[0]+full->x[3])/2,(full->x[1]+full->x[3])/2,(full->x[1]+full->x[2])/2,
+        full->x[3],(full->x[3]+full->x[2])/2,full->x[2]};
+    int16_t y[9]={full->y[0],(full->y[0]+full->y[1])/2,full->y[1],
+        (full->y[0]+full->y[3])/2,(full->y[1]+full->y[3])/2,(full->y[1]+full->y[2])/2,
+        full->y[3],(full->y[3]+full->y[2])/2,full->y[2]};
+    uint16_t c[9]={colour[0],floor_half_colour(colour[0],colour[1]),colour[1],
+        floor_half_colour(colour[0],colour[3]),floor_half_colour(colour[1],colour[3]),floor_half_colour(colour[1],colour[2]),
+        colour[3],floor_half_colour(colour[3],colour[2]),colour[2]};
+    for(unsigned q=0;q<4;++q) {
+        unsigned start=(q>>1)*3+(q&1u),v[4]={start,start+1,start+4,start+3};
+        sat_distorted_sprite_cmd_t cmd={0};uint16_t shades[4];
+        cmd.texture=t3_stage_floor_quarter(q);cmd.flags=SAT_SPRITE_FLAG_OPAQUE;
+        for(unsigned i=0;i<4;++i){cmd.x[i]=x[v[i]];cmd.y[i]=y[v[i]];shades[i]=c[v[i]];}
+        sat_result_t st=sat_draw_sprite_distorted_gouraud(&cmd,shades);
+        if(st!=SAT_OK) {
+            sat_result_t rollback=sat_vdp1_command_rollback(&checkpoint);
+            return rollback==SAT_OK?st:rollback;
+        }
+    }
+    return SAT_OK;
+}
+#if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
+/* Executed once before any real world commands. Every artificial command and
+ * Gouraud table is rolled back; nothing is sent to the VDP1. */
+volatile uint32_t g_t3_floor_capacity_selftest[4];
+static sat_result_t floor_capacity_selftest(void) {
+    if(g_t3_floor_capacity_selftest[0])return SAT_OK;
+    sat_vdp1_command_checkpoint_t original,before,after;
+    sat_vdp1_command_stats_t stats;
+    sat_result_t st=sat_vdp1_command_checkpoint(&original);
+    if(st!=SAT_OK)return st;
+    if((st=sat_vdp1_command_stats(&stats))!=SAT_OK)return st;
+    if(stats.capacity<=stats.overlay_reserved+original.used+4u)return SAT_ERR_CAPACITY;
+    const uint16_t colours[4]={SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL};
+    sat_distorted_sprite_cmd_t cmd={.x={-20,20,20,-20},.y={-20,-20,20,20},
+        .texture=t3_stage_floor_texture(),.flags=SAT_SPRITE_FLAG_OPAQUE};
+    for(unsigned available=1;available<=3;++available) {
+        unsigned target=stats.capacity-stats.overlay_reserved-1u-available;
+        for(unsigned i=original.used;i<target;++i)
+            if((st=sat_draw_rect_screen(0,0,1,1,0x8000u))!=SAT_OK)return st;
+        if((st=sat_vdp1_command_checkpoint(&before))!=SAT_OK)return st;
+        st=floor_draw_quarters(&cmd,colours);
+        if(st!=SAT_ERR_CAPACITY)return SAT_ERR_VERSION;
+        if((st=sat_vdp1_command_checkpoint(&after))!=SAT_OK)return st;
+        if(before.used!=after.used || before.gouraud_tables!=after.gouraud_tables)return SAT_ERR_VERSION;
+        if((st=sat_draw_sprite_distorted_gouraud(&cmd,colours))!=SAT_OK)return st;
+        if((st=sat_vdp1_command_checkpoint(&after))!=SAT_OK)return st;
+        if(after.used!=before.used+1u || after.gouraud_tables!=before.gouraud_tables+1u)return SAT_ERR_VERSION;
+        if((st=sat_vdp1_command_rollback(&original))!=SAT_OK)return st;
+        ++g_t3_floor_capacity_selftest[available];
+    }
+    g_t3_floor_capacity_selftest[0]=1;
+    return SAT_OK;
+}
+#endif
+#endif
+/* Last frame's protected face allowance and floor allowance, plus cumulative
+ * single-tile and no-tile budget fallbacks and the largest requested reserve. */
+volatile uint32_t g_t3_floor_budget_stats[5];
+static struct {
+    t3_psx_camera_matrix_t matrix;
+    int32_t origin[2];
+    uint32_t midpoint_distance;
+    uint8_t drawable;
+} g_floor_image;
+/* Capture before fused actor preparation starts deferred simulation on the
+ * Slave. Drawing later must not read the mutable owned match. */
+static void floor_capture_image(void) {
+    g_floor_image.drawable=0;
+    if(!t3_move_probe_camera_matrix(&g_floor_image.matrix))return;
+    g_floor_image.origin[0]=t3_move_probe_world_center(0);
+    g_floor_image.origin[1]=t3_move_probe_world_center(2);
+    if(t3_move_probe_floor_center(g_floor_image.origin)==0)return;
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+    if(!t3_move_probe_floor_camera_distance(&g_floor_image.midpoint_distance))return;
+#endif
+    g_floor_image.drawable=1;
+}
+static void draw_floor_probe(uint32_t budget) {
+    if(!g_floor_image.drawable)return;
+    t3_psx_camera_matrix_t matrix=g_floor_image.matrix;
+    const int32_t cx=floor_grid_center(g_floor_image.origin[0]);
+    const int32_t cz=floor_grid_center(g_floor_image.origin[1]);
+    const int32_t grid_origin[3]={cx,0,cz};
+    t3_psx_camera_translate_view(&matrix,grid_origin,&matrix);
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+    const uint32_t midpoint_distance=g_floor_image.midpoint_distance;
+#endif
+    for(unsigned z=0;z<11;++z)for(unsigned x=0;x<11;++x) {
+        const int16_t point[3]={(int16_t)(-9000+(int32_t)x*1800),0,(int16_t)(-9000+(int32_t)z*1800)};
+        t3_psx_camera_project_s16(&matrix,point,g_floor_projected[z*11+x]);
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+        g_floor_vertex_shade[z*11+x]=t3_stage_floor_shade((uint32_t)g_floor_projected[z*11+x][2],midpoint_distance);
+#endif
+    }
+#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
+    /* First reserve one command for every remaining eligible tile. Larger
+     * tiles can use their three extra commands only from the surplus. */
+    uint32_t remaining_tiles=0;
+    for(unsigned z=0;z<10;++z)for(unsigned x=0;x<10;++x) {
+        const unsigned v[4]={(z+1)*11+x,(z+1)*11+x+1,z*11+x+1,z*11+x};
+        int32_t corners[4][3];
+        for(unsigned k=0;k<4;++k)for(unsigned axis=0;axis<3;++axis)
+            corners[k][axis]=g_floor_projected[v[k]][axis];
+        if(t3_stage_floor_visible((const int32_t (*)[3])corners))++remaining_tiles;
+    }
+#endif
+    /* FloorDrawGrid prepends each Paul tile to the same PS1 OT bucket.
+     * VDP1 consumes commands in submission order, so reverse the scan. */
+    for(int z=9;z>=0;--z)for(int x=9;x>=0;--x) {
+        const unsigned v[4]={(z+1)*11+x,(z+1)*11+x+1,z*11+x+1,z*11+x};
+        sat_distorted_sprite_cmd_t cmd={0};
+        cmd.texture=t3_stage_floor_texture();cmd.flags=SAT_SPRITE_FLAG_OPAQUE;
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+        uint16_t gouraud[4];
+#endif
+        int32_t corners[4][3];
+        for(unsigned k=0;k<4;++k) {
+            const int32_t* p=g_floor_projected[v[k]];
+            for(unsigned axis=0;axis<3;++axis)corners[k][axis]=p[axis];
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+            gouraud[k]=g_floor_vertex_shade[v[k]];
+#endif
+            int sx=t3_psx_viewport_x(p[0]),sy=t3_psx_viewport_y(p[1]);
+            cmd.x[k]=(int16_t)(sx-160);cmd.y[k]=(int16_t)(sy-112);
+        }
+        if(!t3_stage_floor_visible((const int32_t (*)[3])corners))continue;
+        if(!budget){++g_t3_floor_budget_stats[3];return;}
+#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
+        --remaining_tiles;
+#if T3_VDP1_FLOOR_SPLIT_MIN_AREA > 0
+        int split=floor_visible_bbox_area(&cmd)>=T3_VDP1_FLOOR_SPLIT_MIN_AREA;
+        if(split && budget<remaining_tiles+4u){split=0;++g_t3_floor_budget_stats[2];}
+        sat_result_t st=split?floor_draw_quarters(&cmd,gouraud):sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
+#else
+        int split=1;
+        if(budget<remaining_tiles+4u){split=0;++g_t3_floor_budget_stats[2];}
+        sat_result_t st=split?floor_draw_quarters(&cmd,gouraud):sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
+#endif
+        if(st==SAT_ERR_CAPACITY && split) {
+            ++g_t3_floor_split_stats[2];
+            st=sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
+            split=0;
+        }
+        if(st==SAT_OK){++g_t3_floor_split_stats[split?0:1];budget-=split?4u:1u;}
+#elif defined(T3_VDP1_FLOOR_SHADE_PROBE)
+        sat_result_t st=sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
+        if(st==SAT_OK)--budget;
+#else
+        sat_result_t st=sat_draw_sprite_distorted(&cmd);
+        if(st==SAT_OK)--budget;
+#endif
+        if(st==SAT_ERR_CAPACITY)break;
+        SAT_PANIC_IF_ERROR(st);
+    }
+}
 #endif
 #if defined(T3_CPU_DIAGNOSTICS)
 #include <saturn/sh2.h>
@@ -92,7 +309,15 @@ enum { W = 320, H = 224, FACE_CAP = T3_STAGE_SCENE_CAPACITY, HUD_COMMANDS = 192,
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
 
 /* Fully initialized by t3_match_reset before any read. */
-static t3_match_t g_game T3_HOT_WRAM;
+/* Reference traces occupy High WRAM. Keep the two auxiliary frontend
+ * snapshots in the diagnostic's spare Low WRAM; the owned PS1 match stays
+ * in its normal placement and the 16 KiB Master stack reserve is preserved. */
+#if defined(T3_REFERENCE_REPLAY)
+#define T3_FRONTEND_WRAM __attribute__((section(".wram_l")))
+#else
+#define T3_FRONTEND_WRAM T3_HOT_WRAM
+#endif
+static t3_match_t g_game T3_FRONTEND_WRAM;
 static t3_tick_clock_t g_tick_clock;
 #if defined(T3_SLAVE_SIMULATION)
 /* Up to three ticks run after an image is captured, so an image is at most
@@ -108,11 +333,23 @@ static simulation_job_t g_simulation_job T3_HOT_WRAM;
 /* The Slave's deepest measured use is 4,472 bytes (slave_sim_stack_used); 8 KiB keeps
  * about 1.8x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
 uint8_t g_t3_simulation_stack[8192] __attribute__((aligned(16)));
-static t3_match_t g_image_match T3_HOT_WRAM;
+static t3_match_t g_image_match T3_FRONTEND_WRAM;
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
-static t3_psx_hud_bar_t g_image_hud_bars[2];
+static t3_psx_hud_bar_t g_image_hud_bars[2]
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    __attribute__((section(".wram_l")))
 #endif
+    ;
+#endif
+#if defined(T3_ORIGINAL_HUD)
+static int32_t g_image_round[12]
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    __attribute__((section(".wram_l")))
+#endif
+    ;
+#else
 static int32_t g_image_round[6];
+#endif
 static uint32_t g_simulation_epoch=1u,g_slave_simulation_epoch;
 volatile uint32_t g_t3_slave_sim_frames,g_t3_slave_sim_jobs,g_t3_slave_sim_ticks;
 volatile uint32_t g_t3_slave_sim_pose_tick,g_t3_slave_sim_pose_lag;
@@ -157,7 +394,11 @@ static uint32_t g_keys[FACE_CAP];
 #else
 static uint32_t g_keys[FACE_CAP] T3_HOT_WRAM;
 #endif
+#if defined(T3_MIXED_OT_DIAGNOSTIC)
+static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
+#else
 static uint16_t g_order[FACE_CAP] T3_HOT_WRAM;
+#endif
 /* Explicitly cleared and uploaded by HUD initialization before its first use. */
 static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
@@ -301,16 +542,19 @@ static int32_t g_stage_input[3]; /* the world centre the image's camera was buil
  * FUN_80076F10); the flash sits on the hitting segment's end point. */
 enum { SPARK_IMAGES = 6 };
 static struct { uint8_t age; uint8_t block; int32_t at[3]; } g_spark[2];
-static void spark_events(uint8_t events) {
-    for(unsigned i=0;i<2u;++i) {
-        const uint8_t mine=(uint8_t)(events>>(T3_EVENT_BITS*i));
-        if(mine&(T3_EVENT_HIT|T3_EVENT_BLOCK)){
-            /* The attacker's hitting segment end, in PS1 world units (as the camera reads it). */
-            g_spark[i].age=1u;g_spark[i].block=(mine&T3_EVENT_BLOCK)!=0u;
-            for(unsigned axis=0;axis<3u;++axis)g_spark[i].at[axis]=t3_move_probe_owned_value(1u-i,27u+axis);
-        }
-        else if(g_spark[i].age&&++g_spark[i].age>SPARK_IMAGES)g_spark[i].age=0u;
+static void spark_events(const t3_combat_event_t* events,unsigned count) {
+    uint8_t fresh[2]={0,0};
+    for(unsigned n=0;n<count;++n) {
+        const t3_combat_event_t* e=&events[n];
+        if(e->kind==T3_EVENT_SWING)continue;
+        const unsigned i=e->fighter;
+        /* The attacker's hitting segment end, in PS1 world units (as the camera reads it). */
+        g_spark[i].age=1u;g_spark[i].block=e->kind==T3_EVENT_BLOCK;
+        for(unsigned axis=0;axis<3u;++axis)g_spark[i].at[axis]=e->at[axis];
+        fresh[i]=1u;
     }
+    for(unsigned i=0;i<2u;++i)
+        if(!fresh[i] && g_spark[i].age && ++g_spark[i].age>SPARK_IMAGES)g_spark[i].age=0u;
 }
 /* Drawn with the HUD, projected through the image's camera: scene faces in front
  * of the fighters cost about 2.5 images/s however small they were. */
@@ -329,7 +573,7 @@ static void __attribute__((optimize("Os"))) draw_sparks(void) {
     }
 }
 #else
-static void spark_events(uint8_t events) { (void)events; }
+static void spark_events(const t3_combat_event_t* events,unsigned count) { (void)events;(void)count; }
 static void draw_sparks(void) {}
 #endif
 
@@ -362,6 +606,9 @@ static void __attribute__((optimize("Os"))) drop_shadows(void) {
  * are built after the actors, while the Slave runs those ticks. */
 static int32_t g_stage_input[3];
 static void floor_tiles(void) {
+#if defined(T3_VDP1_FLOOR_PROBE)
+    floor_capture_image();
+#endif
 #if defined(T3_PSX_CAMERA)
     g_stage_input[2]=t3_move_probe_backdrop_turn();
 #else
@@ -403,8 +650,12 @@ static sat_result_t stage_worker(void) {
     return st;
 }
 static void stage_before_join(void) {
+#if defined(T3_STAGE_FORCE_SLAVE_PROBE)
+    g_stage_by_master=0;
+#else
     g_stage_by_master=stage_claim();
     if(g_stage_by_master){SAT_PANIC_IF_ERROR(stage_build());SLAVE_FRT_COUNT(4);}
+#endif
 }
 static sat_result_t stage_sync(void) {return g_stage_by_master?SAT_OK:t3_stage_vdp2_sync();}
 #else
@@ -465,6 +716,18 @@ static void choose_cpu(const sat_pad_state_t* pad1) {
 #endif
 }
 
+#if !defined(T3_REFERENCE_REPLAY)
+static uint16_t original_start_buttons(const sat_pad_state_t* pad) {
+    uint16_t out=0;
+    if(pad->held&SAT_PAD_X)out|=0x80u;
+    if(pad->held&SAT_PAD_Y)out|=0x10u;
+    if(pad->held&SAT_PAD_A)out|=0x40u;
+    if(pad->held&SAT_PAD_B)out|=0x20u;
+    if(pad->held&SAT_PAD_L)out|=0x04u;
+    return out;
+}
+#endif
+
 #if defined(T3_TITLE_SCREEN)
 /* Title: waits for START on pad 1, then re-reads port 2 (a pad means VS, an
  * empty port means ARCADE against the CPU). */
@@ -486,6 +749,9 @@ static void title_screen(void) {
         SAT_PANIC_IF_ERROR(sat_end_frame());
         if(pad0.pressed&SAT_PAD_START) {
             choose_cpu(&pad1);
+#if !defined(T3_REFERENCE_REPLAY)
+            t3_move_probe_set_start_buttons(original_start_buttons(&pad0),original_start_buttons(&pad1));
+#endif
             t3_move_probe_reset(g_game.round);
             return;
         }
@@ -544,6 +810,7 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
         const sat_result_t st=t3_move_probe_owned_step(p1,p2,view);
         if(st!=SAT_OK)return st;
         t3_move_probe_tick(view);
+        t3_combat_events_tick(view->total_ticks);
     }
     SLAVE_FRT_ADD(0,ticks_started);
     g_t3_slave_sim_ticks=view->total_ticks;
@@ -611,6 +878,9 @@ static sat_result_t simulation_join(sat_parallel_handle_t handle,uint32_t count)
 
 static void capture_image_match(void) {
     g_image_match=g_game;
+#if defined(T3_PARTICLE_IMAGE_SNAPSHOT)
+    SAT_PANIC_IF_ERROR(t3_move_probe_capture_particles());
+#endif
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
     t3_move_probe_hud_bars(g_image_hud_bars);
 #endif
@@ -620,6 +890,14 @@ static void capture_image_match(void) {
     g_image_round[3]=t3_move_probe_round_value(11);
     g_image_round[4]=t3_move_probe_round_value(10);
     g_image_round[5]=t3_move_probe_round_value(12);
+#if defined(T3_ORIGINAL_HUD)
+    g_image_round[6]=t3_move_probe_round_value(13);
+    g_image_round[7]=t3_move_probe_round_value(14);
+    g_image_round[8]=t3_move_probe_round_value(15);
+    g_image_round[9]=t3_move_probe_round_value(16);
+    g_image_round[10]=t3_move_probe_round_value(17);
+    g_image_round[11]=t3_move_probe_round_value(18);
+#endif
     g_t3_slave_sim_pose_tick=g_game.total_ticks;
 }
 
@@ -653,12 +931,14 @@ static sat_result_t start_prepare_simulation(void) {
 #endif
 #endif
 
-/* The Saturn HUD maps the original 384x480 fight screen (visible 368x448 from
- * (8,20), hud.md) into 320x224: x' = (x-8)*20/23, y' = (y-20)/2. The
+/* The Saturn HUD maps the original mode-0 2D rectangle (0,20,368,448)
+ * into 320x224: x' = x*20/23, y' = (y-20)/2. The 3D projection's centre
+ * at x=192 does not add a crop offset to these 2D coordinates. The
  * original-HUD build keeps FUN_8004E55C's lengths in 152-pixel units at 60 Hz
  * and only converts them here for the VDP1 sprite width. */
-enum { BAR_X0 = 2, BAR_X1 = 169, BAR_WIDTH = 136, BAR_FILL = 132,
+enum { BAR_X0 = 9, BAR_X1 = 176, BAR_WIDTH = 136, BAR_FILL = 132,
        BAR_Y = 10, BAR_HEIGHT = 12 };
+#if !defined(T3_ORIGINAL_HUD_BARS) || !defined(T3_ENABLE_PSX_OWNED_MATCH)
 static int g_recent_damage[2];
 static void health_bar(int x, int inner_right, int health, int* recent) {
     int length = (health * BAR_WIDTH + T3_MAX_HEALTH - 1) / T3_MAX_HEALTH;
@@ -679,6 +959,7 @@ static void health_bar(int x, int inner_right, int health, int* recent) {
             BAR_Y, length, BAR_HEIGHT, 1u, 1u, empty, SAT_RGB555(6,27,12)));
 #endif
 }
+#endif
 
 static void draw_hud(void) {
 #if defined(T3_SLAVE_SIMULATION)
@@ -686,7 +967,7 @@ static void draw_hud(void) {
 #else
     const t3_match_t* game=&g_game;
 #endif
-#if defined(T3_RENDER_BENCH_TICK)
+#if defined(T3_RENDER_BENCH_TICK) && !defined(T3_RENDER_BENCH_HIDE_STATUS)
 #if defined(T3_STAGE_HUD)
     enum { BENCH_STATUS_Y=183 };
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"RENDER BENCHMARK",80,BENCH_STATUS_Y));
@@ -723,15 +1004,15 @@ static void draw_hud(void) {
      * from x 151/202 at y 70, 14 apart. FUN_8004EB9C: names at 14 and
      * 354-width, y 66, on plates from four pixels outside the name, rows
      * y+9..y+19. */
-    SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,139,1));
+    SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,t3_original_hud_x(169),1));
     for(unsigned mark=0;mark<2;++mark) {
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,124-12*(int)mark,25));
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,169+12*(int)mark,25));
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
+        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,t3_original_hud_x(202+14*(int)mark),25));
     }
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(2,27,35));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,5,23,28));
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(275,27,30));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,272,23,28));
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(10),27,35));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,t3_original_hud_x(14),23,28));
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(324),27,30));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,t3_original_hud_x(322),23,28));
 #else
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
 #endif
@@ -740,7 +1021,9 @@ static void draw_hud(void) {
 #endif
     /* One-based render submission serial, independent of logic ticks and
      * VBlanks. Keep it visible even when the optional profiler is hidden. */
+#if !defined(T3_RENDER_BENCH_HIDE_STATUS)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, HUD_FRAME_Y));
+#endif
 #if defined(T3_CPU_DIAGNOSTICS)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MCCR ",g_t3_boot_cache[0],HUD_MASTER_CACHE_X,HUD_CPU_Y));
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SCCR ",g_t3_boot_slave_verified?(int32_t)g_t3_boot_cache[1]:-1,
@@ -759,12 +1042,22 @@ static void draw_hud(void) {
     const int replay=g_image_round[2];
     const int round_active=g_image_round[0],round_state=g_image_round[1];
     const int intro_frame=g_image_round[3],round_number=g_image_round[4],final_round=g_image_round[5];
+#if defined(T3_ORIGINAL_HUD)
+    const int round_result=g_image_round[6],human_mask=g_image_round[7],replay_request=g_image_round[8];
+    const int frame_counter=g_image_round[9],max_rounds=g_image_round[10],replay_entry=g_image_round[11];
+#endif
 #else
     const int replay=t3_move_probe_round_value(4);
     const int round_active=t3_move_probe_round_value(0),round_state=t3_move_probe_round_value(1);
     const int intro_frame=t3_move_probe_round_value(11),round_number=t3_move_probe_round_value(10);
     const int final_round=t3_move_probe_round_value(12);
+#if defined(T3_ORIGINAL_HUD)
+    const int round_result=t3_move_probe_round_value(13),human_mask=t3_move_probe_round_value(14);
+    const int replay_request=t3_move_probe_round_value(15),frame_counter=t3_move_probe_round_value(16);
+    const int max_rounds=t3_move_probe_round_value(17),replay_entry=t3_move_probe_round_value(18);
 #endif
+#endif
+#if !defined(T3_ORIGINAL_HUD)
     if(replay>=1 && replay<=4)
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"REPLAY",W/2,85));
     else if(round_active && round_state==0) {
@@ -785,13 +1078,28 @@ static void draw_hud(void) {
             game->match_done?(game->winner<0?"MATCH DRAW":game->winner==0?"PLAYER 1 WINS!":"PLAYER 2 WINS!"):
             (game->winner<0?"DRAW":game->winner==0?"PLAYER 1 ROUND":"PLAYER 2 ROUND"),W/2,90));
     }
+#else
+    (void)replay;(void)final_round;
+    const t3_psx_hud_messages_t facts={.state=round_state,.frame=intro_frame,
+        .played=round_number,.max_rounds=max_rounds,.result=round_result,
+        .replay_request=replay_request,.human_mask=human_mask,.winner=game->winner,
+        .frame_counter=(uint32_t)frame_counter,.replay_mode=replay_entry,
+        .winner_name=game->winner==0?"PAUL":"LAW"};
+    t3_psx_hud_message_t messages[2];
+    const unsigned count=t3_psx_hud_messages(&facts,messages);
+    for(unsigned i=0;i<count;++i)
+        SAT_PANIC_IF_ERROR(t3_original_hud_text(messages[i].text,messages[i].colour,
+            messages[i].font,messages[i].x,messages[i].y));
+#endif
     /* The original has no control hints; each glyph is a VDP1 command the
      * Master writes, so show them only while a round is introduced. */
     if(!round_active || round_state==0) {
+#if !defined(T3_ORIGINAL_HUD)
         SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_combat()?"X HIGH  DF+X MID  D+A LOW":t3_move_probe_owned()?
             "X/Y PUNCH  A/B KICK":"X/Y PUNCH  A/B KICK  L GUARD", 40, 196));
         SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_owned()?
             "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
+#endif
     }
 }
 
@@ -824,6 +1132,9 @@ static void prepare_scene(void) {
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
 #endif
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
+#if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
+    SAT_PANIC_IF_ERROR(floor_capacity_selftest());
+#endif
 #if defined(T3_NATIVE_COMMANDS)
     SAT_PANIC_IF_ERROR(sat_vdp1_command_batch_reserve(FACE_CAP,&g_native_commands));
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_bind_native_commands(&g_scene.faces,&g_native_commands));
@@ -834,6 +1145,22 @@ static void prepare_scene(void) {
         floor_tiles();
         T3_PERF_ADD(stage,stage_started);
         SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
+#if defined(T3_VDP1_FLOOR_PROBE)
+        /* Actor/shadow geometry is queued but not emitted. Budget its SDK
+         * clip/tiled worst case; HUD slots are already reserved. */
+        sat_vdp1_command_stats_t command_stats;
+        SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&command_stats));
+        uint32_t protected_faces=t3_floor_protected_commands(&g_scene.faces);
+        uint32_t occupied=(uint32_t)command_stats.used+command_stats.overlay_reserved+1u;
+        uint32_t available=command_stats.capacity>occupied?command_stats.capacity-occupied:0u;
+        uint32_t floor_budget=available>protected_faces?available-protected_faces:0u;
+#if defined(T3_VDP1_FLOOR_FORCE_BUDGET)
+        if(floor_budget>T3_VDP1_FLOOR_FORCE_BUDGET)floor_budget=T3_VDP1_FLOOR_FORCE_BUDGET;
+#endif
+        g_t3_floor_budget_stats[0]=protected_faces;g_t3_floor_budget_stats[1]=floor_budget;
+        if(protected_faces>g_t3_floor_budget_stats[4])g_t3_floor_budget_stats[4]=protected_faces;
+        draw_floor_probe(floor_budget);
+#endif
         T3_PERF_START(stage_late_started);
         stage_prepare();
         T3_PERF_ADD(stage,stage_late_started);
@@ -874,6 +1201,33 @@ static void flush_scene(void) {
 #endif
     T3_PERF_ADD(flush,flush_started);
 }
+
+#if defined(T3_OVERLAY_RESERVATION_SELFTEST)
+/* One diagnostic frame deliberately fills the remaining world quota. These
+ * single-dot commands are submitted once; following frames use normal HUD. */
+volatile uint32_t g_t3_overlay_reservation_selftest[5];
+static sat_result_t overlay_reservation_selftest(void) {
+    sat_vdp1_command_stats_t before,after;
+    sat_result_t st=sat_vdp1_command_stats(&before);
+    if(st!=SAT_OK)return st;
+    if(before.overlay_pass || !before.overlay_reserved)return SAT_ERR_VERSION;
+    unsigned filled=0;
+    while((st=sat_draw_rect_screen(0,0,1,1,0x8000u))==SAT_OK)++filled;
+    if(st!=SAT_ERR_CAPACITY)return st;
+    if((st=sat_vdp1_command_stats(&after))!=SAT_OK)return st;
+    if(after.used!=before.used+filled || after.overlay_reserved!=before.overlay_reserved)return SAT_ERR_VERSION;
+    if((st=sat_vdp1_overlay_begin())!=SAT_OK)return st;
+    if((st=sat_draw_rect_screen(0,0,1,1,0x8000u))!=SAT_OK)return st;
+    if((st=sat_vdp1_command_stats(&after))!=SAT_OK)return st;
+    if(!after.overlay_pass || after.used!=before.used+filled+1u)return SAT_ERR_VERSION;
+    g_t3_overlay_reservation_selftest[1]=filled;
+    g_t3_overlay_reservation_selftest[2]=before.overlay_reserved;
+    g_t3_overlay_reservation_selftest[3]=after.used;
+    g_t3_overlay_reservation_selftest[4]=after.capacity;
+    g_t3_overlay_reservation_selftest[0]=1;
+    return SAT_OK;
+}
+#endif
 
 
 static void draw_profiler(void) {
@@ -959,6 +1313,9 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     for(unsigned i=0;i<4;++i)g_t3_diagnostics.local_pose_cache[i]=pose_cache[i];
     SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
     SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
+#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
+    if(commands.used>g_t3_floor_split_stats[3])g_t3_floor_split_stats[3]=commands.used;
+#endif
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
 
     ++g_rate_sample_frames;
@@ -1186,10 +1543,12 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_move_probe_init());
 #if !defined(T3_REFERENCE_REPLAY)
     {
-        sat_pad_state_t boot_pad1={0};
+        sat_pad_state_t boot_pad0={0},boot_pad1={0};
         SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&boot_pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&boot_pad1));
         choose_cpu(&boot_pad1);
+        t3_move_probe_set_start_buttons(original_start_buttons(&boot_pad0),original_start_buttons(&boot_pad1));
     }
     /* The reference initializer already applied its single original seed. */
     t3_move_probe_reset(g_game.round);
@@ -1213,8 +1572,14 @@ int main(void) {
 #if defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(t3_original_hud_init());
 #endif
+#if defined(T3_PARTICLE_PREPARE)
+    SAT_PANIC_IF_ERROR(t3_particle_prepare_init());
+#endif
     /* The face store is idle until the first scene: it holds the sound file. */
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_faces,sizeof g_faces));
+#if defined(T3_VDP1_COVERAGE_PROBE)
+    SAT_PANIC_IF_ERROR(t3_coverage_probe_init());
+#endif
     loading_frame(BOOT_READY, "READY");
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
@@ -1275,6 +1640,9 @@ int main(void) {
             t3_combat_events_reset();
             t3_match_reset(&g_game);
             choose_cpu(&pad1);
+#if !defined(T3_REFERENCE_REPLAY)
+            t3_move_probe_set_start_buttons(original_start_buttons(&pad0),original_start_buttons(&pad1));
+#endif
             t3_move_probe_reset(g_game.round);
 #if defined(T3_CAPTURE_INPUT_TAPE) || defined(T3_REPLAY_INPUT_TAPE)
             t3_input_tape_reset();
@@ -1282,10 +1650,12 @@ int main(void) {
             SAT_PANIC_IF_ERROR(t3_characters_reset());
         }
         {
-            const uint8_t events=t3_combat_events_poll();
-            t3_sfx_play_events(events);
+            t3_combat_event_t events[32];
+            unsigned count=0;
+            while(count<32u && t3_combat_events_pop(&events[count]))++count;
+            t3_sfx_play_events(events,count);
             t3_sfx_round_update();
-            spark_events(events);
+            spark_events(events,count);
         }
         now = display_fields();
         elapsed = now - prev_frame;
@@ -1333,6 +1703,7 @@ int main(void) {
             } else t3_match_step(&g_game,p1,p2);
             T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
             t3_move_probe_tick(&g_game);
+            t3_combat_events_tick(g_game.total_ticks);
             T3_SIM_END(bridge_started);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
             t3_sim_tick_end();
@@ -1374,16 +1745,40 @@ int main(void) {
                 SAT_PANIC_IF_ERROR(simulation_submit(simulation_pads,leading,deferred,&simulation_handle));
         }
 #endif
+#if defined(T3_PARTICLE_PREPARE)
+        SAT_PANIC_IF_ERROR(t3_particle_prepare_image());
+#if defined(T3_PARTICLE_TICK_AUDIT)
+        if(g_t3_prepared_particles.visible && g_t3_particle_tick_audit_count<32u) {
+            const unsigned i=g_t3_particle_tick_audit_count++;
+            g_t3_particle_tick_audit[i][0]=g_game.total_ticks;
+            g_t3_particle_tick_audit[i][1]=g_t3_prepared_particles.frame_counter;
+            g_t3_particle_tick_audit[i][2]=g_t3_prepared_particles.visible;
+        }
+#endif
+#if defined(T3_MIXED_OT_DIAGNOSTIC)
+        SAT_PANIC_IF_ERROR(t3_characters_mixed_ot(&g_scene,g_t3_prepared_particles.draw,
+                                                   g_t3_prepared_particles.count));
+#endif
+#endif
 #if defined(T3_NATIVE_WAIT_PROBE)
         const uint16_t native_flush_started=sat_time_frc();
 #endif
         flush_scene();
+#if defined(T3_OVERLAY_RESERVATION_SELFTEST)
+        if(!g_t3_overlay_reservation_selftest[0] && g_game.total_ticks>=45u)
+            SAT_PANIC_IF_ERROR(overlay_reservation_selftest());
+        else
+#endif
+            SAT_PANIC_IF_ERROR(sat_vdp1_overlay_begin());
 #if defined(T3_NATIVE_WAIT_PROBE)
         g_t3_native_flush_ticks=(uint16_t)(sat_time_frc()-native_flush_started);
         const uint16_t native_hud_started=sat_time_frc();
 #endif
         T3_PERF_START(hud_started);
         if(T3_PERF_MODE!=1)draw_hud();
+#if defined(T3_VDP1_COVERAGE_PROBE)
+        SAT_PANIC_IF_ERROR(t3_coverage_probe_draw());
+#endif
 #if defined(T3_SLAVE_SIMULATION)
         if(deferred) {
 #if defined(T3_NATIVE_WAIT_PROBE)

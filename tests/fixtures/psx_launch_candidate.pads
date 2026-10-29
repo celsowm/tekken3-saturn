@@ -1,0 +1,7 @@
+# Physical PS1 pads: source frame, P1, P2. Authored launch/guard comparison.
+1 0 0
+180 0x2000 0
+270 0 0x8000
+280 0x6010 0x8000
+281 0 0x8000
+360 0 0

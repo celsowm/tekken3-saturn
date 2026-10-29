@@ -80,9 +80,10 @@ int t3_branch_condition_matches(uint8_t type, uint16_t p,
                       (f->opponent_state&4u)!=0 && f->relative_angle>=0x4000u;
     case 0x39: return HAS(f,T3_FACT_CONTACT|T3_FACT_OPPONENT) &&
                       f->counter_hit && !f->opponent_in_air;
-    case 0x3A: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_lp;
-    case 0x3B: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_rp;
-    case 0x3C: return HAS(f,T3_FACT_BUTTON_TAPS) && f->tap_both;
+    case 0x3A: case 0x3B: case 0x3C:
+        if(!HAS(f,T3_FACT_BUTTON_TAPS))return 0;
+        if(f->tap_condition_used)*f->tap_condition_used=1;
+        return type==0x3A?f->tap_lp:type==0x3B?f->tap_rp:f->tap_both;
     case 0x3D: return HAS(f,T3_FACT_HEALTH) && !f->own_health;
     case 0x3E: return HAS(f,T3_FACT_SIDE) && !f->side_flag;
     case 0x3F: return HAS(f,T3_FACT_SIDE) && f->side_flag;

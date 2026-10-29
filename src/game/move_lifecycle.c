@@ -20,7 +20,7 @@ int t3_move_vm_start_phased(t3_move_vm_t* vm,const t3_divmot_t* bank,
     vm->phased=1u;vm->last_entry_frame=1;vm->branch_window=-1;
     return 1;
 }
-static unsigned remap(unsigned code,const t3_move_record_t* m,int16_t entry) {
+unsigned t3_move_transition_remap(unsigned code,const t3_move_record_t* m,int16_t entry) {
     const int enters=m->active_first && entry+1<m->active_last &&
                       m->active_last<=m->length;
     if(code==2u)return enters?20u:2u;
@@ -137,7 +137,7 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
             if(t3_divmot_branch_find_ex(owner,target,input,1u,vm->bank->bank_type,ahead_facts,
                     sequences,sequence_count,&found) && found.command!=0xC000u) {
                 if(!t3_move_vm_peek(vm->bank,vm->common,found.target_slot,&target,&owner))return -1;
-                transition=remap(found.flags&63u,&target,vm->last_entry_frame);
+                transition=t3_move_transition_remap(found.flags&63u,&target,vm->last_entry_frame);
                 vm->branch_window=(int16_t)(found.last_frame-pose);
                 if(!t3_move_vm_queue(vm,found.target_slot,transition,3u,branch.first_frame,
                         vm->branch_window))return -1;
@@ -153,7 +153,7 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
         window=(int16_t)(branch.last_frame-vm->clock.pose_frame);
     }
     if(!t3_move_vm_peek(vm->bank,vm->common,branch.target_slot,&target,&owner))return -1;
-    transition=remap(branch.flags&63u,&target,vm->last_entry_frame);
+    transition=t3_move_transition_remap(branch.flags&63u,&target,vm->last_entry_frame);
     flags=branch.flags;
     if(!t3_move_vm_queue(vm,branch.target_slot,transition,kind,entry,window))return -1;
     vm->pending_flags=flags;vm->branch_window=window;

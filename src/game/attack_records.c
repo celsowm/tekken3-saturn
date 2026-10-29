@@ -62,6 +62,16 @@ static int descriptor_bytes(const t3_divmot_t* bank, uint32_t descriptor,
     return 1;
 }
 
+int t3_attack_descriptor_joints(const t3_divmot_t* bank,const t3_move_record_t* move,
+                                 uint8_t out[4]) {
+    const uint8_t* p;size_t available;
+    if(!bank || !bank->data || !move || !out)return -1;
+    const int found=descriptor_bytes(bank,move->attack_descriptor,&p,&available);
+    if(found!=1)return found;
+    for(unsigned i=0;i<4;++i)out[i]=p[i];
+    return 1;
+}
+
 int t3_attack_joint_pairs(const t3_divmot_t* bank, const t3_move_record_t* move) {
     const uint8_t* p;size_t available;int found;
     if (!bank || !bank->data || !move) return -1;

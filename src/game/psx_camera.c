@@ -5,7 +5,9 @@
  * presets, camera streams, hit cameras, round-end and replay cameras, the shake and blending in pinned Tekken3Remake remake/core/camera/camera_director.gd,
  * camera_math.gd, view_matrix.gd and backdrop_turn.gd (rules verified by its
  * tools/research/camera_sim.py). Changes: caller-owned state and fighter
- * inputs, a switch for original bugs 1 and 2, explicit 32-bit wrapping.
+ * inputs, a switch for original bugs 1/2/53/54/55, explicit 32-bit wrapping.
+ * The edge rules follow docs/research/code/game-bugs.md and are compared
+ * against unpatched original MIPS by tests/test_psx_camera_edges.py.
  * Attract,
  * Tekken Ball and Tekken Force cameras are outside this path. */
 #include "psx_camera.h"
@@ -115,6 +117,7 @@ static int32_t atan4096(const tab_t* t,int64_t x64,int64_t z64) {
     return s16(r);
 }
 
+int32_t t3_psx_camera_atan4096(const tab_t* t,int32_t x,int32_t z) {return atan4096(t,x,z);}
 int t3_psx_camera_valid(const tab_t* t) {
     int i,k,r;
     if(!t || !t->trig || !t->trig->data || t->trig->size!=T3_PSX_TRIG_BYTES || !t->atan || !t->choices ||
@@ -553,10 +556,11 @@ static int32_t next_rand(uint32_t* x) {
     *x=*x*0x41C64E6Du+0x3039u;
     return (int32_t)((*x>>16)&0x7FFFu);
 }
-/* Screen order of the targets: fighter 0 left of fighter 1. On a tie the
- * game reads a stale value (bug 53); the previous frame's order is used. */
+/* On a tie the original compares a stale third-target slot with previous
+ * target 0, rather than comparing the two previous targets (bug 53). */
 static int screen_order(const cam_t* c) {
-    if(c->target[0][3]==c->target[1][3])return c->prev_target[0][3]<c->prev_target[1][3];
+    if(c->target[0][3]==c->target[1][3])return c->faithful?
+        c->third_target_screen_x<c->prev_target[0][3]:c->prev_target[0][3]<c->prev_target[1][3];
     return c->target[0][3]<c->target[1][3];
 }
 /* FUN_80066430: the targets' axis in 18-bit units, turned when fighter 1 is left on screen. */
@@ -827,14 +831,18 @@ static int stream_step(cam_t* c,const tab_t* t,const fig_t f[2],int32_t restart_
             c->script_move=thr->move_id;
             if(camera_byte(thr)<FIRST_BANK_ID) {
                 /* NormalClip of (thrower root, roots' midpoint, stream eye) in x/z.
-                 * The game passes stack addresses (bug 54) and always picks one
-                 * side; the values are used here. */
-                int64_t ax=s16(thr->root_x),az=s16(thr->root_z);
-                int64_t bx=s16(div_trunc((int64_t)thr->root_x+vic->root_x,2));
-                int64_t bz=s16(div_trunc((int64_t)thr->root_z+vic->root_z,2));
-                int64_t cx=c->stream_sample[0],cz=c->stream_sample[2];
-                int32_t clip=w32(ax*bz+bx*cz+cx*az-ax*cz-bx*az-cx*bz);
-                if(!switch_camera(c,t,f,clip<0?1:0,0,fr))return 0;
+                 * The original passes nearby stack addresses, whose packed
+                 * upper halves coincide: NormalClip returns 0 (bug 54).
+                 * Reproduce the PS1 call's side, not the SH-2 stack layout. */
+                int side=0;
+                if(!c->faithful) {
+                    int64_t ax=s16(thr->root_x),az=s16(thr->root_z);
+                    int64_t bx=s16(div_trunc((int64_t)thr->root_x+vic->root_x,2));
+                    int64_t bz=s16(div_trunc((int64_t)thr->root_z+vic->root_z,2));
+                    int64_t cx=c->stream_sample[0],cz=c->stream_sample[2];
+                    side=w32(ax*bz+bx*cz+cx*az-ax*cz-bx*az-cx*bz)<0;
+                }
+                if(!switch_camera(c,t,f,side,0,fr))return 0;
                 *weight=-1;return 1;
             }
             c->script=bank_script(c,thr,player);
@@ -865,10 +873,15 @@ static int stream_step(cam_t* c,const tab_t* t,const fig_t f[2],int32_t restart_
         *weight=stream_view(c,t,f);
         return *weight!=-2;
     }
-    /* The game returns its caller's $s3 here, 1 (bug 55); the switch's -1 is used. */
+    /* FUN_800670E4 returns its caller's s3, 1 in FightFrame (bug 55). */
     t3_psx_camera_reset(c);
-    *weight=-1;
+    *weight=c->faithful?1:-1;
     return 1;
+}
+int t3_psx_camera_stream_update(cam_t* c,const tab_t* t,const fig_t f[2],int32_t restart_script,
+                                const t3_psx_camera_frame_t* fr,int32_t* weight) {
+    if(!c || !t3_psx_camera_valid(t) || !f || !fr || !fr->rand || !weight)return 0;
+    return stream_step(c,t,f,restart_script,fr,weight);
 }
 
 /* State IDLE: a starting throw picks its camera. Returns -1 for unported paths. */
@@ -1397,32 +1410,120 @@ int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx
     return 1;
 }
 
+int t3_psx_camera_joint_matrix(const t3_psx_camera_matrix_t* view,const t3_psx_joint_t* joint,
+                               t3_psx_camera_matrix_t* out) {
+    if(!view || !joint || !out)return 0;
+    const int32_t origin[3]={joint->origin.x,joint->origin.y,joint->origin.z};
+    for(unsigned i=0;i<3;++i)if(origin[i]< -T3_PSX_UNIT_LIMIT || origin[i]>T3_PSX_UNIT_LIMIT)return 0;
+    t3_psx_matrix_t a,b,r;t3_psx_camera_matrix_t result;int32_t translation[3];
+    for(unsigned i=0;i<3;++i)for(unsigned j=0;j<3;++j){a.m[i][j]=view->m[i][j];b.m[i][j]=joint->rotation.m[i][j];}
+    if(!t3_psx_mul_rot(&a,&b,&r))return 0;
+    apply_lv(view->m,origin,translation);
+    for(unsigned i=0;i<3;++i) {
+        for(unsigned j=0;j<3;++j)result.m[i][j]=r.m[i][j];
+        result.t[i]=w32((int64_t)translation[i]+view->t[i]);
+    }
+    result.h=view->h;*out=result;return 1;
+}
+
+/* Exact reciprocal seeds for normalized divisor indices 0..256. This is the
+ * integer expression below evaluated once, avoiding a division per vertex. */
+static const uint16_t gte_reciprocal[257] = {
+    512,510,508,506,504,502,500,498,496,495,493,491,489,487,485,484,
+    482,480,478,477,475,473,471,470,468,466,465,463,462,460,458,457,
+    455,454,452,450,449,447,446,444,443,441,440,438,437,435,434,433,
+    431,430,428,427,426,424,423,421,420,419,417,416,415,413,412,411,
+    410,408,407,406,405,403,402,401,400,398,397,396,395,394,392,391,
+    390,389,388,387,386,384,383,382,381,380,379,378,377,376,374,373,
+    372,371,370,369,368,367,366,365,364,363,362,361,360,359,358,357,
+    356,355,354,353,352,351,350,350,349,348,347,346,345,344,343,342,
+    341,340,340,339,338,337,336,335,334,334,333,332,331,330,329,329,
+    328,327,326,325,324,324,323,322,321,320,320,319,318,317,317,316,
+    315,314,314,313,312,311,311,310,309,308,308,307,306,306,305,304,
+    303,303,302,301,301,300,299,299,298,297,297,296,295,295,294,293,
+    293,292,291,291,290,289,289,288,287,287,286,286,285,284,284,283,
+    282,282,281,281,280,279,279,278,278,277,277,276,275,275,274,274,
+    273,272,272,271,271,270,270,269,269,268,267,267,266,266,265,265,
+    264,264,263,263,262,262,261,261,260,260,259,259,258,258,257,257,
+    257,
+};
+
 /* The GTE's H / SZ3 (0.16, at most 0x1FFFF) by its unsigned Newton-Raphson
  * reciprocal. */
 static int32_t gte_divide(uint32_t h,uint32_t sz) {
-    uint32_t z=0,n,d,u,i;
+    uint32_t z=0,n,d=sz,u,i;
     if(h>=sz*2u)return 0x1FFFF;
-    while(z<16u && !(sz&(0x8000u>>z)))z++;
-    n=h<<z;d=sz<<z;
+    /* sz is now nonzero and at most 16 bits. Normalize in four tests. */
+    if(d<0x100u){d<<=8;z+=8;}
+    if(d<0x1000u){d<<=4;z+=4;}
+    if(d<0x4000u){d<<=2;z+=2;}
+    if(d<0x8000u){d<<=1;z+=1;}
+    n=h<<z;
     i=(d-0x7FC0u)>>7;
-    u=((0x40000u/(i+0x100u)+1u)>>1);
-    u=(u>0x101u?u-0x101u:0u)+0x101u;
-    d=(uint32_t)((int64_t)0x2000080-(int64_t)d*u)>>8;
-    d=(uint32_t)((int64_t)0x0000080+(int64_t)d*u)>>8;
+    u=gte_reciprocal[i];
+    d=(0x2000080u-d*u)>>8;
+    d=(0x0000080u+d*u)>>8;
     n=(uint32_t)(((uint64_t)n*d+0x8000u)>>16);
     return n>0x1FFFFu?0x1FFFF:(int32_t)n;
 }
 static int32_t sat16(int32_t v){return v<-32768?-32768:v>32767?32767:v;}
 static int32_t clamp(int32_t v,int32_t lo,int32_t hi){return v<lo?lo:v>hi?hi:v;}
-void t3_psx_camera_project(const t3_psx_camera_matrix_t* m,const int32_t p[3],int32_t out[3]) {
-    int32_t v[3],sz,div;int i;
-    apply_lv(m->m,p,v);
+/* div is at most 17 bits and v is saturated signed 16-bit. Split the high
+ * bit before multiplying so the remaining signed product cannot overflow. */
+static int32_t project_axis(int32_t div,int32_t v,int32_t offset) {
+    int32_t product=(int32_t)(div&0xffff)*sat16(v);
+    int32_t high=(int32_t)((((uint32_t)product>>16)^0x8000u)-0x8000u);
+    return clamp(high+(div>>16)*sat16(v)+offset,-0x400,0x3ff);
+}
+static void camera_project_transformed(const t3_psx_camera_matrix_t* m,int32_t v[3],int32_t out[3]) {
+    int32_t sz,div;int i;
     for(i=0;i<3;i++)v[i]=w32((int64_t)v[i]+m->t[i]);
     sz=clamp(v[2],0,0xFFFF);
     div=gte_divide((uint32_t)m->h&0xFFFFu,(uint32_t)sz);
-    out[0]=clamp((int32_t)(((int64_t)div*sat16(v[0])+(SCREEN_OFFSET_X<<16))>>16),-0x400,0x3FF);
-    out[1]=clamp((int32_t)(((int64_t)div*sat16(v[1])+(SCREEN_OFFSET_Y<<16))>>16),-0x400,0x3FF);
+    out[0]=project_axis(div,v[0],SCREEN_OFFSET_X);
+    out[1]=project_axis(div,v[1],SCREEN_OFFSET_Y);
     out[2]=sz;
+}
+void t3_psx_camera_project(const t3_psx_camera_matrix_t* m,const int32_t p[3],int32_t out[3]) {
+    int32_t v[3];apply_lv(m->m,p,v);camera_project_transformed(m,v,out);
+}
+void t3_psx_camera_translate_view(const t3_psx_camera_matrix_t* view,const int32_t origin[3],
+                                  t3_psx_camera_matrix_t* out) {
+    t3_psx_camera_matrix_t result=*view;int32_t offset[3];
+    apply_lv(view->m,origin,offset);
+    for(unsigned i=0;i<3;++i)result.t[i]=w32((int64_t)view->t[i]+offset[i]);
+    *out=result;
+}
+#if defined(__sh__)
+/* S is clear, as in the other SH-2 matrix kernels. MAC.W accumulates the
+ * three signed halfword products in MACH:MACL without widening input arrays. */
+static inline int32_t project_dot16(const int16_t row[3],const int16_t point[3]) {
+    const int16_t* a=row;const int16_t* b=point;uint32_t hi,lo;
+    __asm__("clrmac\n\tmac.w @%0+,@%1+\n\tmac.w @%0+,@%1+\n\tmac.w @%0+,@%1+\n\t"
+            "sts mach,%2\n\tsts macl,%3"
+            :"+r"(a),"+r"(b),"=r"(hi),"=r"(lo)
+            :"m"(*(const int16_t(*)[3])row),"m"(*(const int16_t(*)[3])point)
+            :"mach","macl");
+    return (int32_t)(hi<<20|lo>>12);
+}
+#if defined(T3_VERIFY_ORIGINAL_PROJECT_DOT)
+volatile uint32_t g_t3_projection_dot_mismatch;
+#endif
+#endif
+void t3_psx_camera_project_s16(const t3_psx_camera_matrix_t* m,const int16_t p[3],int32_t out[3]) {
+    int32_t v[3];
+#if defined(__sh__)
+    for(unsigned i=0;i<3;++i)v[i]=project_dot16(m->m[i],p);
+#if defined(T3_VERIFY_ORIGINAL_PROJECT_DOT)
+    const int32_t wide[3]={p[0],p[1],p[2]};
+    for(unsigned i=0;i<3;++i)
+        if(v[i]!=t3_psx_dot12(m->m[i],wide))g_t3_projection_dot_mismatch=1;
+#endif
+#else
+    const int32_t point[3]={p[0],p[1],p[2]};
+    for(unsigned i=0;i<3;++i)v[i]=t3_psx_dot12(m->m[i],point);
+#endif
+    camera_project_transformed(m,v,out);
 }
 
 void t3_psx_backdrop_setup(t3_psx_backdrop_turn_t* b,const t3_psx_camera_view_t* v) {

@@ -25,11 +25,16 @@ tools/remake_import/layouts/usa.json:
                    u16 +0x1278 and +0x1886; then u32 frame counter and
                    g_fighterDistance (0x800AFF04)
 
+By default, the harness's always-on presentation/latent fixes are undone
+before setup. --remake-presentation-fixes reproduces legacy captures.
+
 Everything written is derived from the game and stays under build/ or
 assets/imported/. Run with third_party/Tekken3Remake/work/venv/bin/python.
 """
 import argparse
 import bisect
+from contextlib import closing
+import hashlib
 import json
 import struct
 import sys
@@ -53,6 +58,13 @@ GLOBALS = (
     # The fighter view (Rev.1 0x800AE2E8, FUN_80036254) and the projection
     # distance H (0x800A919C): a draw before CameraFrame uses them.
     (0x800ADE20, 0x20), (0x800A8CD4, 4),
+    (0x80097D10, 0x20),  # Original HudRoundUpdate's two 16-byte bar records.
+    # Owned-camera audit: mapped Rev.1 camera, sources, director, RNG and targets.
+    (0x800A85C0, 0x20), (0x800A02A8, 120), (0x800A8C68, 0x70),
+    (0x800A39B8, 4), (0x800A912C, 4), (0x800ADCA0, 4),
+    (0x800A9188, 0x30), (0x800ADCA8, 0x50),
+    (0x80097048, 4),  # LatchButtonTaps' two previous entries (Rev.1 0x8009746C).
+    (0x800971DC, 0x1A),  # FighterSounds timers/cooldowns/holds (Rev.1 0x80097600).
 )
 # Rev.1 pad words (prepare_psx_phase_capture.py): the mapped held/edge words
 # InputSource reads, and RoundFlow's physical pad and pressed edges.
@@ -226,6 +238,75 @@ def neutral(harness):
     return True
 
 
+def scripted_frames(scenario, path):
+    """Drive the same original FightMain with a deterministic physical tape.
+
+    Unlike random bots this can hold a command across intro exit or choose
+    the initial stance at placement. Frames are the original main-loop clock.
+    """
+    import fight_harness as fh
+    changes = {}
+    for line in path.read_text().splitlines():
+        words = line.partition('#')[0].split()
+        if not words:
+            continue
+        frame, p0, p1 = (int(w, 0) for w in words)
+        if frame < 1 or frame in changes or not 0 <= p0 <= 65535 or not 0 <= p1 <= 65535:
+            raise ValueError('invalid or duplicate physical tape frame')
+        changes[frame] = (p0, p1)
+    h = fh.FightHarness(scenario.gameplay_fixes)
+    over = []
+    h.cpu.stub(fh.VS_END_HOOK, lambda c, *a: over.append(1) or 0)
+    h.setup(scenario.chars, scenario.costumes, scenario.stage, scenario.seed,
+            scenario.round_time, scenario.rounds, scenario.chip, scenario.key_tables,
+            scenario.cpu, scenario.difficulty, scenario.level, scenario.attract)
+    pads = (0, 0)
+    for frame in range(1, scenario.max_frames + 1):
+        pads = changes.get(frame, pads)
+        sub = h.s32(fh.SUB_STATE)
+        h.step(pads)
+        yield h, pads, sub, list(h.calls)
+        if over:
+            return
+    raise RuntimeError(f'{scenario.name}: physical tape did not finish the match')
+
+
+def capture_frames(scenario, pad_script, retail=True):
+    """Undo the harness's always-on presentation fixes before game setup.
+
+    It patches camera bugs 1/53/54/55, CPU KO pads 59 and vibration 58 even
+    with gameplay_fixes=False. Explicit retail=False reproduces old fixtures.
+    No captured observation is rewritten.
+    """
+    import fight_harness as fh
+    original = fh.FightHarness
+    raw = (RESEARCH.parent.parent / 'work/jp_rev1/exe.bin').read_bytes()
+    sites = [(address, words) for address, words in fh._fixes()
+             if not fh.TRAMPOLINES <= address < fh.GAMEPLAY_TRAMPOLINES]
+    if sorted(a for a, _ in sites) != sorted((0x800640F8, 0x80063758, 0x80063830,
+                                            0x800672A0, 0x8002C708, 0x80067330, 0x80075D60)):
+        raise ValueError('presentation patch sites changed; review original-code restoration')
+    class RetailHarness(original):
+        def __init__(self, gameplay_fixes=False):
+            if gameplay_fixes:
+                raise ValueError('retail oracle cannot enable gameplay fixes')
+            super().__init__(False)
+            for address, words in sites:
+                at = address - 0x80010000 + 0x800
+                data = raw[at:at + 4*len(words)]
+                if len(data) != 4*len(words):
+                    raise ValueError('original patch site outside executable')
+                self.cpu.write(address, data)
+                if bytes(self.cpu.read(address, len(data))) != data:
+                    raise ValueError('original patch restoration failed')
+    try:
+        if retail:
+            fh.FightHarness = RetailHarness
+        yield from (scripted_frames(scenario, pad_script) if pad_script else fh.record(scenario))
+    finally:
+        fh.FightHarness = original
+
+
 def export(args):
     sys.path.insert(0, str(RESEARCH))
     import fight_harness
@@ -233,6 +314,13 @@ def export(args):
     for usa, jp in ((STEP_X, 0x8009E9A8), (STEP_Z, 0x8009E9B8), (PREVIOUS, 0x8009EAA0), (RAMP, 0x80097E68)):
         if layout.to_usa(jp) != usa or layout.to_jp(usa, 4) != jp:
             raise SystemExit(f'layout does not map {jp:#x} to {usa:#x}')
+    for jp, usa, size in (
+            (0x800A8A88, 0x800A85C0, 0x20), (0x800A0650, 0x800A02A8, 120),
+            (0x800A9130, 0x800A8C68, 0x70), (0x800A3E80, 0x800A39B8, 4),
+            (0x800A95F4, 0x800A912C, 4), (0x800A9650, 0x800A9188, 0x30),
+            (0x800AE170, 0x800ADCA8, 0x50)):
+        if layout.to_usa(jp) != usa or layout.to_jp(usa, size) != jp:
+            raise SystemExit(f'layout does not map camera span {jp:#x}+{size:#x}')
     out = args.out
     out.mkdir(parents=True, exist_ok=False)
     scenario = fight_harness.Scenario(args.name, tuple(args.chars), tuple(args.costumes), args.stage,
@@ -242,42 +330,44 @@ def export(args):
     rows, seeded, seed_frame, frames = [], None, None, 0
     fight_frames, last_facts = 0, None
     counter, tape = [0], None
-    for harness, pads, sub, _calls in fight_harness.record(scenario):
-        frames += 1
-        counter[0] = frames
-        if tape is None and any(args.cpu):
-            tape = AiTape(harness, counter, args.ai_trace)
-        if seeded is None:
-            live = sub == FIGHT_SUBSTATE and harness.s32(fight_harness.SUB_STATE) == FIGHT_SUBSTATE
-            if live:
-                fight_frames += 1
-                last_facts = [neutral_facts(harness.cpu.read(base, FIGHTER_SIZE)) for base in fight_harness.FIGHTERS]
-            # The state after this frame is the seed when it is a neutral live fight frame.
-            if live and neutral(harness) and frames > args.skip:
-                ram = bytearray(0x200000)
-                for address, data in read_spans(harness, layout, spans()):
-                    ram[address - 0x80000000:address - 0x80000000 + len(data)] = data
-                (out / 'seed.bin').write_bytes(ram)
-                sides = [ram[USA_FIGHTERS - 0x80000000 + i * FIGHTER_SIZE + 0xC6] for i in range(2)]
-                seeded, seed_frame = sides, frames
-            continue
-        if len(rows) >= args.ticks:
-            break
-        path = out / f'frame-{frames}.ranges'
-        write_ranges(path, read_spans(harness, layout, spans()))
-        u16 = lambda a: struct.unpack('<H', harness.cpu.read(a, 2))[0]
-        # FighterUpdateSide runs before InputSource, so this frame's side maps its pads.
-        sides = [harness.cpu.read(base + 0xC6, 1)[0] for base in fight_harness.FIGHTERS]
-        words = []
-        for i in range(2):
-            if args.cpu[i]:
-                # CpuOrPadInput pushes AiUpdate's pads with side 0.
-                held, pressed = tape.pads(frames, i)
-                words += mapped_pad(held, pressed, 0)
-            else:
-                words += mapped_pad(u16(JP_PAD_HELD + 2 * i), u16(JP_PAD_PRESSED + 2 * i), sides[i])
-        flow = [u16(JP_PHYSICAL), u16(JP_PHYSICAL + 2), u16(JP_PHYSICAL_PRESSED), u16(JP_PHYSICAL_PRESSED + 2)]
-        rows.append([str(path), *words, frames, harness.u32(JP_FRAME_COUNTER), *flow, *sides])
+    with closing(capture_frames(scenario, args.pad_script, not args.remake_presentation_fixes)) as source:
+        for harness, pads, sub, _calls in source:
+            frames += 1
+            counter[0] = frames
+            if tape is None and any(args.cpu):
+                tape = AiTape(harness, counter, args.ai_trace)
+            if seeded is None:
+                live = sub == FIGHT_SUBSTATE and harness.s32(fight_harness.SUB_STATE) == FIGHT_SUBSTATE
+                if live:
+                    fight_frames += 1
+                    last_facts = [neutral_facts(harness.cpu.read(base, FIGHTER_SIZE)) for base in fight_harness.FIGHTERS]
+                # The state after this frame is the seed when it is a neutral live fight frame.
+                round_start = args.seed_round_start and sub == 7 and harness.s32(fight_harness.SUB_STATE) == FIGHT_SUBSTATE
+                if (round_start or (not args.seed_round_start and live and neutral(harness))) and frames > args.skip:
+                    ram = bytearray(0x200000)
+                    for address, data in read_spans(harness, layout, spans()):
+                        ram[address - 0x80000000:address - 0x80000000 + len(data)] = data
+                    (out / 'seed.bin').write_bytes(ram)
+                    sides = [ram[USA_FIGHTERS - 0x80000000 + i * FIGHTER_SIZE + 0xC6] for i in range(2)]
+                    seeded, seed_frame = sides, frames
+                continue
+            if len(rows) >= args.ticks:
+                break
+            path = out / f'frame-{frames}.ranges'
+            write_ranges(path, read_spans(harness, layout, spans()))
+            u16 = lambda a: struct.unpack('<H', harness.cpu.read(a, 2))[0]
+            # FighterUpdateSide runs before InputSource, so this frame's side maps its pads.
+            sides = [harness.cpu.read(base + 0xC6, 1)[0] for base in fight_harness.FIGHTERS]
+            words = []
+            for i in range(2):
+                if args.cpu[i]:
+                    # CpuOrPadInput pushes AiUpdate's pads with side 0.
+                    held, pressed = tape.pads(frames, i)
+                    words += mapped_pad(held, pressed, 0)
+                else:
+                    words += mapped_pad(u16(JP_PAD_HELD + 2 * i), u16(JP_PAD_PRESSED + 2 * i), sides[i])
+            flow = [u16(JP_PHYSICAL), u16(JP_PHYSICAL + 2), u16(JP_PHYSICAL_PRESSED), u16(JP_PHYSICAL_PRESSED + 2)]
+            rows.append([str(path), *words, frames, harness.u32(JP_FRAME_COUNTER), *flow, *sides])
     if seeded is None:
         raise SystemExit(f'no neutral fight frame to seed from ({frames} frames, {fight_frames} live; '
                          f'last live fighters {last_facts})')
@@ -287,7 +377,11 @@ def export(args):
         if tape.trace:
             (out / 'ai-trace.txt').write_text(''.join(line + '\n' for line in tape.trace))
     (out / 'seed.json').write_text(json.dumps(dict(
-        scenario=vars(args) | {'out': str(out)}, seed_frame=seed_frame, sides=seeded, ticks=len(rows),
+        scenario=vars(args) | {'out': str(out), 'pad_script': str(args.pad_script) if args.pad_script else None},
+        camera_state_captured=True, sound_state_captured=True,
+        remake_presentation_fixes=args.remake_presentation_fixes,
+        original_exe_sha256=hashlib.sha256((RESEARCH.parent.parent / 'work/jp_rev1/exe.bin').read_bytes()).hexdigest(),
+        seed_frame=seed_frame, sides=seeded, ticks=len(rows),
         step_x=STEP_X, step_z=STEP_Z, previous=PREVIOUS, ramp=RAMP), indent=2) + '\n')
     print(f'{out}: seed after frame {seed_frame}, {len(rows)} ticks')
 
@@ -305,12 +399,18 @@ def main():
     p.add_argument('--rounds', type=int, default=1)
     p.add_argument('--max-frames', type=int, default=20000)
     p.add_argument('--skip', type=int, default=0, help='seed no earlier than this frame')
+    p.add_argument('--seed-round-start', action='store_true',
+                   help='export from first-round setup, before the first FightFrame; no neutral-pose filter')
+    p.add_argument('--pad-script', type=Path,
+                   help='physical tape: main-loop frame, P1 word, P2 word (decimal or 0x hex)')
     p.add_argument('--ticks', type=int, default=3000, help='frames to export after the seed')
     p.add_argument('--cpu', type=int, nargs=2, default=(0, 0), help='1: that fighter is the CPU opponent')
     p.add_argument('--difficulty', type=int, default=1)
     p.add_argument('--level', type=int, default=4)
     p.add_argument('--ai-trace', type=int, metavar='FRAME',
                    help='with --cpu: write every AiUpdate read of FRAME to ai-trace.txt (slow)')
+    p.add_argument('--remake-presentation-fixes', action='store_true',
+                   help='legacy remake oracle: keep its presentation/CPU-KO fixes (not retail parity)')
     export(p.parse_args())
 
 

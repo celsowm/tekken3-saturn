@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import sys
 
-from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES
+from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES, SECOND_MESH
 from compiled_render_plan import emit_c
 
 def skeleton_parts(model):
@@ -38,6 +38,61 @@ def compile_mesh(model,lib_source,preview,texture_arc):
 
 def c_rows(values,width):
     return ['    '+','.join(str(v) for v in values[i:i+width])+',' for i in range(0,len(values),width)]
+
+def emit_projected_mesh(model, report, suffix):
+    """Emit private original vertex blocks and compiled-index mappings."""
+    name = 't3_kmd_projected' + suffix
+    mapping = {}
+    logical_indices = {}
+    for logical, (part, row, slot, index) in enumerate(report['projected_vertex_map']):
+        if logical >= 65536:
+            raise ValueError('projected logical vertex index exceeds uint16')
+        mapping.setdefault((part, row), []).append((slot, index, logical))
+        logical_indices[part, row, slot] = logical
+    lines = []
+    blocks = []
+    for part, row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
+            vb = model.rows[ri].vert
+            if vb is None:
+                continue
+            prefix = f'{name}_{part}_{ri}'
+            arrays = [('local', 'uint8_t', vb.imports_local),
+                      ('global', 'uint8_t', vb.imports_global)]
+            arrays += [(f'post{i}', 'uint16_t', values) for i, values in enumerate(vb.posts)]
+            entries = mapping.get((part, ri), [])
+            arrays += [('map', 'uint16_t', [x for slot, index, _ in entries for x in (slot, index)]),
+                       ('logical', 'uint16_t', [x for slot, _, index in entries for x in (slot, index)])]
+            for label, typ, values in arrays:
+                if values:
+                    lines.append(f'static const {typ} {prefix}_{label}[] = {{' + ','.join(map(str, values)) + '};')
+            if vb.coords:
+                lines.append(f'static const int16_t {prefix}_xyz[][3] = {{' + ','.join('{%d,%d,%d}' % v for v in vb.coords) + '};')
+            def ref(label, values):
+                return f'{prefix}_{label}' if values else 'NULL'
+            posts = ','.join(ref(f'post{i}', values) for i, values in enumerate(vb.posts))
+            counts = ','.join(str(len(values)) for values in vb.posts)
+            map_values = mapping.get((part, ri), [])
+            blocks.append('    {%d,%s,%d,%s,%d,%s,%d,{%s},{%s},%s,%s,%d},' % (
+                part, ref('local', vb.imports_local), len(vb.imports_local),
+                ref('global', vb.imports_global), len(vb.imports_global),
+                ref('xyz', vb.coords), len(vb.coords), posts, counts,
+                ref('map', map_values), ref('logical', map_values), len(map_values)))
+    lines.append(f'const t3_psx_projected_part_t {name}[] = {{')
+    lines.extend(blocks)
+    lines.append('};')
+    lines.append(f'const unsigned {name}_count = {len(blocks)};')
+    faces = []
+    for part, row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
+            for face in model.rows[ri].faces or []:
+                v = [logical_indices[part, ri, slot] for slot in face]
+                faces.append((v[0], v[1], v[2], v[2]) if len(v) == 3 else (v[0], v[1], v[3], v[2]))
+    if len(faces) != report['faces']:
+        raise ValueError('projected face count differs from compiled mesh')
+    lines.append(f'const uint16_t {name}_faces[][4] = {{' + ','.join('{%d,%d,%d,%d}' % f for f in faces) + '};')
+    lines.append(f'const unsigned {name}_vertex_count = {len(logical_indices)};')
+    return lines
 
 def generate(kmd_path, lib_source, output,texture_arc=None,actor0_kmd=None,actor1_kmd=None,
              actor1_mesh=None,actor1_arc=None):
@@ -78,6 +133,9 @@ typedef union t3_embedded_archive1 {{
 }} t3_embedded_archive1_t;
 extern t3_embedded_archive1_t t3_archive1;
 extern const uint8_t t3_kmd_double_sided1[T3_FACE_COUNT];
+#if defined(T3_PARTICLE_FIGHTER_OT)
+extern const uint8_t t3_kmd_face_ot1[T3_FACE_COUNT][2];
+#endif
 """
     palette=[0,0xBDEF]+[0]*254
     alt_palette=[0,0x801F]+[0]*254
@@ -85,10 +143,22 @@ extern const uint8_t t3_kmd_double_sided1[T3_FACE_COUNT];
 #define T3_GENERATED_CHARACTER_H
 #include <stdint.h>
 #include "psx_pose.h"
+#if defined(T3_PARTICLE_FIGHTER_OT)
+#include "psx_projected_mesh.h"
+extern const t3_psx_projected_part_t t3_kmd_projected[];
+extern const unsigned t3_kmd_projected_count;
+extern const uint16_t t3_kmd_projected_faces[][4];
+extern const unsigned t3_kmd_projected_vertex_count;
+extern const t3_psx_projected_part_t t3_kmd_projected1[];
+extern const unsigned t3_kmd_projected1_count;
+extern const uint16_t t3_kmd_projected1_faces[][4];
+extern const unsigned t3_kmd_projected1_vertex_count;
+#endif
 #define T3_ARCHIVE_BYTES {len(archive)}u
 /* With a second mesh these are the larger of the two; each actor's own
  * counts come from its decoded asset. */
 #define T3_VERTEX_COUNT {vertices}u
+#define T3_PROJECTED_VERTEX_COUNT {max(report['logical_vertices'], report1['logical_vertices'] if report1 else 0)}u
 #define T3_FACE_COUNT {faces}u
 #define T3_JOINT_COUNT {joints}u
 #define T3_TEXTURE_COUNT {textures}u
@@ -104,6 +174,9 @@ typedef union t3_embedded_archive {{
 extern t3_embedded_archive_t t3_archive;
 {second_header}extern const uint16_t t3_red_palette[256];
 extern const uint8_t t3_kmd_double_sided[T3_FACE_COUNT];
+#if defined(T3_PARTICLE_FIGHTER_OT)
+extern const uint8_t t3_kmd_face_ot[T3_FACE_COUNT][2];
+#endif
 extern const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS];
 extern const t3_psx_part_t* const t3_private_actor_parts[2];
 #endif
@@ -122,6 +195,11 @@ extern const t3_psx_part_t* const t3_private_actor_parts[2];
         payload.append('const uint8_t t3_kmd_double_sided1[T3_FACE_COUNT] = {')
         payload.extend(c_rows(report1['double_sided_faces'],32))
         payload.append('};')
+        payload.append('#if defined(T3_PARTICLE_FIGHTER_OT)')
+        payload.append('const uint8_t t3_kmd_face_ot1[T3_FACE_COUNT][2] = {')
+        payload.extend('    {%d,%d},' % tuple(row) for row in report1['face_ot_metadata'])
+        payload.append('};')
+        payload.append('#endif')
     payload.append('const uint16_t t3_red_palette[256] = {')
     for i in range(0,256,16):
         payload.append('    '+','.join(str(v) for v in alt_palette[i:i+16])+',')
@@ -131,6 +209,16 @@ extern const t3_psx_part_t* const t3_private_actor_parts[2];
     for i in range(0,len(flags),32):
         payload.append('    '+','.join(str(v) for v in flags[i:i+32])+',')
     payload.append('};')
+    payload.append('#if defined(T3_PARTICLE_FIGHTER_OT)')
+    payload.append('const uint8_t t3_kmd_face_ot[T3_FACE_COUNT][2] = {')
+    payload.extend('    {%d,%d},' % tuple(row) for row in report['face_ot_metadata'])
+    payload.append('};')
+    payload.append('#endif')
+    payload.append('#if defined(T3_PARTICLE_FIGHTER_OT)')
+    payload.extend(emit_projected_mesh(model, report, ''))
+    if mesh1_model is not None:
+        payload.extend(emit_projected_mesh(mesh1_model, report1, '1'))
+    payload.append('#endif')
     # These ORIGINAL draw-part parent indices and model offsets are private,
     # and must be interpreted in PS1 coordinate space, never guessed from GLB.
     payload.append('const t3_psx_part_t t3_private_kmd_parts[T3_PSX_DRAW_PARTS] = {')
@@ -163,7 +251,7 @@ extern const t3_psx_part_t* const t3_private_actor_parts[2];
         distribution="PRIVATE, no commercial game data may enter Git or GitHub Actions")
     if report1 is not None:
         report.update(actor1_mesh_sha256=hashlib.sha256(mesh1_raw).hexdigest(),
-                      actor1_mesh={k:v for k,v in report1.items() if k!='double_sided_faces'},
+                      actor1_mesh={k:v for k,v in report1.items() if k not in ('double_sided_faces','face_ot_metadata','projected_vertex_map')},
                       max_vertices=vertices,max_faces=faces,max_textures=textures)
     (output/"manifest.json").write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf8')
     return report
@@ -186,6 +274,6 @@ def main():
                         a.actor1_mesh_kmd,a.actor1_textures_arc)
     except (OSError,ValueError,ImportError,AssertionError) as exc:
         p.exit(1,f"local KMD embed failed: {exc}\n")
-    print(json.dumps({k:v for k,v in result.items() if k!='double_sided_faces'},sort_keys=True))
+    print(json.dumps({k:v for k,v in result.items() if k not in ('double_sided_faces','face_ot_metadata','projected_vertex_map')},sort_keys=True))
 
 if __name__=="__main__":main()

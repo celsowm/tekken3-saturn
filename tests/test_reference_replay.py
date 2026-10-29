@@ -49,6 +49,89 @@ class ReferenceReplayTests(unittest.TestCase):
         (self.out/'reference-fields.bin').write_bytes(struct.pack('>4H',3,3,3,3))
         return dict(elf_sha256='b'*64,provenance={})
 
+    def own_export(self):
+        manifest=json.loads((self.export/'manifest.json').read_text())
+        manifest.update(observation=fixture.OWNED_OBSERVATION,input_mode='physical',
+                        remake_presentation_fixes=False,original_exe_sha256='c'*64,
+                        initialization=dict(kind='configuration',seed=1,physical=[0,0]))
+        project=Path(__file__).resolve().parents[1]
+        manifest['observation_schema_sha256']=hashlib.sha256(b''.join(
+            (project/n).read_bytes() for n in fixture.schema_files(manifest))).hexdigest()
+        rows=[f'{frame}\t0\t0\t0\t0\t{128 if i else 0}\t0\t0\t0\t3\t0\t0\n'
+              for i,frame in enumerate(self.frames)]
+        (self.export/'inputs.tsv').write_text(''.join(rows))
+        manifest['files']['inputs.tsv']=hashlib.sha256((self.export/'inputs.tsv').read_bytes()).hexdigest()
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        return manifest
+
+    def test_owned_fixture_keeps_camera_and_has_no_feedback(self):
+        self.own_export()
+        out=self.root/'fixture.h';report=fixture.generate(self.export,out);text=out.read_text()
+        self.assertEqual(report['expected_state_bytes_in_image'],0)
+        self.assertEqual(report['view_bytes'],0);self.assertEqual(report['screen_bytes'],0)
+        self.assertIn('#define T3_REFERENCE_OWN_CAMERA 1',text)
+        self.assertIn('#define T3_REFERENCE_HAS_SIDES 0',text)
+        self.assertIn('#define T3_REFERENCE_HAS_VIEW 0',text)
+        self.assertNotIn('t3_reference_screens',text);self.assertNotIn('t3_reference_views',text)
+        observed=self.guest()
+        with self.assertRaisesRegex(ValueError,'owned camera'):suite.compare(self.out,self.export,observed)
+        (self.out/'reference-owned-camera.bin').write_bytes(struct.pack('>I',1))
+        result=suite.compare(self.out,self.export,observed)
+        self.assertTrue(result['passed']);self.assertTrue(result['independent_camera'])
+        self.assertIn('no original screen/view feedback',result['scope'])
+        (self.out/'reference-owned-camera.bin').write_bytes(bytes(4))
+        with self.assertRaisesRegex(ValueError,'owned camera'):suite.compare(self.out,self.export,observed)
+
+    def test_owned_fixture_rejects_snapshot_or_patched_provenance(self):
+        for field,value in [('initialization',None),('remake_presentation_fixes',True),
+                            ('input_mode','mapped'),('original_exe_sha256','')]:
+            manifest=self.own_export();manifest[field]=value
+            (self.export/'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError,'fresh retail physical'):fixture.load(self.export)
+
+    def test_owned_effect_pool_requires_runtime_marker(self):
+        manifest=self.own_export();manifest['owned_effect_pool']=True
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        output=self.root/'fixture.h';fixture.generate(self.export,output)
+        self.assertIn('#define T3_REFERENCE_OWN_EFFECTS 1',output.read_text())
+        observed=self.guest()
+        (self.out/'reference-owned-camera.bin').write_bytes(struct.pack('>I',1))
+        with self.assertRaisesRegex(ValueError,'owned effect pool'):suite.compare(self.out,self.export,observed)
+        (self.out/'reference-owned-effects.bin').write_bytes(struct.pack('>I',1))
+        self.assertTrue(suite.compare(self.out,self.export,observed)['owned_effect_pool'])
+        (self.out/'reference-owned-effects.bin').write_bytes(bytes(4))
+        with self.assertRaisesRegex(ValueError,'owned effect pool'):suite.compare(self.out,self.export,observed)
+
+    def test_effect_pool_marker_rejects_legacy_or_nonboolean_claim(self):
+        manifest=json.loads((self.export/'manifest.json').read_text());manifest['owned_effect_pool']=True
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'owned effect pool'):fixture.load(self.export)
+        manifest=self.own_export();manifest['owned_effect_pool']='true'
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'owned effect pool'):fixture.load(self.export)
+
+    def test_owned_fixture_rejects_mapped_input_or_side_feedback(self):
+        for column in (1,2,3,4,10,11):
+            manifest=self.own_export()
+            rows=[line.split() for line in (self.export/'inputs.tsv').read_text().splitlines()]
+            rows[0][column]='1'
+            (self.export/'inputs.tsv').write_text(''.join('\t'.join(r)+'\n' for r in rows))
+            manifest['files']['inputs.tsv']=hashlib.sha256((self.export/'inputs.tsv').read_bytes()).hexdigest()
+            (self.export/'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError,'mapped inputs or original sides'):fixture.load(self.export)
+
+    def test_owned_fixture_rejects_even_an_unlisted_view_file(self):
+        self.own_export();(self.export/'views.bin').write_bytes(b'untrusted view feedback')
+        with self.assertRaisesRegex(ValueError,'without view feedback'):fixture.load(self.export)
+
+    def test_owned_schema_cannot_reuse_legacy_combat_hash(self):
+        manifest=self.own_export()
+        project=Path(__file__).resolve().parents[1]
+        manifest['observation_schema_sha256']=hashlib.sha256(b''.join(
+            (project/n).read_bytes() for n in fixture.SCHEMA_FILES)).hexdigest()
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'current observation schema'):fixture.load(self.export)
+
     def test_fixture_encodes_source_gaps_and_input_changes(self):
         out=self.root/'fixture.h';report=fixture.generate(self.export,out);text=out.read_text()
         self.assertEqual(report['events'],2)
@@ -78,6 +161,44 @@ class ReferenceReplayTests(unittest.TestCase):
         manifest['files']['views.bin']=hashlib.sha256((self.export/'views.bin').read_bytes()).hexdigest()
         (self.export/'manifest.json').write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError,'draw trace'):fixture.load(self.export)
+
+    def test_screen_only_trace_keeps_external_coordinates(self):
+        data=b'T3VIEWS\0'+struct.pack('<II',0,len(self.frames))+bytes(4*len(self.frames))
+        (self.export/'views.bin').write_bytes(data)
+        manifest=json.loads((self.export/'manifest.json').read_text())
+        manifest['files']['views.bin']=hashlib.sha256(data).hexdigest()
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        out=self.root/'fixture.h'
+        report=fixture.generate(self.export,out)
+        self.assertEqual(report['view_bytes'],0)
+        self.assertEqual(report['screen_bytes'],4*len(self.frames))
+        self.assertIn('#define T3_REFERENCE_HAS_VIEW 1',out.read_text())
+        self.assertIn('#define T3_REFERENCE_VIEWS 0u',out.read_text())
+
+    def test_fresh_initialization_is_bound_to_manifest_identity(self):
+        manifest=json.loads((self.export/'manifest.json').read_text())
+        manifest['initialization']=dict(kind='configuration',seed=0,physical=[128,64])
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        out=self.root/'fixture.h';fixture.generate(self.export,out)
+        text=out.read_text()
+        self.assertIn('#define T3_REFERENCE_START_INTRO 1',text)
+        self.assertIn('#define T3_REFERENCE_START_SEED 0u',text)
+        self.assertIn('#define T3_REFERENCE_START_PAD0 128u',text)
+        self.assertIn('#define T3_REFERENCE_START_PAD1 64u',text)
+        observed=self.guest()
+        manifest['initialization']['seed']=1
+        (self.export/'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'fixture identity'):suite.compare(self.out,self.export,observed)
+
+    def test_invalid_fresh_initialization_is_refused(self):
+        for recipe in (dict(kind='configuration',seed=-1,physical=[0,0]),
+                       dict(kind='configuration',seed=0,physical=[65536,0]),
+                       dict(kind='configuration',seed=0,physical=[0]),
+                       dict(kind='snapshot',seed=0,physical=[0,0])):
+            manifest=json.loads((self.export/'manifest.json').read_text())
+            manifest['initialization']=recipe
+            (self.export/'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError,'initialization'):fixture.load(self.export)
 
     def test_screen_count_must_match_ticks(self):
         self.make_export(views=True)

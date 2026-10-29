@@ -2,6 +2,9 @@
  * The same native match runs underneath the normal renderer. No expected
  * snapshots/digests are linked into this executable. */
 #include "t3_reference_fixture.h"
+#if T3_REFERENCE_OWN_CAMERA && !defined(T3_PSX_CAMERA)
+#error "Owned reference requires T3_PSX_CAMERA"
+#endif
 #include "psx_ground_eval_fields.h"
 #include "psx_round_flow_eval_fields.h"
 #include "sha256.h"
@@ -9,6 +12,8 @@ volatile uint32_t g_reference_count,g_reference_error;
 /* Artifact identity, not per-tick expected state. The host binds the observed
  * trace to this exact exported seed/input/schema manifest. */
 volatile const uint8_t g_reference_fixture_id[32]=T3_REFERENCE_FIXTURE_ID;
+volatile uint32_t g_reference_owned_camera;
+volatile uint32_t g_reference_owned_effects;
 #if defined(T3_REFERENCE_TRACE_HIGH)
 #define T3_REFERENCE_TRACE_SECTION
 #else
@@ -17,7 +22,11 @@ volatile const uint8_t g_reference_fixture_id[32]=T3_REFERENCE_FIXTURE_ID;
 volatile uint8_t g_reference_trace[T3_REFERENCE_TICKS][32]
     T3_REFERENCE_TRACE_SECTION;
 volatile uint16_t g_reference_value_counts[T3_REFERENCE_TICKS]
+#if T3_REFERENCE_OWN_CAMERA
+    ; /* Own-camera diagnostics reclaim High WRAM from the optional pose cache. */
+#else
     __attribute__((section(".wram_l")));
+#endif
 #undef T3_REFERENCE_TRACE_SECTION
 static struct {uint32_t address,size,offset;} g_reference_ranges[64]
     __attribute__((section(".wram_l")));
@@ -56,7 +65,14 @@ static void reference_value(int64_t value) {
     if(g_reference_count==T3_REFERENCE_DEBUG_TICK && reference_value_count<1400)
         g_reference_first_values[reference_value_count]=value;
 #endif
-    for(unsigned i=0;i<8;++i)bytes[i]=(uint8_t)(bits>>(56-8*i));
+    /* Constant 32-bit shifts keep -Os from calling the SH-2's 64-bit shift
+     * helper eight times per field. The signed-i64 big-endian wire format
+     * is unchanged. */
+    uint32_t hi=(uint32_t)(bits>>32),lo=(uint32_t)bits;
+    bytes[0]=(uint8_t)(hi>>24);bytes[1]=(uint8_t)(hi>>16);
+    bytes[2]=(uint8_t)(hi>>8);bytes[3]=(uint8_t)hi;
+    bytes[4]=(uint8_t)(lo>>24);bytes[5]=(uint8_t)(lo>>16);
+    bytes[6]=(uint8_t)(lo>>8);bytes[7]=(uint8_t)lo;
     t3_sha256_update(&reference_digest,bytes,8);++reference_value_count;
 }
 #define original_round_flow 1
@@ -68,6 +84,13 @@ static void reference_value(int64_t value) {
 #define check(i,category,field,actual,expected) ((void)(i),(void)(field),reference_value((int64_t)(actual)))
 #define REFERENCE_NAME(buffer,...) ((void)(buffer))
 #include "psx_match_reference.inc"
+#if T3_REFERENCE_OWN_CAMERA
+/* Export qualification requires all owned fields. Expected expressions are
+ * erased by check; this visitor reads only native state in the firmware. */
+#define has(address,size) 1
+#include "psx_owned_reference.inc"
+#undef has
+#endif
 #undef REFERENCE_NAME
 #undef check
 #undef bank
@@ -76,7 +99,9 @@ static void reference_value(int64_t value) {
 #undef original_round_flow
 static int reference_prepare_config(void) {
     (void)g_reference_fixture_id[0]; /* Retain the debugger-visible identity. */
+    (void)g_reference_owned_camera;
     bad=0;g_reference_count=g_reference_error=g_reference_cursor=0;
+    g_reference_owned_camera=0;
     g_reference_source_frame=T3_REFERENCE_FIRST_FRAME;
     if(sizeof(t3_reference_seed)<12)return 0;
     g_reference_range_count=reference_le32(t3_reference_seed+8);
@@ -97,6 +122,32 @@ static int reference_prepare_config(void) {
     g_owned_config.chip_enabled=u32(0x800AFA58u)!=0;
     g_owned_config.spawn[0]=(t3_psx_spawn_t){0};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){0};
+#if !T3_REFERENCE_OWN_CAMERA
+    /* The legacy contract always consumes original view/screen feedback,
+     * for both seeded and fresh initialization, regardless of build defaults. */
+    g_owned_config.camera=NULL;
+    g_owned_config.effects=NULL;
+#endif
+#if defined(T3_REFERENCE_START_INTRO) && T3_REFERENCE_START_INTRO
+    g_owned_config.start_intro=1;g_owned_config.start_seed=T3_REFERENCE_START_SEED;
+    g_owned_config.start_physical[0]=T3_REFERENCE_START_PAD0;
+    g_owned_config.start_physical[1]=T3_REFERENCE_START_PAD1;
+#if T3_REFERENCE_OWN_CAMERA
+    if(!g_owned_config.camera || !g_owned_config.sound_tables.size || g_owned_config.ai)return 0;
+    for(unsigned i=0;i<2;++i) {
+        const uint32_t b=0x800A9228u+i*0x188Cu;
+        if(g_owned_config.character[i]!=(unsigned)i16(b+0x18))return 0;
+        g_owned_config.sound_voice_set[i]=(uint8_t)i16(b+0x1A);
+    }
+#endif
+#endif
+#if T3_REFERENCE_OWN_CAMERA
+    if(!bad)g_reference_owned_camera=1;
+#endif
+#if T3_REFERENCE_OWN_EFFECTS
+    if(!g_owned_config.effects || g_owned_config.effect_table_bytes!=440)return 0;
+    if(!bad)g_reference_owned_effects=1;
+#endif
     return !bad;
 }
 static int reference_input(uint32_t tick,t3_input_t* first,t3_input_t* second,
@@ -114,6 +165,10 @@ static int reference_input(uint32_t tick,t3_input_t* first,t3_input_t* second,
     *frame=(t3_psx_match_frame_t){.frame_counter=g_reference_source_frame,
         .physical={w[4],w[5]},.pressed={w[6],w[7]},
         .side_known=T3_REFERENCE_HAS_SIDES,.side={(uint8_t)w[8],(uint8_t)w[9]}};
+#if T3_REFERENCE_OWN_CAMERA
+    *first=*second=(t3_input_t){0};frame->physical_inputs=1;
+    frame->side_known=frame->screen_known=0;frame->fighter_view=NULL;
+#endif
 #if defined(T3_REFERENCE_HAS_VIEW) && T3_REFERENCE_HAS_VIEW
     /* Per-tick screen x the fighter draw left (+0x1278): the external state
      * PairwiseDistances reads. Sparse 38-byte view records additionally carry
@@ -155,9 +210,15 @@ static int reference_input(uint32_t tick,t3_input_t* first,t3_input_t* second,
 static int reference_observe(void) {
     uint8_t digest[32];uint32_t tick=g_owned_match.ticks;
     if(!tick || tick>T3_REFERENCE_TICKS || g_reference_count!=tick-1)return 0;
+#if T3_REFERENCE_OWN_CAMERA
+    if(!g_reference_owned_camera || !g_owned_config.camera || !g_owned_config.start_intro)return 0;
+#endif
     t3_sha256_init(&reference_digest);reference_value_count=0;
     compare(0,T3_REFERENCE_STEP_X,T3_REFERENCE_STEP_Z);
     compare(1,T3_REFERENCE_STEP_X,T3_REFERENCE_STEP_Z);compare_round();
+#if T3_REFERENCE_OWN_CAMERA
+    compare_owned_auxiliary();compare_owned_camera();
+#endif
     t3_sha256_finish(&reference_digest,digest);
     for(unsigned i=0;i<32;++i)g_reference_trace[tick-1][i]=digest[i];
     if(reference_value_count>65535)return 0;

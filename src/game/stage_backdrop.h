@@ -47,4 +47,9 @@ typedef struct { int32_t x,y; uint32_t zoom; } t3_stage_backdrop_line_t;
 int t3_stage_backdrop_lines(const t3_stage_backdrop_t* backdrop,const int32_t view_proj[16],
                             const int32_t eye[3],int32_t turn,unsigned step,
                             t3_stage_backdrop_line_t* lines,int32_t* wall_depth);
+/* As above, with the sampled screen line offset by `vertical_offset` dots.
+ * The supplied projection must already use the intended vertical scale. */
+int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* backdrop,const int32_t view_proj[16],
+                            const int32_t eye[3],int32_t turn,unsigned step,int vertical_offset,
+                            t3_stage_backdrop_line_t* lines,int32_t* wall_depth);
 #endif

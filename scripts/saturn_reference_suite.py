@@ -3,7 +3,7 @@
 import hashlib,json,struct
 from pathlib import Path
 import saturn_probe
-from build_reference_replay import load
+from build_reference_replay import load,OWNED_OBSERVATION
 
 def compare(root,export,observation):
     manifest,rows,_,_=load(export)
@@ -15,6 +15,11 @@ def compare(root,export,observation):
         if len(raw)!=4:raise ValueError('invalid reference counter size')
         return struct.unpack('>I',raw)[0]
     count=word('reference-count.bin');error=word('reference-error.bin')
+    owned=manifest.get('observation')==OWNED_OBSERVATION
+    if owned and (not (root/'reference-owned-camera.bin').is_file() or word('reference-owned-camera.bin')!=1):
+        raise ValueError('guest did not retain its owned camera')
+    if manifest.get('owned_effect_pool') and (not (root/'reference-owned-effects.bin').is_file() or word('reference-owned-effects.bin')!=1):
+        raise ValueError('guest did not retain its owned effect pool')
     trace=(root/'reference-trace.bin').read_bytes();fields=(root/'reference-fields.bin').read_bytes()
     expected=(export/'expected.sha256').read_bytes()
     if len(trace)!=len(expected) or len(fields)!=2*len(rows) or count>len(rows):
@@ -35,10 +40,19 @@ def compare(root,export,observation):
         observation_schema_sha256=manifest['observation_schema_sha256'],
         expected_digests_sha256=hashlib.sha256(expected).hexdigest(),
         guest_trace_sha256=hashlib.sha256(trace[:count*32]).hexdigest(),
-        scope='One original seed, then external mapped/physical pad IO, source-frame counters, '
+        initialization=manifest.get('initialization',{'kind':'original-seed'}),
+        additional_host_checks=manifest.get('additional_host_checks'),
+        independent_camera=owned,
+        owned_effect_pool=bool(manifest.get('owned_effect_pool')),
+        scope=('Fresh native configuration and physical pads/source counters only; '
+               'owned camera, screen sides, input history, sound/eye/HUD/tap/RNG and combat hashed every tick; '
+               'no original screen/view feedback or state reseeding. Rendered diagnostic, not cadence certification.'
+               if owned else ('Fresh native initialization from configuration, then ' if manifest.get('initialization') else
+               'One original seed, then ')+
+              'external mapped/physical pad IO, source-frame counters, '
               'per-tick screen X and sparse previous camera views used by RoundFlow; '
               'every declared field hashed as signed i64 big endian after each native tick. '
-              'Rendered diagnostic build, not performance or independent-camera certification.')
+              'Rendered diagnostic build, not performance or independent-camera certification.'))
     (root/'reference-comparison.json').write_text(json.dumps(result,indent=2)+'\n')
     return result
 
@@ -47,6 +61,11 @@ def execute(args):
         ('_g_reference_error','reference-error.bin'),('_g_reference_trace','reference-trace.bin'),
         ('_g_reference_fixture_id','reference-fixture.bin'),
         ('_g_reference_value_counts','reference-fields.bin')]
+    manifest,_,_,_=load(args.export.resolve())
+    if manifest.get('observation')==OWNED_OBSERVATION:
+        args.symbol_dumps.append(('_g_reference_owned_camera','reference-owned-camera.bin'))
+    if manifest.get('owned_effect_pool'):
+        args.symbol_dumps.append(('_g_reference_owned_effects','reference-owned-effects.bin'))
     observation=saturn_probe.run(args)
     result=compare(args.out.resolve(),args.export.resolve(),observation)
     print(json.dumps(result,indent=2));return result['passed']

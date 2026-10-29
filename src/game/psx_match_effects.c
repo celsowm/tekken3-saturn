@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
+ * Required Notice: Copyright (c) 2026 n0madic
+ * Effect integration adapted from pinned Tekken3Remake fight_simulation.gd,
+ * combat.gd and effect_objects.gd. Original draw order, hit-slot endpoint,
+ * effect direction and two-spray ordering; caller-owned portable storage.
+ * See NOTICE.md. */
+#include "psx_match.h"
+#include "attack_records.h"
+static int32_t add(int32_t a,int32_t b){return (int32_t)((uint32_t)a+(uint32_t)b);}
+static int32_t trig(const t3_psx_trig_t* t,unsigned angle,unsigned cos) {
+    unsigned at=2*(angle&4095)+(cos?2048:0);
+    return (int16_t)(uint16_t)(t->data[at]|(t->data[at+1]<<8));
+}
+static void direction(const t3_psx_match_t* m,t3_vec3i_t d,int16_t* pitch,int16_t* yaw) {
+    const t3_psx_camera_tables_t* t=m->config->camera->tables;
+    const t3_psx_trig_t* tr=&m->config->ground_tables.trig;
+    int32_t y=(t3_psx_camera_atan4096(t,d.x,d.z)-1024)&4095;
+    int32_t xabs=d.x<0?-d.x:d.x,zabs=d.z<0?-d.z:d.z;
+    int32_t n=zabs<xabs?d.x:d.z,s=trig(tr,(unsigned)y,zabs>=xabs);
+    int16_t divisor=(int16_t)(s*8);if(!(s&0x1FFF))divisor=1;
+    int32_t flat=((int32_t)((uint32_t)n<<16)/divisor)>>1;if(flat<0)flat=-flat;
+    *yaw=(int16_t)y;*pitch=(int16_t)((t3_psx_camera_atan4096(t,d.y,flat)-1024)&4095);
+}
+int t3_psx_match_effects_update(t3_psx_match_t* m,int replay) {
+    const t3_psx_match_config_t* c=m->config;
+    if(!c->effects)return 1;
+    if(!c->camera)return 0;
+    t3_psx_effect_actor_t actors[2]={0};
+    for(unsigned i=0;i<2;++i) {
+        const t3_psx_fighter_t* f=&m->fighter[i];
+        actors[i]=(t3_psx_effect_actor_t){.active=f->body.active,.character=c->character[i],
+            .power_timer=f->ground.power_timer,.pose=(int16_t)f->vm.clock.pose_frame,
+            .active_last=f->vm.move.active_last,.world=f->world};
+        if(f->ground.power_timer && t3_attack_descriptor_joints(f->vm.active_bank,&f->vm.move,actors[i].joints)!=1)return 0;
+    }
+    return t3_psx_effect_pool_step(c->effects,&c->ground_tables.trig,c->effect_tables,c->effect_table_bytes,
+        actors,&m->camera.rand,m->frame_counter&1u,!replay || !(m->replay.play&1),replay,m->camera.phase);
+}
+int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
+    if(!m->config->effects)return 1;
+    const t3_psx_fighter_t* f=&m->fighter[defender];
+    if(!f->got_hit || f->hit.best_slot<0)return 1;
+    const t3_psx_hit_candidate_t* slot=&f->hit.slots[(unsigned)f->hit.best_slot];
+    if(!f->hit.hit_clean)return 1;
+    int damage=f->hit.total_damage>slot->base_damage?f->hit.total_damage:slot->base_damage;
+    unsigned a=1u-defender;const t3_psx_fighter_t* attacker=&m->fighter[a];
+    unsigned code=attacker->strike_joint;
+    if(code==0x19 || code==0x1B || code==0x1C || damage<21)return 1;
+    if(code==0x18 || code==0x1A)return 0; /* fire needs its full object/segment path */
+    unsigned segment=(unsigned)attacker->geometry.segment;
+    if(segment>=attacker->strike.segment_count)return 0;
+    t3_vec3i_t point=attacker->strike.segments[segment].end;
+    const t3_world_segment_t* first=&attacker->strike.segments[0];
+    t3_vec3i_t d={add(first->end.x,-first->start.x),add(first->end.y,-first->start.y),add(first->end.z,-first->start.z)};
+    int16_t pitch,yaw;direction(m,d,&pitch,&yaw);
+    t3_psx_effect_spray(m->config->effects,point,pitch,yaw,attacker->ground.power_timer!=0);
+    return 1;
+}
+void t3_psx_match_effects_sound(void* user,unsigned kind,unsigned player,uint16_t id) {
+    t3_psx_match_t* m=user;
+    if(!m->config->effects || kind!=T3_SOUND_VOICE || player>1 || (id>>12)!=4)return;
+    if(m->fighter[player].ground.in_throw)return;
+    uint16_t code;
+    if(t3_psx_sound_voice_code(m->config->sound_tables,m->config->sound_voice_set[player],id,&code)!=1)return;
+    t3_psx_spark_t* o=t3_psx_effect_alloc(m->config->effects,17);
+    if(o){o->a=(int32_t)player;o->b=code;}
+}

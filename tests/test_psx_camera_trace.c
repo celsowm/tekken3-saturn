@@ -108,6 +108,7 @@ static void seed(t3_psx_camera_t* c, uint32_t n, int faithful) {
         c->weight[i] = r16(n, 0x800A9140u + 2u * (uint32_t)i); c->prev_weight[i] = r16(n, 0x800A914Au + 2u * (uint32_t)i);
     }
     for (k = 0; k < 2; k++) for (i = 0; i < 4; i++) c->target[k][i] = r32(n, 0x800AE170u + 16u * (uint32_t)k + 4u * (uint32_t)i);
+    c->third_target_screen_x = r32(n, 0x800AE19Cu);
     c->view.pitch = r32(n, 0x800A8A88u); c->view.yaw = r32(n, 0x800A8A8Cu); c->view.roll = r32(n, 0x800A8A90u);
     c->view.x = r32(n, 0x800A8A9Cu); c->view.y = r32(n, 0x800A8AA0u); c->view.z = r32(n, 0x800A8AA4u);
     c->h = r16(n, 0x800A919Cu); c->h_min = r16(n, 0x800A919Eu); c->h_max = r16(n, 0x800A91A0u); c->view.h = c->h;

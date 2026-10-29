@@ -198,8 +198,12 @@ static int32_t lerp(int32_t a,int32_t b,int32_t frac) {
     return a+mul16(b-a,frac);
 }
 
-int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],const int32_t eye[3],
-                            int32_t turn,unsigned step,t3_stage_backdrop_line_t* lines,int32_t* wall_depth) {
+int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[16],const int32_t eye[3],
+                            int32_t turn,unsigned step,int vertical_offset,t3_stage_backdrop_line_t* lines,int32_t* wall_depth) {
+#if defined(T3_STAGE_STACK_PROBE)
+    extern void t3_stage_stack_sample(unsigned);
+    t3_stage_stack_sample(1);
+#endif
     view_t w;
     fit_t keys[MAX_HEIGHT/KEY+2];
     unsigned count,key_count,first_ok=0;
@@ -209,7 +213,8 @@ int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],con
     if(!b || !m || !eye || !lines || !b->columns || b->columns>1024 || (b->columns&(b->columns-1)) ||
        b->rows<9 || b->width<2 || b->width>1024 || b->height<2 || b->height>MAX_HEIGHT ||
        b->box_half<=0 || b->box_half>MAX_BOX_HALF || b->rows_per_tan<=0 ||
-       b->rows_per_tan>(INT32_MAX/(2*TAN_LIMIT/ONE)) || (step!=1 && step!=2 && step!=4 && step!=8))return 0;
+       b->rows_per_tan>(INT32_MAX/(2*TAN_LIMIT/ONE)) || vertical_offset< -MAX_HEIGHT || vertical_offset>MAX_HEIGHT ||
+       (step!=1 && step!=2 && step!=4 && step!=8))return 0;
     w.b=b;
     w.wrap=(int32_t)b->columns*ONE;
     w.wall=b->box_half<<8;
@@ -240,7 +245,7 @@ int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],con
     /* Fitted lines at 0, KEY, 2 KEY, ... up to the last screen line. */
     key_count=(b->height-1u+KEY-1u)/KEY+1u;
     for(unsigned j=0;j<key_count;++j) {
-        keys[j]=fit(&w,(int32_t)(2*KEY*j));
+        keys[j]=fit(&w,(int32_t)(2*KEY*j)+2*vertical_offset);
         if(keys[j].ok && !keys[first_ok].ok)first_ok=j;
         if(j && keys[j].ok) {
             /* Unwrap against the previous fitted line. */
@@ -303,4 +308,8 @@ int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],con
         }
     }
     return 1;
+}
+int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],const int32_t eye[3],
+                            int32_t turn,unsigned step,t3_stage_backdrop_line_t* lines,int32_t* wall_depth) {
+    return t3_stage_backdrop_lines_offset(b,m,eye,turn,step,0,lines,wall_depth);
 }

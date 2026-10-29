@@ -1,0 +1,11 @@
+# Hold a command across intro exit, approach, then hit crouching P2 with a mid.
+1 0x80 0x40
+2 0 0
+149 0x2080 0
+170 0 0
+175 0x2080 0
+195 0 0
+196 0x2000 0
+275 0 0x4000
+276 0x6080 0x4000
+310 0 0

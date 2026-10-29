@@ -69,9 +69,9 @@ static void cross(const double a[3],const double b[3],double o[3]) {
 
 /* A camera at `eye` (PS1 units around the midpoint, y up) looking along PS1
  * yaw `yaw` (forward (sin -yaw, cos -yaw)) pitched up by `pitch` degrees. */
-static void check(double yaw_deg,double pitch_deg,double ex,double height,double ez,int turn,unsigned step) {
+static void check(double yaw_deg,double pitch_deg,double ex,double height,double ez,int turn,unsigned step,int vertical_offset) {
     const double yaw=yaw_deg*PI/180,pitch=pitch_deg*PI/180;
-    const double fx=500.0/184,fy=0x1BD2*500.0/(240*4096);
+    const double fx=500.0/184,fy=0x1BD2*500.0/(240*4096)*(vertical_offset?15.0/14.0:1.0);
     /* PS1 forward (sin -yaw, -sin pitch, cos -yaw) in Saturn axes (x, -y, -z). */
     double forward[3]={sin(-yaw)*cos(pitch),sin(pitch),-cos(-yaw)*cos(pitch)},right[3],up[3];
     const double world_up[3]={0,1,0},eye[3]={ex*96,height*96,-ez*96};
@@ -93,10 +93,10 @@ static void check(double yaw_deg,double pitch_deg,double ex,double height,double
     {
         double eye_q[3];
         for(int i=0;i<3;++i)eye_q[i]=e[i];
-        assert(t3_stage_backdrop_lines(&B,m,e,turn,step,lines,depth));
+        assert(t3_stage_backdrop_lines_offset(&B,m,e,turn,step,vertical_offset,lines,depth));
         for(unsigned n=0;n<B.height/step;++n) {
             const double y=n*step+(step-1)/2.0;
-            const ref_t r=reference(right,up,forward,fx,fy,eye_q,turn,y);
+            const ref_t r=reference(right,up,forward,fx,fy,eye_q,turn,y+vertical_offset);
             double column,row,dc;
             if(!r.seen || r.row<(step-1)/2.0 || r.row>B.rows-1-(step-1)/2.0)continue;  /* clamped */
             column=fmod(lines[n].x/ONE+B.width/2*(lines[n].zoom/ONE),B.columns);
@@ -133,10 +133,11 @@ int main(void) {
     }
     for(int yaw=-180;yaw<180;yaw+=35)
         for(int pitch=-5;pitch<=15;pitch+=10)
-            check(yaw,pitch,(yaw%7)*120.0,700+(pitch+5)*70.0,(yaw%5)*-150.0,(yaw*13)&4095,1);
-    check(20,8,300,1100,-200,512,2);
-    check(-70,14,-900,2190,600,3900,4);
-    check(160,0,0,737,0,0,8);
+            for(int off=0;off<=2;off+=2)
+                check(yaw,pitch,(yaw%7)*120.0,700+(pitch+5)*70.0,(yaw%5)*-150.0,(yaw*13)&4095,1,off);
+    check(20,8,300,1100,-200,512,2,2);
+    check(-70,14,-900,2190,600,3900,4,2);
+    check(160,0,0,737,0,0,8,2);
     /* A rolled camera and invalid steps are refused. */
     m[1]=0x2000;
     assert(!t3_stage_backdrop_lines(&B,m,e,0,1,lines,NULL));

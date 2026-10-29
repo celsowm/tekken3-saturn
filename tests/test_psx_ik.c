@@ -199,7 +199,7 @@ static void local_pose_cache(void) {
         assert(LOCAL(&stream,f,&cache) && SAME());
     }
     assert(cache.misses==STREAM_FRAMES && cache.hits==STREAM_FRAMES && !cache.evictions);
-    /* A capacity that is not a power of two is one set with rotating ways. */
+    /* An odd capacity is one set with rotating ways. */
     t3_psx_local_pose_cache_init(&cache,entries,3);
     assert(cache.sets==1 && cache.ways==3);
     for(unsigned f=0;f<8;++f) {
@@ -207,6 +207,16 @@ static void local_pose_cache(void) {
         assert(LOCAL(&stream,f,&cache) && SAME());
     }
     assert(cache.misses==8 && cache.evictions==5);
+    /* The native effect-pool budget uses 96 entries. Exercise folded set
+     * indices and evictions against uncached FK/IK over full trajectories. */
+    entries[96].stream=sine;
+    t3_psx_local_pose_cache_init(&cache,entries,96);
+    for(unsigned pass=0;pass<3;++pass)for(unsigned n=0;n<STREAM_FRAMES;++n) {
+        unsigned f=pass&1u?STREAM_FRAMES-1u-n:n;
+        expect(&stream,f,&table,want,expected,&expected_mask);
+        assert(LOCAL(&stream,f,&cache) && SAME());
+    }
+    assert(entries[96].stream==sine && cache.evictions>0);
 #undef SAME
 #undef LOCAL
 }

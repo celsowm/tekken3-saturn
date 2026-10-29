@@ -11,6 +11,25 @@ static uint16_t le16(const uint8_t* p) {
 static uint32_t le32(const uint8_t* p) {
     return (uint32_t)le16(p) | ((uint32_t)le16(p+2) << 16u);
 }
+int t3_divmot_sound_list(const t3_divmot_t* bank,const t3_divmot_t* common,
+                         unsigned slot,const uint8_t** words,size_t* bytes) {
+    const t3_divmot_t* source;uint32_t row;
+    if(!words || !bytes || !t3_move_index_entry(bank,slot,&source,&row))return -1;
+    if(row&0x40000000u){row&=0x3FFFFFFFu;source=common;}
+    if(!source || !source->data || row>=source->move_count)return -1;
+    const uint32_t index=le32(source->data+source->sections[1]+row*56u+28u);
+    *words=NULL;*bytes=0;
+    if(index==0xFFFFFFFFu)return 1;
+    const uint32_t length=source->sections[4]-source->sections[3];
+    if(!length)return 0;
+    if(length%2u || index>=length/2u)return -1;
+    const uint8_t* list=source->data+source->sections[3]+2u*index;
+    for(unsigned n=0;n<3;++n) {
+        if(2u*(index+n)+2u>length)return -1;
+        if(le16(list+2u*n)==0xFFFFu){*words=list;*bytes=2u*(n+1u);return 1;}
+    }
+    *words=list;*bytes=6;return 1;
+}
 
 int t3_divmot_open(t3_divmot_t* out, const uint8_t* data, size_t length) {
     uint32_t sections[T3_DIVMOT_SECTIONS];

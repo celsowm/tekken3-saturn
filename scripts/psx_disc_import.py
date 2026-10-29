@@ -341,7 +341,7 @@ def import_game(source, out, extract=(), stages=(), scratch=None, expected_sha=U
                 if is_bank:
                     try:
                         logic, meta = compact(data, with_motion=True,
-                                              with_hitboxes=True, with_events=True)
+                                              with_hitboxes=True, with_events=True, with_sounds=True)
                     except DivmotError as error:
                         raise FormatError(f"invalid DIVMOT BNS record {i}: {error}") from error
                     kind = meta["bank_type"]

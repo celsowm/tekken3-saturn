@@ -36,7 +36,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         frame.health_q16=f->health_q16;frame.max_health_q16=c->max_health_q16;
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
-        if(gate->status==T3_HIT_GATE_ACCEPT) {
+        if(gate->status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<i))) {
             if(gate->hit_slot<0 || gate->hit_slot>1 || gate->zone<0 || gate->zone>=14)return 0;
             s->ground.fixed_facing=0;
             if(!t3_psx_ground_angles(&s->ground,&attacker->ground,&c->ground_tables))return 0;
@@ -136,13 +136,17 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
          * writes this frame's outcome; without one the flags stay clear. */
         f->last_guarded=s->hit.guarded;f->last_counter=s->hit.counter;
         if(s->got_hit){if(s->hit.guarded)++f->registered_blocks;else ++f->registered_hits;}
+        if(s->got_hit)f->last_attacker=(uint8_t)(1u-i);
         if(s->collapsed)f->last_guarded=0;
-        f->contact=f->hit_gate.status==T3_HIT_GATE_ACCEPT;
+        f->contact=f->hit_gate.status==T3_HIT_GATE_ACCEPT &&
+            !(match->reversal_cancelled&(1u<<(i+2u)));
         if(f->contact){f->hit_done=1;f->contact_this_move=1;}
         if(s->collapsed){f->ko_collapse=1;f->hit_done=0;f->started=1;
+            f->taps.condition_used=0;
             f->blend_guarded_previous=0;f->blend_in_reaction=1;}
         f->whiffed=(uint8_t)(f->vm.clock.pose_frame==f->vm.move.active_last && !f->contact_this_move);
     }
+    match->reversal_cancelled=0;
     return 1;
 }
 T3_SIM_WRAP(int,t3_psx_match_apply_hits,T3_SIM_HITS,

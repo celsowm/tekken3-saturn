@@ -19,7 +19,7 @@ typedef struct {
     const uint8_t *fk_trig,*ik_trig,*ik_blob,*spline;
     size_t fk_size,ik_trig_size,ik_size,spline_size;
     t3_psx_local_pose_entry_t* entries;
-    unsigned capacity,sets,ways;
+    unsigned capacity,sets,ways,set_mask;
     uint32_t hits,misses,evictions;
     uint32_t cursor_used[T3_PSX_LOCAL_POSE_CURSORS],cursor_clock;
     t3_motion_cursor_t cursor[T3_PSX_LOCAL_POSE_CURSORS];
@@ -30,7 +30,7 @@ typedef struct {
  * placement and contacts stay live. Bank and table bytes must stay immutable.
  * Initialize before first use and again after editing/reloading bytes at the
  * same address; table pointer/size changes invalidate automatically.
- * A power-of-two capacity of two or more is two-way set-associative, with
+ * An even capacity of two or more is two-way set-associative, with
  * consecutive frames of a stream in consecutive sets. A miss samples with a
  * knot cursor (t3_motion_sample_cursor) of the same stream, or the least
  * recently used one. No allocation or threading. A NULL cache computes the

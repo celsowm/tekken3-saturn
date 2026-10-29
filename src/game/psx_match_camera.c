@@ -78,8 +78,6 @@ static t3_psx_camera_frame_t frame_of(t3_psx_match_t* m) {
 }
 
 /* The main loop steps the camera generator once per frame. */
-static void camera_rand_step(t3_psx_fight_camera_t* c) {c->camera_rand=(c->camera_rand+1u)*0x10DCDu;}
-
 /* CameraShakeStep and CameraFrame. */
 static int view(t3_psx_match_t* m) {
     const t3_psx_camera_tables_t* t=m->config->camera->tables;
@@ -93,8 +91,10 @@ int t3_psx_match_camera_round(t3_psx_match_t* m,int first) {
     t3_psx_fight_camera_t* c=&m->camera;
     if(!config)return 1;
     if(first) {
+        const uint32_t initial_rand=m->config->start_intro?c->rand:1u;
         *c=(t3_psx_fight_camera_t){0};
-        c->rand=c->camera_rand=c->ai_rand=1u;
+        c->rand=initial_rand;c->camera_rand=m->config->start_intro?
+            (m->config->start_seed+1u)*0x10DCDu:1u;c->ai_rand=m->config->start_intro?0u:1u;
         t3_psx_camera_reset(&c->camera);
         c->camera.faithful=1;
     }
@@ -104,9 +104,8 @@ int t3_psx_match_camera_round(t3_psx_match_t* m,int first) {
     c->camera.overhead=0;   /* cleared when the next fight starts */
     fighters(m,f);fr=frame_of(m);
     if(!t3_psx_camera_round_start(&c->camera,config->tables,f,&fr))return 0;
-    /* The first round starts at the fight phase (no intro in the owned flow). */
-    c->phase=c->flow=first?T3_PSX_CAMERA_FIGHT_PHASE:T3_PSX_CAMERA_RESET;
-    if(first)c->camera.intro_timer=0;
+    c->phase=c->flow=first && !m->config->start_intro?T3_PSX_CAMERA_FIGHT_PHASE:T3_PSX_CAMERA_RESET;
+    if(first && !m->config->start_intro)c->camera.intro_timer=0;
     c->started=1;
     if(!t3_psx_camera_build_view(&c->camera.view,config->tables,&c->matrix))return 0;
     /* StageBackgroundSetup notes the camera's yaw; every round start
@@ -124,7 +123,6 @@ int t3_psx_match_camera_frame(t3_psx_match_t* m) {
     const int16_t flow=(int16_t)m->flow.camera;
     if(!config)return 1;
     if(!c->started)return 0;
-    camera_rand_step(c);
     fighters(m,f);fr=frame_of(m);
     /* RoundFlow sets the phase before the director: a new round (RESET), the
      * winner camera (WINNER_0/1) and the loser camera with its set-up. The
@@ -167,7 +165,6 @@ int t3_psx_match_camera_replay(t3_psx_match_t* m,t3_psx_camera_fighter_t f[2],in
     t3_psx_fight_camera_t* c=&m->camera;
     if(!config)return 1;
     if(!c->started)return 0;
-    camera_rand_step(c);
     if(first) {
         /* The replay's first frame puts the recorded roots in place before
          * its camera starts (one step), then runs the frame's own step. */
@@ -205,8 +202,12 @@ int t3_psx_match_camera_after(t3_psx_match_t* m,int live) {
     t3_psx_fight_camera_t* c=&m->camera;
     t3_psx_camera_matrix_t fighter_view;
     if(!m->config->camera)return 1;
-    t3_psx_match_fighter_view(c,&fighter_view);
-    for(unsigned i=0;i<2;++i)t3_psx_match_draw_screen(m,i,&fighter_view,&c->screen_x[i]);
+    /* Live FighterAnimate already projected at compose time, before input.
+     * Replay builds its new camera after composing its recorded poses. */
+    if(!live) {
+        t3_psx_match_fighter_view(c,&fighter_view);
+        for(unsigned i=0;i<2;++i)t3_psx_match_draw_screen(m,i,&fighter_view,&c->screen_x[i]);
+    }
     /* FUN_8006DAB4 draws every fight frame, replays too: the panorama turns
      * only while a round runs (RoundFlow state 0x80097350 non-zero). */
     if(!t3_psx_backdrop_step(&c->backdrop,&c->camera.view,m->config->camera->tables,m->flow.state==0))

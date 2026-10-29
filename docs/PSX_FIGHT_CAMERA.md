@@ -2,8 +2,13 @@
 
 `T3_PSX_CAMERA` (default OFF; requires `T3_ENABLE_PSX_COMBAT`) drives the
 Saturn view from the original Tekken 3 fight camera instead of the fixed
-framing camera. The camera port (`src/game/psx_camera.c`) matches the
-original's golden traces on every frame. This report covers how it is wired
+framing camera. Historical comparisons used the remake harness's patched
+presentation policy. The current retail-code audit and corrected input phase
+are in [RETAIL_CAMERA_PARITY.md](RETAIL_CAMERA_PARITY.md): 1,560 fully matching
+fresh ticks. [RETAIL_CAMERA_EDGE_CASES.md](RETAIL_CAMERA_EDGE_CASES.md) adds
+faithful bugs 53/54/55 and direct MIPS phase proofs, with natural trajectory
+coverage still open. This report
+also preserves the historical results and covers how the camera is wired
 into the owned match and the renderer, the LibSaturn floor change it needed,
 and what is still missing.
 
@@ -18,9 +23,11 @@ and CameraFrame (the view), then the fighters.
 `src/game/psx_match_camera.c` follows that order inside `psx_match.c`:
 
 - **Round start.** `t3_psx_match_camera_round` runs on the first round and on
-  every following one. The first round zeroes the state, seeds all three
-  generators with 1, starts in phase FIGHT and has no intro timer. Later
-  rounds start from RESET. Each round sets `screen_x` to ∓100, clears the
+  every following one. The legacy neutral initializer seeds all three
+  generators with 1, starts in FIGHT and has no intro timer. Production
+  `start_intro` instead preserves the placement RNG, initializes the camera
+  generator from the configured seed and starts in RESET. Later rounds also
+  start in RESET. Each round sets `screen_x` to ∓100, clears the
   shake and the overhead flag, and builds the first view.
 - **Each frame.** `t3_psx_match_camera_frame` runs before the round-flow 3/4 →
   5 conversion. It syncs the camera phase from the flow value:
@@ -129,10 +136,143 @@ places the eye higher and looks down.
   Floor distance shading, stage lighting and shadows are still missing.
 - **Overhead KO depth.** The renderer does not apply the overhead
   `t[2] − 0xA3A` fighter depth. Only `screen_x` uses it.
-- **Bank streams.** Throw camera streams are not embedded, because the
-  simulation does not support throws yet.
+- **Bank streams.** The earlier checkpoint omitted throw streams while the
+  simulation lacked throws. The later throw
+  implementation and its camera handoff pass live regressions; see
+  [NEXT_PLAYABLE_PROGRESS.md](NEXT_PLAYABLE_PROGRESS.md). Full bank-stream
+  coverage and independent camera feedback parity remain separate gates.
 - **Shake coverage.** The scripted host match rarely launches anyone, so it
   started no shakes. The shake itself is covered by the camera trace tests.
+
+## Independent feedback audit (2026-10-26)
+
+The new `t3_match_replay_camera_eval` target starts from configuration and
+uses the production camera bindings, including both character camera banks.
+Run it with `fight_oracle_eval.py --initialize-match --independent-camera`.
+It rejects seeded mid-fight initialization, CPU tapes and reference exports.
+The ordinary replay executable rejects the independent-camera request.
+Camera audit output uses `native-camera.jsonl`/`.stderr`, preserving ordinary
+combat comparison evidence.
+
+Only physical controls and the source frame counter drive this mode. It
+recomputes relative directions from the owned previous screen positions;
+taped mapped directions, original side flags, screen positions and previous
+views do not feed the simulation. Each tick compares all nine view rotation
+entries, three translations, projection H, both joint-11 screen X values and
+the director phase, in addition to the existing fighter/round/HUD/input audit.
+New original exports also capture camera sources, director weights/state,
+RNG (including the auxiliary AI generator), targets and panorama RAM. Available source/weight/state/RNG fields are
+compared; the target and panorama state still need dedicated comparisons.
+Older captures lack these added spans and cannot prove internal RNG parity.
+
+`ps1_original_owned_camera_air_timeout` passes **6,600 consecutive ticks**:
+the six 600-tick air/recovery fixtures and the 3,000-tick timeout fixture
+through the second intro. No original state is copied into the fresh match,
+no source frames are filtered, and no unsupported moves are dropped. See
+[AIR_RECOVERY_PARITY.md](AIR_RECOVERY_PARITY.md) for attack/landing coverage.
+The host-law suite now passes **69/69** tests, including the existing scripted
+projection check, the blink differential and the full-state camera test below;
+log: `build/parity-camera-rng-host-tests.log`. The Paul-mirror host passes
+**62/62**, log `build/parity-camera-rng-host-paul-tests.log`. The two
+Paul/Law camera fixture tests are registered only when both the second logic
+bank and its camera bank are configured; they cannot run on mirror-Paul data.
+These are host comparisons;
+the separate Saturn smoke test below does not establish SH-2 camera parity.
+
+**Open differences, not passing coverage:**
+
+- The 600-tick reversal fixture first differs at source frame **411**, in
+  both fighters' `side_flag`, despite matching the view/screen comparisons at
+  that frame. Its 460-tick control and 360-tick first-contact negative pass.
+- Both 460-tick throw/escape fixtures first differ in the view at source
+  frame **318**. The escape case changes yaw and screen X; its control first
+  differs in the view translations. These ordinary combat fixtures continue
+  to pass when supplied original screen/view feedback; that is a narrower
+  claim than independent camera parity.
+- `build/parity-camera-escape` captures 340 original ticks with internal
+  camera state. After the lifecycle fixes below, **269 consecutive ticks**
+  (source frames 2–270) match every available comparison. The first difference
+  is now source frame **271**, shared `rand`: owned `2633739833`, original
+  `267834847`. The complete failing tail remains in `native-camera.jsonl`;
+  this is not a passing escape/cinematic test. Earlier pre-fix evidence is
+  retained as `native-camera-before-rng.jsonl`. The reversal and throw/control
+  results above describe the pre-fix audit and need fresh reruns before any
+  stronger claim.
+
+### Shared RNG lifecycle correction
+
+An original-code hook on `rand` during round placement identified two draws
+from stance setup (return address `0x8002D5F0`), then two from `AiReset`
+(`0x800596B0`, return address `0x800598C4`). `AiInitRound` calls this even with
+human players. Production placement now reproduces both resets' random
+advances; the existing AI-bus path still performs its own resets once. Fresh
+intro initialization starts the auxiliary AI generator at 0, producing 18
+after these two resets. The next missing draws were the eye timer at source
+frame 6 (`0x8003459C`).
+
+`src/game/psx_blink.c` adapts the remake's documented `FUN_80034354` rules:
+forced closure, the four-tick closed interval, and random open duration from
+the high bits of the shared generator. It runs at fighter composition time,
+including replay/round-flow composition. Eye texture uploads and Gon jaw
+commands remain unimplemented presentation work. `ps1_original_blink_rng`
+compares **624 cases** directly with the original MIPS function, covering
+flags, move states, signed timer boundaries, closed states and seeds.
+
+The new fresh neutral Paul/Law fixture `build/parity-camera-neutral` matches
+**600 consecutive ticks**, source frames 2–601: view, projection, screen X,
+phase, five sources, director state/weights, all three RNG states, eye state,
+and the existing combat/round/HUD/input comparisons. It uses owned camera
+feedback throughout, with no original screen/view injected. The test
+`ps1_original_owned_camera_rng` requires captured internal fields on every
+tick; an older matrix-only fixture cannot silently satisfy this test.
+Host private camera configuration must enable `T3_COMPACT_CAMERA_STREAMS`:
+the production candidate already does, but the old host configuration omitted
+its streams. Both character banks are bound.
+
+The original hook extended through frame 271 identified the next draws
+in `FighterSounds`, return addresses `0x80041A0C` and `0x80041A3C` (attack
+shout test and selection). The subsequent sound lifecycle port now reproduces
+these draws; see [PSX_FIGHTER_SOUNDS.md](PSX_FIGHTER_SOUNDS.md). The new
+460-tick escape capture matches sound/eye/all RNG fields throughout, but
+its full independent audit still fails first at source **320**, source 3 Z
+owned `-5114` versus original `-5113` (view translation Z `5477`/`5476`).
+This replaces the frame-271 RNG discrepancy as the next known difference.
+The failing tail remains intact. Original hook evidence:
+`build/parity-camera-rand-sound-calls.json` and its `-probe.py`/log.
+
+The production candidate `build/parity-reversal` was rebuilt in place:
+ELF SHA-256 `3f640a650498300cd44c757a66a4412fc98642a6ee4d50318c67ff8f071653b2`,
+initialized payload 578,636 bytes. A **600-field Ymir smoke test** reached
+195 simulation ticks and FIGHT, preserved both HP at 140, and reported zero
+runtime errors, draw timeouts, attack decode errors and rejected faces
+(750/2048 commands). Evidence:
+`assets/imported/parity-camera-rng-neutral-saturn/observation.json` and
+`build/parity-camera-rng-saturn-build.log`. This injected execution does not
+prove CD boot, performance or original/SH-2 camera equality. The earlier
+26-case/3000-tick gate belongs to its recorded historical ELF, not this hash.
+
+A machine-readable result inventory, including the rejected wrong evaluator,
+is retained at `build/parity-camera-summary.json`.
+
+The subsequent retail-oracle/input-phase correction resolves these three
+fixture gaps; see [RETAIL_CAMERA_PARITY.md](RETAIL_CAMERA_PARITY.md). Next
+extend the phase proofs of camera bugs 53/54/55 to natural throw chains and
+expand the retail captures through KO/replay. Separately
+verify the visible display rectangle and GTE viewport origin in the rendered
+image. The HUD-origin correction alone does not establish absolute 3D
+viewport alignment.
+
+```sh
+cmake -S . -B build/host-law \
+  -DT3_COMPACT_CAMERA_STREAMS=ON \
+  -DT3_LOCAL_CAMERA_BANK="$PWD/assets/imported/tekken3-usa/raw/074.bin" \
+  -DT3_LOCAL_SECOND_CAMERA_BANK="$PWD/assets/imported/law-camera/raw/082.bin"
+cmake --build build/host-law --target t3_match_replay_camera_eval
+ctest --test-dir build/host-law -R ps1_original_owned_camera_air_timeout --output-on-failure
+python3 scripts/fight_oracle_eval.py build/parity-camera-escape \
+  --evaluator build/host-law/t3_match_replay_camera_eval \
+  --initialize-match --independent-camera
+```
 
 ## Reproduce
 

@@ -26,23 +26,25 @@ GAMEPLAY_LEAD_FIELDS=50
 
 
 def first_gameplay_field(args,runner=saturn_probe.run,limit=1200,resolution=10):
-    """Return the first program field at which the simulation has ticked.
+    """Return the first program field with a controllable fight.
 
-    Boot-time CD loads vary by build, so fixed field windows are measured from
-    this point instead. Probes use neutral pads in their own directories.
+    Boot-time CD loads and the original round-one intro precede input. Probes
+    use neutral pads, and never substitute a tick count for intro completion.
     """
     def ticked(fields):
         a=copy.copy(args);a.out=args.out/f'gameplay-start-{fields}';a.out.mkdir(parents=True,exist_ok=True)
         a.frames=fields;a.port2='pad';a.workload='diagnostic';a.device_script=a.out/'input.devices'
         a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n')
         try:
-            return coherent_case(a,runner)['state']['sim_ticks']>0
+            state=coherent_case(a,runner)['state']
+            return state['sim_ticks']>0 and (not state.get('psx_round_flow_active') or
+                                             state.get('psx_round_state')==1)
         except ValueError as error:
             if any(text in str(error) for text in ('not published a gameplay frame','unsupported diagnostics magic')):return False
             raise
     high=resolution
     while not ticked(high):
-        if high>=limit:raise AssertionError('simulation never started within %d fields'%limit)
+        if high>=limit:raise AssertionError('controllable fight never started within %d fields'%limit)
         high=min(limit,high*2)
     low=high//2 if high>resolution else 0
     while high-low>resolution:

@@ -1,5 +1,9 @@
 # Continuation plan: original Paul combat on Saturn
 
+The current execution order is [ONE_TO_ONE_CONTINUATION.md](ONE_TO_ONE_CONTINUATION.md)
+(2026-10-25), covering the Paul-versus-Law release and the remaining full-port
+work. The checkpoints and priorities below describe earlier milestones.
+
 This plan continues [the playable milestone](NEXT_PLAYABLE_MILESTONE.md).
 It replaces its historical execution order for the remaining work; the final
 completion criteria still apply. This document plans work, not completed gates. Runtime movement and grounded

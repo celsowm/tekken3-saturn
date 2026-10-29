@@ -10,6 +10,25 @@
 #include "psx_skin_bridge.h"
 #include "perf.h"
 #include "placement.h"
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+#include "psx_viewport.h"
+#endif
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+#include "psx_fighter_ot.h"
+#endif
+#if defined(T3_FACE_COVERAGE_CENSUS)
+#include "psx_face_coverage.h"
+#if defined(T3_FACE_PARTICLE_CENSUS)
+#include "psx_particle_tile.h"
+#endif
+#endif
+#if defined(T3_MIXED_OT_DIAGNOSTIC)
+#include "psx_scene_ot.h"
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+#include "particle_prepare.h"
+#include "stage_vdp2.h"
+#endif
+#endif
 #if defined(T3_COMPILED_RENDERER)
 #include "compiled_renderer.h"
 extern const t3_compiled_plan_t t3_compiled_plan;
@@ -50,8 +69,16 @@ enum { RESOURCE_COPIES=ACTOR_COUNT };
 #endif
 
 typedef struct {
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    sat_vec3_t vertices[T3_PROJECTED_VERTEX_COUNT];
+    union {
+        sat_projected_vertex_t projected[T3_PROJECTED_VERTEX_COUNT];
+        t3_psx_projected_vertex_t original_raw[T3_PROJECTED_VERTEX_COUNT];
+    };
+#else
     sat_vec3_t vertices[T3_VERTEX_COUNT];
     sat_projected_vertex_t projected[T3_VERTEX_COUNT];
+#endif
 #if !defined(T3_VDP2_FLOOR)
     sat_vec3_t world_vertices[T3_VERTEX_COUNT];
 #endif
@@ -92,6 +119,11 @@ typedef struct {
     sat_vec3_t* world_vertices;
     sat_scene3d_instance_t instance;
     sat_scene3d_instance_binding_t binding;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    sat_mesh_t original_mesh;
+    sat_scene3d_instance_binding_t original_binding;
+    uint8_t original_active;
+#endif
     sat_mat4_t world;
     uint8_t clip;
     int32_t last_x, last_z;
@@ -104,7 +136,15 @@ static sat_skeleton_clip_t g_clips[ASSET_COUNT][T3_CLIP_COUNT];
  * transform fallback remains available in Low WRAM, freeing High WRAM
  * for the VDP2/CDFS code without slowing projected vertex storage. */
 static sat_vec3_t g_stage_world_scratch[ACTOR_COUNT][T3_VERTEX_COUNT]
+#if !defined(T3_ORIGINAL_FIGHTER_PROJECTION)
     __attribute__((section(".wram_l")));
+#else
+    ;
+#endif
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+_Static_assert(sizeof(g_stage_world_scratch[0]) >= T3_PROJECTED_VERTEX_COUNT*sizeof(t3_psx_projected_vertex_t),
+    "fighter OT needs room for every original projected vertex");
+#endif
 #endif
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
 /* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
@@ -162,7 +202,13 @@ static sat_scene3d_prepare_batch_t g_geometry_batch T3_HOT_WRAM;
 static sat_scene3d_source_plan_t g_geometry_sources T3_HOT_WRAM;
 /* Materials have no vertex-Gouraud pointers; descriptor ranges plus topology. */
 static sat_scene3d_source_range_t g_geometry_source_ranges[T3_TEXTURE_COUNT+5u]
+#if defined(T3_REFERENCE_REPLAY)
+    /* The long trace occupies High WRAM. Descriptor validation ranges can
+     * use spare Low WRAM in this diagnostic without reducing either stack. */
+    __attribute__((section(".wram_l")));
+#else
     T3_HOT_WRAM;
+#endif
 volatile uint32_t g_t3_geometry_pairs __attribute__((section(".wram_l")));
 volatile uint32_t g_t3_geometry_serial __attribute__((section(".wram_l")));
 #if defined(T3_VERIFY_PARALLEL_GEOMETRY)
@@ -372,6 +418,21 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
                 T3_TEXTURE_COUNT)) != SAT_OK) return st;
         a->binding.programs = &a->material_programs;
         a->instance.validated_binding = &a->binding;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+        a->original_mesh=a->mesh;
+        a->original_mesh.vertex_cap=T3_PROJECTED_VERTEX_COUNT;
+        a->original_mesh.vertex_count=(uint16_t)t3_kmd_projected_vertex_count;
+        a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_kmd_projected_faces;
+#if defined(T3_SECOND_MESH)
+        if(i==1u) {
+            a->original_mesh.vertex_count=(uint16_t)t3_kmd_projected1_vertex_count;
+            a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_kmd_projected1_faces;
+        }
+#endif
+        if((st=sat_scene3d_instance_binding_init(&a->original_binding,&a->original_mesh,
+                a->materials,a->texture_count,a->instance.face_materials))!=SAT_OK)return st;
+        a->original_binding.programs=&a->material_programs;
+#endif
         /* Preserve the original per-face two-sided flag when culling. The
          * original culls by screen winding alone (NCLIP), so the world-normal
          * test, which reads every corner again, is left out. */
@@ -621,11 +682,213 @@ typedef struct {
     uint16_t lead;
     volatile uint32_t lead_ready;
     sat_result_t lead_result;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    t3_psx_camera_matrix_t original_view;
+    t3_psx_joint_t original_joints[2][T3_PSX_DRAW_PARTS];
+    uint32_t original_mask[2];
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+    uint16_t original_first[2],original_after[2];
+#endif
+#endif
 #if defined(T3_NATIVE_PHASE_PROBE)
     t3_character_phase_profile_t phase;
 #endif
 } fused_actor_context_t;
 static fused_actor_context_t g_fused_actors __attribute__((section(".wram_l")));
+#if defined(T3_MIXED_OT_DIAGNOSTIC)
+enum { MIXED_OT_CAP=T3_FACE_COUNT*2u+T3_PSX_EFFECT_CAPACITY };
+_Static_assert(sizeof(g_stage_world_scratch[0])>=MIXED_OT_CAP*sizeof(t3_psx_scene_ot_entry_t),"mixed OT entries exceed scratch");
+_Static_assert(sizeof(g_stage_world_scratch[1])>=MIXED_OT_CAP*2u*sizeof(uint16_t),"mixed OT order exceeds scratch");
+#if defined(T3_FACE_PARTICLE_CENSUS)
+static void census_particle_faces(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,unsigned count);
+#endif
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,
+    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first);
+volatile uint32_t g_t3_ordered_mask_images,g_t3_ordered_mask_fallbacks,g_t3_ordered_mask_particles;
+volatile uint32_t g_t3_ordered_mask_drawn_images,g_t3_ordered_mask_drawn_particles;
+volatile uint32_t g_t3_ordered_mask_face_failures,g_t3_ordered_mask_particle_failures;
+volatile uint32_t g_t3_ordered_mask_dropped_particles;
+#if !defined(T3_ORDERED_MASK_SELFTEST) || defined(T3_PARTICLE_80_SELFTEST)
+static sat_result_t ordered_particle_result(sat_result_t status,unsigned* drawn) {
+    if(status==SAT_OK){++g_t3_ordered_mask_particles;++*drawn;return SAT_OK;}
+    if(status==SAT_ERR_CAPACITY) {
+        /* Capacity preflight leaves the existing image unchanged. */
+        ++g_t3_ordered_mask_particle_failures;++g_t3_ordered_mask_dropped_particles;
+        return SAT_OK;
+    }
+    return status;
+}
+#endif
+#endif
+volatile uint32_t g_t3_mixed_ot_frames,g_t3_mixed_ot_particles,g_t3_mixed_ot_shared,g_t3_mixed_ot_last;
+volatile uint32_t g_t3_mixed_ot_verified,g_t3_mixed_ot_peak;
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
+volatile uint32_t g_t3_mixed_ot_empty_frames;
+#endif
+sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
+    const t3_psx_particle_draw_t* particles,unsigned count) {
+    if(!scene || (count && !particles) || count>T3_PSX_EFFECT_CAPACITY)return SAT_ERR_INVALID_ARG;
+    if(!g_actors[0].original_active || !g_actors[1].original_active ||
+       g_fused_actors.original_after[0]!=g_fused_actors.original_first[1]) {
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+        SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+        t3_stage_particle_multi_end();++g_t3_ordered_mask_fallbacks;
+#endif
+        return SAT_OK;
+    }
+    unsigned first=g_fused_actors.original_first[0],end=g_fused_actors.original_after[1];
+    if(first>end || end>scene->faces.count || end-first+count>MIXED_OT_CAP)return SAT_ERR_INVALID_ARG;
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
+    /* No visible particle can be occluded. Publish an empty image so that
+     * the previous overlay is still cleared, without sorting fighter faces. */
+    unsigned any_visible=0;
+    for(unsigned i=0;i<count;++i)any_visible|=particles[i].quad.visible!=0;
+    if(!any_visible) {
+        SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+        t3_stage_particle_multi_end();
+        ++g_t3_ordered_mask_images;++g_t3_mixed_ot_frames;++g_t3_mixed_ot_empty_frames;
+        g_t3_mixed_ot_last=0;
+        return SAT_OK;
+    }
+#endif
+#if defined(T3_FACE_PARTICLE_CENSUS)
+    census_particle_faces(scene,particles,count);
+#endif
+    t3_psx_scene_ot_entry_t* entries=(t3_psx_scene_ot_entry_t*)(void*)g_stage_world_scratch[0];
+    uint16_t* order=(uint16_t*)(void*)g_stage_world_scratch[1];uint16_t* next=order+MIXED_OT_CAP;
+    unsigned n=0,visible=0,expected=0;
+    /* The fighter queue was reversed for the SDK; restore insertion order. */
+    for(unsigned i=end;i-->first;) {
+        uint32_t key=scene->faces.keys[i];
+        entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),(uint8_t)(key!=0xffffffffu),0};
+        expected+=key!=0xffffffffu;
+    }
+    for(unsigned i=0;i<count;++i) {
+        const t3_psx_particle_quad_t* q=&particles[i].quad;
+        if(q->visible && (q->bucket<0 || q->bucket>1023))return SAT_ERR_INVALID_ARG;
+        entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)q->bucket,q->visible,1};visible+=q->visible!=0;
+    }
+    int sorted=t3_psx_scene_ot_order(entries,n,order,next);if(sorted<0)return SAT_ERR_INVALID_ARG;
+    expected+=visible;if((unsigned)sorted!=expected)return SAT_ERR_VERIFY_FAILED;
+    unsigned shared=0;
+    for(int i=1;i<sorted;++i) {
+        const t3_psx_scene_ot_entry_t* a=&entries[order[i-1]],*b=&entries[order[i]];
+        if(a->bucket<b->bucket || (a->bucket==b->bucket && order[i-1]<=order[i]))return SAT_ERR_VERIFY_FAILED;
+        if(a->bucket==b->bucket && a->kind!=b->kind)++shared;
+    }
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    SAT_TRY(ordered_particle_compose(scene,particles,count,entries,order,(unsigned)sorted,first));
+#endif
+    ++g_t3_mixed_ot_frames;g_t3_mixed_ot_particles+=visible;g_t3_mixed_ot_shared+=shared;
+    g_t3_mixed_ot_last=visible;++g_t3_mixed_ot_verified;
+    if(visible>g_t3_mixed_ot_peak)g_t3_mixed_ot_peak=visible;
+    return SAT_OK;
+}
+#endif
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,
+    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first) {
+    (void)scene;
+#if defined(T3_ORDERED_MASK_SELFTEST)
+    (void)particles;(void)count;(void)entries;(void)order;(void)sorted;(void)first;
+#if defined(T3_PARTICLE_80_SELFTEST)
+    uint8_t pattern[128];uint16_t palette[16]={0};
+    for(unsigned i=0;i<128;++i)pattern[i]=0x11u;
+    palette[1]=0x8001u;
+    SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+    unsigned drawn=0;
+    for(int i=0;i<81;++i) {
+        int y=i/10,x=i%10;
+        int left=0,right=0;
+        while(t3_psx_viewport_x(left)<x*8)++left;
+        while(t3_psx_viewport_x(right)<(x+1)*8)++right;
+        t3_psx_particle_quad_t q={0};q.visible=1;
+        q.xy[0][0]=q.xy[2][0]=(int16_t)left;q.xy[1][0]=q.xy[3][0]=(int16_t)right;
+        q.xy[0][1]=q.xy[1][1]=(int16_t)(20+y*16);q.xy[2][1]=q.xy[3][1]=(int16_t)(36+y*16);
+        SAT_TRY(ordered_particle_result(t3_stage_particle_multi_add(&q,pattern,palette),&drawn));
+    }
+    /* An overflow must not prevent later particles from using existing cells. */
+    t3_psx_particle_quad_t reuse={0};reuse.visible=1;
+    reuse.xy[0][0]=reuse.xy[2][0]=0;
+    int right=0;while(t3_psx_viewport_x(right)<8)++right;
+    reuse.xy[1][0]=reuse.xy[3][0]=(int16_t)right;
+    reuse.xy[0][1]=reuse.xy[1][1]=20;reuse.xy[2][1]=reuse.xy[3][1]=36;
+    palette[1]=0x8002u;
+    SAT_TRY(ordered_particle_result(t3_stage_particle_multi_add(&reuse,pattern,palette),&drawn));
+    t3_stage_particle_multi_end();++g_t3_ordered_mask_images;return SAT_OK;
+#else
+    uint8_t pattern[128],pixels[64],packed[32];uint16_t palette[16]={0};
+    for(unsigned i=0;i<128;++i)pattern[i]=0x11u;
+#if defined(T3_ORDERED_MASK_TRI_SELFTEST)
+    for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)pixels[y*8+x]=(uint8_t)(x==3);
+#elif defined(T3_ORDERED_MASK_QUAD_SELFTEST)
+    static const uint8_t rows[8]={0xff,0x81,0xb9,0xa9,0xb9,0x81,0xa9,0xff};
+    for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)pixels[y*8+x]=(uint8_t)((rows[y]>>(7-x))&1u);
+#else
+    for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)pixels[y*8+x]=(uint8_t)(((x+y)&1u)!=0);
+#endif
+    for(unsigned i=0;i<32;++i)packed[i]=(uint8_t)((pixels[2*i]<<4)|pixels[2*i+1]);
+    const int lut4=(g_t3_ordered_mask_images&1u)!=0;
+    const sat_model_texture_asset_t texture={lut4?packed:pixels,8,8,0,lut4?SAT_MODEL_TEXTURE_LUT4:0,64};
+    t3_psx_particle_quad_t q={0};q.visible=1;
+#if defined(T3_ORDERED_MASK_TRI_SELFTEST)
+    q.xy[0][0]=q.xy[2][0]=28;q.xy[1][0]=q.xy[3][0]=46;
+    q.xy[0][1]=q.xy[1][1]=52;q.xy[2][1]=q.xy[3][1]=84;
+    const int16_t x[4]={30,36,33,33},y[4]={22,18,29,29};
+#elif defined(T3_ORDERED_MASK_QUAD_SELFTEST)
+    q.xy[0][0]=q.xy[2][0]=28;q.xy[1][0]=q.xy[3][0]=64;
+    q.xy[0][1]=q.xy[1][1]=160;q.xy[2][1]=q.xy[3][1]=220;
+    const int16_t x[4]={20,52,56,24},y[4]={70,75,100,95};
+#else
+    q.xy[0][0]=q.xy[2][0]=92;q.xy[1][0]=q.xy[3][0]=101;
+    q.xy[0][1]=q.xy[1][1]=148;q.xy[2][1]=q.xy[3][1]=164;
+    const int16_t x[4]={80,87,87,80},y[4]={64,64,71,71};
+#endif
+    SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+    palette[1]=0x8004u;SAT_TRY(t3_stage_particle_multi_add(&q,pattern,palette));
+    SAT_TRY(t3_stage_particle_multi_face(&texture,x,y));
+    palette[1]=0x8080u;SAT_TRY(t3_stage_particle_multi_add(&q,pattern,palette));
+    t3_stage_particle_multi_end();++g_t3_ordered_mask_images;return SAT_OK;
+#endif
+#else
+    const unsigned faces=g_fused_actors.original_after[1]-first;
+    const unsigned split=g_fused_actors.original_after[0]-first;
+    unsigned drawn=0;
+    SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+    for(unsigned k=0;k<sorted;++k) {
+        const unsigned entry=order[k];sat_result_t st;
+        if(entries[entry].kind) {
+            if(entry<faces || entry-faces>=count)return SAT_ERR_INVALID_ARG;
+            st=ordered_particle_result(t3_particle_prepare_add(&particles[entry-faces]),&drawn);
+        } else {
+            if(entry>=faces)return SAT_ERR_INVALID_ARG;
+            /* Before the first particle, the freshly begun overlay has no
+             * cells to occlude. Keep the sorted traversal but skip the face. */
+            if(!drawn)continue;
+            const unsigned actor=entry<split?0u:1u,f=entry<split?entry:entry-split;
+            const actor_t* a=&g_actors[actor];const uint16_t* index=&a->original_mesh.indices[4*f];
+            int16_t x[4],y[4];
+            for(unsigned j=0;j<4;++j){x[j]=(int16_t)(a->projected[index[j]].x+160);y[j]=(int16_t)(a->projected[index[j]].y+112);}
+            const unsigned material=a->instance.face_materials[f];
+            const sat_model_texture_asset_t* texture=material<a->asset->model.texture_count?&a->asset->model.textures[material]:NULL;
+            st=t3_stage_particle_multi_face(texture,x,y);
+        }
+        if(st!=SAT_OK) {
+            if(entries[entry].kind)++g_t3_ordered_mask_particle_failures;
+            else ++g_t3_ordered_mask_face_failures;
+            /* Never publish a partially composed overlay. A later frame may
+             * become fully supported; reset the same free slot to blank. */
+            SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
+            t3_stage_particle_multi_end();++g_t3_ordered_mask_fallbacks;return SAT_OK;
+        }
+    }
+    t3_stage_particle_multi_end();++g_t3_ordered_mask_images;
+    if(drawn){++g_t3_ordered_mask_drawn_images;g_t3_ordered_mask_drawn_particles+=drawn;}
+    return SAT_OK;
+#endif
+}
+#endif
 volatile uint32_t g_t3_fused_actor_frames;
 #if defined(T3_NATIVE_PHASE_PROBE)
 static t3_character_phase_profile_t g_completed_actor_phase;
@@ -641,8 +904,200 @@ uint32_t g_t3_phase_sums[sizeof(t3_character_phase_profile_t)/sizeof(uint16_t)],
 #endif
 /* Each actor's joints times the placement and the camera, written and read by
  * the CPU that prepares the actor. */
-static sat_mat4_t g_clip_joints[ACTOR_COUNT][T3_JOINT_COUNT];
+static sat_mat4_t g_clip_joints[ACTOR_COUNT][T3_JOINT_COUNT]
+#if defined(T3_ORIGINAL_FIGHTER_OT) && defined(T3_PARTICLE_PREPARE)
+    __attribute__((section(".wram_l")))
+#endif
+    ;
 volatile uint32_t g_t3_skin_screen_fallbacks;
+#endif
+
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+volatile uint32_t g_t3_original_projected[2],g_t3_original_projected_fallbacks[2];
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+volatile uint32_t g_t3_original_ot_frames,g_t3_original_ot_faces,g_t3_original_ot_culled;
+#if defined(T3_FACE_COVERAGE_CENSUS)
+/* Per actor: visible faces, supported rectangles, supported triangles, other. */
+volatile uint32_t g_t3_face_coverage_census[2][4] __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_face_parallelograms[2] __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_face_general_quads[2] __attribute__((section(".wram_l")));
+static void census_coverage_face(unsigned actor,const actor_t* a,const uint16_t* index,uint8_t group) {
+    const sat_projected_vertex_t* p=a->projected;
+    int x[4],y[4];for(unsigned i=0;i<4;++i){x[i]=p[index[i]].x;y[i]=p[index[i]].y;}
+    unsigned cls=3;int height=y[2]-y[0];
+    if(x[0]==x[3] && x[1]==x[2] && y[0]==y[1] && y[2]==y[3] && x[0]<=x[1] && height>=0)cls=1;
+    else if(!(group&1u) && y[0]==y[1] && x[2]==x[3] && y[2]==y[3] && x[0]<=x[1] && height>=0) {
+        int left=x[2]-x[0],right=x[2]-x[1];
+        if(left>=-height && left<=height && right>=-height && right<=height)cls=2;
+    }
+    if(cls==3) {
+        int across=x[1]-x[0],slope=y[1]-y[0],edge_x=x[3]-x[0],edge_y=y[3]-y[0];
+        int major=edge_y<0?-edge_y:edge_y;
+        if(x[2]-x[1]==edge_x && y[2]-y[1]==edge_y && across>=0 && across<=64 &&
+           slope>=0 && slope<=across && edge_y>=0 && major<=64 && edge_x>=-major && edge_x<=major)
+            ++g_t3_face_parallelograms[actor];
+        else {
+            int16_t sx[4],sy[4];
+            for(unsigned i=0;i<4;++i){sx[i]=(int16_t)(x[i]+160);sy[i]=(int16_t)(y[i]+112);}
+            if(t3_face_quad_supported(sx,sy))++g_t3_face_general_quads[actor];
+        }
+    }
+    ++g_t3_face_coverage_census[actor][0];++g_t3_face_coverage_census[actor][cls];
+ }
+#if defined(T3_FACE_PARTICLE_CENSUS)
+volatile uint32_t g_t3_particle_census_visible[2],g_t3_particle_census_candidates[2];
+volatile uint32_t g_t3_particle_census_frames;
+/* First encountered overlapping faces, in VDP1 perimeter order. The final
+ * two values identify actor and source material group. Diagnostic only. */
+volatile int16_t g_t3_particle_face_examples[32][10];
+volatile uint32_t g_t3_particle_face_example_count;
+static void census_particle_faces(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,unsigned count) {
+    t3_particle_bounds_t bounds[T3_PSX_EFFECT_CAPACITY];unsigned n=0;
+    for(unsigned i=0;i<count;++i)
+        if(t3_particle_screen_bounds(&particles[i].quad,&bounds[n]))++n;
+    if(!n)return;
+    ++g_t3_particle_census_frames;
+    const unsigned first=g_fused_actors.original_first[0],end=g_fused_actors.original_after[1];
+    for(unsigned actor=0;actor<2;++actor) {
+        const actor_t* a=&g_actors[actor];const uint16_t* indices=a->original_mesh.indices;
+        const uint8_t (*meta)[2]=t3_kmd_face_ot;
+#if defined(T3_SECOND_MESH)
+        if(actor==1u)meta=t3_kmd_face_ot1;
+#endif
+        for(unsigned f=0;f<a->original_mesh.face_count;++f) {
+            unsigned at=end-1u-(g_fused_actors.original_first[actor]+f-first);
+            if(scene->faces.keys[at]==0xffffffffu)continue;
+            ++g_t3_particle_census_visible[actor];
+            int left=32767,right=-32768,top=32767,bottom=-32768;
+            for(unsigned i=0;i<4;++i) {
+                const sat_projected_vertex_t* p=&a->projected[indices[4*f+i]];
+                int x=p->x+160,y=p->y+112;
+                if(x<left)left=x;
+                if(x>right)right=x;
+                if(y<top)top=y;
+                if(y>bottom)bottom=y;
+            }
+            if(right<0 || bottom<0 || left>319 || top>223)continue;
+            if(left<0)left=0;
+            if(right>319)right=319;
+            if(top<0)top=0;
+            if(bottom>223)bottom=223;
+            t3_particle_bounds_t face={(int16_t)left,(int16_t)top,(int16_t)right,(int16_t)bottom};
+            for(unsigned i=0;i<n;++i)if(t3_particle_bounds_intersect(&face,&bounds[i])) {
+                ++g_t3_particle_census_candidates[actor];
+                if(g_t3_particle_face_example_count<32u) {
+                    unsigned sample=g_t3_particle_face_example_count++;
+                    for(unsigned v=0;v<4;++v) {
+                        const sat_projected_vertex_t* p=&a->projected[indices[4*f+v]];
+                        g_t3_particle_face_examples[sample][2*v]=(int16_t)(p->x+160);
+                        g_t3_particle_face_examples[sample][2*v+1]=(int16_t)(p->y+112);
+                    }
+                    g_t3_particle_face_examples[sample][8]=(int16_t)actor;
+                    g_t3_particle_face_examples[sample][9]=(int16_t)meta[f][0];
+                }
+                census_coverage_face(actor,a,&indices[4*f],meta[f][0]);break;
+            }
+        }
+    }
+}
+#endif
+#endif
+static int apply_original_fighter_ot(sat_scene_t* scene,const fused_actor_context_t* context) {
+    sat_scene3d_faces_t* queue=&scene->faces;
+    if(!queue->projected_indices || !queue->keys)return 0;
+    for(unsigned actor=0;actor<2;++actor) {
+        const actor_t* a=&g_actors[actor];
+        if(a->original_active && (unsigned)(context->original_after[actor]-context->original_first[actor])!=a->original_mesh.face_count)
+            return 0;
+    }
+    /* The SDK sorts unsigned keys high to low. Convert non-fighter depths
+     * into the same approximately scaled 0..1023 range as the PS1 OT. */
+    for(unsigned i=0;i<queue->count;++i) {
+        uint32_t key=queue->keys[i];if(key==0xffffffffu)continue;
+        uint32_t depth=(key&0xffffffu)/192u;if(depth>1023u)depth=1023u;
+        queue->keys[i]=(key&0xff000000u)|depth;
+    }
+    for(unsigned actor=0;actor<2;++actor) {
+        const actor_t* a=&g_actors[actor];if(!a->original_active)continue;
+        const t3_psx_projected_vertex_t* raw=(const t3_psx_projected_vertex_t*)(const void*)a->world_vertices;
+        const uint8_t (*meta)[2]=t3_kmd_face_ot;
+#if defined(T3_SECOND_MESH)
+        if(actor==1u)meta=t3_kmd_face_ot1;
+#endif
+        const uint16_t* indices=a->original_mesh.indices;
+        for(unsigned f=0;f<a->original_mesh.face_count;++f) {
+            int32_t nclip;uint16_t bucket=t3_psx_fighter_native_indexed_bucket(raw,&indices[4*f],meta[f][1],&nclip);
+            const unsigned at=context->original_first[actor]+f;
+            if(!(meta[f][1]&1u) && nclip<=0) {
+                queue->keys[at]=0xffffffffu;++g_t3_original_ot_culled;
+            } else {
+                queue->keys[at]=(queue->keys[at]&0xff000000u)|bucket;
+                ++g_t3_original_ot_faces;
+#if defined(T3_FACE_COVERAGE_CENSUS) && !defined(T3_FACE_PARTICLE_CENSUS)
+                census_coverage_face(actor,a,&indices[4*f],meta[f][0]);
+#endif
+            }
+        }
+    }
+    /* Original OT insertion is LIFO. Reverse both consecutive fighter runs,
+     * retaining the logical-to-physical map and leaving earlier stage faces. */
+    if(g_actors[0].original_active && g_actors[1].original_active &&
+       context->original_after[0]==context->original_first[1]) {
+        unsigned lo=context->original_first[0],hi=context->original_after[1];
+        while(lo<hi && lo<--hi) {
+            uint32_t key=queue->keys[lo];queue->keys[lo]=queue->keys[hi];queue->keys[hi]=key;
+            uint16_t index=queue->projected_indices[lo];queue->projected_indices[lo]=queue->projected_indices[hi];queue->projected_indices[hi]=index;
+            ++lo;
+        }
+    } else for(unsigned actor=0;actor<2;++actor)if(g_actors[actor].original_active) {
+        unsigned lo=context->original_first[actor],hi=context->original_after[actor];
+        while(lo<hi && lo<--hi) {
+            uint32_t key=queue->keys[lo];queue->keys[lo]=queue->keys[hi];queue->keys[hi]=key;
+            uint16_t index=queue->projected_indices[lo];queue->projected_indices[lo]=queue->projected_indices[hi];queue->projected_indices[hi]=index;
+            ++lo;
+        }
+    }
+    ++g_t3_original_ot_frames;return 1;
+}
+#endif
+static void original_projection_disable(actor_t* actor) {
+    actor->original_active=0u;actor->instance.mesh=&actor->mesh;
+    actor->instance.validated_binding=&actor->binding;
+    actor->projected=g_actor_geometry[actor-g_actors].projected;
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+    actor->instance.cull_backfaces=SAT_SCENE3D_CULL_SCREEN;
+#endif
+}
+static int project_original(const fused_actor_context_t* context,actor_t* actor) {
+    const unsigned n=(unsigned)(actor-g_actors);
+    /* The worker can retain cached data from the previous image. Read the
+     * published camera and joint snapshot through the shared alias. */
+    context=sat_parallel_uncached_address(context);
+    const t3_psx_projected_part_t* parts=t3_kmd_projected;
+    unsigned count=t3_kmd_projected_count;
+#if defined(T3_SECOND_MESH)
+    if(n==1u){parts=t3_kmd_projected1;count=t3_kmd_projected1_count;}
+#endif
+    actor_geometry_t* geometry=&g_actor_geometry[n];
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+    t3_psx_projected_vertex_t* raw=(t3_psx_projected_vertex_t*)(void*)actor->world_vertices;
+#else
+    t3_psx_projected_vertex_t* raw=geometry->original_raw;
+#endif
+    if(!t3_psx_projected_mesh_build(parts,count,&context->original_view,context->original_joints[n],
+            context->original_mask[n],raw,actor->original_mesh.vertex_count))return 0;
+    for(unsigned i=0;i<actor->original_mesh.vertex_count;++i) {
+        const t3_psx_projected_vertex_t* p=&raw[i];
+        const int32_t x=(int16_t)(p->xy&0xffffu),y=(int16_t)(p->xy>>16);
+        const int32_t z=p->z;
+        geometry->projected[i].x=(int16_t)(t3_psx_viewport_x(x)-160);
+        geometry->projected[i].y=(int16_t)(t3_psx_viewport_y(y)-112);
+        geometry->projected[i].w=z*3072;
+    }
+    volatile uint32_t* counters=sat_parallel_uncached_address((void*)g_t3_original_projected);
+    ++counters[n];
+    return 1;
+}
 #endif
 
 /* Skins vertices [first, end) of the actor (a compiled mesh is skinned whole).
@@ -652,6 +1107,14 @@ volatile uint32_t g_t3_skin_screen_fallbacks;
  * pre_projected and skins to world. */
 static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* actor,
         uint32_t first,uint32_t end) {
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    if(actor->original_active) {
+        if(first==0 && end==actor->vertex_count && project_original(context,actor))return SAT_OK;
+        volatile uint32_t* counters=sat_parallel_uncached_address((void*)g_t3_original_projected_fallbacks);
+        ++counters[actor-g_actors];
+        original_projection_disable(actor);
+    }
+#endif
 #if defined(T3_COMPILED_RENDERER)
     if(actor->compiled_active)
         return t3_compiled_deform_range(&g_compiled_renderer,&actor->compiled_pose,
@@ -685,6 +1148,13 @@ static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* a
 static int skin_to_world_after(sat_result_t st,const fused_actor_context_t* context,actor_t* actor) {
 #if defined(T3_SKIN_TO_SCREEN)
     if(st!=SAT_ERR_UNSUPPORTED || !actor->instance.pre_projected)return 0;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    if(actor->original_active) {
+        volatile uint32_t* counters=sat_parallel_uncached_address((void*)g_t3_original_projected_fallbacks);
+        ++counters[actor-g_actors];
+        original_projection_disable(actor);
+    }
+#endif
     actor->instance.pre_projected=0u;
     ++g_t3_skin_screen_fallbacks;
     return deform_actor(context,actor,0,actor->vertex_count)==SAT_OK;
@@ -736,11 +1206,17 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
 #endif
         }
         if(st==SAT_OK && i==0) {
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+            context->original_first[0]=context->scene->faces.count;
+#endif
             st=sat_scene_submit_instance(context->scene,&actor->instance,
                 SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
             if(skin_to_world_after(st,context,actor))
                 st=sat_scene_submit_instance(context->scene,&actor->instance,
                     SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+            context->original_after[0]=context->scene->faces.count;
+#endif
         }
 #if !defined(T3_MASTER_WORKER_FACES)
         if(st==SAT_OK && i==1) {
@@ -816,9 +1292,29 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     const uint16_t setup_started=sat_time_frc();
 #endif
     actor_t* slave=&g_actors[1];
+    g_fused_actors=(fused_actor_context_t){.scene=scene,
+        .center_x=t3_move_probe_world_center(0),
+        .center_z=t3_move_probe_world_center(2),
+        .result={SAT_OK,SAT_OK},.worker_ready=0u};
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    const int original_view_ready=t3_move_probe_camera_matrix(&g_fused_actors.original_view);
+#endif
     for(unsigned i=0;i<2;++i) {
         g_actors[i].mesh.vertex_count=g_actors[i].vertex_count;
         g_actors[i].instance.world=NULL;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+        original_projection_disable(&g_actors[i]);
+        if(original_view_ready && t3_move_probe_copy_world(i,g_fused_actors.original_joints[i],
+                &g_fused_actors.original_mask[i])) {
+            g_actors[i].original_active=1u;
+            g_actors[i].instance.mesh=&g_actors[i].original_mesh;
+            g_actors[i].instance.validated_binding=&g_actors[i].original_binding;
+            g_actors[i].projected=g_actor_geometry[i].projected;
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+            g_actors[i].instance.cull_backfaces=0u;
+#endif
+        }
+#endif
 #if defined(T3_SKIN_TO_SCREEN)
         g_actors[i].instance.pre_projected=1u;
 #endif
@@ -826,7 +1322,11 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     g_geometry_item=(sat_scene3d_prepare_item_t){
         .instance=&slave->instance,.screen_scratch=slave->projected,
         .world_scratch=slave->world_vertices,.color_calc_slot=SAT_SCENE3D_SLOT_INHERIT,
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+        .source_plan=slave->original_active?NULL:&g_geometry_sources};
+#else
         .source_plan=&g_geometry_sources};
+#endif
     if((st=sat_scene3d_prepare_batch_init(&g_geometry_batch,&g_geometry_item,1,
             scene->faces.entries,g_geometry_keys,T3_FACE_COUNT))!=SAT_OK)return st;
 #if !defined(T3_MASTER_WORKER_FACES)
@@ -839,10 +1339,9 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     g_geometry_batch.near_depth=scene->faces.near_depth;
     g_geometry_batch.width=scene->faces.width;
     g_geometry_batch.height=scene->faces.height;
-    g_fused_actors=(fused_actor_context_t){.scene=scene,
-        .center_x=t3_move_probe_world_center(0),
-        .center_z=t3_move_probe_world_center(2),
-        .result={SAT_OK,SAT_OK},.worker_ready=0u};
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    if((st=sat_parallel_cache_sync_range(&g_fused_actors,sizeof(g_fused_actors)))!=SAT_OK)return st;
+#endif
 #if defined(T3_NATIVE_PHASE_PROBE)
     const uint16_t dispatch_started=sat_time_frc();
 #endif
@@ -863,12 +1362,21 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     if(g_fused_actors.result[0]!=SAT_OK)return g_fused_actors.result[0];
     if(g_fused_actors.result[1]!=SAT_OK)return g_fused_actors.result[1];
     if((st=sat_parallel_cache_sync_range(&slave->instance,sizeof(slave->instance)))!=SAT_OK)return st;
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+    g_fused_actors.original_first[1]=scene->faces.count;
+#endif
     st=sat_scene_submit_instance(scene,&slave->instance,SAT_SCENE3D_SLOT_INHERIT,
         slave->projected,slave->world_vertices);
     if(skin_to_world_after(st,&g_fused_actors,slave))
         st=sat_scene_submit_instance(scene,&slave->instance,SAT_SCENE3D_SLOT_INHERIT,
             slave->projected,slave->world_vertices);
     if(st!=SAT_OK)return st;
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+    g_fused_actors.original_after[1]=scene->faces.count;
+    if(slave->original_active && (st=sat_parallel_cache_sync_range(slave->world_vertices,
+            slave->original_mesh.vertex_count*sizeof(t3_psx_projected_vertex_t)))!=SAT_OK)return st;
+    if(!apply_original_fighter_ot(scene,&g_fused_actors))return SAT_ERR_INVALID_ARG;
+#endif
 #else
     if((st=sat_parallel_cache_sync_range(&g_geometry_batch,sizeof(g_geometry_batch)))!=SAT_OK)return st;
     const uint32_t prepared=g_geometry_batch.metrics.prepared_faces;

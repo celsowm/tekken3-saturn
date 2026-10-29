@@ -1,0 +1,6 @@
+# Physical PS1 pads: source frame, P1, P2. No game data.
+1 0 0
+180 0x2000 0
+270 0 0
+280 0x0 0x80
+281 0 0

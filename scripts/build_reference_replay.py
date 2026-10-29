@@ -4,16 +4,36 @@ import argparse,hashlib,json,struct
 from pathlib import Path
 
 SCHEMA_FILES=('tools/psx_match_reference.inc','tools/psx_ground_eval_fields.h','tools/psx_round_flow_eval_fields.h')
+OWNED_OBSERVATION='owned-camera-v1'
+def schema_files(manifest):
+    mode=manifest.get('observation')
+    if mode not in (None,OWNED_OBSERVATION):raise ValueError('unsupported reference observation')
+    return SCHEMA_FILES+(('tools/psx_owned_reference.inc',) if mode else ())
 VIEW_HEADER=12
 VIEW_BYTES=38
 
 def load(root):
     manifest=json.loads((root/'manifest.json').read_text())
     project=Path(__file__).resolve().parents[1]
-    schema=hashlib.sha256(b''.join((project/n).read_bytes() for n in SCHEMA_FILES)).hexdigest()
+    schema=hashlib.sha256(b''.join((project/n).read_bytes() for n in schema_files(manifest))).hexdigest()
     if manifest.get('schema')!=1 or manifest.get('codec')!='sha256-i64be-v1' or \
             manifest.get('audit_passed') is not True or manifest.get('observation_schema_sha256')!=schema:
         raise ValueError('requires a passing original audit with the current observation schema')
+    initialization=manifest.get('initialization')
+    if initialization is not None and (not isinstance(initialization,dict) or
+            set(initialization)!={'kind','seed','physical'} or initialization['kind']!='configuration' or
+            type(initialization['seed']) is not int or not 0<=initialization['seed']<=0xffffffff or
+            not isinstance(initialization['physical'],list) or len(initialization['physical'])!=2 or
+            any(type(v) is not int or not 0<=v<=65535 for v in initialization['physical'])):
+        raise ValueError('invalid fresh-match initialization recipe')
+    owned=manifest.get('observation')==OWNED_OBSERVATION
+    if not isinstance(manifest.get('owned_effect_pool',False),bool) or (manifest.get('owned_effect_pool') and not owned):
+        raise ValueError('owned effect pool requires the owned-camera contract')
+    original=manifest.get('original_exe_sha256','')
+    if owned and (initialization is None or manifest.get('remake_presentation_fixes') is not False or
+                  manifest.get('input_mode')!='physical' or (root/'views.bin').exists() or
+                  not isinstance(original,str) or len(original)!=64 or any(c not in '0123456789abcdef' for c in original)):
+        raise ValueError('owned reference requires fresh retail physical input without view feedback')
     for name in ('seed.ranges','seed-addresses.json','inputs.tsv','expected.sha256'):
         if hashlib.sha256((root/name).read_bytes()).hexdigest()!=manifest.get('files',{}).get(name):
             raise ValueError('changed private reference export: '+name)
@@ -27,6 +47,8 @@ def load(root):
            not 1<=r[9]<=65535 or (len(r)==12 and any(v not in (0,1) for v in r[10:12]))
            for r in rows):
         raise ValueError('invalid input/frame/field-count word')
+    if owned and any(any(r[1:5]) or (len(r)==12 and any(r[10:12])) for r in rows):
+        raise ValueError('owned reference cannot contain mapped inputs or original sides')
     views=None
     if 'views.bin' in manifest.get('files',{}):
         data=(root/'views.bin').read_bytes()
@@ -36,12 +58,12 @@ def load(root):
             raise ValueError('invalid bounded reference draw trace')
         count=struct.unpack_from('<I',data,8)[0]
         screens_at=12+VIEW_BYTES*count
-        if not 1<=count<=256 or len(data)<screens_at+4 or \
+        if not 0<=count<=256 or len(data)<screens_at+4 or \
                 struct.unpack_from('<I',data,screens_at)[0]!=len(rows) or \
                 len(data)!=screens_at+4+4*len(rows):
             raise ValueError('invalid bounded reference draw trace')
         ticks=[struct.unpack_from('<I',data,12+VIEW_BYTES*i)[0] for i in range(count)]
-        if ticks!=sorted(set(ticks)) or ticks[-1]>=len(rows):
+        if ticks!=sorted(set(ticks)) or (ticks and ticks[-1]>=len(rows)):
             raise ValueError('invalid reference view ticks')
         views=(data[12:screens_at],data[screens_at+4:])
     seed=(root/'seed.ranges').read_bytes()
@@ -88,9 +110,17 @@ def generate(root,out):
 typedef struct {uint16_t tick,words[10];} t3_reference_event_t;
 '''
     text+=f'#define T3_REFERENCE_TICKS {len(rows)}u\n#define T3_REFERENCE_FIRST_FRAME {rows[0][0]}u\n'
-    text+=f'#define T3_REFERENCE_HAS_SIDES {int(len(rows[0])==12)}\n'
+    text+=f'#define T3_REFERENCE_HAS_SIDES {int(len(rows[0])==12 and manifest.get("observation")!=OWNED_OBSERVATION)}\n'
+    text+=f'#define T3_REFERENCE_OWN_CAMERA {int(manifest.get("observation")==OWNED_OBSERVATION)}\n'
+    text+=f'#define T3_REFERENCE_OWN_EFFECTS {int(manifest.get("owned_effect_pool",False))}\n'
+    initialization=manifest.get('initialization')
+    text+=f'#define T3_REFERENCE_START_INTRO {int(initialization is not None)}\n'
+    if initialization:
+        text+=f'#define T3_REFERENCE_START_SEED {initialization["seed"]}u\n'
+        for i,pad in enumerate(initialization['physical']):
+            text+=f'#define T3_REFERENCE_START_PAD{i} {pad}u\n'
     view_count=len(views[0])//VIEW_BYTES if views is not None else 0
-    text+=f'#define T3_REFERENCE_HAS_VIEW {int(view_count!=0)}\n'
+    text+=f'#define T3_REFERENCE_HAS_VIEW {int(views is not None)}\n'
     text+=f'#define T3_REFERENCE_VIEWS {view_count}u\n'
     identity=hashlib.sha256((root/'manifest.json').read_bytes()).digest()
     text+='#define T3_REFERENCE_FIXTURE_ID {'+','.join(map(str,identity))+'}\n'

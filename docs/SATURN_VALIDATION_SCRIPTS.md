@@ -9,19 +9,41 @@ an authenticated `gh` executable.
 `saturn_regression.py` runs the gates of [RELEASE.md](RELEASE.md) against one
 built disc and writes a single verdict. It runs `ctest` for each configured
 host build (`build/host`, plus `build/host-law` when that private bank is
-configured), the 24-case live combat suite with KO and timeout cases, the
+configured), the 26-case live combat suite with throws, KO and timeout cases, the
 3,000-tick reference replay, and optionally one frozen-pixel pair. Each gate
 is a subprocess with its own log; the summary is rewritten after every stage,
 so an interrupted run still records what it had proved.
 
 ```sh
 build/asset-venv/bin/python scripts/saturn_regression.py \
-  --build build/flush-trusted \
-  --out assets/imported/regression-flush-trusted \
+  --build build/parity-reversal \
+  --out assets/imported/parity-effects-pool-gate \
   --bios assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin \
   --reference-build build/flush-trusted-reference \
-  --reference-export assets/imported/paul-law-reference-export
+  --reference-export assets/imported/parity-effects-pool-reference-export
 ```
+
+This effect-pool gate passed all stages on 2026-10-27: 66/76 host tests,
+26 live combat cases and 3,000 independent varied-input reference ticks;
+total duration 1,030.0 s. Playable ELF `8faa85fa…` and diagnostic ELF
+`21ccb16a…` are bound to the full identities in
+[EFFECT_POOL_INTEGRATION.md](EFFECT_POOL_INTEGRATION.md). The separate
+prefilled-RAM reference also passes. This command needs a new empty output
+directory for a repeat.
+The preceding `parity-owned-camera-gate` passed all stages on 2026-10-27 for playable ELF
+`79c0324fd4d85d25f9eefae00acbd38a63178bfcd6ebd5e04bfda3413eb54dbe`
+and diagnostic ELF
+`6c23db7ee1934274efa68b60a9b05eff87939819054ff0be461ae9a347a63911`:
+26 live cases and all 3,000 independent-camera reference ticks. The recorded
+host census is 64/73; subsequent standalone sound-ring/spark tests have
+separate logs. Use a new empty output directory for a repeat.
+The diagnostic tree now uses the new varied-input export and size optimization;
+reconfigure it from the historical settings before reproducing an older gate.
+See [OWNED_CAMERA_SH2_PARITY.md](OWNED_CAMERA_SH2_PARITY.md) for the contract.
+The earlier `parity-reversal-gate` and feedback-based control export are
+historical results in [REVERSAL_PROGRESS.md](REVERSAL_PROGRESS.md). Historical
+exports have their own schema hashes; rebuild from their original fixture
+instead of editing manifests.
 
 Add `--frozen-baseline A --frozen-candidate B` to compare two captures of the
 same committed tick and probe configuration (see
@@ -46,9 +68,16 @@ nonzero until all selected gates pass.
 
 The wrapper certifies host behavior, live Ymir gameplay and the selected
 fixtures. It does not boot the CD, measure display cadence or replace
-`t3_capture_input_tape`/Mednafen evidence. The reference replay compares
-match state with original-code output under exported camera screen positions
-and sparse previous views; it does not establish independent camera parity.
+`t3_capture_input_tape`/Mednafen evidence. Legacy reference replay compares
+match state under exported screen positions and sparse previous views.
+The separate `owned-camera-v1` mode uses fresh configuration and physical
+pads without that feedback; each comparison records `independent_camera`.
+The wrapper uses the chosen fixture's length: selecting 500 or 600 ticks
+does not satisfy the release gate's 3,000-tick requirement.
+The live suite now waits for an observed FIGHT state before starting its
+input schedule, including production round one's original intro. The
+configuration-initialized first-round reference has a separate manifest and
+comparison described in [FIRST_ROUND_START.md](FIRST_ROUND_START.md).
 
 ## Inspect saved runs
 

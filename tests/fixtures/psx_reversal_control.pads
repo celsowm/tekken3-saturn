@@ -1,0 +1,8 @@
+# Physical PS1 pads; an earlier hit initializes the original last-attacker index.
+1 0 0
+180 0x2000 0
+270 0 0
+280 0 0x80
+281 0 0
+360 0x0 0x80
+361 0 0

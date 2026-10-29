@@ -71,6 +71,19 @@ class IncompleteSnapshotError(ValueError):
     """Guest was stopped while publishing its diagnostic snapshot."""
 
 
+def merge_cpu_tape(events, cpu, ai_calls):
+    """Keep both pad streams unless a CPU stream actually drove player 2."""
+    if events and not ai_calls:
+        return events
+    ticks = sorted({e[0] for e in events} | {c[0] for c in cpu} | {0})
+    merged = []
+    for tick in ticks:
+        pad = next((e for e in reversed(events) if e[0] <= tick), [tick, 0, 0, 0, 0])
+        ai = next((c for c in reversed(cpu) if c[0] <= tick), (tick, 0, 0))
+        merged.append([tick, pad[1], pad[2], ai[1], ai[2]])
+    return merged
+
+
 def decode(raw):
     if len(raw) < WORDS * 4:
         raise ValueError('truncated diagnostics')
@@ -155,6 +168,8 @@ def run(args):
                '--dump-mem', f'{address:#x}:{size}:{out / "diagnostics.bin"}',
                '--screenshot', f'{args.frames - 1}:{out / "screen.png"}',
                '--port-device', '1:pad', '--port-device', f'2:{args.port2}']
+    for vram_range in getattr(args,'dump_vdp2_vram',[]):
+        command.extend(['--dump-vram',vram_range])
     for field in getattr(args,'screenshot_frame',[]):
         if not 0<=field<args.frames:raise ValueError('screenshot frame must be inside the program run')
         command.extend(['--screenshot',f'{field}:{out / ("frame-"+str(field)+".png")}'])
@@ -220,6 +235,8 @@ def run(args):
     if workload['configuration'].get('T3_LOCAL_SFX'):
         dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
             'played','play_ms','play_max_ms','update_ms','ko_voices'))
+        dump_requests.extend(('_g_t3_event_'+n,'event-'+n.replace('_','-')+'.bin') for n in (
+            'overflow','hits','blocks','swings','popped'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
@@ -284,7 +301,7 @@ def run(args):
                  'slave_sim_pose_tick','slave_sim_pose_lag','slave_sim_max_wait_ms',
                  'compiled_skin_frames','compiled_skin_fallbacks','compiled_skin_verified',
                  'native_command_frames','cached_stage_faces',
-                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
+                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','event_overflow','event_hits','event_blocks','event_swings','event_popped','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
     if '_g_t3_simulation_stack' in dump_manifest:
@@ -306,17 +323,13 @@ def run(args):
         events=[list(struct.unpack_from('>5I',raw,i*20)) for i in range(count)]
         if (out/'cpu-count.bin').is_file():
             # Merge the CPU's P2 input (a Slave-side tape) into a pad replay of the same fight.
+            # A CPU tape also exists in two-pad fights, where it contains only
+            # zeros. Do not replace the captured second pad in that case.
             cpu_count=struct.unpack('>I',(out/'cpu-count.bin').read_bytes())[0]
             if struct.unpack('>I',(out/'cpu-overflow.bin').read_bytes())[0]:raise ValueError('CPU input trace overflowed')
             cpu_raw=(out/'cpu-tape.bin').read_bytes()
             cpu=[struct.unpack_from('>3H',cpu_raw,i*6) for i in range(cpu_count)]
-            ticks=sorted({e[0] for e in events}|{c[0] for c in cpu}|{0})
-            merged=[]
-            for t in ticks:
-                p=[e for e in events if e[0]<=t][-1] if any(e[0]<=t for e in events) else [t,0,0,0,0]
-                c=[x for x in cpu if x[0]<=t][-1] if any(x[0]<=t for x in cpu) else (t,0,0)
-                merged.append([t,p[1],p[2],c[1],c[2]])
-            events=merged
+            events=merge_cpu_tape(events,cpu,optimizations.get('ai_calls',0))
         (out/'input-tape.json').write_text(json.dumps(dict(events=events,
             final_tick=state['sim_ticks'],scope='Captured relative simulation inputs; no guest state injection'),indent=2)+'\n')
     provenance = {}
@@ -372,6 +385,7 @@ def parser():
     p.add_argument('--trace-capacity',type=int,default=262144)
     p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
     p.add_argument('--dump-symbol',action='append',default=[],help='dump a variable using this ELF; write a byte-order/address manifest')
+    p.add_argument('--dump-vdp2-vram',action='append',default=[],help='VDP2 word offset:word count in the Ymir JSON')
     return p
 
 

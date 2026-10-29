@@ -1,5 +1,13 @@
 # Original fight HUD sprite slice
 
+Current continuation: [FIRST_ROUND_START.md](FIRST_ROUND_START.md). Schema 4
+adds the original normal round/result font and REPLAY; HUD bar state now
+belongs to the shared match and advances before this tick's HitApply. The
+schema-2 and earlier timing measurements below remain historical evidence.
+The earlier horizontal mapping below subtracted eight pixels; that was
+incorrect for the original 2D rectangle. See the alignment correction at the
+end of this report.
+
 The optional `T3_ORIGINAL_HUD` build extracts 22 private sprites from the USA
 `SLUS_004.02` and the two fighters' costume texture archives: two health-bar
 caps, three bar fills, two round-mark palettes, twelve timer digits, the name
@@ -138,3 +146,52 @@ first difference and identical trace digests. The verdicts are
 Player names, plates and the exact original placement are therefore done.
 The original text font, the round messages ("ROUND n", "READY?", "K.O.",
 result texts) and the mode lines remain pending.
+
+## Horizontal alignment correction (2026-10-25)
+
+The initial mapping treated the 3D projection centre as a horizontal crop of
+the HUD. The original mode-0 table at Rev.1 `0x800B1190`, and the USA table
+through the canonical converter, instead define the 2D rectangle as
+`(0,20,368,448)`. The current mapping is `x' = x * 20/23`, rounded to the
+nearest Saturn pixel, and `y' = (y-20)/2`. The remake's presentation applies
+its own `HudFrame.LEFT=8`; that presentation offset is not used for the
+original 2D rectangle.
+
+The bars now begin at x 9 and 176. Timer tens/units begin at 147/160;
+marks are mapped individually from 151/202 and the original 14-pixel spacing.
+Names and backing plates use the same mapping, including the padded Law name
+sheet. Round/result text and REPLAY use this origin for each glyph as well.
+
+The native 320 x 224 Ymir images show cyan fill spans 11..142 and 178..309,
+leaving margins of **11 and 10 pixels**, versus 4 and 17 before the correction.
+Evidence: `assets/imported/parity-hud-center/screen.png` and its 900-field
+observation, with first_error 0. A 29-second native Mednafen CD boot shows the
+centered bars, timer, names, ROUND 1 and READY, then the fight; retained frames
+24/25/27 and metadata are in `assets/imported/parity-hud-center-cd`.
+The movie was inspected and deleted. The matched ELF is
+`c8f9778116b5228b563f08f92c786f3b6c6298f8ac3b0626c47a50617d67da50`.
+
+The glyph/palette/packed-file audit also checks the original rectangle.
+This is a presentation correction following the passing gameplay gate in
+[FIRST_ROUND_START.md](FIRST_ROUND_START.md); it changes no combat rule.
+
+### Current candidate recheck (2026-10-28)
+
+A fresh 900-field Ymir capture of `build/parity-bitmap-floor` confirms the
+same horizontal placement in the current experimental candidate: at row 14,
+the solid health colour occupies x 11–142 and 178–309 in the 320-pixel
+image, leaving 11 and 10 pixels respectively at the outside edges. The
+capture is `assets/imported/parity-hud-current/screen.png`; its ELF SHA-256
+is `0cdde2ad4426d891dd1e31d4810fd621fcf3d229a1eafbfcad4bb1d0d80200e3`.
+This verifies the Ymir image, not the alignment of a different build or a
+particular display's overscan.
+
+The later overlay-reservation diagnostic's final neutral image
+(`assets/imported/parity-overlay-reservation/screen.png`) was also compared
+directly with `parity-ps1-view/screen.png`, using
+`scripts/check_ps1_saturn_hud_alignment.py`. After mapping the PS1 image to
+320 × 224, the PS1 spans are 12–142 and 177–307; the Saturn spans are
+11–142 and 178–309. The detector now requires cyan chroma as well as channel
+thresholds: a gray background pixel at x 310 otherwise extended the second
+Saturn span falsely. This checks full bars at one row and one neutral frame;
+it does not establish damaged-bar or whole-HUD pixel parity.

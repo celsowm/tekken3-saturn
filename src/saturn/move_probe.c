@@ -1,5 +1,6 @@
 #include "move_probe.h"
 #include "saturn/time.h"
+static uint16_t g_start_physical[2];
 #if defined(T3_LOCAL_DIVMOT_ENABLED)
 #include "t3_local_divmot.h"
 #if defined(T3_POSE_TRACE)
@@ -102,6 +103,10 @@ static uint16_t g_cpu_difficulty=1u;
 #endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_psx_match_t g_owned_match T3_HOT_WRAM;
+#if defined(T3_PSX_CAMERA) && defined(T3_LOCAL_EFFECT_TABLE_BYTES) && T3_LOCAL_EFFECT_TABLE_BYTES > 0
+static t3_psx_effect_pool_t g_effect_pool T3_HOT_WRAM;
+#define T3_OWNED_EFFECT_POOL 1
+#endif
 /* Reset assigns the entire object before match initialization. */
 static t3_psx_match_config_t g_owned_config T3_HOT_WRAM;
 #if T3_LOCAL_POSE_CACHE_ENTRIES == 0 && !defined(T3_REFERENCE_TRACE_HIGH)
@@ -129,18 +134,31 @@ static t3_move_vm_t g_preview_vms[2];
 #define VM(i) (g_preview_vms[(i)])
 #endif
 static uint8_t g_active, g_round;
-#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
-/* sat_parallel_cache_sync_range invalidates whole 16-byte SH-2 lines.
- * Keep this Slave-owned state on two exclusive lines so syncing it cannot
- * evict adjacent Master-owned move-probe globals. */
-typedef struct {
-    t3_psx_hud_bar_t bars[2];
-    uint8_t round;
-    uint8_t padding[7];
-} t3_hud_bar_shared_t;
-_Static_assert(sizeof(t3_hud_bar_shared_t)==32,"HUD state owns two cache lines");
-static t3_hud_bar_shared_t g_hud_bar_shared __attribute__((aligned(16)));
+#if defined(T3_PARTICLE_IMAGE_SNAPSHOT)
+#if !defined(T3_OWNED_EFFECT_POOL)
+#error "Particle image snapshot requires the owned effect pool"
 #endif
+#if defined(T3_ORIGINAL_FIGHTER_OT)
+t3_particle_image_t g_t3_particle_image __attribute__((section(".wram_l")));
+#else
+t3_particle_image_t g_t3_particle_image T3_HOT_WRAM;
+#endif
+volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;
+#if defined(T3_PARTICLE_PREPARE)
+const t3_psx_trig_t* t3_move_probe_particle_trig(void) {return &g_camera_trig;}
+#endif
+sat_result_t t3_move_probe_capture_particles(void) {
+    if(!g_active || !g_owned_match.camera.started)return SAT_ERR_INVALID_ARG;
+    if(!t3_psx_particle_snapshot(&g_t3_particle_image.sprites,&g_effect_pool))return SAT_ERR_VERIFY_FAILED;
+    g_t3_particle_image.camera=g_owned_match.camera.camera.view;
+    g_t3_particle_image.frame_counter=g_owned_match.frame_counter;
+    if(g_t3_particle_image.sprites.count>g_t3_particle_max_sprites)
+        g_t3_particle_max_sprites=g_t3_particle_image.sprites.count;
+    ++g_t3_particle_images;
+    return SAT_OK;
+}
+#endif
+
 static unsigned g_start_slot;
 static uint8_t g_segments[2];
 static uint8_t g_move_event_status[2],g_move_extra_kind[2],g_move_extra_damage[2];
@@ -160,8 +178,8 @@ static int16_t g_fk_root_xx[2];
 sat_result_t t3_move_probe_simulation_sync(int full) {
     const struct {const void* address;uint32_t size;} query[]={
         {&g_owned_match,sizeof(g_owned_match)},
-#if 0 /* diagnostic: isolate HUD cache transfer from transition cost */
-        {&g_hud_bar_shared,sizeof(g_hud_bar_shared)},
+#if defined(T3_OWNED_EFFECT_POOL)
+        {&g_effect_pool,sizeof(g_effect_pool)},
 #endif
 #if defined(T3_CPU_AI)
         {&g_ai,sizeof(g_ai)},
@@ -321,10 +339,6 @@ void t3_move_probe_reset(unsigned round) {
     unsigned i;
     if (!g_active) return;
     g_round=(uint8_t)round;
-#if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
-    for(unsigned p=0;p<2;++p)t3_psx_hud_bar_reset(&g_hud_bar_shared.bars[p]);
-    g_hud_bar_shared.round=0;
-#endif
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;
@@ -361,7 +375,23 @@ void t3_move_probe_reset(unsigned round) {
     if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)
         g_bank.builtin_attacks=g_common.builtin_attacks=t3_local_combat_attacks;
     g_owned_config.enable_rounds=2;
+#if !defined(T3_REFERENCE_REPLAY)
+    g_owned_config.start_intro=1;g_owned_config.start_seed=1u;
+    g_owned_config.start_physical[0]=g_start_physical[0];
+    g_owned_config.start_physical[1]=g_start_physical[1];
+#endif
     g_owned_config.replay_storage=&g_replay_history;
+#if defined(T3_OWNED_EFFECT_POOL)
+    g_owned_config.effects=&g_effect_pool;
+    g_owned_config.effect_tables=t3_local_effect_tables;
+    g_owned_config.effect_table_bytes=T3_LOCAL_EFFECT_TABLE_BYTES;
+#endif
+#if defined(T3_LOCAL_SOUND_TABLE_BYTES) && T3_LOCAL_SOUND_TABLE_BYTES > 0
+    g_owned_config.sound_tables=(t3_psx_sound_tables_t){t3_local_sound_tables,T3_LOCAL_SOUND_TABLE_BYTES};
+    /* The present private pair is Paul/Law; both voice sets equal base ids. */
+    g_owned_config.sound_voice_set[0]=g_owned_config.character[0];
+    g_owned_config.sound_voice_set[1]=g_owned_config.character[1];
+#endif
     g_owned_config.collapse_on_ko=1; /* measured USA VS regional policy */
     g_owned_config.reactions=t3_local_combat_reactions;
     g_owned_config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
@@ -369,6 +399,9 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.close_reactions_size=T3_LOCAL_COMBAT_CLOSE_BYTES;
     g_owned_config.throw_victim_slots=t3_local_combat_throws;
     g_owned_config.throw_victim_slots_size=T3_LOCAL_COMBAT_THROW_BYTES;
+#if defined(T3_LOCAL_REVERSAL_BYTES)
+    g_owned_config.reversal_lists=t3_local_reversal_lists;g_owned_config.reversal_lists_size=T3_LOCAL_REVERSAL_BYTES;
+#endif
 #endif
     g_owned_config.parts[0]=t3_private_actor_parts[0];g_owned_config.parts[1]=t3_private_actor_parts[1];
     g_owned_config.ik=(t3_psx_ik_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
@@ -416,8 +449,10 @@ void t3_move_probe_reset(unsigned round) {
 #endif
     if(!t3_psx_match_init(&g_owned_match,&g_owned_config)){g_active=0u;return;}
 #if defined(T3_REFERENCE_REPLAY)
+#if !defined(T3_REFERENCE_START_INTRO) || !T3_REFERENCE_START_INTRO
     if(!reference_seed_state(T3_REFERENCE_STEP_X,T3_REFERENCE_STEP_Z,
             T3_REFERENCE_PREVIOUS,T3_REFERENCE_RAMP)) {g_active=0u;g_reference_error=2;return;}
+#endif
 #endif
 #endif
     for (i=0;i<2u;++i) {
@@ -998,6 +1033,35 @@ int32_t t3_move_probe_world_center(unsigned axis) {
  * across and 240*4096/(0x1BD2*H) down. The projection takes its focal terms
  * from H directly; fov_y and aspect are the matching values. */
 #define PSX_ROW1 0x1BD2
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+#if defined(T3_VDP1_FLOOR_PROBE)
+#include "stage_floor_center.h"
+#include "stage_vdp2.h"
+int t3_move_probe_floor_center(int32_t out[2]) {
+    if(!out || !g_active || !g_owned_match.camera.started)return -1;
+    const t3_psx_body_tables_t body={.sqrt=t3_local_body_blob,.sqrt_size=384u};
+    return t3_stage_floor_center(&g_owned_match.camera.camera.view,
+        t3_move_probe_world_center(0),t3_move_probe_world_center(2),&g_camera_trig,&body,t3_stage_floor_sqrt_before(),out);
+}
+#endif
+int t3_move_probe_camera_matrix(t3_psx_camera_matrix_t* out) {
+    if(!out || !g_active || !g_owned_match.camera.started)return 0;
+    *out=g_owned_match.camera.matrix;
+    return 1;
+}
+#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
+int t3_move_probe_floor_camera_distance(uint32_t* out) {
+    if(!out || !g_active || !g_owned_match.camera.started)return 0;
+    const t3_psx_camera_view_t* v=&g_owned_match.camera.camera.view;
+    int64_t dx=(int64_t)v->x-t3_move_probe_world_center(0);
+    int64_t dz=(int64_t)v->z-t3_move_probe_world_center(2);
+    int64_t squared=dx*dx+dz*dz;
+    if(squared>0x7fffffff)return 0;
+    const t3_psx_body_tables_t tables={.sqrt=t3_local_body_blob,.sqrt_size=384u};
+    return t3_psx_body_sqrt(&tables,(uint32_t)squared,out);
+}
+#endif
+#endif
 sat_result_t t3_move_probe_camera(sat_camera3d_t* camera) {
     const t3_psx_fight_camera_t* c=&g_owned_match.camera;
     const t3_psx_camera_view_t* v=&c->camera.view;
@@ -1033,8 +1097,17 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
     t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1};
     const t3_input_t pads[2]={p0,p1};
     for(unsigned i=0;i<2;++i) {
-        /* Physical face buttons choose the win pose. Direction words are
-         * already mapped relative to the rival at the controller boundary. */
+        /* Undo the controller boundary's previous world-facing mapping.
+         * InputSource maps this physical word from the newly drawn screen
+         * positions, after move starts/animation can change the side. */
+        if(g_owned_config.camera) {
+            frame.physical_inputs=1;
+            const int right=view->fighters[i].facing>0;
+            if(pads[i].held&T3_IN_FORWARD)frame.physical[i]|=(uint16_t)(right?0x2000:0x8000);
+            if(pads[i].held&T3_IN_BACK)frame.physical[i]|=(uint16_t)(right?0x8000:0x2000);
+            if(pads[i].held&T3_IN_LEFT)frame.physical[i]|=0x1000;
+            if(pads[i].held&T3_IN_RIGHT)frame.physical[i]|=0x4000;
+        }
         const unsigned bits[4]={T3_IN_LP,T3_IN_RP,T3_IN_LK,T3_IN_RK};
         const unsigned original[4]={0x80,0x10,0x40,0x20};
         for(unsigned b=0;b<4;++b) {
@@ -1064,17 +1137,6 @@ reference_complete:;
 #endif
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
-#endif
-#if defined(T3_ORIGINAL_HUD)
-    const uint8_t hud_round=(uint8_t)g_owned_match.flow.played;
-    if(g_hud_bar_shared.round!=hud_round) {
-        for(unsigned p=0;p<2;++p)t3_psx_hud_bar_reset(&g_hud_bar_shared.bars[p]);
-        g_hud_bar_shared.round=hud_round;
-    }
-    for(unsigned p=0;p<2;++p)
-        if(!t3_psx_hud_bar_step(&g_hud_bar_shared.bars[p],
-                g_owned_match.fighter[p].health_q16,g_owned_config.max_health_q16))
-            return SAT_ERR_INVALID_ARG;
 #endif
     view->total_ticks=g_owned_match.ticks;
 #if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
@@ -1122,7 +1184,7 @@ reference_complete:;
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
 void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]) {
     if(!out)return;
-    out[0]=g_hud_bar_shared.bars[0];out[1]=g_hud_bar_shared.bars[1];
+    out[0]=g_owned_match.hud_bars[0];out[1]=g_owned_match.hud_bars[1];
 }
 #endif
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
@@ -1131,6 +1193,9 @@ void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
 #else
     (void)mask;(void)difficulty;(void)level;
 #endif
+}
+void t3_move_probe_set_start_buttons(uint16_t first,uint16_t second) {
+    g_start_physical[0]=first;g_start_physical[1]=second;
 }
 uint8_t t3_move_probe_cpu_mask(void) {
 #if defined(T3_CPU_AI)
@@ -1170,11 +1235,17 @@ int32_t t3_move_probe_round_value(unsigned field) {
     case 10:return g_owned_match.flow.played;
     case 11:return g_owned_match.flow.frame;
     case 12:{
-        /* The deciding round: both fighters one win from taking the match. */
         const t3_psx_round_flow_t* flow=&g_owned_match.flow;
-        return flow->to_win>0 && g_owned_match.round_actor[0].wins==flow->to_win-1 &&
-               g_owned_match.round_actor[1].wins==flow->to_win-1;
+        return flow->max_rounds<=flow->played;
     }
+    case 13:return g_owned_match.flow.result;
+    case 14:return g_owned_match.flow.human_mask;
+    case 15:return g_owned_match.flow.replay_request;
+    case 16:return (int32_t)g_owned_match.frame_counter;
+    case 17:return g_owned_match.flow.max_rounds;
+#if defined(T3_ORIGINAL_HUD)
+    case 18:return g_owned_match.hud_replay_entry;
+#endif
     }
 #else
     (void)field;

@@ -8,6 +8,16 @@ import saturn_probe
 
 
 class CoherentCaseTests(unittest.TestCase):
+    def test_two_pad_capture_keeps_second_pad_when_cpu_unused(self):
+        pads=[[0,0,0,0,0],[3,1,0,2,0],[5,1,0,0,0]]
+        self.assertEqual(saturn_probe.merge_cpu_tape(pads,[(0,0,0)],0),pads)
+
+    def test_cpu_tape_merges_at_both_change_ticks(self):
+        pads=[[0,0,0,0,0],[3,1,0,2,0]]
+        cpu=[(0,0,0),(4,32,32),(5,32,0)]
+        self.assertEqual(saturn_probe.merge_cpu_tape(pads,cpu,2),
+                         [[0,0,0,0,0],[3,1,0,0,0],[4,1,0,32,32],[5,1,0,32,0]])
+
     def test_loading_offset_preserves_input_intervals(self):
         self.assertEqual(suite.delayed_script('20 1 buttons=RIGHT\n100 1 buttons=NONE\n',160),
                          '180 1 buttons=RIGHT\n260 1 buttons=NONE\n')
@@ -70,3 +80,19 @@ class GameplayStartTests(unittest.TestCase):
             args=argparse.Namespace(out=Path(directory),frames=0,device_script=None)
             with self.assertRaises(AssertionError):
                 suite.first_gameplay_field(args,lambda a:dict(state=dict(sim_ticks=0)),limit=100)
+
+    def test_intro_ticks_do_not_make_the_fight_controllable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args=argparse.Namespace(out=Path(directory),frames=0,device_script=None)
+            def run(a):
+                return dict(state=dict(sim_ticks=max(0,a.frames-90),psx_round_flow_active=1,
+                                       psx_round_state=0 if a.frames<241 else 1))
+            found=suite.first_gameplay_field(args,run)
+            self.assertTrue(241<=found<=251,found)
+
+    def test_active_round_flow_requires_an_observed_fight_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args=argparse.Namespace(out=Path(directory),frames=0,device_script=None)
+            with self.assertRaises(AssertionError):
+                suite.first_gameplay_field(args,lambda a:dict(state=dict(sim_ticks=1,
+                    psx_round_flow_active=1)),limit=100)

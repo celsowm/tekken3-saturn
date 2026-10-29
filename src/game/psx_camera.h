@@ -135,6 +135,7 @@ typedef struct {
     t3_psx_camera_source_state_t source_state[T3_PSX_CAMERA_SOURCES];
     int16_t weight[T3_PSX_CAMERA_SOURCES],prev_weight[T3_PSX_CAMERA_SOURCES];
     int32_t target[2][4],prev_target[2][4];   /* x, y, z, screen x */
+    int32_t third_target_screen_x; /* stale +0x2C between targets and previous targets (bug 53) */
     t3_psx_camera_view_t view;
     int16_t h,h_min,h_max;
     int32_t height_term;
@@ -169,8 +170,7 @@ typedef struct {
     int32_t replay_targets[6];         /* x0 x1 y0 y1 z0 z1 */
     /* Camera shake (0x80097EC4 points into the running script). */
     int16_t shake_script,shake_pos;
-    /* Bugs 1 (look point uses target 0's z for target 1) and 2 (division
-     * by zero answers the R3000's -1/+1) are reproduced when set. */
+    /* Original camera bugs 1/2/53/54/55 are reproduced when set. */
     uint8_t faithful;
 } t3_psx_camera_t;
 
@@ -198,6 +198,8 @@ typedef struct {
 } t3_psx_backdrop_turn_t;
 
 int t3_psx_camera_valid(const t3_psx_camera_tables_t* tables);
+/* Shared original Atan2Units4096, also used by the effect direction helper. */
+int32_t t3_psx_camera_atan4096(const t3_psx_camera_tables_t* tables,int32_t x,int32_t z);
 /* CameraReset (0x80062CF8). */
 void t3_psx_camera_reset(t3_psx_camera_t* camera);
 /* The round start (FUN_8002AB68 part): sources and intro base. */
@@ -208,6 +210,12 @@ int t3_psx_camera_round_start(t3_psx_camera_t* camera,const t3_psx_camera_tables
 int t3_psx_camera_step(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables,
                        const t3_psx_camera_fighter_t fighters[2],
                        const t3_psx_camera_frame_t* frame,int16_t* phase);
+/* FUN_800670E4, the stream phase of a live FightFrame. Its original unset
+ * return path inherits FightFrame's s3=1 (bug 55). Exposed for phase audits.
+ * restart_script=0 continues, otherwise starts that stream. */
+int t3_psx_camera_stream_update(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables,
+    const t3_psx_camera_fighter_t fighters[2],int32_t restart_script,
+    const t3_psx_camera_frame_t* frame,int32_t* weight);
 /* FUN_80068A44: the loser camera, set up by the round flow at the result
  * before it enters phase LOSER_0/1. `alive`: a time out. */
 int t3_psx_camera_loser_start(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables,
@@ -229,10 +237,21 @@ void t3_psx_camera_shake_step(t3_psx_camera_t* camera,const t3_psx_camera_tables
 int t3_psx_camera_build_view(const t3_psx_camera_view_t* view,
                              const t3_psx_camera_tables_t* tables,
                              t3_psx_camera_matrix_t* out);
+/* Original FUN_80037AB0: concatenate a fighter's world-space joint with
+ * the camera view for GTE vertex projection. The joint origin is restricted
+ * to the core's supported world-coordinate range; failure leaves out intact. */
+int t3_psx_camera_joint_matrix(const t3_psx_camera_matrix_t* view,const t3_psx_joint_t* joint,
+                               t3_psx_camera_matrix_t* out);
 /* RTPS of a world point through the view (FUN_80036CFC): screen x, y
  * (offset 192, 240; -0x400..0x3FF) and depth. Fighter +0x1278 is joint
  * 11's screen x. */
 void t3_psx_camera_project(const t3_psx_camera_matrix_t* matrix,const int32_t point[3],int32_t out[3]);
+/* FUN_8004B05C: translate the original view to a world-space model origin
+ * before separately projecting its signed-16 local vertices. */
+void t3_psx_camera_translate_view(const t3_psx_camera_matrix_t* view,const int32_t origin[3],
+                                  t3_psx_camera_matrix_t* out);
+/* Identical projection specialized for original KMD signed-16 coordinates. */
+void t3_psx_camera_project_s16(const t3_psx_camera_matrix_t* matrix,const int16_t point[3],int32_t out[3]);
 void t3_psx_backdrop_setup(t3_psx_backdrop_turn_t* turn,const t3_psx_camera_view_t* view);
 int t3_psx_backdrop_step(t3_psx_backdrop_turn_t* turn,const t3_psx_camera_view_t* view,
                          const t3_psx_camera_tables_t* tables,int intro);

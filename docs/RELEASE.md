@@ -4,6 +4,17 @@ The repository holds no retail data. A disc is built locally from your own USA
 Tekken 3 import (`scripts/psx_disc_import.py`, then the `build_local_*` and
 `extract_psx_*` scripts, each run by CMake from the private paths below).
 
+The 2026-10-27 gate in `assets/imported/parity-effects-pool-gate/summary.json`
+passes 66/66 and 76/76 host tests, 26 live combat cases and a 3,000-tick
+independent-camera/effect-pool reference.
+Playable ELF: `8faa85fa307d59c4f8bee592d5182ded72ad3b481a4aacc5cc0d823722402e89`.
+This is finite gameplay/reference coverage, not a completed 1:1 port;
+[EFFECT_POOL_INTEGRATION.md](EFFECT_POOL_INTEGRATION.md) records its passing
+varied-input native reference, standalone prefilled-RAM result and coverage
+limits. Native audio, particle drawing, image and cadence qualification remain
+separate. The preceding `parity-owned-camera-gate` result belongs to its
+recorded pre-pool ELF `79c0324f…`.
+
 1. Toolchain and SDK: `PATH=$HOME/dev/saturn-tools/bin:$PATH`, one LibSaturn
    prefix (`~/dev/saturn-prefix`, rebuilt in place from `~/dev/lib-saturn`).
 2. Configure. `scripts/print_release_configure.py <existing build> <new build>`
@@ -20,9 +31,9 @@ Tekken 3 import (`scripts/psx_disc_import.py`, then the `build_local_*` and
    - `python3 scripts/saturn_probe.py --workload paul-law-release ...`
      (`first_error` 0, `loop_rate_x10` near 300);
    - `python3 scripts/saturn_combat_suite.py --workload paul-law-release
-     --with-ko --with-timeout ...` (24 cases).
+     --with-ko --with-timeout ...` (26 cases, including throw and throw damage).
 
-   `scripts/saturn_regression.py` runs the CTest builds and the 24-case suite
+   `scripts/saturn_regression.py` runs the CTest builds and the 26-case suite
    in one command and writes a single JSON verdict; see
    [SATURN_VALIDATION_SCRIPTS.md](SATURN_VALIDATION_SCRIPTS.md#run-the-release-gate).
    The standalone commands remain the reference for what each gate asserts.
@@ -37,7 +48,16 @@ Set `T3_ORIGINAL_HUD=ON` and `T3_LOCAL_HUD_EXE` to the private USA
 the disc. CMake runs `scripts/extract_psx_hud.py` and packs the private
 `HUD.BIN`; the ignored `assets/imported/tekken3-usa/hud/manifest.json` records
 the source hash, dimensions and palettes when the script is run directly.
-The name plates and original text font are still pending. This option needs
+The name plates, normal round/result messages and REPLAY use the original
+sprites/fonts (schema-4 HUD.BIN). Production matches now include the original
+first-round intro; input becomes active at its frame 151. The combat suite
+measures its input offset from the first controllable fight state. This option needs
 `T3_LOCAL_POSE_CACHE_ENTRIES=128` in the measured release configuration to
 fit High Work RAM. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md) for the build and
 runtime evidence.
+See [FIRST_ROUND_START.md](FIRST_ROUND_START.md) for initialization, text and
+HUD-phase comparisons and the remaining qualification gates.
+See [REVERSAL_PROGRESS.md](REVERSAL_PROGRESS.md) for the original reversal
+phase, its private tag-list input and the expanded reference schema. Current
+host fixture data must embed bank bytes (`cold=False`) and use the model
+parts for the original trace's costumes.

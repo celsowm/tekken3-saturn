@@ -40,6 +40,12 @@ typedef struct {
  * active window. Returns -1 for a descriptor that cannot be read. */
 int t3_attack_joint_pairs(const t3_divmot_t* bank, const t3_move_record_t* move);
 
+/* Descriptor joints for reversal conditions, independent of active window
+ * and point sampling. 1 decoded, 0 missing built-in window, -1 malformed.
+ * On 0/-1 the output is unchanged; missing data is not a no-joint result. */
+int t3_attack_descriptor_joints(const t3_divmot_t* bank,const t3_move_record_t* move,
+                                 uint8_t out[4]);
+
 /* Returns 1 = decoded active frame; 0 = inactive/no authored geometry
  * (also built-in descriptors when the bank has no builtin_attacks window);
  * -1 = truncated, unsupported or inconsistent input.

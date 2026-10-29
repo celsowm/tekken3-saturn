@@ -90,6 +90,25 @@ def floor_tile(vram, descriptor):
     return bytes(packed), palette, colors
 
 
+def floor_shade_corrections(tile, palette):
+    """Best additive RGB offsets for each PS1 level, weighted by tile texels."""
+    counts = [0] * 16
+    for byte in tile:
+        counts[byte >> 4] += 1
+        counts[byte & 15] += 1
+    result = bytearray()
+    for level in range(255):
+        for shift in (0, 5, 10):
+            channels = [(value >> shift) & 31 for value in palette]
+            targets = [min(31, int(value * level / 128 + 0.5)) for value in channels]
+            def cost(delta):
+                return sum(count * abs(max(0, min(31, value + delta)) - target)
+                           for count, value, target in zip(counts, channels, targets))
+            delta = min(range(-16, 16), key=lambda d: (cost(d), abs(d)))
+            result.append(delta & 255)
+    return bytes(result)
+
+
 def primitives(tmd):
     if len(tmd) < 1020 or struct.unpack_from('<I', tmd)[0] != 0x41 or struct.unpack_from('<I', tmd, 8)[0] != 36:
         raise ValueError('invalid stage TMD header')
@@ -166,18 +185,32 @@ def build(source, output):
     height = struct.unpack_from('<i', exe, 0x800 + 0x25138 - 0x10000)[0]
     vram, descriptor, tims = read_arc(arc)
     tile, palette, colors = floor_tile(vram, descriptor)
+    # FloorDrawGrid table: the USA layout maps the documented JP address
+    # 0x8001df6c identically; the executable hash above fixes the version.
+    fade = exe[0x800 + 0xdf6c:0x800 + 0xdf6c + 1024]
+    if len(fade) != 1024:
+        raise ValueError('truncated original floor fade table')
+    corrections = floor_shade_corrections(tile, palette)
     picture, picture_palette, scene, quantization = cylinder(tmd, vram, height)
     output.mkdir(parents=True, exist_ok=True)
     # Whole-sector sections avoid restarting unaligned CD reads for each chunk.
     sections = dict(tile=2048, floor_palette=4096, picture_palette=6144, picture=8192)
     payload = struct.pack('>16I', 0x54335354, 2, COLUMNS, ROWS, 64, 64, len(tile), 16,
                           sections['tile'], sections['floor_palette'], sections['picture_palette'],
-                          len(picture_palette), sections['picture'], len(picture), 0, 0)
+                          len(picture_palette), sections['picture'], len(picture), 0x46414445, 0x53515254)
     payload += bytes(sections['tile']-len(payload)) + tile
     payload += bytes(sections['floor_palette']-len(payload)) + struct.pack('>16H', *palette)
+    payload += fade + corrections
     payload += bytes(sections['picture_palette']-len(payload)) + struct.pack(f'>{len(picture_palette)}H', *picture_palette)
     payload += bytes(sections['picture']-len(payload)) + picture
     payload += bytes(-len(payload) % 2048)
+    # SquareRoot0 can read before its table on overflow. This window contains
+    # private executable bytes and is used only by the experimental floor.
+    sqrt_offset = 0x800 + 0x3af40
+    before_sqrt = exe[sqrt_offset-640:sqrt_offset]
+    if len(before_sqrt) != 640:
+        raise ValueError('truncated SquareRoot0 preceding window')
+    payload += before_sqrt + bytes(2048-len(before_sqrt))
     (output/'PAUL.STG').write_bytes(payload)
     half = round(scene.half)
     (output/'t3_local_stage.h').write_text('\n'.join([

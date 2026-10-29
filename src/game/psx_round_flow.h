@@ -30,7 +30,7 @@ typedef struct {
 } t3_psx_round_flow_facts_t;
 typedef struct {
     int16_t start_slot[2]; /* -1 means no move start. Resolve with original VM. */
-    uint8_t grounded_mask,clear_blends,animate_before_camera,fight_clock_advance;
+    uint8_t grounded_mask,clear_blends,animate_before_camera,fight_clock_advance,stop_sounds;
 } t3_psx_round_flow_actions_t;
 /* Pair-atomic on invalid/unsupported input. Mode-specific team/arcade logic
  * and costume 0x26's VBlank-selected victory are outside normal Paul VS. */

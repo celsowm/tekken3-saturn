@@ -5,6 +5,11 @@
 #include "saturn/core.h"
 #include "saturn/scene.h"
 #include "t3_generated_character.h"
+#if defined(T3_MIXED_OT_DIAGNOSTIC)
+#include "psx_particle_prepare.h"
+sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
+    const t3_psx_particle_draw_t* particles,unsigned count);
+#endif
 
 /* 48 floor faces, 36+ fighter body geometry; generous but bounded. */
 #define T3_SCENE_CAPACITY (T3_FACE_COUNT * 2u + 128u)

@@ -9,6 +9,7 @@ import json
 import struct
 from divmot_to_logic import sections_of
 from extract_psx_sequences import MAX_STEPS, TABLE_LENGTHS
+from extract_psx_sound_tables import select_scripts
 
 CLOSE_BYTES = 64*4  # g_closeReactions after the 633 records (extract_psx_pose_tables.py)
 THROW_BYTES = (397+21)*2  # g_throwVictimSlots after the close table
@@ -55,10 +56,15 @@ def cold_file(bank,common,second=b""):
     if second:image=image.ljust(second_at,b'\0')+second
     return image,bank_at,common_at,second_at,digest
 
-def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None,cold=False,second_path=None,ai_tables_path=None):
+def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None,cold=False,second_path=None,ai_tables_path=None,sound_tables_path=None,effect_tables_path=None):
     bank=bank_path.read_bytes()
     # The CPU opponent's EXE tables (scripts/extract_psx_ai_tables.py).
     ai_tables=ai_tables_path.read_bytes() if ai_tables_path else b""
+    sounds=sound_tables_path.read_bytes() if sound_tables_path else b""
+    effects=effect_tables_path.read_bytes() if effect_tables_path else b""
+    if effects and len(effects)!=440:raise ValueError("invalid effect tables")
+    if sounds and sounds[:4]!=b"T3SF":
+        raise ValueError("fighter sound tables must come from extract_psx_sound_tables.py")
     if ai_tables and ai_tables[:4]!=b"T3AI":
         raise ValueError("CPU opponent tables must come from extract_psx_ai_tables.py")
     _,section=sections_of(bank)
@@ -69,6 +75,20 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig
     if second:
         sections_of(second)
         if second[1]==99:raise ValueError("second bank must be a character bank, not type 99")
+    if sounds:
+        scripts=set()
+        for data in (bank,*(d for d in (common_path.read_bytes() if common_path else b'',second) if d)):
+            count, offsets=sections_of(data)
+            for row in range(count):
+                index=struct.unpack_from('<I',data,offsets[1]+56*row+28)[0]
+                if index==0xFFFFFFFF:continue
+                for n in range(3):
+                    at=offsets[3]+2*(index+n)
+                    if at+2>offsets[4]:raise ValueError('sound-enabled build requires section 3')
+                    code=struct.unpack_from('<H',data,at)[0]
+                    if code==0xFFFF:break
+                    if code>>12==8 and code&0xFFF:scripts.add(code&0xFFF)
+        sounds=select_scripts(sounds,scripts)
     common=common_path.read_bytes() if common_path else b""
     if common:
         sections_of(common)
@@ -83,8 +103,10 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig
     trig=trig_path.read_bytes() if trig_path else b""
     ik=ik_path.read_bytes() if ik_path else b""
     branches=common_branches_path.read_bytes() if common_branches_path else b""
-    reactions=close=throws=attacks=b""
+    reactions=close=throws=attacks=reversal=b""
     if reactions_path:
+        reversal_path=reactions_path.with_name('psx_reversal_lists.bin')
+        if reversal_path.is_file():reversal=reversal_path.read_bytes()
         original=reactions_path.read_bytes()
         if len(original)!=633*42+CLOSE_BYTES+THROW_BYTES+ATTACK_BYTES:
             raise ValueError("original reaction table requires 633 records, the 64-entry close table, "
@@ -140,12 +162,18 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig
 #define T3_LOCAL_COMMON_BRANCH_BYTES {len(branches)}u
 #define T3_LOCAL_AI_TABLE_BYTES {len(ai_tables)}u
 extern const uint8_t t3_local_ai_tables[{max(1,len(ai_tables))}];
+#define T3_LOCAL_SOUND_TABLE_BYTES {len(sounds)}u
+extern const uint8_t t3_local_sound_tables[{max(1,len(sounds))}];
+#define T3_LOCAL_EFFECT_TABLE_BYTES {len(effects)}u
+extern const uint8_t t3_local_effect_tables[{max(1,len(effects))}];
 #define T3_LOCAL_COMBAT_REACTION_BYTES {len(reactions)}u
 extern const uint8_t t3_local_combat_reactions[{max(1,len(reactions))}];
 #define T3_LOCAL_COMBAT_CLOSE_BYTES {len(close)}u
 extern const uint8_t t3_local_combat_close[{max(1,len(close))}];
 #define T3_LOCAL_COMBAT_THROW_BYTES {len(throws)}u
 extern const uint8_t t3_local_combat_throws[{max(1,len(throws))}];
+#define T3_LOCAL_REVERSAL_BYTES {len(reversal)}u
+extern const uint8_t t3_local_reversal_lists[{max(1,len(reversal))}];
 #define T3_LOCAL_COMBAT_ATTACK_BYTES {len(attacks)}u
 extern const uint8_t t3_local_combat_attacks[{max(1,len(attacks))}];
 #define T3_LOCAL_BODY_BYTES {len(body)}u
@@ -214,9 +242,11 @@ extern const uint8_t t3_local_second_bank[{max(1,len(second))}];
           +emit("t3_local_combat_reactions",reactions)
           +emit("t3_local_combat_close",close)
           +emit("t3_local_combat_throws",throws)
+          +emit("t3_local_reversal_lists",reversal)
           +emit("t3_local_combat_attacks",attacks)
           +emit("t3_local_common_branches",branches)
-          +emit("t3_local_ai_tables",ai_tables))
+          +emit("t3_local_ai_tables",ai_tables)
+          +emit("t3_local_sound_tables",sounds)+emit("t3_local_effect_tables",effects))
     impl += "const t3_command_sequence_t t3_local_sequences["+str(max(1,len(sequences)))+"] = {\\n"
     if not sequences:
         impl += "    {0},\\n"
@@ -253,9 +283,11 @@ def main():
     p.add_argument("--combat-reactions",type=Path,help="private original 633-row reaction table; embeds only supported rows")
     p.add_argument("--second-bank",type=Path,help="private opponent character bank for host evaluators")
     p.add_argument("--ai-tables",type=Path,help="private CPU opponent tables (extract_psx_ai_tables.py)")
+    p.add_argument("--sound-tables",type=Path,help="private fighter sound tables (extract_psx_sound_tables.py)")
+    p.add_argument("--effect-tables",type=Path,help="private glow-joint/hand-offset tables")
     p.add_argument("--cold-file",action="store_true",
                    help="write the two DIVMOT banks to MOTION.BIN and emit Low WRAM storage instead of embedding them")
     a=p.parse_args()
-    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table,a.cold_file,a.second_bank,a.ai_tables)
+    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table,a.cold_file,a.second_bank,a.ai_tables,a.sound_tables,a.effect_tables)
     except (OSError,ValueError) as e:p.exit(1,f"private DIVMOT embed failed: {e}\n")
 if __name__=="__main__":main()

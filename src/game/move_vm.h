@@ -71,6 +71,7 @@ int t3_move_vm_start_phased(t3_move_vm_t* vm,const t3_divmot_t* bank,
                             const t3_divmot_t* common,unsigned slot);
 int t3_move_vm_queue(t3_move_vm_t* vm,unsigned slot,unsigned transition,
                       unsigned branch_kind,int16_t entry_frame,int16_t branch_window);
+unsigned t3_move_transition_remap(unsigned code,const t3_move_record_t* move,int16_t entry);
 int t3_move_vm_begin(t3_move_vm_t* vm,t3_move_start_facts_t facts);
 int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
                             const struct t3_branch_context* facts,

@@ -80,6 +80,10 @@ int t3_divmot_slot_resolve(const t3_divmot_t* bank,
                             const t3_divmot_t* common,
                             unsigned slot, t3_move_record_t* out,
                             const t3_divmot_t** owner);
+/* Original section-3 sound words for the resolved slot: at most three words.
+ * 1 found/absent, 0 sound section was omitted, -1 malformed. */
+int t3_divmot_sound_list(const t3_divmot_t* bank,const t3_divmot_t* common,
+                         unsigned slot,const uint8_t** words,size_t* bytes);
 /* First matching supported branch, including EXE common CALL/RETURN when
  * its bounded table is attached. Unknown facts/commands never match;
  * nested calls and invalid table references fail closed. Default continuation

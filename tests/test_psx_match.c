@@ -188,6 +188,28 @@ int main(void) {
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.ticks==before.ticks+1 && !memcmp(game.fighter,before.fighter,sizeof(game.fighter)));
     assert(!memcmp(&game.replay,&before.replay,sizeof(game.replay)));
+    /* Production startup fails closed without the authored entry slots. */
+    c.start_intro=1;c.start_seed=1;c.start_physical[0]=0x80;c.start_physical[1]=0x40;
+    before=game;
+    assert(!t3_psx_match_init(&game,&c));
+    assert(!memcmp(&game,&before,sizeof(game)));
+    p32(bytes+B2,0);p32(bytes+B2+2*4,0);
+    assert(t3_psx_match_init(&game,&c));
+    assert(game.flow.played==1 && game.flow.frame==0 && game.flow.state==T3_ROUND_INTRO);
+    assert(game.fighter[0].vm.pending_valid && game.fighter[0].vm.pending_slot==0);
+    assert(game.fighter[1].vm.pending_valid && game.fighter[1].vm.pending_slot==2);
+    for(unsigned tick=1;tick<=150;++tick) {
+        video.frame_counter=tick+1;
+        assert(t3_psx_match_step_original(&game,forward,forward,&video));
+        assert(game.flow.state==T3_ROUND_INTRO && game.flow.timer==2400);
+        assert(game.fighter[0].input.direction_cleared && game.fighter[1].input.direction_cleared);
+        assert(!game.flow.input[0] && !game.flow.input[1]);
+    }
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.frame==151 && game.flow.state==T3_ROUND_FIGHT && game.flow.timer==2400);
+    assert(game.fighter[0].vm.pending_valid && game.fighter[0].vm.pending_slot==21);
+    assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.fighter[0].vm.slot==21 && game.flow.timer==2399);
     test_throw_situation();
     test_attack_pending();
     return 0;

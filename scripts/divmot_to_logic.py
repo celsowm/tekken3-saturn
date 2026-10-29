@@ -4,6 +4,7 @@
 Keeps sections 0 (branches), 1 (moves), 2 (move slots). Optional
 --with-motion preserves raw animation section 6 (including tags);
 --with-hitboxes preserves baked hitbox section 9. --with-events preserves section 4 original u16 frame/command lists.
+--with-sounds interns the executed section-3 lists and relocates their move indices.
 Other copyrighted streams are dropped. All output stays local, not in Git or CI.
 """
 import argparse
@@ -36,13 +37,34 @@ def sections_of(data):
         raise FormatError("character bank must have exactly 4023 move slots")
     return moves,offsets
 
-def compact(data, with_hitboxes=False, with_motion=False, with_events=False):
+def compact(data, with_hitboxes=False, with_motion=False, with_events=False, with_sounds=False):
     count,s=sections_of(data)
     kept=data[s[0]:s[3]]
     # Sections 6 and 9 use section-relative offsets inside move rows, so
     # the original bytes can be preserved independently. Do not relocate
     # internal stream offsets or non-selected asset streams.
     events=data[s[4]:s[5]] if with_events else b""
+    sounds=b""
+    if with_sounds:
+        # Only the first three words of a list are executed. Intern those
+        # exact sequences and relocate indices; no command is discarded.
+        kept=bytearray(kept)
+        lists={}
+        for row in range(count):
+            at=s[1]-s[0]+row*ROW_BYTES+28
+            index=struct.unpack_from('<I',kept,at)[0]
+            if index==0xFFFFFFFF:continue
+            words=[]
+            for n in range(3):
+                ptr=s[3]+2*(index+n)
+                if ptr+2>s[4]:raise FormatError('sound list outside section 3')
+                word=struct.unpack_from('<H',data,ptr)[0];words.append(word)
+                if word==0xFFFF:break
+            key=struct.pack('<'+'H'*len(words),*words)
+            if key not in lists:
+                lists[key]=len(sounds)//2;sounds+=key
+            struct.pack_into('<I',kept,at,lists[key])
+        kept=bytes(kept)
     motion=data[s[6]:s[7]] if with_motion else b""
     attacks=data[s[9]:s[10]] if with_hitboxes else b""
     # The original move-row pointers are SECTION-relative; retain them
@@ -51,10 +73,11 @@ def compact(data, with_hitboxes=False, with_motion=False, with_events=False):
     offsets=[64,64+s[1]-s[0],64+s[2]-s[0]]
     for section in range(3,15):
         offsets.append(pos)
-        if section==4:pos+=len(events)
+        if section==3:pos+=len(sounds)
+        elif section==4:pos+=len(events)
         elif section==6:pos+=len(motion)
         elif section==9:pos+=len(attacks)
-    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+events+motion+attacks)
+    result=bytearray(data[:4]+struct.pack("<15I",*offsets)+kept+sounds+events+motion+attacks)
     assert len(result)==offsets[-1]
     sections_of(result)
     return bytes(result),{
@@ -69,6 +92,8 @@ def compact(data, with_hitboxes=False, with_motion=False, with_events=False):
         "hitbox_bytes":len(attacks),
         "motion_bytes":len(motion),
         "event_bytes":len(events),
+        "sound_command_bytes":len(sounds),
+        "move_sound_commands_included":bool(with_sounds),
         "move_frame_events_included":bool(with_events),
         "motion_streams_included":bool(with_motion),
         "attack_geometry_included":bool(with_hitboxes),
@@ -89,10 +114,12 @@ def main():
                    help="preserve local copyrighted baked attack descriptors (section 9)")
     p.add_argument("--with-events",action="store_true",
                    help="preserve PRIVATE original frame events in section 4")
+    p.add_argument("--with-sounds",action="store_true",
+                   help="preserve PRIVATE original move sound commands in section 3")
     a=p.parse_args()
     try:
         data=a.bank.read_bytes()
-        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes,with_motion=a.with_motion,with_events=a.with_events)
+        logic,manifest=compact(data,with_hitboxes=a.with_hitboxes,with_motion=a.with_motion,with_events=a.with_events,with_sounds=a.with_sounds)
         a.output.mkdir(parents=True,exist_ok=True)
         (a.output/f"bank_{manifest['bank_type']}.t3logic").write_bytes(logic)
         (a.output/f"bank_{manifest['bank_type']}.json").write_text(

@@ -18,10 +18,12 @@ static t3_motion_cursor_t* cursor_for(t3_psx_local_pose_cache_t* c,const uint8_t
 void t3_psx_local_pose_cache_init(t3_psx_local_pose_cache_t* c,
     t3_psx_local_pose_entry_t* entries,unsigned capacity) {
     unsigned n=entries?capacity:0;
-    const int paired=n>=2 && !(n&(n-1));
+    const int paired=n>=2 && !(n&1u);
     if(!paired && n>255)n=255; /* one set; recent is a byte */
     *c=(t3_psx_local_pose_cache_t){.entries=entries,.capacity=n,
         .sets=paired?n/2:n?1:0,.ways=paired?2:n};
+    unsigned span=1;while(span<c->sets)span<<=1;
+    c->set_mask=span-1;
     clear(c);
 }
 int t3_psx_local_pose(const t3_motion_stream_t* s,unsigned frame,
@@ -55,7 +57,11 @@ int t3_psx_local_pose(const t3_motion_stream_t* s,unsigned frame,
          * its bank, including all-zero channels. */
         identity=s->data+s->key_offset[0];
         const uint32_t hash=(uint32_t)((uintptr_t)identity>>2)*0x9E3779B1u;
-        set=&c->entries[(((hash>>16)+frame)&(c->sets-1u))*c->ways];
+        unsigned index=((hash>>16)+frame)&c->set_mask;
+        /* Fold the unused tail for non-power-of-two set counts; no SH-2
+         * division. Existing power-of-two layouts keep their exact mapping. */
+        if(index>=c->sets)index-=c->sets;
+        set=&c->entries[index*c->ways];
         for(unsigned w=0;w<c->ways;++w) {
             const t3_psx_local_pose_entry_t* e=&set[w];
             if(e->stream==identity && e->frame==frame && e->frames==s->frames) {

@@ -60,10 +60,28 @@ int main(void) {
     setup(&bank,&c,&game);c.reactions_size=0;before=game;
     assert(!t3_psx_match_apply_hits(&game) && !memcmp(&game,&before,sizeof(game)));
     setup(&bank,&c,&game);game.fighter[1].health_q16=5*65536;
+    game.fighter[1].taps.condition_used=1;
+    game.fighter[1].taps.both=1;
     assert(t3_psx_match_apply_hits(&game));
     assert(game.fighter[1].health_q16==0 && game.fighter[1].hit.ko_started);
     assert(game.fighter[1].vm.slot==0xD66 && game.fighter[1].vm.clock.pose_frame==1);
     assert(game.fighter[1].vm.current_transition==6 && !game.fighter[1].vm.pending_valid);
     assert(game.fighter[1].ko_collapse);
+    assert(!game.fighter[1].taps.condition_used && game.fighter[1].taps.both==1);
+    /* FighterOpponent may select the defender itself. Clearing its incoming
+     * slots must then preserve the actual attacker's contact/hit-done flags. */
+    setup(&bank,&c,&game);
+    p16(bytes+B0,16);bytes[B0+3]=0x45;p16(bytes+B0+6,21);
+    bytes[B0+8]=33;bytes[B0+9]=0;bytes[B0+10]=255;bytes[B0+11]=1;
+    game.fighter[1].hit_gate=game.fighter[0].hit_gate;
+    game.fighter[0].hit_gate.status=T3_HIT_GATE_NO_ATTACK;
+    game.fighter[0].ground.relative_angle=game.fighter[1].ground.relative_angle=0;
+    t3_history_clear(&game.fighter[0].input);
+    assert(t3_psx_match_reversals(&game));
+    assert(game.fighter[0].vm.pending_slot==21 && game.fighter[0].ground.damage_override==30);
+    assert(game.fighter[1].contact && game.fighter[1].hit_done);
+    assert(t3_psx_match_apply_hits(&game));
+    assert(game.fighter[0].health_q16==140*65536 && !game.fighter[0].got_hit);
+    assert(game.fighter[1].contact && game.fighter[1].hit_done && !game.reversal_cancelled);
     return 0;
 }

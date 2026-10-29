@@ -19,6 +19,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
     for(unsigned i=0;i<2;++i) {
         uint32_t b=0x800A9228u+i*0x188Cu;
         t3_psx_fighter_t* f=&game.fighter[i];
+        f->last_attacker=u8(b+0x22);f->last_hit_target=u8(b+0x23);
         if(u16(b+0xA0)!=3 || u32(b+0x1A4) || u32(b+0x4C)!=u32(b+0x54) ||
            u16(b+0x404) || u16(b+0x406))return 0;
 #define READ(member,offset,kind) f->ground.member=kind(b+offset);
@@ -91,6 +92,8 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
 static void compare(unsigned i,uint32_t sx,uint32_t sz) {
     (void)sx;(void)sz;
     const t3_psx_fighter_t* f=&game.fighter[i];uint32_t b=0x800A9228u+i*0x188Cu;
+    check(i,"opponent","last_attacker",f->last_attacker,u8(b+0x22));
+    check(i,"opponent","last_hit_target",f->last_hit_target,u8(b+0x23));
     if(original_round_flow) {
         const t3_psx_round_actor_t* a=&game.round_actor[i];
         check(i,"round_actor","wins",a->wins,i16(b+0x44));

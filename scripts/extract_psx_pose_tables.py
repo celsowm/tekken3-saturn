@@ -29,6 +29,33 @@ THROW_VICTIM_WORDS = 397 + 21
 # their pointers reach: the game reads past a descriptor into what follows.
 BUILTIN_ATTACK_BYTES = 0x400
 BUILTIN_TABLE, BUILTIN_COUNT = 0x34, 13
+REVERSAL_LISTS, REVERSAL_COUNT = 0x80095AB8, 52
+
+
+def reversal_lists(raw, address):
+    """Bounded USA pointers to positive s16 tag lists; offsets, not pointers."""
+    def at(pointer, size):
+        offset = pointer - BASE + HEADER
+        if offset < HEADER or offset + size > len(raw):
+            raise TableError('reversal animation list outside executable')
+        return offset
+    table = at(address, REVERSAL_COUNT * 4)
+    values, offsets = bytearray(), []
+    head = 2 + 2 * (REVERSAL_COUNT + 1)
+    for index in range(REVERSAL_COUNT):
+        pointer = struct.unpack_from('<I', raw, table + 4 * index)[0]
+        offsets.append(head + len(values))
+        for n in range(512):
+            tag = struct.unpack_from('<h', raw, at(pointer + 2 * n, 2))[0]
+            values += struct.pack('<h', max(0, tag))
+            if tag <= 0:
+                break
+        else:
+            raise TableError('unterminated reversal animation list')
+    offsets.append(head + len(values))
+    if offsets[-1] > 65535:
+        raise TableError('reversal animation lists exceed offset format')
+    return struct.pack('<H', REVERSAL_COUNT) + struct.pack('<53H', *offsets) + values
 
 
 def builtin_attacks(window, address):
@@ -127,6 +154,11 @@ def extract(exe, layout_file, output):
     reactions+=builtin_attacks(raw[offsets['builtin_attacks']:offsets['builtin_attacks']+BUILTIN_ATTACK_BYTES],
                                targets['builtin_attacks'][0])
     (output/'psx_reactions.bin').write_bytes(reactions)
+    reversal_address = mapped(layout, REVERSAL_LISTS, REVERSAL_COUNT * 4)
+    reversal = reversal_lists(raw, reversal_address)
+    (output/'psx_reversal_lists.bin').write_bytes(reversal)
+    manifest['reversal_lists_address'] = reversal_address
+    manifest['reversal_lists_sha256'] = hashlib.sha256(reversal).hexdigest()
     manifest['reactions_sha256']=hashlib.sha256(reactions).hexdigest()
     body_sqrt=raw[offsets['body_sqrt']:offsets['body_sqrt']+384]
     body_joints=raw[offsets['body_joints']:offsets['body_joints']+32]

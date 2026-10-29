@@ -48,6 +48,9 @@ typedef struct t3_branch_context {
     uint8_t opponent_in_air;
     uint16_t opponent_guard; /* +0x9C guard bits, matched against own_attack */
     uint8_t body_contact, tap_lp, tap_rp, tap_both;
+    /* Optional owned latch marker: evaluating a tap condition sets this even
+     * when its value is false. Pure callers may leave it NULL. */
+    uint8_t* tap_condition_used;
     uint8_t launch_armed;
     int16_t step_cooldown; /* +0x128: rows flagged 0x1C are skipped while non-zero */
 } t3_branch_context_t;

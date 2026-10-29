@@ -52,28 +52,30 @@ static void play(unsigned id) {
     if(spent>g_t3_sfx_play_max_ms)g_t3_sfx_play_max_ms=spent;
 }
 
-/* Voices: a hurt voice for a hit (not a block) with a 20-image cooldown (the
- * original waits 40 frames), and a shout on one swing in four. The match does
- * not carry the original's random draws, so the picks cycle. */
-static uint8_t g_hurt_wait[2],g_hurt_next[2],g_shout_next[2],g_swings;
-void t3_sfx_play_events(uint8_t events) {
+/* Voices: a hurt voice for a hit (not a block) with the original's 40-tick
+ * cooldown, and a shout on one swing in four. The match does not carry the
+ * original's random draws, so the picks cycle. Events arrive in tick order. */
+static uint32_t g_hurt_tick[2];
+static uint8_t g_hurt_set[2],g_hurt_next[2],g_shout_next[2],g_swings;
+void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
     if(!g_ready)return;
-    for(unsigned i=0;i<2u;++i) {
-        const uint8_t mine=(uint8_t)(events>>(T3_EVENT_BITS*i));
-        if(g_hurt_wait[i])--g_hurt_wait[i];
-        if(mine&T3_EVENT_SWING) {
+    for(unsigned n=0;n<count;++n) {
+        const t3_combat_event_t* e=&events[n];
+        const unsigned i=e->fighter;
+        if(e->kind==T3_EVENT_SWING) {
             play(T3_SFX_SWING);
             if((++g_swings&3u)==0u)play(i?T3_SFX_F1_SHOUT0+(g_shout_next[i]++&1u):T3_SFX_F0_SHOUT0+(g_shout_next[i]++&1u));
-        }
-        /* The attacker's descriptor joint picks the block sound: below 12 is a hand. */
-        if(mine&T3_EVENT_BLOCK)
-            play(t3_move_probe_owned_value(1u-i,26u)<12?T3_SFX_GUARD_HAND:T3_SFX_GUARD_FOOT);
-        else if(mine&T3_EVENT_HIT) {
+        } else if(e->kind==T3_EVENT_BLOCK) {
+            /* The attacker's descriptor joint picks the block sound: below 12 is a hand. */
+            play(e->joint<12?T3_SFX_GUARD_HAND:T3_SFX_GUARD_FOOT);
+        } else if(e->kind==T3_EVENT_HIT) {
             play(T3_SFX_HIT);
-            if(!g_hurt_wait[i]) {
+            /* A tick count below the last voice means the match restarted. */
+            const int ready=!g_hurt_set[i] || e->tick<g_hurt_tick[i] || e->tick-g_hurt_tick[i]>=40u;
+            if(ready) {
                 const unsigned pick=g_hurt_next[i]++%3u;
                 play(i?T3_SFX_F1_HURT0+pick:T3_SFX_F0_HURT0+pick);
-                g_hurt_wait[i]=20u;
+                g_hurt_tick[i]=e->tick;g_hurt_set[i]=1u;
             }
         }
     }

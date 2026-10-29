@@ -47,6 +47,7 @@ class KmdRow:
     variants: tuple[int,...]
     double_sided: tuple[int,...] = ()
     face_uvs: tuple = ()
+    face_ot: tuple[tuple[int,int], ...] = ()  # group, original flags' high byte
     @property
     def parent(self):
         return struct.unpack("<i",struct.pack("<I",self.words[8]))[0]
@@ -93,7 +94,7 @@ def parse_vertex(data,start,end,normals=False):
     return VertBlock(local,shared,tuple(coords),post)
 
 def parse_faces(data,start,end):
-    rd=Reader(data,start,end);faces=[];counts=[];double_sided=[]
+    rd=Reader(data,start,end);faces=[];counts=[];double_sided=[];face_ot=[]
     for i,(length,corners) in enumerate(zip(GROUP_SIZES,GROUP_CORNERS)):
         count=rd.u32()
         if count>8192:raise KmdError("excessive KMD face count")
@@ -106,8 +107,9 @@ def parse_faces(data,start,end):
             faces.append(vi)
             flags=words[1] if corners==4 else words[0]
             double_sided.append(int(bool(flags & 0x1000000)))
+            face_ot.append((i,flags >> 24))
     if rd.pos!=end:raise KmdError("KMD faces have extra or truncated data")
-    return tuple(faces),tuple(counts),tuple(double_sided)
+    return tuple(faces),tuple(counts),tuple(double_sided),tuple(face_ot)
 
 def parse_texmap(data,start,end,counts,with_uv=False):
     rd=Reader(data,start,end)
@@ -166,9 +168,9 @@ def parse_kmd(data):
             raise KmdError("incomplete KMD mesh block pointers")
         vert=parse_vertex(data,row[0],ends[row[0]])
         parse_vertex(data,row[2],ends[row[2]],normals=True)
-        faces,counts,double_sided=parse_faces(data,row[3],ends[row[3]])
+        faces,counts,double_sided,face_ot=parse_faces(data,row[3],ends[row[3]])
         mats,uvs=parse_texmap(data,row[4],ends[row[4]],counts,with_uv=True)
-        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,())),double_sided,uvs))
+        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,())),double_sided,uvs,face_ot))
     return Kmd(scale,tuple(parsed))
 
 def merge(a,b):
@@ -296,15 +298,40 @@ def to_source_model(kmd,lib_source,unit=1.0/4096):
     finally:
         sys.path.remove(str(source))
 
+def projected_vertex_map(kmd, source_to_vertex):
+    """Map each projected KMD slot used by a face to the compiled vertex.
+
+    The logical vertex order is first occurrence while traversing original
+    draw parts, rows and faces; SKA export may reorder that logical order.
+    """
+    _, face_refs, _ = record_slots(kmd)
+    seen = {}
+    for part, row, face in face_refs:
+        for slot in face:
+            key = (part, row, slot)
+            if key not in seen:
+                index = len(seen)
+                if index >= len(source_to_vertex):
+                    raise KmdError('compiled vertex remap is incomplete')
+                seen[key] = int(source_to_vertex[index])
+    if len(seen) != len(source_to_vertex):
+        raise KmdError('compiled vertex remap has unexpected length')
+    # The SKA exporter deduplicates equal world-space skin records. Distinct
+    # PS1 projected slots can therefore share one compiled index; consumers
+    # must not overwrite that index without resolving projected differences.
+    return [(part, row, slot, index) for (part, row, slot), index in seen.items()]
+
 def compile_ska(kmd,source,output,texture_arc=None):
     model,quads,variants_omitted=to_source_model(kmd,source)
-    double_sided=[]
+    double_sided=[];face_ot=[]
     for part,row_index in enumerate(PART_ROWS[:18]):
         for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
             row=kmd.rows[ri]
             if row.vert is not None:
                 double_sided.extend(row.double_sided or (0,)*len(row.faces))
-    if len(double_sided)!=len(quads):raise KmdError('face flag/geometry order disagrees')
+                if len(row.face_ot)!=len(row.faces):raise KmdError('face OT metadata missing')
+                face_ot.extend(row.face_ot)
+    if len(double_sided)!=len(quads) or len(face_ot)!=len(quads):raise KmdError('face flag/geometry order disagrees')
     sys.path.insert(0,str((source/"tools").resolve()))
     try:
         from model_pipeline import skeletal_export as sx
@@ -335,8 +362,15 @@ def compile_ska(kmd,source,output,texture_arc=None):
                         for material,uv in zip(row.materials,row.face_uvs):
                             rgba.append(bake_face(vram,material,uv))
             if len(rgba)!=len(quads):raise KmdError('texture/geometry face order disagrees')
-            palette,transparent,_=build_shared_palette(rgba)
+            # Scene materials use VDP1's transparent-index-zero mode even if
+            # the entire source model is opaque. Always reserve that index;
+            # otherwise a fully opaque model (Law) develops holes wherever
+            # its most common color is mapped to zero.
+            palette,transparent,_=build_shared_palette(rgba+[[(0,0,0,0)]])
             indexed=map_faces_to_indices(rgba,[(8,8)]*len(rgba),palette)
+            if any((a>=128) != (index!=0) for face,pixels in zip(rgba,indexed)
+                   for (_,_,_,a),index in zip(face,pixels)):
+                raise KmdError('indexed face transparency differs from source')
             unique=[];lookup={};face_textures=[]
             for pixels in indexed:
                 data=bytes(pixels)
@@ -377,7 +411,8 @@ def compile_ska(kmd,source,output,texture_arc=None):
             "blend_vertices":len(export.skin.blend),
             "render_plan":{k:render_plan[k] for k in
                 ('schema','joint_mask','maximum_l1','exact_skin_supported')},
-            "double_sided_faces":double_sided,
+            "double_sided_faces":double_sided,"face_ot_metadata":face_ot,
+            "projected_vertex_map":projected_vertex_map(kmd,remap),
             "variant_rows_pending":variants_omitted,
             "original_textures":texture_arc is not None,"original_motion":False,
             "textures":len(render.textures),"texture_report":texture_report,

@@ -1,5 +1,26 @@
 # Paul playable milestone: execution evidence
 
+Continuation (2026-10-26): [THROW_ESCAPE.md](THROW_ESCAPE.md) records the
+original tap-latch integration, 3,960 MIPS differential cases, 920 host ticks
+across throw/escape outcomes and 3,000 fresh-start host ticks through timeout
+and the second intro. Its candidate passes 58 + 59 host tests, all 26 live
+cases and the 3,000-tick Saturn reference; a separate fresh-start Saturn
+reference matches 460 ticks. The subsequent
+[reversal integration](REVERSAL_PROGRESS.md) matches 600 fresh original/host/SH-2
+ticks through the counter-throw; its 26-case/3,000-tick release gate also passes.
+[Air/recovery evidence](AIR_RECOVERY_PARITY.md) adds six continuous host cases
+and a separate 600-tick native juggle comparison on the same gameplay code.
+
+Latest continuation (2026-10-25): [FIRST_ROUND_START.md](FIRST_ROUND_START.md)
+records the original-font messages, first-round placement and input release,
+840 host ticks and a fresh-configuration 360-tick original/host/SH-2 comparison.
+HUD phase is also checked against original RAM through a damaging hit. The
+release candidate passes 57 + 57 host checks, all 26 live cases and the
+3,000-tick reference, with a native CD run. A subsequent HUD origin fix
+centers the overlay and has separate matched Ymir/CD display evidence.
+The opening milestone description and earlier measurements below describe
+their respective historical builds, not a new whole-game parity claim.
+
 The objective remains the complete [playable milestone](NEXT_PLAYABLE_MILESTONE.md).
 It is **not complete**. The current private `build/paul-memory` activates the
 original-frame API for movement, high/mid/low damage, guard, reactions, normal-VS

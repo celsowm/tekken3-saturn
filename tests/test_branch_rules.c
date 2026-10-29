@@ -110,9 +110,15 @@ static void test_conditions(void) {
     assert(!t3_branch_condition_matches(0x34,0,&f));
 
     f.known=T3_FACT_BUTTON_TAPS;f.tap_lp=1;f.tap_rp=0;f.tap_both=1;
+    uint8_t used=0;f.tap_condition_used=&used;
     assert(t3_branch_condition_matches(0x3A,0,&f));
+    assert(used==1);used=0;
     assert(!t3_branch_condition_matches(0x3B,0,&f));
+    assert(used==1);used=0;
     assert(t3_branch_condition_matches(0x3C,0,&f));
+    assert(used==1);used=0;
+    f.known=0;
+    assert(!t3_branch_condition_matches(0x3A,0,&f));assert(!used);
     f.known=T3_FACT_HEALTH|T3_FACT_LAUNCH;
     f.own_health=100;f.launch_armed=0;
     assert(t3_branch_condition_matches(0x42,0,&f));

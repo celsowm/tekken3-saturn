@@ -1,7 +1,10 @@
 #include "disc.h"
 #include "saturn/cd_block.h"
 
-static sat_cdfs_volume_t g_volume __attribute__((section(".wram_l")));
+/* Sound commands occupy the last Low WRAM margin. The mount record is
+ * master-only and fits High WRAM after pruning unreachable sound scripts;
+ * retain the linker's full 16 KiB stack reservation. */
+static sat_cdfs_volume_t g_volume;
 static sat_cd_block_t g_cd __attribute__((section(".wram_l")));
 static sat_cd_device_t g_device __attribute__((section(".wram_l")));
 static uint8_t g_mounted;

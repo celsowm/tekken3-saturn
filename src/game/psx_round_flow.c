@@ -94,7 +94,7 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
                          const t3_psx_round_flow_facts_t* f,t3_psx_round_flow_actions_t* actions) {
     t3_psx_round_flow_t s;
     t3_psx_round_actor_t a[2];
-    t3_psx_round_flow_actions_t x={{-1,-1},0,0,0,0};
+    t3_psx_round_flow_actions_t x={{-1,-1},0,0,0,0,0};
     if(!out || !actors || !f || !actions)return 0;
     s=*out;a[0]=actors[0];a[1]=actors[1];
     if(s.state<0 || (s.state>6 && s.state!=9) || s.counter<0 || s.counter==INT32_MAX ||
@@ -123,13 +123,14 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
             else {s.input[i]=2;a[i].script_input=a[i].bank_type!=18 && (a[i].state_word&0x204)?0x1000:0;}
         }
         if((s.result&0x1F) && s.counter==90)s.done=1;
-        if(s.done){s.input[0]=s.input[1]=0;s.state=T3_ROUND_REPLAY_DONE;s.replay_request=1;}
+        if(s.done){s.input[0]=s.input[1]=0;s.state=T3_ROUND_REPLAY_DONE;s.replay_request=1;x.stop_sounds=1;}
         break;
     case T3_ROUND_REPLAY:
         s.state=T3_ROUND_REPLAY_DONE;s.replay_request=1;
         break;
     case T3_ROUND_REPLAY_DONE:
         if(f->replay_mode!=5)break;
+        x.stop_sounds=1;
         s.blend_hold=2;
         if(!s.match_result && (start_pressed(&s,f) || f->replay_skip)){s.state=T3_ROUND_END;break;}
         for(unsigned i=0;i<2;++i)if(a[i].won>0) {
