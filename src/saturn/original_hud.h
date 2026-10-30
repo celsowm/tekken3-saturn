@@ -10,7 +10,7 @@ static inline int t3_original_hud_x(int x) {
 }
 
 /* Private system-texture sprites in HUD.BIN, generated from the user's disc. */
-sat_result_t t3_original_hud_init(void);
+sat_result_t t3_original_hud_init(void* scratch,unsigned bytes);
 #if defined(T3_PARTICLE_PREPARE)
 /* Reusable only after HUD upload; particle data remains resident afterward. */
 void* t3_original_hud_scratch(unsigned* bytes);

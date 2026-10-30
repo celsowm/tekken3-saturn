@@ -1570,7 +1570,7 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
 #endif
 #if defined(T3_ORIGINAL_HUD)
-    SAT_PANIC_IF_ERROR(t3_original_hud_init());
+    SAT_PANIC_IF_ERROR(t3_original_hud_init(g_faces,sizeof g_faces));
 #endif
 #if defined(T3_PARTICLE_PREPARE)
     SAT_PANIC_IF_ERROR(t3_particle_prepare_init());

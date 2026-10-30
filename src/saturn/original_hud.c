@@ -33,33 +33,28 @@ static uint16_t g_text_lut[TEXT_PALETTES]
 /* The whole HUD.BIN is read in one CDFS call: per-record reads cost a CD
  * seek each, and the sixty-one records of the text glyphs made the boot
  * several seconds longer. The buffer is boot-only scratch. */
-#if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
-/* The viewport experiment needs additional code space; file size is checked. */
-enum { HUD_FILE_MAX=29696u };
-#elif defined(T3_PARTICLE_GENERAL_MASK_PROBE)
-/* This experiment trades upload capacity for its raster code.
- * Initialization checks the actual file size before reading. */
-enum { HUD_FILE_MAX=30464u };
-#else
-enum { HUD_FILE_MAX=32768u };
-#endif
-static uint8_t g_hud_file[HUD_FILE_MAX] __attribute__((aligned(4)));
+/* HUD.BIN is read into the caller's boot scratch (the idle face store); a
+ * file larger than that scratch is refused. */
+static uint8_t* g_hud_file;
+static unsigned g_hud_capacity;
 
 #if defined(T3_PARTICLE_PREPARE)
 void* t3_original_hud_scratch(unsigned* bytes) {
-    if(bytes)*bytes=sizeof g_hud_file;
+    if(bytes)*bytes=g_hud_capacity;
     return g_hud_file;
 }
 #endif
 
 static unsigned u16(const uint8_t* p) {return (unsigned)p[0]|((unsigned)p[1]<<8);}
 
-sat_result_t t3_original_hud_init(void) {
+sat_result_t t3_original_hud_init(void* scratch,unsigned bytes) {
+    g_hud_file=scratch;
+    g_hud_capacity=bytes;
     sat_cdfs_volume_t* volume;
     sat_cdfs_file_t file;
     SAT_TRY(t3_disc_volume(&volume));
     SAT_TRY(sat_cdfs_lookup(volume,"HUD.BIN",&file));
-    if(file.size<12 || file.size>sizeof g_hud_file)return SAT_ERR_VERSION;
+    if(file.size<12 || file.size>g_hud_capacity)return SAT_ERR_VERSION;
     uint32_t read=0;
     const sat_result_t st=sat_cdfs_read_at(volume,&file,0,g_hud_file,file.size,&read);
     if(st!=SAT_OK || read!=file.size)return st!=SAT_OK?st:SAT_ERR_IO;

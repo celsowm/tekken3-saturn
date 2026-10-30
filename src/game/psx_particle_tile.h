@@ -2,7 +2,11 @@
 #define T3_PSX_PARTICLE_TILE_H
 #include "psx_particle_projection.h"
 #include <stdint.h>
-enum { T3_PARTICLE_PROBE_MAX_TILES=80 };
+/* Cells per particle surface; T3_PARTICLE_CELLS trades Low WRAM for capacity. */
+#ifndef T3_PARTICLE_CELLS
+#define T3_PARTICLE_CELLS 80
+#endif
+enum { T3_PARTICLE_PROBE_MAX_TILES=T3_PARTICLE_CELLS };
 /* Conservative inclusive viewport bounds for overlap rejection. This uses
  * the diagnostic particle mapping, not a validated PS1 rasterizer. */
 typedef struct { int16_t left,top,right,bottom; } t3_particle_bounds_t;
