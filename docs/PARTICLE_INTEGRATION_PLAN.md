@@ -1758,3 +1758,20 @@ be checked on paper and one convention (the indexed8 sprite palette bank) to be
 read in the SDK; the draw (steps 3 to 5) follows from it. It needs Ymir runs for
 every register change, because the stage's VDP2 cycle patterns and priorities are
 shared with the fighters' layers.
+
+## 57. Burst step 2: VDP2 colour-calc set-up and the palette bank
+
+- The SDK has 8 indexed8 CRAM banks (`kPaletteBankCount`, 256 entries each).
+  `sat_palette_upload_indexed8` claims a bank and returns an error if a model
+  already holds it, so the fire palette takes the highest bank (7) and a clash
+  shows at once instead of silently recolouring a fighter.
+- New option `T3_FLIPBOOK_BURST` (default OFF). In `stage_vdp2.c` it replaces
+  `sat_vdp2_sprite_set_priority(6)` with `sat_vdp2_sprite_color_calc_configure`
+  (`normal_priority` 6, faded sprites 5). The panorama (1) and floor (0/2) sit
+  below 5, and nothing else uses ratio slots, so there is no mixing conflict. The
+  add mode is the same global bit the NBG1 particle layer already sets.
+- Check: `build/burst-cand` (option ON, same settings as `ptcl-full`) against
+  `build/ptcl-full` over 1500 fields in Ymir gives a pixel-identical screenshot,
+  so the set-up alone does not disturb the fighters, stage or HUD. Both runs had
+  `first_error 0` and 632 submitted frames.
+- Remaining: step 3 (draw the quad), 4 (character flipbook), 5 (PS1 comparison).

@@ -1,6 +1,7 @@
 #include "stage_vdp2.h"
 #include "saturn/color.h"
 #include "saturn/vdp2_layers.h"
+#include "saturn/vdp2_color_calc.h"
 #if defined(T3_STAGE_ADD_PROBE)
 #include "saturn/vdp2_compose.h"
 #endif
@@ -620,7 +621,14 @@ sat_result_t t3_stage_vdp2_init(void) {
     if((st=sat_vdp2_rotation_write_params(PARAM_A,&g_params))!=SAT_OK)return st;
     if((st=sat_vdp2_layers_commit())!=SAT_OK)return st;
     if((st=sat_vdp1_set_swap_handler(publish,NULL))!=SAT_OK)return st;
+#if defined(T3_FLIPBOOK_BURST)
+    /* The hit burst is an additive sprite: colour calculation at priority 6,
+     * faded sprites at 5, above the panorama (1) and floor (0/2) layers. */
+    sat_vdp2_sprite_color_calc_config_t burst_cc={.enabled=1,.normal_priority=6};
+    return sat_vdp2_sprite_color_calc_configure(&burst_cc);
+#else
     return sat_vdp2_sprite_set_priority(6);
+#endif
 }
 
 sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x,int32_t center_z,int32_t turn) {
