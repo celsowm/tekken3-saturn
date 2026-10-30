@@ -148,6 +148,9 @@ static uint32_t g_probe_particle_count[2];
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 /* Bounds of allocated cells in the image currently being prepared. */
 static int g_particle_left,g_particle_right,g_particle_top,g_particle_bottom;
+/* Index of the allocated cell at each 8x8 screen cell, 0xFF when none, so a
+ * face visits only the cells under its bounds instead of every allocated one. */
+static uint8_t g_particle_cell[28][40];
 #endif
 volatile uint32_t g_t3_particle_swap_particles;
 volatile uint32_t g_t3_particle_multi_fail_tiles,g_t3_particle_multi_fail_particles;
@@ -165,6 +168,7 @@ sat_result_t t3_stage_particle_multi_begin(uint32_t frame) {
     g_probe_tiles[slot].count=0;g_probe_particle_count[slot]=0;
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
     g_particle_left=320;g_particle_right=-1;g_particle_top=224;g_particle_bottom=-1;
+    for(unsigned i=0;i<sizeof g_particle_cell;++i)((uint8_t*)g_particle_cell)[i]=0xFFu;
 #endif
     g_probe_frame[slot]=frame;g_probe_clut[slot]=0;g_probe_pattern[slot]=0xff;
     g_probe_quad[slot].visible=0;return SAT_OK;
@@ -182,8 +186,10 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
     /* Accumulation may compact the list, so rebuild the conservative bound. */
     const t3_particle_tile_probe_t* tiles=&g_probe_tiles[slot];
     g_particle_left=320;g_particle_right=-1;g_particle_top=224;g_particle_bottom=-1;
+    for(unsigned i=0;i<sizeof g_particle_cell;++i)((uint8_t*)g_particle_cell)[i]=0xFFu;
     for(unsigned i=0;i<tiles->count;++i) {
         const int x=tiles->tile_x[i]*8,y=tiles->tile_y[i]*8;
+        g_particle_cell[tiles->tile_y[i]][tiles->tile_x[i]]=(uint8_t)i;
         if(x<g_particle_left)g_particle_left=x;
         if(x+7>g_particle_right)g_particle_right=x+7;
         if(y<g_particle_top)g_particle_top=y;
@@ -197,6 +203,9 @@ sat_result_t t3_stage_particle_multi_occlude(unsigned x,unsigned y,const uint8_t
 }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 volatile uint32_t g_t3_ordered_mask_tiles,g_t3_ordered_mask_index8_tiles,g_t3_ordered_mask_lut4_tiles;
+#if defined(T3_PARTICLE_CELL_CHECK)
+volatile uint32_t g_t3_cell_check_faces,g_t3_cell_check_mismatch,g_t3_cell_check_visited;
+#endif
 #if defined(T3_PARTICLE_GENERAL_MASK_PROBE)
 volatile uint32_t g_t3_ordered_general_tiles __attribute__((section(".wram_l")));
 #if defined(T3_PARTICLE_MASK_TIMING)
@@ -216,9 +225,37 @@ sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* textu
        bottom<g_particle_top || top>g_particle_bottom)return SAT_OK;
     t3_particle_tile_probe_t* tiles=&g_probe_tiles[g_probe_slot];
     uint8_t unpacked[64];const uint8_t* pixels=NULL;
+    /* Visit the cells under the face's bounds; a face spanning more cells than
+     * are allocated walks the allocated list instead. */
+    int cx0=left<0?0:left>>3,cx1=right>319?39:right>>3;
+    int cy0=top<0?0:top>>3,cy1=bottom>223?27:bottom>>3;
+    const unsigned span=(unsigned)(cx1-cx0+1)*(unsigned)(cy1-cy0+1);
+    const int by_cell=span<tiles->count;
+#if defined(T3_PARTICLE_CELL_CHECK)
+    /* Diagnostic: the cell walk must visit exactly the allocated cells that
+     * overlap the face's bounds, the set the full list scan used to visit. */
+    unsigned expected=0,expected_sum=0,visited=0,visited_sum=0;
     for(unsigned i=0;i<tiles->count;++i) {
-        unsigned tx=tiles->tile_x[i],ty=tiles->tile_y[i];
-        if((int)tx*8>right || (int)tx*8+7<left || (int)ty*8>bottom || (int)ty*8+7<top)continue;
+        const int tx=tiles->tile_x[i],ty=tiles->tile_y[i];
+        if(!((int)tx*8>right || (int)tx*8+7<left || (int)ty*8>bottom || (int)ty*8+7<top)){++expected;expected_sum+=i;}
+    }
+#endif
+    int cx=cx0,cy=cy0;
+    for(unsigned n=0;;++n) {
+        unsigned i,tx,ty;
+        if(by_cell) {
+            if(cy>cy1)break;
+            i=g_particle_cell[cy][cx];tx=(unsigned)cx;ty=(unsigned)cy;
+            if(++cx>cx1){cx=cx0;++cy;}
+            if(i==0xFFu)continue;
+        } else {
+            if(n>=tiles->count)break;
+            i=n;tx=tiles->tile_x[i];ty=tiles->tile_y[i];
+            if((int)tx*8>right || (int)tx*8+7<left || (int)ty*8>bottom || (int)ty*8+7<top)continue;
+        }
+#if defined(T3_PARTICLE_CELL_CHECK)
+        ++visited;visited_sum+=i;
+#endif
         /* Allocated cells can contain only transparent pixels or have been
          * cleared by earlier faces. Such cells cannot require masking. */
         if(!t3_particle_tile_intersects(tiles,i,left,top,right,bottom))continue;
@@ -254,6 +291,11 @@ sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* textu
         if(texture->flags & SAT_MODEL_TEXTURE_LUT4)++g_t3_ordered_mask_lut4_tiles;
         else ++g_t3_ordered_mask_index8_tiles;
     }
+#if defined(T3_PARTICLE_CELL_CHECK)
+    ++g_t3_cell_check_faces;
+    if(visited!=expected || visited_sum!=expected_sum)++g_t3_cell_check_mismatch;
+    else g_t3_cell_check_visited+=visited;
+#endif
     return SAT_OK;
 }
 #endif
