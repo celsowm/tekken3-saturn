@@ -1569,3 +1569,27 @@ session but the ramp step may not), the PS1's 15-bit additive blend with
 dither against the VDP2's 24-bit add, and the background under the sparks (the
 two stages are drawn by different layers). A pixel-level colour match is not
 established; the placement match of section 44 stands.
+
+## 51. Spark colour: three candidates ruled out (2026-10-30)
+
+- **Palette parity.** A build with the other palette buffer
+  (`T3_PARTICLE_CLUT_FLIP=1`, diagnostic) gives almost the same numbers on the
+  paired spark pixels (mean absolute difference 9.3, 31.3, 63.1 against 9.4, 33.5,
+  63.8), so the per-frame buffer choice is not the cause.
+- **The palettes themselves.** The CLUT rows the sparks use (509 and 510, x 256
+  to 511) match the PS1's runtime VRAM dump word for word (0 of 256 differ on
+  each; rows 503 to 505 and 508, x 0 to 255, differ only where characters and the
+  HUD load their own data). The extractor reads the right colours.
+- **The burst's light.** Restricting the pairs to sparks away from the burst
+  (x < 70, n = 57) the gap remains and is larger in blue: PS1 (252, 247, 172),
+  Saturn (250, 223, 95). Near the burst the PS1's (252, 244, 128) against the
+  Saturn's (246, 225, 66). So it is the sparks' own colour: the PS1's cores are
+  near white where the Saturn's stay orange.
+
+What is left, untested: the PS1's textured-primitive brightness (a `POLY_FT4`
+colour byte above 128 brightens the texel up to twice, and the spark objects'
+draw may set it; the particle path ignores any such byte), and two sparks drawn
+over each other in the original where the Saturn's accumulation would also add
+them (checked equal in the host test, not on this frame). Reading the colour
+bytes of the spark primitives in the PS1's ordering table at the pause would
+settle the first.

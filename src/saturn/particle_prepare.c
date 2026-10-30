@@ -3,6 +3,9 @@
  * Uses original particle tables and projection adapted from the pinned
  * Tekken3Remake effects research. See NOTICE.md. */
 #include "particle_prepare.h"
+#ifndef T3_PARTICLE_CLUT_FLIP
+#define T3_PARTICLE_CLUT_FLIP 0u
+#endif
 #include "move_probe.h"
 #include "original_hud.h"
 #include "disc.h"
@@ -63,7 +66,7 @@ sat_result_t t3_particle_prepare_image(void) {
     unsigned visible=0;
     for(unsigned i=0;i<count;++i) {
         t3_psx_particle_draw_t* draw=&g_t3_prepared_particles.draw[i];
-        if(!t3_psx_particle_prepare(&image->sprites.item[i],&g_assets,&view,image->frame_counter&1u,draw))
+        if(!t3_psx_particle_prepare(&image->sprites.item[i],&g_assets,&view,(image->frame_counter+T3_PARTICLE_CLUT_FLIP)&1u,draw))
             return SAT_ERR_VERIFY_FAILED;
         visible+=draw->quad.visible;
     }
