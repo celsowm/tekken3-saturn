@@ -1156,7 +1156,8 @@ reference_complete:;
      * fighters at this camera distance. */
     if(g_owned_match.ticks>=245u && (g_owned_match.ticks-245u)%90u==0u) {
         const t3_psx_joint_t* joint=&g_owned_match.fighter[1].world[8];
-        const t3_vec3i_t point={joint->origin.x,joint->origin.y-2300,joint->origin.z};
+        const unsigned step=((g_owned_match.ticks-245u)/90u)&3u;
+        const t3_vec3i_t point={joint->origin.x,joint->origin.y-1700-(int32_t)step*500,joint->origin.z};
         t3_psx_effect_spray(&g_effect_pool,point,0,0x400,0);
     }
 #endif

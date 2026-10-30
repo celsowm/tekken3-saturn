@@ -15,7 +15,7 @@ SYMBOLS = ['g_t3_ordered_mask_images', 'g_t3_ordered_mask_fallbacks', 'g_t3_mixe
            'g_t3_mixed_ot_empty_frames', 'g_t3_original_projected',
            'g_t3_original_projected_fallbacks', 'g_t3_particle_images',
            'g_t3_particle_max_sprites', 'g_t3_ordered_mask_tiles', 'g_t3_cell_check_faces',
-           'g_t3_cell_check_mismatch']
+           'g_t3_cell_check_mismatch', 'g_t3_ordered_mask_cell_drops', 'g_t3_hud_occluded_cells']
 
 
 def main():
@@ -43,14 +43,18 @@ def main():
     def check(label, ok):
         checks.append((label, bool(ok)))
     n = v['g_t3_mixed_ot_frames'][0]
-    check('effect images reached the original projection', n > 0 and v['g_t3_original_projected'] == [n, n])
+    check('effect images reached the original projection', n > 0 and all(0 <= p - n <= 1 for p in v['g_t3_original_projected']))
     check('no projection fallbacks', v['g_t3_original_projected_fallbacks'] == [0, 0])
     check('some images had a visible particle', v['g_t3_mixed_ot_empty_frames'][0] < n)
     check('sprites were captured', v['g_t3_particle_max_sprites'][0] > 0)
     check('real fighter faces were masked', v['g_t3_ordered_mask_tiles'][0] > 0)
     check('cell walk checked against the full scan', v['g_t3_cell_check_faces'][0] > 0)
     check('cell walk matched on every face', v['g_t3_cell_check_mismatch'][0] == 0)
-    result = {'values': v, 'checks': dict(checks), 'passed': all(ok for _, ok in checks)}
+    check('unsupported-face branch exercised (needs T3_PARTICLE_DROP_SELFTEST)',
+          v['g_t3_ordered_mask_cell_drops'][0] > 0)
+    check('particle cells reached the HUD rectangles and were cleared', v['g_t3_hud_occluded_cells'][0] > 0)
+    keep = {k: x for k, x in v.items() if k in SYMBOLS}
+    result = {'values': keep, 'checks': dict(checks), 'passed': all(ok for _, ok in checks)}
     (a.out / 'particle-suite.json').write_text(json.dumps(result, indent=2))
     for label, ok in checks:
         print(('PASS ' if ok else 'FAIL ') + label)

@@ -198,7 +198,11 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
 #endif
     ++g_probe_particle_count[slot];return SAT_OK;
 }
+volatile uint32_t g_t3_hud_occluded_cells;
 sat_result_t t3_stage_particle_multi_occlude(unsigned x,unsigned y,const uint8_t coverage[8]) {
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    if(x<40u && y<28u && g_particle_cell[y][x]!=0xFFu)++g_t3_hud_occluded_cells;
+#endif
     return t3_particle_tile_occlude(&g_probe_tiles[g_probe_slot],x,y,coverage)?SAT_OK:SAT_ERR_INVALID_ARG;
 }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
@@ -267,6 +271,10 @@ sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* textu
         /* Allocated cells can contain only transparent pixels or have been
          * cleared by earlier faces. Such cells cannot require masking. */
         if(!t3_particle_tile_intersects(tiles,i,left,top,right,bottom))continue;
+#if defined(T3_PARTICLE_DROP_SELFTEST)
+        /* Diagnostic: take the unsupported-face branch for every 40th visit. */
+        {static unsigned visits;if(++visits%40u==0u){drop_cell(tiles,i);continue;}}
+#endif
         if(!texture || !texture->pixels || texture->width!=8u || texture->height!=8u || texture->pixel_count!=64u) {
             drop_cell(tiles,i);continue;
         }

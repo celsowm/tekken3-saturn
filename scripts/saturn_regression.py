@@ -165,6 +165,17 @@ def frozen_stage(args, out):
     return record
 
 
+def particle_stage(args, out):
+    root = out / 'particle'
+    command = [sys.executable, str(SCRIPTS / 'saturn_particle_suite.py'),
+               '--build', str(args.particle_build), '--bios', str(args.bios), '--out', str(root)]
+    record = run_stage('particle', command, out)
+    result = read_json(root / 'particle-suite.json')
+    if result:
+        record['detail'].update(checks=result.get('checks'), values=result.get('values'))
+    return record
+
+
 def preflight(args, parser):
     problems = []
     elf = args.build / 'tekken3_saturn.elf'
@@ -226,6 +237,9 @@ def main(argv=None):
                         help='oracle build that carries the reference trace')
     parser.add_argument('--reference-export', type=Path,
                         help='original-code export the trace is compared against')
+    parser.add_argument('--particle-build', type=Path,
+                        help='spray-fixture build (T3_PARTICLES plus T3_PARTICLE_SPRAY_SELFTEST, '
+                             'T3_PARTICLE_CELL_CHECK, T3_PARTICLE_DROP_SELFTEST) for the particle case')
     parser.add_argument('--frozen-baseline', type=Path, help='frozen capture used as the pixel baseline')
     parser.add_argument('--frozen-candidate', type=Path, help='frozen capture from the gated build')
     parser.add_argument('--include-cached-stage-faces', action='store_true',
@@ -238,6 +252,7 @@ def main(argv=None):
         args.bios = args.bios.resolve()
     args.reference_build = args.reference_build.resolve() if args.reference_build else None
     args.reference_export = args.reference_export.resolve() if args.reference_export else None
+    args.particle_build = args.particle_build.resolve() if args.particle_build else None
     args.frozen_baseline = args.frozen_baseline.resolve() if args.frozen_baseline else None
     args.frozen_candidate = args.frozen_candidate.resolve() if args.frozen_candidate else None
     preflight(args, parser)
@@ -291,6 +306,8 @@ def main(argv=None):
         stages.append(lambda: combat_stage(args, args.out))
     if not args.skip_reference:
         stages.append(lambda: reference_stage(args, args.out))
+    if args.particle_build:
+        stages.append(lambda: particle_stage(args, args.out))
     if args.frozen_baseline:
         stages.append(lambda: frozen_stage(args, args.out))
 
