@@ -173,6 +173,17 @@ local function frame()
                 u32(0x800A39B8), s32(0x800A9228+0xF68), s32(0x800A9228+0xF6C), s32(0x800A9228+0xF70),
                 s32(0x800AAAB4+0xF68), s32(0x800AAAB4+0xF6C), s32(0x800AAAB4+0xF70), ptr[0xA9228+0xC6], ptr[0xAAAB4+0xC6]))
         end
+        do
+            local rel = tick - T3_BASE
+            if rel >= 3518 and rel <= 3540 and T3_REC_LAST ~= rel then
+                T3_REC_LAST = rel
+                for r = 0, 2 do
+                    local words = {}
+                    for w = 0, 15 do words[#words+1] = string.format('%08X', u32(0x800A3408 + r*64 + w*4)) end
+                    print(string.format('T3_FLIP rel=%d rec=%d %s', rel, r, table.concat(words, ' ')))
+                end
+            end
+        end
         if tick - T3_BASE >= target then
             for f = 3490, 3540 do
                 local row = T3_RC[f]

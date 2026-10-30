@@ -714,6 +714,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             n->fighter[i].ground.hit_clean=0;n->fighter[i].ground.last_damage=0;
         }
     }
+    if(c->effects)t3_psx_flipbook_step(&c->effects->flipbook);
     /* Original sound decisions consume the shared rand before InputSource.
      * The callback owns effect-echo allocation only. Native playback still
      * needs the committed request/replay bridge (combat_events.c remains). */

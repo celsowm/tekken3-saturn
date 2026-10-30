@@ -151,6 +151,9 @@ t3_particle_image_t g_t3_particle_image __attribute__((section(".wram_l")));
 t3_particle_image_t g_t3_particle_image T3_HOT_WRAM;
 #endif
 volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;
+#if defined(T3_FLIPBOOK_PROBE)
+volatile uint32_t g_t3_flip_diag[24];
+#endif
 #if defined(T3_RAND_PROBE)
 volatile uint32_t g_t3_rand_probe[56];
 #endif
@@ -1149,6 +1152,20 @@ reference_complete:;
 #endif
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
+#endif
+#if defined(T3_FLIPBOOK_PROBE)
+    {
+        /* Diagnostic: the last flipbook spawn's point and vector, and the burst record. */
+        const t3_psx_flipbook_pool_t* book=&g_effect_pool.flipbook;
+        for(unsigned k=0;k<3;++k) {
+            g_t3_flip_diag[k]=(uint32_t)book->last_point[k];
+            g_t3_flip_diag[3+k]=(uint32_t)(int32_t)book->last_vector[k];
+        }
+        for(unsigned r=0;r<3;++r) {
+            g_t3_flip_diag[6+4*r]=book->record[r].active?book->record[r].frame:0u;
+            for(unsigned k=0;k<3;++k)g_t3_flip_diag[7+4*r+k]=(uint32_t)book->record[r].pos[k];
+        }
+    }
 #endif
 #if defined(T3_RAND_PROBE)
     /* Diagnostic: the shared random state after each tick 3490..3545. */

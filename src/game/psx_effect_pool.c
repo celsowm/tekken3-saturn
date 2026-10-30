@@ -37,6 +37,7 @@ static void glows(t3_psx_effect_pool_t* p) {
 }
 void t3_psx_effect_pool_round(t3_psx_effect_pool_t* p) {
     reset(p);p->replay_glows=p->end_cleared=0;p->glow_mask[0]=p->glow_mask[1]=0;glows(p);
+    t3_psx_flipbook_clear(&p->flipbook);
 }
 void t3_psx_effect_spray(t3_psx_effect_pool_t* p,t3_vec3i_t point,int16_t pitch,int16_t yaw,int power) {
     for(unsigned group=0;group<2;++group)for(unsigned k=0;k<(group?6u:20u);++k) {

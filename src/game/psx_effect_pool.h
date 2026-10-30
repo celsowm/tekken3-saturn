@@ -1,12 +1,14 @@
 #ifndef T3_PSX_EFFECT_POOL_H
 #define T3_PSX_EFFECT_POOL_H
 #include "psx_spark.h"
+#include "psx_flipbook.h"
 enum { T3_PSX_EFFECT_CAPACITY=80,T3_PSX_EFFECT_NONE=80,T3_PSX_EFFECT_TABLE_BYTES=440 };
 typedef struct {
     t3_psx_spark_t object[80];
     uint8_t next[80],previous[80],head,tail,free_head,free_tail,count;
     uint8_t replay_glows,end_cleared;
     uint32_t counter,live,glow_mask[2];
+    t3_psx_flipbook_pool_t flipbook; /* hit bursts and character flipbooks (state only) */
 } t3_psx_effect_pool_t;
 typedef struct {
     uint8_t active,character,joints[4];

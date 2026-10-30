@@ -44,6 +44,24 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
     if(!f->hit.hit_clean)return 1;
     int damage=f->hit.total_damage>slot->base_damage?f->hit.total_damage:slot->base_damage;
     unsigned a=1u-defender;const t3_psx_fighter_t* attacker=&m->fighter[a];
+    {
+        /* FUN_80076F10: the hit burst (set 3, index 0, drifting along the slot's vector) and,
+         * from 21 damage, the attacker's own flipbook (stationary). State only. */
+        const unsigned seg=(unsigned)attacker->geometry.segment;
+        if(seg<attacker->strike.segment_count) {
+            const t3_world_segment_t* s0=&attacker->strike.segments[0];
+            const t3_world_segment_t* s1=&attacker->strike.segments[seg];
+            const int32_t at[3]={s1->end.x,s1->end.y,s1->end.z};
+            const int16_t vec[3]={(int16_t)(s0->end.x-s0->start.x),(int16_t)(s0->end.y-s0->start.y),
+                                  (int16_t)(s0->end.z-s0->start.z)};
+            t3_psx_flipbook_pool_t* book=&m->config->effects->flipbook;
+            t3_psx_flipbook_spawn(book,3,0,27,at,vec,0);
+            if(damage>=21) {
+                const unsigned id=m->config->character[a];
+                t3_psx_flipbook_spawn(book,a,0,(id==9||id==13||id==17||id==19)?22u:30u,at,vec,1);
+            }
+        }
+    }
     unsigned code=attacker->strike_joint;
     if(code==0x19 || code==0x1B || code==0x1C || damage<21)return 1;
     if(code==0x18 || code==0x1A)return 0; /* fire needs its full object/segment path */

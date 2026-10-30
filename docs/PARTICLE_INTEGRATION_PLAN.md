@@ -1423,3 +1423,44 @@ Both are measurable by pausing the PS1 on consecutive fight frames and reading
 the three records (the session of section 33 does it in about ten minutes per
 frame), which is the next step for the state half of the port; the draw half
 is the compositor work sized in section 45.
+
+## 47. The flipbook state is ported and checked against the PS1 (2026-10-30)
+
+`src/game/psx_flipbook.[ch]` holds the ring's state (three records, round-robin
+cursor, frame counter, position `<< 7`, velocity) and is wired into the match:
+`t3_psx_match_effects_hit` spawns the burst (set 3, index 0, with velocity) and
+from 21 damage the attacker's flipbook (stationary, 22 frames for characters 9, 13,
+17 and 19, otherwise 30), and the match step advances the records once a tick
+after the hits. The rules, taken from the PS1 trace of section 46's
+per-frame record log (fight frames 3520-3531):
+
+- every frame: `frame + 1`, `velocity -= velocity * 5 / 64` (C division, per
+  component), `position += velocity` (the new velocity); a record ends once the
+  frame passes its count (27, 30, 21);
+- spawn velocity: `component * 0x1900 / isqrt(sum of squares)` of the three
+  shorts at the hit slot's `+0x10`; the character record has none.
+
+`tests/test_psx_flipbook.c` (CTest `ps1_flipbook_state`) replays nine frames of
+the PS1's burst record from its spawn point `(-4217, -383, -164)` and vector
+`(-417, -245, -32)`: position, velocity and frame counter equal on every frame,
+the character record stays put, both end after their frames. The host suite is
+92 of 92.
+
+**On the Saturn.** A frozen Saturn frame at tick 3535 with `T3_FLIPBOOK_PROBE`
+(`g_t3_flip_diag`) shows the live match spawning the same burst: last spawn
+point **(-4146, -383, -164)** against the PS1's (-4217, -383, -164), vector
+**(-417, -245, -33)** against (-417, -245, -32), burst record at frame 11 with
+position (-4430, -550, -187) against the PS1's frame 10 at (-4482, -539, -185)
+one fight frame earlier. So the guess for the slot vector, the first attack
+segment's end minus start, is right to one unit on the z component, y and z of
+the point are exact, and the x of the point differs by 71, the same common shift
+the fighters' roots show (section 35): about one tick of walking between the
+two sessions' inputs, which also accounts for the one-tick age offset of the
+sparks in section 44. The spawn state needs no further work on the point or the
+vector; the remaining gap there is that one-tick input timing, a property of
+the PS1 session script, not of the port.
+
+Not built: any drawing. The burst and the character flipbook exist as state on
+the Saturn and nothing reads them; section 45's sizing (32 cells each, the
+cell budget, the compositor's 16 x 16 limit, 13.8 KB fire frames and 15.4 KB
+character frames to hold) is unchanged.
