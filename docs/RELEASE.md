@@ -64,8 +64,9 @@ parts for the original trace's costumes.
 
 ## Original hit sparks (optional)
 
-Add `-DT3_PARTICLES=ON` to a configuration that already has the original HUD,
-camera, VDP2 floor and owned match. It forces the particle chain, the original
+`T3_PARTICLES` is ON by default in a configuration that already has the original
+HUD, camera, VDP2 floor, owned match and private assets (and OFF otherwise);
+pass `-DT3_PARTICLES=OFF` to opt out or `=ON` to force it. It forces the particle chain, the original
 vertical viewport for stage and fighters, and the memory settings that link on
 stock RAM (see `docs/PARTICLE_INTEGRATION_PLAN.md`). The gate for it is
 `saturn_regression.py --particle-build <fixture build> --particle-real-build

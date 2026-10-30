@@ -248,7 +248,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # it forces the options the path needs and the memory settings that make it
     # link on stock RAM. It still requires the original HUD, camera, VDP2 floor and
     # owned match; the individual option checks report anything missing.
-    option(T3_PARTICLES "Draw the original hit particles (experimental, see PARTICLE_INTEGRATION_PLAN.md)" OFF)
+    # ON by default exactly when the configuration already has everything the path
+    # needs (the private HUD, stage and fighter data and the original renderer
+    # options); public builds without private assets keep it OFF. Pass
+    # -DT3_PARTICLES=OFF to keep the plain SDK fighters and the unshifted stage.
+    if(T3_ORIGINAL_HUD AND T3_ORIGINAL_HUD_BARS AND T3_LOCAL_HUD_EXE AND T3_LOCAL_PAUL_STAGE AND
+       T3_VDP2_FLOOR AND T3_PSX_CAMERA AND T3_ENABLE_PSX_OWNED_MATCH AND T3_ENABLE_PSX_COMBAT AND
+       T3_SKIN_TO_SCREEN AND T3_MASTER_WORKER_FACES AND T3_FUSED_ACTOR_PREPARATION AND
+       T3_SLAVE_SIMULATION AND T3_FRAME_ON_SUBMIT AND T3_PROJECTED_FACE_QUEUE)
+        set(_t3_particles_default ON)
+    else()
+        set(_t3_particles_default OFF)
+    endif()
+    option(T3_PARTICLES "Draw the original hit particles (see PARTICLE_INTEGRATION_PLAN.md)" ${_t3_particles_default})
     if(T3_PARTICLES)
         foreach(_t3_option T3_STAGE_BITMAP_FLOOR T3_PARTICLE_FIGHTER_OT T3_PARTICLE_IMAGE_SNAPSHOT
                 T3_PARTICLE_PREPARE T3_PARTICLE_TEXTURE_PROBE T3_PARTICLE_SWAP_PROBE

@@ -809,3 +809,31 @@ sparks adds the one flag.
 
 Plan status: phases 0-3 and 5 complete with gate evidence (gate 7); phase 4
 complete except the PS1 frame diff, for the reason above.
+
+## 30. Phase 5 default, revised (2026-10-30)
+
+Section 29 kept the default OFF everywhere. That was too blunt: the reason
+(public CI has no private assets) only applies to configurations that lack
+them. `T3_PARTICLES` now defaults to **ON when the configuration already has
+everything it needs** (original HUD and bars, the private HUD executable and
+stage, VDP2 floor, original camera, owned match and combat, skin-to-screen,
+Master worker faces, fused actor preparation, Slave simulation, frame on
+submit, projected face queue) and OFF otherwise; `-DT3_PARTICLES=OFF` opts
+out.
+
+Checked both ways:
+
+- The playable configuration cloned from `build/evring-cand` with no
+  particle flag configures with `T3_PARTICLES=ON` and builds to ELF
+  `8774cfa6125f9cfe7e09b5a6…`, byte for byte the build that passed gate 7.
+- A public Saturn configuration (LibSaturn prefix only, no private assets)
+  configures with `T3_PARTICLES=OFF` and builds a disc image. The host build
+  still configures.
+
+Consequence for existing private build directories: the next reconfigure turns
+the sparks on, applies the original-viewport stage mapping and the memory
+settings (320 cold faces, pose cache 8), and so changes their pixels against
+older frozen baselines. Pass `-DT3_PARTICLES=OFF` to keep a baseline.
+
+Plan status: phases 0-3 and 5 complete with gate evidence (gate 7). Phase 4's
+PS1 frame diff is the only open item, for the reason in section 29.
