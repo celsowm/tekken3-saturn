@@ -276,6 +276,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         set(T3_HIGH_GEOMETRY_SCRATCH OFF CACHE BOOL "Forced by T3_PARTICLES" FORCE)
         set(T3_COLD_FACES "320" CACHE STRING "Forced by T3_PARTICLES" FORCE)
         set(T3_PARTICLE_CELLS "52" CACHE STRING "Default from T3_PARTICLES")
+        # The hit burst and the attacker's flipbook; -DT3_FLIPBOOK_BURST=OFF keeps the sparks only.
+        set(T3_FLIPBOOK_BURST ON CACHE BOOL "Default from T3_PARTICLES")
         set(T3_LOCAL_POSE_CACHE_ENTRIES "8" CACHE STRING "Forced by T3_PARTICLES" FORCE)
     endif()
     set(T3_COLD_FACES "640" CACHE STRING "Capacity of Low WRAM cold scene face records")

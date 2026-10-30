@@ -1806,3 +1806,36 @@ shared with the fighters' layers.
   bucket `(otz - 0x6E) >> 3`), and a frame-level comparison with the PS1: the
   Paul-vs-Paul build of section 44 that reproduced tick 3531 no longer exists, and
   the Law build does not reach the PS1's hit.
+
+## 59. Burst steps 4 and 5: the character flipbook and the PS1 comparison (2026-10-30)
+
+**Bug found on the way.** Section 58's first burst used CRAM bank 7, which is the
+stage's panorama palette (`PICTURE_PALETTE` in `stage_vdp2.c`; the floor takes bank
+6). The registry the SDK keeps for indexed8 banks does not know the stage's direct
+`sat_vdp2_palette_upload`, so nothing failed: the panorama silently turned black in
+the earlier screenshots. The burst now uses bank 5 and, for its fade, banks 4 and 3
+(free: the fighters, checked by the defender's colours staying correct, hold 0 to 2).
+
+- `scripts/extract_psx_char_flipbook.py` writes `FLIPC0.BIN` / `FLIPC1.BIN` in the
+  `T3FB002` layout from member 1 of each fighter's ARC (30 TIMs of 32 x 32, one
+  CLUT each; frame 0's CLUT differs from the others only by the STP bit). Both
+  fighters' sets and the system burst share one bank: 16 entries each after the
+  transparent entry 0. Black colours (0x0000 and STP-black) are transparent: they
+  add nothing, and an opaque black quad would otherwise erase the VDP1 shadow and
+  fighter pixels under it (seen as a rectangle in the first comparison).
+- The last ten frames fade: three banks hold the palette at 100%, 60% and 30% and
+  the sprite selects one through its palette override (steps 1 to 3, 4 to 7, 8 to
+  10 of `frame - frames + 10`), an approximation of the original's byte
+  `0x80 - (step * 0x9999 >> 12)`, since a colour-bank sprite cannot be shaded.
+- **Comparison.** `scripts/compare_ps1_saturn_burst.py` compares the aligned frames
+  (PS1 fight frame 3528, Saturn frozen tick 3531, Paul against Paul, bias 1, the
+  section 35 random override; configuration as `ptcl-fz2p` plus `T3_FLIPBOOK_BURST`)
+  inside the burst rectangle (90, 120)-(160, 195): mean colour PS1 (121, 93, 55)
+  against Saturn (122, 96, 58), mean absolute difference 28 (the rest is the
+  stage), 1457 against 1413 fire pixels, fire-mask Jaccard 0.51. By eye
+  (`assets/imported/ps1-law-tape/burst-side-by-side.png`, private) the red burst
+  and the yellow star have the PS1's shapes, colours and placement within a few
+  pixels, which is also the spawn's one-tick walking offset of section 39.
+- Still not done: drawing the burst between fighter faces by its bucket
+  `(otz - 0x6E) >> 3` (it is drawn over both fighters, which hides nothing in the
+  compared frame), and the exact modulation of the fade.

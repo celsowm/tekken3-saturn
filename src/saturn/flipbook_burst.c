@@ -20,7 +20,12 @@ enum { SETS=3, MAX_FRAMES=30, FRAME_BYTES=512, HEADER_BYTES=16+32, SYSTEM_SET=2 
  * floor and panorama palettes (stage_vdp2.c); the fighters' banks are claimed in the
  * SDK's registry, so a clash with them fails the upload at boot. */
 static const char* const g_file[SETS]={"FLIPC0.BIN","FLIPC1.BIN","FLIPBOOK.BIN"};
-enum { PALETTE_BANK=5 };
+/* The last ten frames of a record fade (modulation byte 0x80 - ((frame - frames + 10) * 0x9999 >> 12),
+ * 119 down to 32 of 128). VDP1 colour-bank sprites cannot be shaded, so three banks hold the palette at
+ * about 100%, 60% and 30% and the sprite picks one with its palette override; same texels, no extra VRAM. */
+enum { FADE_BANKS=3 };
+static const uint8_t g_fade_bank[FADE_BANKS]={5,4,3};
+static const uint8_t g_fade_scale[FADE_BANKS]={128,77,38}; /* of 128 */
 static uint16_t g_palette[256];
 static sat_vdp1_texture_t g_frame_texture[SETS][MAX_FRAMES];
 static uint8_t g_frames[SETS];
@@ -56,14 +61,25 @@ static sat_result_t load_set(unsigned set,void* scratch,uint32_t scratch_bytes) 
         map[i]=(v&0x7fffu)?(uint8_t)(1u+16u*set+i):0u;
         if(v&0x7fffu)g_palette[1u+16u*set+i]=(uint16_t)(0x8000u|(v&0x7fffu));
     }
-    if(set+1u==SETS)SAT_TRY(sat_palette_upload_indexed8(g_palette,PALETTE_BANK));
+    if(set+1u==SETS) {
+        for(unsigned bank=0;bank<FADE_BANKS;++bank) {
+            uint16_t faded[256]={0};
+            for(unsigned i=1;i<=16u*SETS;++i) {
+                const uint16_t v=g_palette[i];
+                unsigned c[3];
+                for(unsigned k=0;k<3;++k)c[k]=(((v>>(5u*k))&31u)*g_fade_scale[bank]+64u)>>7;
+                faded[i]=(uint16_t)(0x8000u|c[0]|(c[1]<<5)|(c[2]<<10));
+            }
+            SAT_TRY(sat_palette_upload_indexed8(faded,g_fade_bank[bank]));
+        }
+    }
     uint8_t pixels[FRAME_BYTES*2];
     for(unsigned f=0;f<frames;++f) {
         const uint8_t* src=b+HEADER_BYTES+f*FRAME_BYTES;
         for(unsigned i=0;i<FRAME_BYTES;++i) {
             pixels[2*i]=map[src[i]>>4];pixels[2*i+1]=map[src[i]&15u];
         }
-        SAT_TRY(sat_tex_upload_indexed8_pixels(&g_frame_texture[set][f],pixels,32,32,PALETTE_BANK));
+        SAT_TRY(sat_tex_upload_indexed8_pixels(&g_frame_texture[set][f],pixels,32,32,g_fade_bank[0]));
     }
     g_frames[set]=(uint8_t)frames;
     return SAT_OK;
@@ -107,6 +123,9 @@ sat_result_t t3_flipbook_burst_draw(void) {
         cmd.x[2]=(int16_t)far_x;cmd.y[2]=(int16_t)y1;
         cmd.x[3]=(int16_t)near_x;cmd.y[3]=(int16_t)y1;
         cmd.texture=&g_frame_texture[set][r->frame-1u];
+        /* frames - frame + 1 .. 10 is the fade: steps 1..3 full, 4..7 60%, 8..10 30%. */
+        const int fade=(int)r->frame-(int)r->frames+10;
+        cmd.palette_override=g_fade_bank[fade>7?2:fade>3?1:0];
         SAT_TRY(sat_draw_sprite_distorted_color_calc(&cmd,SAT_VDP2_SPRITE_ADD));
         ++g_t3_flipbook_drawn;
         g_t3_flipbook_last[0]=x0;g_t3_flipbook_last[1]=y0;g_t3_flipbook_last[2]=x1;g_t3_flipbook_last[3]=y1;
