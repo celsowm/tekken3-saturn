@@ -395,3 +395,24 @@ the 15.0 loop rate of the whole run (which implies about 150 ms per particle
 image); the difference is probably waiting (VBlank publication, Slave join)
 and is not yet attributed. Two separate costs therefore remain: the 40 ms
 projection floor during particle images, and an unexplained stall.
+
+## 17. Cell-indexed face mask (2026-10-29)
+
+`t3_stage_particle_multi_face` compared every face against every allocated
+particle cell. With 26 sprites the particle bounds cover the fighters, so
+about 580 faces per image each scanned up to 52 cells. It now keeps a
+28 x 40 byte map from screen cell to allocated-cell index (rebuilt when a
+particle is added, which is also when the list can compact) and visits only
+the cells under the face's bounds; a face spanning more cells than are
+allocated walks the list as before.
+
+Equivalence: `T3_PARTICLE_CELL_CHECK` (diagnostic) runs the old scan beside
+the new walk. Over the spray fixture it checked **20,573 faces with 0
+mismatches** (same number of cells and same index sum each time).
+
+Effect on the heavy spray window (fields 830–860, 6 images): the function
+fell from 18.1% to 7.4% of Master cycles. Whole-run fixture (1,500 fields):
+loop rate 15.0 → **25.0**, discarded fields 89 → 67 (the baseline without
+particles is 39.0). What remains in particle images, as share of Master
+cycles: general tile coverage 8.8%, mixed OT build 8.6%, tile accumulation
+8.4%, per-face mask 7.4%, plus the 40 ms projection floor.
