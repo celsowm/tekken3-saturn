@@ -1471,3 +1471,50 @@ the 26 combat cases (872 s), the 3,000-tick reference replay (204 s, so the adde
 state does not move the simulation or the effect pool's compared fields) and the
 particle stage (fixture and real-spray cases, 31 s), for the `T3_PARTICLES` build
 ELF `6de5f8a05f5b10f8e7f1be35...`.
+
+## 48. The flipbook draw, from the decompilation and the PS1's own primitives (2026-10-30)
+
+`FUN_80077158` (the flipbook draw, `0x80077158`) and the three `POLY_FT4`
+primitives it builds (`0x800A3870`, USA `0x800A34C8`, 0x28 bytes each) were read
+from the decompilation and from the paused RAM of section 38. This is the
+specification of the draw half; none of it is implemented.
+
+**Per active record, once a frame (called before the record advances).**
+Position = record position / 128 (truncating, not floored); the y component is
+first clamped so that `y_raw <= -32000` (the ground at world y -250 is never
+passed). It is projected with the particle camera (`FUN_80036d28`, returning
+the depth `otz`; the sprite is dropped if that fails). The quad is
+`w = 32 * 0x2E0B / (4 * otz)` wide and `h = (32 * 0x140247C >> 10) / (4 * otz)`
+tall, capped at 368 and 480 PS1 pixels, centred on the projected point
+(`h / w` is the 1.74 row scale of the camera). Its texture is the frame's 32 x 32
+window: frames run left to right in rows of 8 (`u = first + 32 * column`,
+`v = first + 32 * row`, the sets' page words step by 8), horizontally mirrored
+when the record's side flag is set. CLUT and page come from the record's
+layout (blend bits `abr` from the record's last halfword: 1 = additive `B + F`).
+The last 10 frames fade: the modulation byte is `0x80 - (((frame - frames) + 10)
+* 0x9999 >> 12)` for additive records. The ordering-table bucket is
+`(otz - 0x6E) >> 3`. After the draw the record advances as in section 47 (the
+velocity step is `v = v * 0x76 >> 7`, the same numbers as `v - v * 5 / 64`).
+
+**Check against the PS1 primitives at fight frame 3527** (state 6, drawn
+frame 5): the burst quad is x 107..177, y 284..406 (70 x 122), `u` 159 down to
+128 (mirrored), `v` 0..31 (column 4 of the first row = frame 5), CLUT `0x7DC2`
+= (32, 503), page `0x3E` = (896, 256) with additive blending, colour 128; the
+character flipbook quad is 70 x 122 at (120..190, 297..419), `u` 223 down to 192,
+`v` 64..95, CLUT `0x7DC1` = (16, 503), page `0x27` = (448, 256), additive;
+the third (older, 21-frame) record fades with colour 42. These quads are the
+ground truth for a port of the draw.
+
+**What this does to the sizing of section 45.** The PS1 quad is 70 x 122 PS1
+pixels; on the Saturn (x * 20/23, rows / 2) that is **61 x 61 pixels = 8 x 8 = 64
+cells for each flipbook**, not 32, so the burst and the character flipbook
+together need 128 cells, against the 52 of the whole particle layer and the
+80 the Low WRAM could hold at best. The CPU-composited cell layer cannot carry
+them; they need their own layer. A VDP2 plane with its own cells at a zoom of
+about 1.9 (a 32 x 32 frame onto 61 x 61, 16 cells of palette data per frame) with
+colour-calculation add would fit the memory, but the fighters' per-pixel mask of
+section 44 cannot be applied inside a zoomed plane, so the burst could not be
+hidden by a later fighter face the way the sparks are. That is a design
+decision (a third VDP2 layer and its cycle pattern, or giving up occlusion for
+the burst), not an implementation detail, and it is outside what the current
+compositor and its gates settle.
