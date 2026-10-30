@@ -105,16 +105,16 @@ local function frame()
         end
         if T3_LAST_TICK == tick then
             T3_STALL = (T3_STALL or 0) + 1
-            -- The VS screen waits for input; hold Cross on pad 1 (override only) until the fight counter moves.
+            -- The VS screen waits for input; hold Cross on pad 2 (override only) until the fight counter moves.
             if T3_STALL == 120 then
                 print('T3_VS_PRESS vsync=' .. frames)
-                print(pcall(function() pads[1].setOverride(14) end))
+                print(pcall(function() pads[2].setOverride(14) end))
             end
             if T3_STALL >= 120 then T3_LAST_TICK = tick; return end
         else
             if T3_STALL and T3_STALL >= 120 then
                 print('T3_VS_RELEASE tick=' .. tick)
-                pcall(function() pads[1].clearOverride(14) end)
+                pcall(function() pads[2].clearOverride(14) end)
             end
             T3_STALL = 0
         end

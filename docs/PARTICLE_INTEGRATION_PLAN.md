@@ -950,3 +950,20 @@ so the failure is specific to setting or clearing an override during this
 screen from the vsync listener. Next options, none tried: press from a
 separate `PCSX.Events` timer or the `-dofile` main thread instead of the
 vsync listener; or take the web server's input route if the build exposes one.
+
+The same press on pad 2 (in case the VS screen waited for the second player)
+produced the same result: `T3_VS_PRESS`, then no output from the vsync listener
+while the web server still answered and the screenshot stayed on the VS screen.
+The "FIGHT 1, PAUL vs LAW" screen therefore does not advance under this
+emulator configuration (`-interpreter -softgpu`, dummy audio) whether or not
+input arrives, which points at the emulated disc rather than at the pad: it is
+the only difference from the Paul mirror, whose data is already resident, and
+Law's data is read from the disc at that screen. Nothing here proves it.
+
+A way around it that keeps every earlier step: use the match that already works.
+Build the Saturn with two Pauls (the `two-paul-release` workload and its
+configuration exist), record a real spray from a Paul-AI run the way section 32
+did for Law, and replay that tape on the PS1 Paul mirror, whose session script
+(`pcsx_redux_paul_session.lua`) reaches the fight in about 1,300 vsyncs. That
+removes the Law load but depends on a Paul AI hit of 21 damage or more
+occurring in the recording, which is untested.
