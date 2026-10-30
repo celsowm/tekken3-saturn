@@ -662,3 +662,33 @@ against the fixture build `d7b9b1f1ff66819c97c7…`.
 Status: viewport coherence done to edge level; phases 0-2 and 5 (switch)
 done as opt-in; phase 3 (about 25 fps in particle images) and phase 4 (PS1
 pixels) open; `T3_PARTICLES` remains OFF by default.
+
+## 26. Why phase 4 cannot be closed from here (2026-10-30)
+
+I looked at what a PS1 reference needs and stopped at two missing pieces,
+neither of which is a rendering question:
+
+1. **A spray.** The original spawns hit sparks only for hits of 21 damage or
+   more. `scripts/pcsx_redux_paul_session.lua` scripts a Paul mirror match
+   with high/mid/low hits and guards (all 6-12 damage here). No scripted move
+   in this repository reaches 21; that needs the base damage of every Paul
+   hit slot (decoded in `psx_hit_test_gate.c`/`psx_hit_damage.c`) mapped to
+   an input sequence through `sequences.json`.
+2. **The same match.** The session script selects Paul for both players. The
+   Saturn build runs Paul against Law, and the camera and stage differ with
+   the characters, so a mirror capture cannot be compared (section 25's
+   withdrawn numbers).
+
+With both, the steps are: capture the paused PS1 frame at a fixed fight tick
+(`/api/v1/screen/still`, as `parity-ps1-view/capture.lua` does), build the
+Saturn frozen pair at that tick with `T3_PARTICLES` and the spray fixture
+replaced by the same move's real spray, and compare the particle cells with a
+stated tolerance. Until then particle pixel parity is unmeasured.
+
+Phase 3 note. Two ideas for the particle-image cost (about 40 ms) were
+checked against the profile and not pursued: drawing the fighters through the
+SDK and running the original projection only for the mask costs as much as it
+saves (projection about 10 ms plus mask plus SDK draw), and trimming the mask
+passes (33% of those images) is worth at most about 6 ms of 40. The design
+bound is the original projection per image. `T3_PARTICLES` therefore stays
+opt-in; the particle images run at about 25 fps, not the 39 of the rest.
