@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "saturn/core.h"
 
-#define T3_FLIPBOOK_FILE_BYTES 13872u
+#define T3_FLIPBOOK_FILE_BYTES 15408u /* the largest of the three files: 30 frames */
 
 #if defined(T3_FLIPBOOK_BURST)
 /* The original's hit burst (flipbook set 3) as an additive VDP1 sprite over

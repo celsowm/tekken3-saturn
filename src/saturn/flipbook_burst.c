@@ -13,8 +13,17 @@
 #include "psx_particle_projection.h"
 #include "psx_viewport.h"
 
-enum { FRAMES=27, FRAME_BYTES=512, PALETTE_BANK=7, HEADER_BYTES=16+32 };
-static sat_vdp1_texture_t g_frame_texture[FRAMES];
+enum { SETS=3, MAX_FRAMES=30, FRAME_BYTES=512, HEADER_BYTES=16+32, SYSTEM_SET=2 };
+/* Set 0 and 1 are the two fighters' character flipbooks, set 2 the system burst
+ * (the records' set 3); all three share CRAM bank 5, 16 entries each after the
+ * transparent entry 0 (indexed8 texels are 1 + 16 * set + colour). Banks 6 and 7 hold the stage's
+ * floor and panorama palettes (stage_vdp2.c); the fighters' banks are claimed in the
+ * SDK's registry, so a clash with them fails the upload at boot. */
+static const char* const g_file[SETS]={"FLIPC0.BIN","FLIPC1.BIN","FLIPBOOK.BIN"};
+enum { PALETTE_BANK=5 };
+static uint16_t g_palette[256];
+static sat_vdp1_texture_t g_frame_texture[SETS][MAX_FRAMES];
+static uint8_t g_frames[SETS];
 static uint8_t g_ready;
 volatile uint32_t g_t3_flipbook_drawn;
 volatile uint32_t g_t3_flipbook_seen[4]; /* diagnostic: active records, projection failures, off-screen, images */
@@ -27,34 +36,42 @@ static int magic_ok(const uint8_t* b) {
 }
 static uint16_t le16(const uint8_t* p) { return (uint16_t)(p[0]|(p[1]<<8)); }
 
-sat_result_t t3_flipbook_burst_init(void* scratch,uint32_t scratch_bytes) {
+static sat_result_t load_set(unsigned set,void* scratch,uint32_t scratch_bytes) {
     sat_cdfs_volume_t* volume;sat_cdfs_file_t file;uint32_t read=0;
-    if(!scratch || scratch_bytes<T3_FLIPBOOK_FILE_BYTES)return SAT_ERR_INVALID_ARG;
     SAT_TRY(t3_disc_volume(&volume));
-    SAT_TRY(sat_cdfs_lookup(volume,"FLIPBOOK.BIN",&file));
-    if(file.size!=T3_FLIPBOOK_FILE_BYTES)return SAT_ERR_VERSION;
+    SAT_TRY(sat_cdfs_lookup(volume,g_file[set],&file));
+    if(file.size>scratch_bytes || file.size<HEADER_BYTES)return SAT_ERR_VERSION;
     SAT_TRY(sat_cdfs_read_at(volume,&file,0,scratch,file.size,&read));
     if(read!=file.size)return SAT_ERR_IO;
     const uint8_t* b=scratch;
-    if(!magic_ok(b) || le16(b+8)!=FRAMES || le16(b+10)!=32 || le16(b+12)!=32 || le16(b+14)!=16)
-        return SAT_ERR_VERSION;
+    const unsigned frames=le16(b+8);
+    if(!magic_ok(b) || !frames || frames>MAX_FRAMES || le16(b+10)!=32 || le16(b+12)!=32 || le16(b+14)!=16 ||
+       file.size!=HEADER_BYTES+frames*FRAME_BYTES)return SAT_ERR_VERSION;
     /* Texel 0 of an indexed8 sprite is transparent, so PS1 colour i is entry i+1;
-     * the PS1's own transparent (zero) colours stay entry 0. */
-    uint16_t palette[256]={0};uint8_t map[16];
+     * black adds nothing to the image below, so the PS1's zero and STP-black
+     * colours stay transparent (entry 0) and leave the VDP1 pixels under the quad alone. */
+    uint8_t map[16];
     for(unsigned i=0;i<16;++i) {
         const uint16_t v=le16(b+16+2*i);
-        map[i]=v?(uint8_t)(i+1u):0u;
-        if(v)palette[i+1u]=(uint16_t)(0x8000u|(v&0x7fffu));
+        map[i]=(v&0x7fffu)?(uint8_t)(1u+16u*set+i):0u;
+        if(v&0x7fffu)g_palette[1u+16u*set+i]=(uint16_t)(0x8000u|(v&0x7fffu));
     }
-    SAT_TRY(sat_palette_upload_indexed8(palette,PALETTE_BANK));
+    if(set+1u==SETS)SAT_TRY(sat_palette_upload_indexed8(g_palette,PALETTE_BANK));
     uint8_t pixels[FRAME_BYTES*2];
-    for(unsigned f=0;f<FRAMES;++f) {
+    for(unsigned f=0;f<frames;++f) {
         const uint8_t* src=b+HEADER_BYTES+f*FRAME_BYTES;
         for(unsigned i=0;i<FRAME_BYTES;++i) {
             pixels[2*i]=map[src[i]>>4];pixels[2*i+1]=map[src[i]&15u];
         }
-        SAT_TRY(sat_tex_upload_indexed8_pixels(&g_frame_texture[f],pixels,32,32,PALETTE_BANK));
+        SAT_TRY(sat_tex_upload_indexed8_pixels(&g_frame_texture[set][f],pixels,32,32,PALETTE_BANK));
     }
+    g_frames[set]=(uint8_t)frames;
+    return SAT_OK;
+}
+
+sat_result_t t3_flipbook_burst_init(void* scratch,uint32_t scratch_bytes) {
+    if(!scratch || scratch_bytes<T3_FLIPBOOK_FILE_BYTES)return SAT_ERR_INVALID_ARG;
+    for(unsigned set=0;set<SETS;++set)SAT_TRY(load_set(set,scratch,scratch_bytes));
     g_ready=1;
     return SAT_OK;
 }
@@ -68,7 +85,8 @@ sat_result_t t3_flipbook_burst_draw(void) {
     static const t3_psx_particle_model_t centre={{{0,0,0},{0,0,0},{0,0,0},{0,0,0}}};
     for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i) {
         const t3_psx_flipbook_t* r=&image->flipbook[i];
-        if(!r->active || r->set!=3u || r->frame<1u || r->frame>FRAMES)continue;
+        const unsigned set=r->set==3u?SYSTEM_SET:r->set;
+        if(!r->active || set>=SETS || r->frame<1u || r->frame>g_frames[set])continue;
         ++g_t3_flipbook_seen[0];
         /* The ground is never passed: y is clamped before the divide. */
         int32_t p[3]={r->pos[0],r->pos[1]>-32000?-32000:r->pos[1],r->pos[2]};
@@ -88,7 +106,7 @@ sat_result_t t3_flipbook_burst_draw(void) {
         cmd.x[1]=(int16_t)far_x;cmd.y[1]=(int16_t)y0;
         cmd.x[2]=(int16_t)far_x;cmd.y[2]=(int16_t)y1;
         cmd.x[3]=(int16_t)near_x;cmd.y[3]=(int16_t)y1;
-        cmd.texture=&g_frame_texture[r->frame-1u];
+        cmd.texture=&g_frame_texture[set][r->frame-1u];
         SAT_TRY(sat_draw_sprite_distorted_color_calc(&cmd,SAT_VDP2_SPRITE_ADD));
         ++g_t3_flipbook_drawn;
         g_t3_flipbook_last[0]=x0;g_t3_flipbook_last[1]=y0;g_t3_flipbook_last[2]=x1;g_t3_flipbook_last[3]=y1;

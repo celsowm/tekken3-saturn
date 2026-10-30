@@ -997,6 +997,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
                 "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        if(NOT T3_LOCAL_HUD_ACTOR0_ARC OR NOT T3_LOCAL_HUD_ACTOR1_ARC)
+            message(FATAL_ERROR "T3_FLIPBOOK_BURST requires T3_LOCAL_HUD_ACTOR0_ARC and T3_LOCAL_HUD_ACTOR1_ARC")
+        endif()
+        foreach(_t3_fb_slot 0 1)
+            add_custom_command(OUTPUT "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
+                    --arc "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" --out "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
+                    "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" VERBATIM)
+            target_sources(tekken3_saturn PRIVATE "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
+            list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
+        endforeach()
         target_sources(tekken3_saturn PRIVATE src/saturn/flipbook_burst.c "${_t3_particle_gen}/FLIPBOOK.BIN")
         list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPBOOK.BIN")
         target_compile_definitions(tekken3_saturn PRIVATE T3_FLIPBOOK_BURST=1)
