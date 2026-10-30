@@ -837,3 +837,31 @@ older frozen baselines. Pass `-DT3_PARTICLES=OFF` to keep a baseline.
 
 Plan status: phases 0-3 and 5 complete with gate evidence (gate 7). Phase 4's
 PS1 frame diff is the only open item, for the reason in section 29.
+
+## 31. A PS1 comparison that needs no guest writes (design, not run)
+
+Section 29 said the alignment could not be had without writing the guest. It
+can, if the Saturn is aligned to the PS1 instead of the reverse. The PS1
+session is deterministic (PCSX-Redux with `-no-ui -interpreter -softgpu`, a
+scripted pad schedule and the same disc give the same frame every run), so:
+
+1. Run `scripts/pcsx_redux_paul_session.lua` with a variant that selects Paul
+   for player 1 and Law (character id 1, the `char == 1` cell) for player 2
+   and drives both pads from a fixed schedule at fight ticks. Read, never write:
+   the fight's RNG word and both fighters' starting state at the first fight
+   tick, then pause on a chosen tick and fetch `/api/v1/screen/still`.
+2. Give the Saturn match that RNG word as its initial seed and replay the same
+   schedule through `T3_LOCAL_INPUT_TAPE` (tick-indexed, cadence independent).
+   The owned match reproduces the original's RNG draws over the 3,000-tick
+   reference replay, so equal seed and inputs give equal state and an equal
+   spray.
+3. Build the Saturn frozen pair at that tick with `T3_PARTICLES` and compare
+   the spray cells (not the fighters, whose textures and rasterizer differ)
+   with a stated tolerance.
+
+What this design still needs and I do not have: **a pad schedule that lands a
+hit of at least 21 damage** (sections 27-28 found moves in the bank but no
+reachable input; the Law AI did it by itself on the Saturn, and the PS1's
+arcade-mode opponent for Paul is unknown), the Saturn-side seed override, and
+the cell-level comparator. None needs a rule to be relaxed. I have not run any
+of it.
