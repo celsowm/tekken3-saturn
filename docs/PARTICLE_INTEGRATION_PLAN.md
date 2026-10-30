@@ -1518,3 +1518,28 @@ hidden by a later fighter face the way the sparks are. That is a design
 decision (a third VDP2 layer and its cycle pattern, or giving up occlusion for
 the burst), not an implementation detail, and it is outside what the current
 compositor and its gates settle.
+
+## 49. Where the burst's draw can go (2026-10-30)
+
+Checked against the SDK's layer manager (`include/saturn/vdp2_layers.h`): the four
+normal scroll screens are managed, but **only NBG0 and NBG1 have zoom**; NBG2 and
+NBG3 are 16- or 256-colour with integer scroll only. NBG0 is the panorama and NBG1
+the particle layer, so a zoomed burst plane would have to take NBG1's place or
+be an RBG layer (rotation planes scale freely but RBG0 is the floor and a second
+rotation plane has its own bank, cycle and coefficient needs). Moving the sparks
+to NBG2 does not work either: they are summed in 15-bit RGB, and NBG2 cannot hold
+RGB cells. The options, none implemented:
+
+1. **No burst** (today). Sprays at placement parity, flipbooks absent. Phase 4 is
+   complete for the sprays and says so.
+2. **VDP1 sprite in the fighters' painter order.** A 61 x 61 sprite with VDP1
+   half-transparency (average, not the PS1's add) drawn at the burst's bucket.
+   It gets fighter occlusion and ordering for free from the VDP1 command list
+   and costs no cells, but the blend is a labelled approximation, not parity.
+3. **A zoomed RBG layer with colour-calculation add** (exact blend, no occlusion).
+   A layer-manager, VRAM bank and cycle-pattern design, verified in Ymir; the
+   largest of the three.
+
+The choice between 2 and 3 trades blend accuracy against occlusion; neither
+reaches parity on its own, and the plan's earlier rule against presenting an
+approximation as parity applies to 2.
