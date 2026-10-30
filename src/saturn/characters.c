@@ -1297,7 +1297,14 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
         .center_z=t3_move_probe_world_center(2),
         .result={SAT_OK,SAT_OK},.worker_ready=0u};
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+#if defined(T3_PARTICLE_GATED_PROJECTION)
+    /* The original projection and OT exist to order particles against the
+     * fighters; without a live effect the cheaper SDK path draws the image. */
+    const int original_view_ready=g_t3_particle_image.sprites.count>0u &&
+        t3_move_probe_camera_matrix(&g_fused_actors.original_view);
+#else
     const int original_view_ready=t3_move_probe_camera_matrix(&g_fused_actors.original_view);
+#endif
 #endif
     for(unsigned i=0;i<2;++i) {
         g_actors[i].mesh.vertex_count=g_actors[i].vertex_count;

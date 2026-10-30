@@ -301,3 +301,35 @@ Status of the plan: phase 0 step 1 is done and gated. Step 2 produced the
 decision above. The next increment is the particle-gated projection; phases
 1–5 have not started. Not done: CD boot of the bitmap-floor candidate in this
 session, PS1 pixel comparison of the floor, hardware.
+
+## 15. Particle-gated projection (2026-10-29)
+
+`T3_PARTICLE_GATED_PROJECTION` (CMake option, default OFF; requires the
+original projection and the particle image snapshot) sets `original_active`
+for an image only when the snapshot taken before preparation holds a sprite
+(`g_t3_particle_image.sprites.count>0`). Other images use the SDK path.
+
+Built on `build/ptcl-full` (ELF `0c8af8be…` before the option; the option
+build is not hashed because it is not a gated candidate). Ymir, 1,800 fields,
+no particles on screen: loop rate **39.0** (SDK control 41.0, ungated
+projection 24.2), frame work 27 ms (26 / 41), 832 submitted frames (898 /
+515), `first_error` 0, 0 discarded fields. The screenshot shows both
+fighters on the stage in the expected places.
+
+**Not shown:** that anything works when particles *are* present. Four scripted
+attempts (single and repeated high punch, then low/mid/kick/punch mixes)
+produced 2–6 hits and zero effect sprites, because the original spray only
+spawns for hits of at least 21 damage and the 26 suite cases land 6–12 per
+hit (only the throw reaches 40). The earlier "high-damage attack" run that
+reached 26 sprites used a script that was not kept. Until a scripted
+attack produces sprites on this build, these remain unmeasured:
+
+1. the cadence and pixels during particle images;
+2. whether the stage mapping jumps when the image switches paths (the stage
+   viewport shift is compiled in with the original projection and applies to
+   every image, including the SDK-projected ones);
+3. the ordered mask on real fighter faces.
+
+Next concrete step: find or record a script that produces an effect spray
+(candidates: Paul's strong launchers, counter hits, or the throw), keep it
+under `scripts/` as a fixture, and run items 1–3.
