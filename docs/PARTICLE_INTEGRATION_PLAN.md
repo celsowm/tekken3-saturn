@@ -433,3 +433,22 @@ behavior or the owned-match reference when no effect sprite is on screen or
 when one is: the suite's hits never reach the 21 damage that spawns a spray,
 so **no gate case exercises a particle image**. The particle images are
 covered only by the diagnostic spray fixture (section 16–17).
+
+## 19. Stage alignment between the two paths (2026-10-30, qualitative)
+
+The frozen-tick builds needed to compare pixels exactly do not link with this
+option set (the fixed-pose table pushes High WRAM over the stack reserve even
+with 20 cells), so this is a coarser check. `build/ptcl-full` with and
+without `T3_PARTICLE_GATED_PROJECTION`, neutral pads on both ports, 1,000
+fields, no effect on screen. The gated build draws the fighters through the
+SDK path, the ungated one through the original projection; both use the same
+(compile-time) stage viewport shift.
+
+Screenshots show the same backdrop and floor, both fighters standing on their
+shadows with feet at the same rows, and the same round timer (35). The
+fighters' stances differ by a few pixels because the two runs are at
+different ticks (frame counter 312 against 191, which is the cadence gap).
+No visible jump in the stage or the fighters' ground contact. This is not a
+pixel comparison: a one- or two-pixel offset between the paths would not be
+seen. A transition image (the first image with an effect after an SDK image)
+has not been captured.
