@@ -255,9 +255,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 T3_PARTICLE_POSITION_PROBE T3_PARTICLE_MULTI_PROBE T3_STAGE_ADD_PROBE
                 T3_ORIGINAL_FIGHTER_PROJECTION T3_ORIGINAL_FIGHTER_OT T3_MIXED_OT_DIAGNOSTIC
                 T3_PARTICLE_ORDERED_MASK_PROBE T3_PARTICLE_GENERAL_MASK_PROBE
-                T3_PARTICLE_GATED_PROJECTION)
+                T3_STAGE_ORIGINAL_VERTICAL_PROBE)
             set(${_t3_option} ON CACHE BOOL "Forced by T3_PARTICLES" FORCE)
         endforeach()
+        # Gating is the default; -DT3_PARTICLE_GATED_PROJECTION=OFF keeps the original
+        # projection in every image (the slow reference for comparisons).
+        set(T3_PARTICLE_GATED_PROJECTION ON CACHE BOOL "Default from T3_PARTICLES")
         set(T3_HIGH_GEOMETRY_SCRATCH OFF CACHE BOOL "Forced by T3_PARTICLES" FORCE)
         set(T3_COLD_FACES "320" CACHE STRING "Forced by T3_PARTICLES" FORCE)
         set(T3_PARTICLE_CELLS "52" CACHE STRING "Forced by T3_PARTICLES" FORCE)
@@ -928,6 +931,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_sources(tekken3_saturn PRIVATE src/saturn/coverage_probe.c)
         target_compile_definitions(tekken3_saturn PRIVATE T3_VDP1_COVERAGE_PROBE=1)
     endif()
+    set(T3_VIEWPORT_SIGN "2" CACHE STRING "Experiment: SDK camera's vertical centre shift in screen rows")
+    set(T3_VIEWPORT_DX "6" CACHE STRING "Experiment: SDK camera's horizontal centre shift in screen pixels")
+    target_compile_definitions(tekken3_saturn PRIVATE T3_VIEWPORT_SIGN=${T3_VIEWPORT_SIGN} T3_VIEWPORT_DX=${T3_VIEWPORT_DX})
     option(T3_PARTICLE_DROP_SELFTEST "Diagnostic: take the unsupported-face cell drop on every 40th cell visit" OFF)
     if(T3_PARTICLE_DROP_SELFTEST)
         target_compile_definitions(tekken3_saturn PRIVATE T3_PARTICLE_DROP_SELFTEST=1)

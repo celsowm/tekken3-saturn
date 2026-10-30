@@ -402,6 +402,12 @@ static uint16_t g_order[FACE_CAP] T3_HOT_WRAM;
 /* Explicitly cleared and uploaded by HUD initialization before its first use. */
 static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
+#ifndef T3_VIEWPORT_SIGN
+#define T3_VIEWPORT_SIGN 2
+#endif
+#ifndef T3_VIEWPORT_DX
+#define T3_VIEWPORT_DX 6
+#endif
 static sat_camera3d_t g_camera;
 #if defined(T3_NATIVE_COMMANDS)
 enum { STAGE_FACES=60 };
@@ -1131,7 +1137,26 @@ static void prepare_scene(void) {
 #endif
     SAT_PANIC_IF_ERROR(sat_camera3d_update(&g_camera));
 #endif
+#if defined(T3_PARTICLE_GATED_PROJECTION) && defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
+    /* Images without an effect draw the fighters through the SDK, images with
+     * one through the original projection, and the stage is mapped to the
+     * original's vertical viewport (rows 20..468 of the picture onto the 224
+     * rows, picture centre on row 110). The SDK fighters get the same mapping
+     * here, in clip space: y' = 15/14 y + w/56. The stage keeps reading the
+     * unadjusted g_camera and applies its own correction. */
+    static sat_camera3d_t scene_camera;
+    scene_camera=g_camera;
+    for(unsigned j=0;j<4;++j) {
+        scene_camera.view_proj.m[4+j]=(sat_fx16_t)((int64_t)g_camera.view_proj.m[4+j]*15/14+
+            (int64_t)T3_VIEWPORT_SIGN*g_camera.view_proj.m[12+j]/112);
+        /* The original's GTE centre is x=167, not 160. */
+        scene_camera.view_proj.m[j]=(sat_fx16_t)((int64_t)g_camera.view_proj.m[j]+
+            (int64_t)T3_VIEWPORT_DX*g_camera.view_proj.m[12+j]/160);
+    }
+    SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &scene_camera, Q(25), W, H, HUD_COMMANDS));
+#else
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
+#endif
 #if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
     SAT_PANIC_IF_ERROR(floor_capacity_selftest());
 #endif
