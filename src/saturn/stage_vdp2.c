@@ -212,6 +212,14 @@ volatile uint32_t g_t3_ordered_general_tiles __attribute__((section(".wram_l")))
 volatile uint32_t g_t3_ordered_general_ticks __attribute__((section(".wram_l")));
 #endif
 #endif
+volatile uint32_t g_t3_ordered_mask_cell_drops;
+/* A face the mask cannot describe removes the particle pixels in the cells it
+ * touches (a missing spark piece, never one drawn over a nearer fighter)
+ * instead of blanking the whole effect image. */
+static void drop_cell(t3_particle_tile_probe_t* tiles,unsigned i) {
+    for(unsigned j=0;j<64;++j)tiles->pixels[i][j]=0;
+    ++g_t3_ordered_mask_cell_drops;
+}
 sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* texture,const int16_t x[4],const int16_t y[4]) {
     if(!x || !y)return SAT_ERR_INVALID_ARG;
     int left=x[0],right=x[0],top=y[0],bottom=y[0];
@@ -259,8 +267,9 @@ sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* textu
         /* Allocated cells can contain only transparent pixels or have been
          * cleared by earlier faces. Such cells cannot require masking. */
         if(!t3_particle_tile_intersects(tiles,i,left,top,right,bottom))continue;
-        if(!texture || !texture->pixels || texture->width!=8u || texture->height!=8u || texture->pixel_count!=64u)
-            return SAT_ERR_UNSUPPORTED;
+        if(!texture || !texture->pixels || texture->width!=8u || texture->height!=8u || texture->pixel_count!=64u) {
+            drop_cell(tiles,i);continue;
+        }
         uint8_t mask[8];
         if(!pixels) {
             pixels=texture->pixels;
@@ -280,10 +289,10 @@ sat_result_t t3_stage_particle_multi_face(const sat_model_texture_asset_t* textu
 #if defined(T3_PARTICLE_MASK_TIMING)
             g_t3_ordered_general_ticks+=(uint16_t)(sat_time_frc()-started);
 #endif
-            if(!ok)return SAT_ERR_UNSUPPORTED;
+            if(!ok){drop_cell(tiles,i);continue;}
             ++g_t3_ordered_general_tiles;
 #else
-            return SAT_ERR_UNSUPPORTED;
+            drop_cell(tiles,i);continue;
 #endif
         }
         if(!t3_particle_tile_occlude_index(tiles,i,mask))return SAT_ERR_INVALID_ARG;

@@ -712,8 +712,9 @@ volatile uint32_t g_t3_ordered_mask_dropped_particles;
 #if !defined(T3_ORDERED_MASK_SELFTEST) || defined(T3_PARTICLE_80_SELFTEST)
 static sat_result_t ordered_particle_result(sat_result_t status,unsigned* drawn) {
     if(status==SAT_OK){++g_t3_ordered_mask_particles;++*drawn;return SAT_OK;}
-    if(status==SAT_ERR_CAPACITY) {
-        /* Capacity preflight leaves the existing image unchanged. */
+    if(status==SAT_ERR_CAPACITY || status==SAT_ERR_UNSUPPORTED) {
+        /* Both are rejected before the canvas changes, so only this particle
+         * is lost, not the image. */
         ++g_t3_ordered_mask_particle_failures;++g_t3_ordered_mask_dropped_particles;
         return SAT_OK;
     }
