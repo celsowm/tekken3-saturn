@@ -452,3 +452,49 @@ No visible jump in the stage or the fighters' ground contact. This is not a
 pixel comparison: a one- or two-pixel offset between the paths would not be
 seen. A transition image (the first image with an effect after an SDK image)
 has not been captured.
+
+## 20. Live particle case, and the path jump measured exactly (2026-10-30)
+
+**`scripts/saturn_particle_suite.py`** runs a build with
+`T3_PARTICLE_SPRAY_SELFTEST` and `T3_PARTICLE_CELL_CHECK` (`build/ptcl-spray`:
+the gated build plus those two) for 1,500 fields and asserts: effect images
+reach the original projection with 0 fallbacks, some images show a visible
+particle, sprites are captured, real fighter faces are masked
+(`g_t3_ordered_mask_tiles` > 0), and the cell walk matches the full scan on
+every face. All seven pass (`assets/imported/ptcl-suite`). Pixels are not
+compared. This is the first case that runs a particle image through a script;
+it does not belong to `saturn_regression.py` yet.
+
+**Build note.** `print_release_configure.py` omits options that are OFF, so a
+clone of `ptcl-full` came back with `T3_HIGH_GEOMETRY_SCRATCH` at its default
+and failed to link. That, not the fixed-pose table, is why the earlier frozen
+builds overflowed High WRAM; section 19's claim is wrong. Pass
+`-DT3_HIGH_GEOMETRY_SCRATCH:BOOL=OFF` explicitly.
+
+**The jump.** Frozen tick 120, no effect on screen, 1,200 fields, cache on,
+status label hidden, `T3_PARTICLE_GATED_PROJECTION` ON (SDK path) against OFF
+(original projection): `diff_saturn_screens.py` reports **11,067 differing
+pixels**, bounding box x 43..276, y 41..203, maximum channel delta 248. In
+the screenshots the original path draws both fighters visibly taller (Paul's
+head at about row 45 against 55). Cause, from `t3_move_probe_camera`: the
+SDK frustum maps the 368 x 480 PS1 picture onto all 224 rows (vertical scale
+0.467, centre row 112), while the original maps rows 20..468 onto 0..224
+(scale 0.5, centre row 110). Horizontal scale already matches (20/23).
+
+So with gating, fighters grow about 7% vertically and shift two rows at the
+start of every effect and shrink back at the end. That is a visible pop, not
+a rounding difference, and it would fail a parity review.
+
+Ways to remove it, none done yet:
+
+1. Give the SDK camera the original vertical mapping (projection `m[5]` with
+   224 instead of 240 in the denominator, plus a four-row-equivalent centre
+   shift). The stage layers are mapped for the current frustum, so they would
+   have to move too (`T3_STAGE_ORIGINAL_VERTICAL_PROBE` exists and is
+   unqualified). This changes the playable build's pixels and needs its own
+   frozen baseline.
+2. Run the original projection always. Rejected on cadence (section 13).
+3. Accept the pop only inside effects. Not acceptable as parity.
+
+Option 1 is the next step. It is a presentation change to the shipped build,
+so I have not made it without a decision.
