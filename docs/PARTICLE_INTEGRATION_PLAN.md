@@ -1242,3 +1242,35 @@ suspect; this fight's base counter is 394 on the PS1). With the sound draw
 fixed the override of section 35 should reproduce the PS1's spark layout
 exactly, which would turn the remaining spark comparison into a pixel one; the
 flipbook burst stays the separate feature of sections 37-39.
+
+## 42. The sound draw, found and partly fixed (2026-10-30)
+
+A `T3_SOUND_RAND_LOG` ring (frame counter and source line of each draw in
+`psx_fighter_sounds.c`) on the Saturn replay shows the hit frame draws once, at
+the impact-sound site, and the damage-voice site (`ambient`, gated on an odd
+`frame_counter`) is silent. The PS1's hit frame draws twice, and its frame
+counter there is odd (base 397 plus fight frame 3522 = 3919); the Saturn's
+counter at that frame is 3526, even. The parity, not a missing code path, is what
+differs, because the owned match is given `ticks + 1` while a PS1 session's
+counter starts wherever the menus left it. `T3_FRAME_COUNTER_BIAS` (default 0,
+which keeps the reference replays as they were) adds the session's parity.
+
+Result with bias 1 and the section 35 random override, Saturn frame at tick
+3531 against the PS1 frame at fight frame 3527 (roots identical to one unit as
+before): spark blobs outside the burst, 8x8 cells shared **19 of 25 PS1 / 66
+Saturn, Jaccard 0.26** (was 0.11 with bias 0, 0.18 with the PS1 start seed). The
+sparks now sit in the same region left of the contact point and in similar
+numbers by eye (`side-by-side-bias.png`, private); the PS1 frame has about
+147 spark pixels and the Saturn 359. They are not the same layout, so the
+random stream is not yet identical: the override value is the PS1's at fight
+frame 3500 and the Saturn's draw count between that tick and the spawn is
+unchecked (the PS1 side can be logged with the rand hook of section 41).
+
+**Where phase 4 stands.** What is established: the aligned frames, the effect
+structure, 52 spray draws in one frame on both sides, the one-draw difference
+and its cause. What is not: identical spark layout (Jaccard 0.26, no better than
+partial) and the burst, which is the flipbook ring of sections 37-39, a feature
+that does not exist on the Saturn. A pixel match of the hit frame needs both.
+The first is a matter of finishing the random alignment (compare the Saturn's
+and the PS1's per-frame call counts between the override tick and the hit); the
+second is the new feature. Neither is a defect of the particle path built here.

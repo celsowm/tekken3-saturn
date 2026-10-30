@@ -17,7 +17,16 @@ static uint32_t readn(reader* r,uint32_t at,unsigned n) {
 static uint32_t r32(reader* r,uint32_t at){return readn(r,at,4);}
 static uint16_t r16(reader* r,uint32_t at){return (uint16_t)readn(r,at,2);}
 static int16_t s16(reader* r,uint32_t at){return (int16_t)r16(r,at);}
+#if defined(T3_SOUND_RAND_LOG)
+/* Diagnostic: frame counter and source line of every draw (PS1 comparison). */
+volatile uint32_t g_t3_sound_rand_log[128][2],g_t3_sound_rand_count;
+#define random_next(r) random_next_at((r),__LINE__)
+static uint32_t random_next_at(reader* r,unsigned line) {
+    const uint32_t n=g_t3_sound_rand_count++;
+    g_t3_sound_rand_log[n&127u][0]=r->c->frame_counter;g_t3_sound_rand_log[n&127u][1]=line;
+#else
 static uint32_t random_next(reader* r) {
+#endif
     uint32_t* value=r->c->random;
     *value=*value*0x41C64E6Du+0x3039u;
     return (*value>>16)&0x7FFFu;

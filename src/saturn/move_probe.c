@@ -1,4 +1,7 @@
 #include "move_probe.h"
+#ifndef T3_FRAME_COUNTER_BIAS
+#define T3_FRAME_COUNTER_BIAS 0u
+#endif
 #ifndef T3_START_SEED
 #define T3_START_SEED 1u
 #endif
@@ -1103,7 +1106,7 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     if(!g_active || !view)return SAT_ERR_INVALID_ARG;
 #if defined(T3_ENABLE_PSX_COMBAT)
-    t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1};
+    t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1u+T3_FRAME_COUNTER_BIAS};
     const t3_input_t pads[2]={p0,p1};
     for(unsigned i=0;i<2;++i) {
         /* Undo the controller boundary's previous world-facing mapping.
