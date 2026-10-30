@@ -7,6 +7,7 @@
  */
 #include "characters.h"
 #include "move_probe.h"
+#include "original_hud.h"
 #include "psx_skin_bridge.h"
 #include "perf.h"
 #include "placement.h"
@@ -884,6 +885,7 @@ static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_p
             t3_stage_particle_multi_end();++g_t3_ordered_mask_fallbacks;return SAT_OK;
         }
     }
+    if(drawn)SAT_TRY(t3_original_hud_occlude_particles());
     t3_stage_particle_multi_end();++g_t3_ordered_mask_images;
     if(drawn){++g_t3_ordered_mask_drawn_images;g_t3_ordered_mask_drawn_particles+=drawn;}
     return SAT_OK;

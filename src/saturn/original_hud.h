@@ -11,6 +11,10 @@ static inline int t3_original_hud_x(int x) {
 
 /* Private system-texture sprites in HUD.BIN, generated from the user's disc. */
 sat_result_t t3_original_hud_init(void* scratch,unsigned bytes);
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+/* Clear the particle cells under the HUD's rectangles (it is drawn last). */
+sat_result_t t3_original_hud_occlude_particles(void);
+#endif
 sat_result_t t3_original_hud_bar(int x,int y,int width,int length,int recent,int inner_right);
 /* The bar's `length`/`recent` arrive already in fill pixels (the original's
  * 152 units mapped by the caller); width is the full capped span. */

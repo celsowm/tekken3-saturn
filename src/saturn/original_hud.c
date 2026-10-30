@@ -168,3 +168,47 @@ sat_result_t t3_original_hud_text(const char* text,unsigned colour,unsigned font
     }
     return SAT_OK;
 }
+
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+#include "stage_vdp2.h"
+/* The original draws the HUD after every effect, so no particle shows through
+ * it. The particle layer sits above the VDP1 sprites, so the cells under the
+ * HUD's opaque rectangles are cleared instead. Positions are those main.c
+ * passes to the draw functions above (320x224 screen pixels). The bars are
+ * opaque rectangles; the timer digits, plates and names are treated as
+ * rectangles too, which also hides particles behind their transparent pixels.
+ * The round-win marks and the ROUND/READY text are not covered. */
+static sat_result_t occlude_rect(int left,int top,int right,int bottom) {
+    if(left<0)left=0;
+    if(top<0)top=0;
+    if(right>319)right=319;
+    if(bottom>223)bottom=223;
+    if(left>right || top>bottom)return SAT_OK;
+    for(int ty=top>>3;ty<=bottom>>3;++ty)for(int tx=left>>3;tx<=right>>3;++tx) {
+        uint8_t coverage[8];
+        for(int row=0;row<8;++row) {
+            const int y=ty*8+row;unsigned bits=0;
+            if(y>=top && y<=bottom)
+                for(int col=0;col<8;++col) {
+                    const int x=tx*8+col;
+                    if(x>=left && x<=right)bits|=0x80u>>col;
+                }
+            coverage[row]=(uint8_t)bits;
+        }
+        SAT_TRY(t3_stage_particle_multi_occlude((unsigned)tx,(unsigned)ty,coverage));
+    }
+    return SAT_OK;
+}
+sat_result_t t3_original_hud_occlude_particles(void) {
+    SAT_TRY(occlude_rect(9,10,9+136-1,10+12-1));
+    SAT_TRY(occlude_rect(176,10,176+136-1,10+12-1));
+    const int timer=t3_original_hud_x(169);
+    SAT_TRY(occlude_rect(timer,1,timer+26,1+23-1));
+    const int p1_plate=t3_original_hud_x(10),p1_name=t3_original_hud_x(14);
+    const int p2_plate=t3_original_hud_x(324),p2_name=t3_original_hud_x(322);
+    SAT_TRY(occlude_rect(p1_plate,27,p1_plate+35-1,27+5-1));
+    SAT_TRY(occlude_rect(p1_name,23,p1_name+28-1,23+8-1));
+    SAT_TRY(occlude_rect(p2_plate,27,p2_plate+30-1,27+5-1));
+    return occlude_rect(p2_name,23,p2_name+28-1,23+8-1);
+}
+#endif

@@ -1151,6 +1151,14 @@ reference_complete:;
         const t3_vec3i_t point=joint->origin;
         t3_psx_effect_spray(&g_effect_pool,point,0,0x400,0);
     }
+    /* A second spray at the height of the HUD bars, to exercise the HUD
+     * occlusion: the screen's top rows are about 2,500 units above the
+     * fighters at this camera distance. */
+    if(g_owned_match.ticks>=245u && (g_owned_match.ticks-245u)%90u==0u) {
+        const t3_psx_joint_t* joint=&g_owned_match.fighter[1].world[8];
+        const t3_vec3i_t point={joint->origin.x,joint->origin.y-2300,joint->origin.z};
+        t3_psx_effect_spray(&g_effect_pool,point,0,0x400,0);
+    }
 #endif
     view->total_ticks=g_owned_match.ticks;
 #if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
