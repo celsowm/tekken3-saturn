@@ -587,3 +587,37 @@ alone (ELF `dea7b621…`).
 - The release gate does not run the particle suite
   (`scripts/saturn_particle_suite.py`).
 - Playable default: `T3_PARTICLES` stays OFF.
+
+## 24. Branches exercised; particle case in the regression script (2026-10-30)
+
+Two additions to the fixture build (`build/ptcl-spray`: the `T3_PARTICLES`
+configuration plus `T3_PARTICLE_SPRAY_SELFTEST`, `T3_PARTICLE_CELL_CHECK` and
+`T3_PARTICLE_DROP_SELFTEST`):
+
+- `T3_PARTICLE_DROP_SELFTEST` takes the unsupported-face cell drop on every
+  40th cell visit, so that branch runs end to end: **53 cell drops** in 1,500
+  fields with `first_error` 0 and no image blanked.
+- The second spray now cycles through four heights near the HUD bars. **26
+  particle cells** were found under the HUD rectangles and cleared
+  (`g_t3_hud_occluded_cells`). That proves sparks reach the bar rows and the
+  clearing runs; it is still a counter, not a pixel check of the bars.
+
+`saturn_regression.py --particle-build BUILD` adds a `particle` stage that
+runs `saturn_particle_suite.py` and records its checks and counters. Gate 5
+(`assets/imported/ptcl-gate5`) passed all five stages: both host builds, the
+26 combat cases (743 s), the 3,000-tick reference replay (187 s) and the
+particle stage (all nine checks). The gated particle build is ELF
+`109bd032ca0e131fda9e…` (the playable `T3_PARTICLES` configuration) and the
+fixture build `337dc6a391a11ff45589…`.
+
+Remaining, and honestly outside what I could close:
+
+- **Cadence (phase 3).** Particle images run at about 25 fps against 39; the
+  fixed cost is the original projection (about 40 ms per image).
+- **PS1 pixel comparison (phase 4).** PCSX-Redux can screenshot a paused PS1
+  fight (`pcsx_redux_paul_session.lua`, `/api/v1/screen/still`), but it needs
+  a fight with a spray and, before the comparison means anything, the
+  coherent original viewport of section 21.
+- **Viewport coherence.** The 7% vertical mismatch between the SDK and
+  original paths (section 20) makes gated particles pop at effect start/end.
+- **Default.** `T3_PARTICLES` stays OFF.
