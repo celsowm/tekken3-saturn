@@ -1543,3 +1543,29 @@ RGB cells. The options, none implemented:
 The choice between 2 and 3 trades blend accuracy against occlusion; neither
 reaches parity on its own, and the plan's earlier rule against presenting an
 approximation as parity applies to 2.
+
+## 50. Spark colour, compared on the aligned pair (2026-10-30)
+
+On the pair of section 44 (PS1 fight frame 3528 against the Saturn's tick 3531
+frame) the spark pixels were compared in colour. Of the Saturn's 359 spark
+pixels, 146 have a PS1 spark within one pixel (the rest are Saturn sparks the
+PS1 frame hides or does not have, 172 more spark pixels than the PS1's 187 in
+total). For those 146 pairs, taking the brightest PS1 pixel in the 3 x 3 around
+each (the PS1 frame is resampled from 480 rows):
+
+| | R | G | B |
+| --- | ---: | ---: | ---: |
+| PS1 mean | 247.8 | 232.9 | 139.5 |
+| Saturn mean | 245.5 | 207.3 | 92.5 |
+| mean absolute difference | 9.4 | 33.5 | 63.8 |
+
+The sparks agree in red and are lower in green and blue on the Saturn: they read
+orange where the PS1's are yellow-white at their cores. Averaged over every
+spark pixel the colours are closer (PS1 236, 200, 91; Saturn 239, 184, 103), so
+the palettes are the same family and the difference concentrates in the bright
+cores. Candidates, none tested: the per-frame palette ramp (the spark CLUT
+switches with the frame parity, and the Saturn's parity now follows the
+session but the ramp step may not), the PS1's 15-bit additive blend with
+dither against the VDP2's 24-bit add, and the background under the sparks (the
+two stages are drawn by different layers). A pixel-level colour match is not
+established; the placement match of section 44 stands.
