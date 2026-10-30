@@ -1158,3 +1158,24 @@ check them against these dumps; port `EffectSpawn`/`FUN_8007699C` (spawn,
 animation, the random draws) and check the draw order against the
 unpatched original; then the draw path for a sprite of about 48 pixels (see
 section 37). None of these is done; phase 4's parity needs all three.
+
+## 39. Flipbook step 1 done: the pages extract from the disc (2026-10-30)
+
+`scripts/check_psx_system_vram.py` builds the system-texture VRAM image from the
+USA executable with the existing `system_textures.build_vram` (the same code the
+HUD and particle extractors use) and compares it with the PS1 VRAM dump of
+section 38. Result: effect page 2 (896, 256), the fire and explosion
+flipbooks, **0 of 16,384 words differ**; effect page 1 (960, 256) 0 of 16,384;
+the effect palette rows (32..175, 503) 0 of 144. So the 27-frame fire flipbook
+and the palettes needed for the hit burst can be extracted from the executable
+as they are, with no new decoder. The character flipbooks (member 1 of each
+character ARC, 22 or 30 standard 4-bit TIMs of 32 x 32) are loaded into VRAM
+by `FighterLoadCharacter`; their VRAM place was not checked here.
+
+The remake's simulation already carries the spawn: `sim_events.gd` has `SPARK`
+(system flipbook, set 3 index) and `EFFECT` (the owner's character flipbook)
+events, and the draw calls `FUN_8004A954`/`FUN_80077158` are described in
+`fight_simulation.gd` and `effects.md`. Still open: port the spawn and
+animation with its random draws, check them against the unpatched original
+(the PS1 two-tick, 30 and 24 draw pattern of section 36 is the target), and
+the large-sprite draw path.
