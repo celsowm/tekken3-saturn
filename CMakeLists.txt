@@ -244,6 +244,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE T3_DIRECT_FACE_SPANS=1)
     endif()
     option(T3_PROJECTED_FACE_QUEUE "Keep compact projected scene records in High WRAM" ON)
+    # One switch for the original-particle path (docs/PARTICLE_INTEGRATION_PLAN.md):
+    # it forces the options the path needs and the memory settings that make it
+    # link on stock RAM. It still requires the original HUD, camera, VDP2 floor and
+    # owned match; the individual option checks report anything missing.
+    option(T3_PARTICLES "Draw the original hit particles (experimental, see PARTICLE_INTEGRATION_PLAN.md)" OFF)
+    if(T3_PARTICLES)
+        foreach(_t3_option T3_STAGE_BITMAP_FLOOR T3_PARTICLE_FIGHTER_OT T3_PARTICLE_IMAGE_SNAPSHOT
+                T3_PARTICLE_PREPARE T3_PARTICLE_TEXTURE_PROBE T3_PARTICLE_SWAP_PROBE
+                T3_PARTICLE_POSITION_PROBE T3_PARTICLE_MULTI_PROBE T3_STAGE_ADD_PROBE
+                T3_ORIGINAL_FIGHTER_PROJECTION T3_ORIGINAL_FIGHTER_OT T3_MIXED_OT_DIAGNOSTIC
+                T3_PARTICLE_ORDERED_MASK_PROBE T3_PARTICLE_GENERAL_MASK_PROBE
+                T3_PARTICLE_GATED_PROJECTION)
+            set(${_t3_option} ON CACHE BOOL "Forced by T3_PARTICLES" FORCE)
+        endforeach()
+        set(T3_HIGH_GEOMETRY_SCRATCH OFF CACHE BOOL "Forced by T3_PARTICLES" FORCE)
+        set(T3_COLD_FACES "320" CACHE STRING "Forced by T3_PARTICLES" FORCE)
+        set(T3_PARTICLE_CELLS "52" CACHE STRING "Forced by T3_PARTICLES" FORCE)
+        set(T3_LOCAL_POSE_CACHE_ENTRIES "8" CACHE STRING "Forced by T3_PARTICLES" FORCE)
+    endif()
     set(T3_COLD_FACES "640" CACHE STRING "Capacity of Low WRAM cold scene face records")
     if(T3_COLD_FACES LESS 320 OR T3_COLD_FACES GREATER 1562)
         message(FATAL_ERROR "T3_COLD_FACES must be between 320 and 1562")

@@ -525,3 +525,25 @@ What this means for the design:
   is the existing, unqualified piece) and judges the result against a PS1
   capture. Until then the gated design pops by about 7% at the start and end
   of an effect. It stays opt-in.
+
+## 22. One switch (2026-10-30)
+
+`-DT3_PARTICLES=ON` (default OFF) forces the particle chain (bitmap floor,
+original projection and OT, snapshot, prepare, swap/texture/position/multi
+and additive probes, ordered and general masks, gated projection) and the
+memory settings that link on stock RAM (320 cold faces, 52 cells, pose cache
+8, geometry scratch in Low WRAM). A clone of the playable configuration plus
+this one flag builds to ELF
+`be85dfe0e308a517ad00858aaaded5d388dff1c0506da63d7093a0a9b7e96e75`, the same
+bytes that passed the full gate in section 18, so that gate applies to it.
+It still needs the original HUD, camera, VDP2 floor and owned match; the
+individual option checks report anything missing. The probe-named options
+remain as internal dependencies until the diagnostic code is split out of the
+particle path.
+
+Plan status after this session: phase 0 done and gated; phase 1 done as an
+opt-in switch with a live script case (not in the release gate); phase 2
+partly (real faces are masked, per-cell fallback and HUD order not done);
+phase 3 partly (cadence in particle images 25 fps against 39); phase 4 not
+done (needs a PS1 capture and, per section 21, a coherent original viewport
+for camera, stage and actors); phase 5 done for the switch only.
