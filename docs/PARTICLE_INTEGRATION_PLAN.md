@@ -1013,3 +1013,55 @@ next steps are to read the original's screen-side/facing flag per frame (read
 only) and map forward/back from it, to read the fighters' y correctly, and to
 sync on the round-start tick instead of the first fight frame; then compare
 roots at several ticks before comparing pixels.
+
+## 35. Phase 4 run: aligned PS1 and Saturn spray frames (2026-10-30)
+
+Result first: the comparison was run and **the Saturn does not match the PS1
+here**. The fights are aligned; the effects are not the same effects.
+
+**Alignment.** After mapping forward/back from the original's own `sideFlag`
+(fighter `+0xC6`, read only; clear means pad Right is forward, set means Left)
+the PS1 Paul-mirror session replays the Saturn's Paul-AI tape and the two fights
+agree. At PS1 fight tick base + 3527 and Saturn tick 3531 (the PS1's base is
+taken at its first initialized fight frame, four ticks after the Saturn's tick
+0) the fighter roots (x, y, z) are:
+
+| | PS1 (+0xF68..) | Saturn (`psx_world_root`) |
+| --- | --- | --- |
+| player 1 | -4698, -1690, -38 | -4625, -1690, -38 |
+| player 2 | -3523, -616, 76 | -3452, -616, 77 |
+
+y and z agree to one unit and x to a common 72-unit shift; both fighters are
+airborne and launched on the same tick. The Saturn's own spray starts at tick
+3528, so both frames show a spray three ticks old.
+
+**Frames.** The PS1 frame (368 x 480, private
+`assets/imported/ps1-law-tape/ps1-spray-rel3527.png`) was normalized with the
+HUD mapping (rows 20..467 to 224 rows, 320 wide) and put beside the Saturn
+frozen frame at tick 3531 (`side-by-side-ovr.png`, private). Same camera, same
+poses; the costumes differ (the Saturn draws both fighters in the red costume).
+`scripts/compare_ps1_saturn_sparks.py` counts small bright spark blobs
+outside the fireball rectangle: PS1 147 pixels in 25 8x8 cells, Saturn 343
+pixels in 63 cells, 9 shared (Jaccard 0.11), centroids (77, 116) and (124, 101).
+
+**What differs, and why it is not rendering.**
+1. The PS1 frame has a **large animated fire burst** at the contact point plus
+   about twenty small sparks. The Saturn draws only the small sparks. The burst
+   is the original's active power-glow object (`t3_psx_match_effects_hit`
+   returns early for the fire codes, "fire needs its full object/segment
+   path"; `PARTICLE_RENDER_PROGRESS.md` lists active glows as unfinished). So
+   the Saturn is missing an effect type, not mis-drawing one.
+2. The small sparks are placed differently. The spray's directions come from
+   the shared random state, which differs between the PS1 session and the
+   Saturn (the Saturn's start seed is 1). Setting the Saturn's state to the
+   PS1's value at the matching tick (new diagnostics `T3_START_SEED`,
+   `T3_RAND_OVERRIDE_TICK`, `T3_RAND_OVERRIDE_VALUE`; tried with the value at
+   base + 3500) left the layouts different, so the draw counts between that
+   tick and the spawn, or the value's timing, are not the same. Not resolved.
+
+**Conclusion for the plan.** Particle placement, ordering against the
+fighters, depth and the sprite appearance of single sparks are consistent with
+the PS1 frame by eye; exact spark positions and the fire burst are not
+reproduced. Pixel parity for hit effects is not achieved and is blocked by the
+active-glow effect type and a random-state alignment that this run could not
+establish. Those are two separate pieces of work outside this integration plan.

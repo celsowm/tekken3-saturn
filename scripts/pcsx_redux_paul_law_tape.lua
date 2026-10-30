@@ -152,8 +152,12 @@ local function frame()
         if ev then
             local buttons = {}
             local held = ev[4]
-            if bit.band(held,1) ~= 0 then buttons[#buttons+1] = 7 end   -- forward: player 2 faces left
-            if bit.band(held,2) ~= 0 then buttons[#buttons+1] = 5 end   -- back
+            -- sideFlag (+0xC6, read only) says which pad direction is forward: clear = Right, set = Left.
+            local side = ptr[0xAAAB4 + 0xC6]
+            local fwd, back = 5, 7
+            if side ~= 0 then fwd, back = 7, 5 end
+            if bit.band(held,1) ~= 0 then buttons[#buttons+1] = fwd end
+            if bit.band(held,2) ~= 0 then buttons[#buttons+1] = back end
             if bit.band(held,4) ~= 0 then buttons[#buttons+1] = 4 end   -- up
             if bit.band(held,8) ~= 0 then buttons[#buttons+1] = 6 end   -- down
             if bit.band(held,32) ~= 0 then buttons[#buttons+1] = 15 end -- LP square
@@ -165,9 +169,9 @@ local function frame()
         release(1)
         if T3_TAPE_LOG and ((tick - T3_BASE) % 100 == 0 or (tick - T3_BASE) >= target - 3) then
             local function s32(addr) local v=u32(addr); if v>=2147483648 then return v-4294967296 end; return v end
-            print(string.format('T3_TAPE tick=%d idx=%d rand=0x%08X p0root=%d,%d,%d p1root=%d,%d,%d hp=%d,%d', tick, T3_TAPE_AT,
-                u32(0x800A39B8), s32(0x800A9228), s32(0x800A922C), s32(0x800A9230),
-                s32(0x800AAAB4), s32(0x800AAAB8), s32(0x800AAABC), s32(0x800A9228+0x14), s32(0x800AAAB4+0x14)))
+            print(string.format('T3_TAPE tick=%d idx=%d rand=0x%08X p0root=%d,%d,%d p1root=%d,%d,%d side=%d,%d', tick - T3_BASE, T3_TAPE_AT,
+                u32(0x800A39B8), s32(0x800A9228+0xF68), s32(0x800A9228+0xF6C), s32(0x800A9228+0xF70),
+                s32(0x800AAAB4+0xF68), s32(0x800AAAB4+0xF6C), s32(0x800AAAB4+0xF70), ptr[0xA9228+0xC6], ptr[0xAAAB4+0xC6]))
         end
         if tick - T3_BASE >= target then
             print(string.format('T3_TAPE_PAUSE tick=%d', tick))

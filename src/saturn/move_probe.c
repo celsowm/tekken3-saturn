@@ -1,4 +1,7 @@
 #include "move_probe.h"
+#ifndef T3_START_SEED
+#define T3_START_SEED 1u
+#endif
 #include "combat_events.h"
 #include "saturn/time.h"
 static uint16_t g_start_physical[2];
@@ -377,7 +380,7 @@ void t3_move_probe_reset(unsigned round) {
         g_bank.builtin_attacks=g_common.builtin_attacks=t3_local_combat_attacks;
     g_owned_config.enable_rounds=2;
 #if !defined(T3_REFERENCE_REPLAY)
-    g_owned_config.start_intro=1;g_owned_config.start_seed=1u;
+    g_owned_config.start_intro=1;g_owned_config.start_seed=T3_START_SEED;
     g_owned_config.start_physical[0]=g_start_physical[0];
     g_owned_config.start_physical[1]=g_start_physical[1];
 #endif
@@ -1140,6 +1143,12 @@ reference_complete:;
 #endif
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
+#endif
+#if defined(T3_RAND_OVERRIDE_TICK)
+    /* Diagnostic for the PS1 comparison: the Saturn's random state and the session's
+     * differ from the first frame, so set the shared state to the value read from the
+     * PS1 at the matching tick (read-only there) just before the effect spawns. */
+    if(g_owned_match.ticks==T3_RAND_OVERRIDE_TICK)g_owned_match.camera.rand=T3_RAND_OVERRIDE_VALUE;
 #endif
 #if defined(T3_PARTICLE_SPRAY_SELFTEST)
     /* Diagnostic fixture: the scripted fights here never land the 21 damage the
