@@ -1096,3 +1096,33 @@ Doing them means porting `effects.md`'s remaining object types against the
 original's `EffectsUpdate`, which the host harness already runs unpatched
 (`ps1_particle_original_order`), so each type can be checked draw by draw the way
 the spray was. This plan's phases are otherwise complete.
+
+## 37. Correction: the burst is the flipbook ring, not the fire objects (2026-10-30)
+
+Section 36 attributed the PS1 frame's large burst to the skipped fire effect
+objects (joint codes `0x18`/`0x1A`). Reading `effects.md` again shows the
+hit sequence (`HitSpawnEffect`, `FUN_80076F10`) is: (1) **flipbook ring**,
+set 3 index 0 at the contact point on every hit (27 frames from the fire page
+at VRAM (896, 256), CLUT (32, 503)); (2) for damage of 21 or more, **the
+attacker's own character flipbook** as well (30 frames, for Paul the orange
+fire ring); (3) fire-breath joint codes make the defender burn (type 11);
+(4) otherwise damage of 21 or more sprays (types 2 + 1, or 13 + 12 while
+`powerTimer` runs). The Saturn implements only (4). The frame's burst is (1)
+and (2), a separate system (`EffectSpawn` `0x80076B6C`, three 64-byte records,
+three `POLY_FT4` each, drawn by `FUN_80077158` as a sprite of
+`32 * 0x2E0B / (4 * otz)` pixels, 754 world units at distance 500, frames
+advancing by 8 VRAM words per tick). That matches the draw-count difference in
+section 36: the PS1 spreads its effect work over two ticks and draws one more
+number because the flipbook spawns draw their own.
+
+What porting it needs, none of it started: the flipbook frames from the system
+texture pages and the characters' ARC member 1 as native assets (the 4-bit
+pages are not in `EFFECTS.BIN`); the flipbook spawn and animation rules and
+their draws from `EffectSpawn` / `FUN_8007699C` checked against the
+unpatched original like the spray; the effect log's replay hooks; and a
+draw path. The last is the hard part: a 754-unit sprite is about 48 pixels
+across at the fight camera, 36 or more 8x8 cells each, two of them at once,
+against a particle layer of 52 cells that the 26 spray sprites already fill.
+So it needs either a larger cell budget (Low WRAM) or a different path for these
+large additive sprites. This is a new feature of its own size, not a fix in the
+particle compositor.
