@@ -1464,3 +1464,10 @@ Not built: any drawing. The burst and the character flipbook exist as state on
 the Saturn and nothing reads them; section 45's sizing (32 cells each, the
 cell budget, the compositor's 16 x 16 limit, 13.8 KB fire frames and 15.4 KB
 character frames to hold) is unchanged.
+
+**Gate 8** (`assets/imported/ptcl-gate8`) passed all five stages with the
+flipbook state in the match: both host builds (92 CTest cases in `build/host`),
+the 26 combat cases (872 s), the 3,000-tick reference replay (204 s, so the added
+state does not move the simulation or the effect pool's compared fields) and the
+particle stage (fixture and real-spray cases, 31 s), for the `T3_PARTICLES` build
+ELF `6de5f8a05f5b10f8e7f1be35...`.
