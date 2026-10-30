@@ -1308,3 +1308,39 @@ pixels. Not established: sub-pixel placement, per-pixel colour of the sparks
 hit flipbooks (sections 37-39), which only the PS1 frame has. A pixel-identical
 frame needs the translation fixed and the flipbook ring ported; this record
 does not claim it.
+
+## 44. The spray sparks align to within a pixel (2026-10-30)
+
+Section 43's three-pixel translation was a frame-age effect, not a placement
+error. The PS1 session was paused at fight frames 3525, 3526, 3527, 3528, 3529 and
+3531 (`/api/v1/screen/still`, each a separate deterministic run) and every frame
+was compared with the one Saturn frame (frozen tick 3531, parity bias 1, random
+override of section 35) by `compare_ps1_saturn_sparks.py`'s shift search. Match
+score with no shift against the best shift (score, dx, dy):
+
+| PS1 fight frame | PS1 spark px | no shift | best shift |
+| ---: | ---: | ---: | --- |
+| 3525 | 233 | 43 | 93 at (6, 10) |
+| 3526 | 160 | 20 | 114 at (5, 7) |
+| 3527 | 147 | 55 | 175 at (2, 3) |
+| **3528** | 187 | **299** | **311 at (-1, 1)** |
+| 3529 | 252 | 126 | 244 at (-3, -3) |
+| 3531 | 191 | 43 | 76 at (8, 2) |
+
+At **3528 the sparks coincide with no shift** (299 of the 311 best score): the
+spark positions of the Saturn's spray equal the PS1's to within one pixel, as
+the side-by-side shows (`side-by-side-3528.png`, private: the left cluster, the
+spread below the fighter and the stragglers by the wall are at the same places).
+Cells containing sparks: 31 of the PS1's 35 are also Saturn cells (Jaccard
+0.44; the Saturn has 66 because the PS1's burst covers sparks and 172 more
+spark pixels are counted on the Saturn side). The screen the emulator shows
+when paused at fight frame 3528 pairs with the Saturn's tick 3531 image; the
+fight frames before and after are one to two pixels of spark motion apart.
+
+So: spray placement, count, timing and random stream agree with the original
+PS1 on this hit. What does not: the hit flipbooks (the burst at the contact
+point, sections 37-39), which exist only in the PS1 frame; and the colour of
+individual spark pixels, which was not compared (the PS1's additive blend and
+dithering against the Saturn's VDP2 add, and 15-bit against 24-bit output).
+Phase 4's pixel comparison is therefore complete for the sprays and open for
+the flipbook ring.
