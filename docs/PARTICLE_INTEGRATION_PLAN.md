@@ -498,3 +498,30 @@ Ways to remove it, none done yet:
 
 Option 1 is the next step. It is a presentation change to the shipped build,
 so I have not made it without a decision.
+
+## 21. Tried: original vertical mapping in the SDK camera (reverted)
+
+The camera change from option 1 (vertical scale 1/224 instead of 1/240 and a
+centre-shift term in `projection.m[9]`, under
+`T3_PARTICLE_GATED_PROJECTION`) made the frozen tick-120 comparison against
+the original-projection build **worse**: 49,690 differing pixels, bounding
+box the whole frame, against 11,067 confined to the fighters before. Both
+signs of the shift gave the same count, and the whole-frame difference shows
+why: the floor and backdrop are derived from the same camera
+(`sat_vdp2_floor_from_view`, the panorama mapping), so changing it moves the
+stage, which the original-projection build keeps on the old mapping. The
+change was reverted (`move_probe.c` is as committed).
+
+What this means for the design:
+
+- In the current experimental builds the stage always uses the centred
+  frustum; only the fighters differ between the paths. The ungated build is
+  therefore itself inconsistent (taller fighters on a stage mapped for the
+  smaller scale), and it is not a reference for what the PS1 shows.
+- The reference has to be the PS1 frame. `scripts/compare_ps1_saturn_stage.py`
+  and `pcsx_redux_*` capture scripts exist for that and are the real phase 4.
+- A coherent fix moves the camera, the stage mapping and the actors to the
+  original viewport together (the stage's `T3_STAGE_ORIGINAL_VERTICAL_PROBE`
+  is the existing, unqualified piece) and judges the result against a PS1
+  capture. Until then the gated design pops by about 7% at the start and end
+  of an effect. It stays opt-in.
