@@ -381,3 +381,17 @@ Plan status: phase 0 done, gated projection built and shown to work,
 phase 1 partly (particles render on the gated build; no live case yet),
 phases 2–5 not started. Next: profile the 150 ms particle images
 (`T3_PARTICLE_MASK_TIMING` plus a debug profile at fields 820–880).
+
+### Profile of particle images (fields 815–875)
+
+Debug profile, 40 frames, 14 rendered images, Master 17.97 M cycles, about
+1.28 M cycles (45 ms) per image against 1.12 M (40 ms) for the ungated
+projection. Particle-specific functions on the Master: per-face mask
+(`t3_stage_particle_multi_face`, 2,724 calls) 10.3%, tile accumulation 4.6%,
+general tile coverage 4.2%, mixed OT build 4.2%; the rest is the same
+projection/SDK work as before (`submit_instance` 18%). So the mask pass adds
+roughly 15% over the ungated projection in this window. That does not explain
+the 15.0 loop rate of the whole run (which implies about 150 ms per particle
+image); the difference is probably waiting (VBlank publication, Slave join)
+and is not yet attributed. Two separate costs therefore remain: the 40 ms
+projection floor during particle images, and an unexplained stall.
