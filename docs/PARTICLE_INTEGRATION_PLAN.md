@@ -1694,3 +1694,32 @@ levels, blue brighter on the Saturn by the sampling effect above. The hit
 flipbooks (sections 37-39, 46-49) are the part with no counterpart on the
 Saturn, and the layer decision of section 49 is what stands between that and a
 frame-level comparison.
+
+## 55. A better option for the burst is already in the SDK (2026-10-30)
+
+Reading `include/saturn/vdp1_color_calc.h` and `scene3d_faces.h` again turned up an
+option section 49 did not list. `SAT_VDP2_SPRITE_ADD` makes a VDP1 *indexed8* sprite
+(or a scene face whose material has `color_calc_slot = SAT_VDP2_SPRITE_ADD`) add
+itself, saturating, to the VDP2 image below it:
+
+- it is a VDP1 command, so it takes the **painter order of the fighters' faces**
+  (the SDK's depth key) and needs **no cells**: no 64-cell budget, no extra VDP2
+  layer, no zoom limit (a distorted sprite scales and mirrors freely);
+- the blend is the **PS1's additive `B + F` against the stage**, exact where the
+  burst covers the stage; the one limit the header states is that only the VDP2
+  image participates, "not overwritten VDP1 pixels", so where the burst's sprite
+  covers a fighter's pixel it replaces that pixel with stage plus glow instead of
+  fighter plus glow (in the PS1 frame the burst overlaps Paul's leg and knee);
+- the mode is frame-wide and "mixing ADD and ratio draws returns BUSY", and ADD
+  needs sprite colour calculation enabled, which is VDP2 set-up the stage code
+  owns.
+
+This replaces section 49's options 2 and 3 as the preferred route: exact blend, correct
+ordering, no cells, one known artifact (the overlap region). Remaining work, in
+order: the extractor for the 27 fire frames and the 16-entry palette as indexed8
+(1 KB a frame, one uploaded per image from the 13.8 KB packed set); the VDP2 sprite
+colour-calculation set-up in `stage_vdp2.c` and a check that nothing in the game
+mixes in ratio slots; the quad from section 48 as a distorted indexed sprite or a
+scene face at the burst's depth; the character flipbook the same way (its frames
+come from the attacker's ARC, 15 KB); and the PS1 comparison with the burst
+rectangle un-excluded. None is started.
