@@ -1126,3 +1126,35 @@ against a particle layer of 52 cells that the 26 spray sprites already fill.
 So it needs either a larger cell budget (Low WRAM) or a different path for these
 large additive sprites. This is a new feature of its own size, not a fix in the
 particle compositor.
+
+## 38. First facts for the flipbook ring, read from the paused PS1 (2026-10-30)
+
+At the pause (fight tick base + 3527, three ticks after the spray appears) the
+PS1 web API gave a VRAM dump (`/api/v1/gpu/vram/raw`, 1 MiB, 1024 x 512 16-bit,
+little endian) and RAM. Both are read only.
+
+- **The flipbook assets are readable from VRAM.** Decoding 4-bit texels from
+  the fire page at (896, 256), 32 x 32 texels per frame stepping 8 words right,
+  with the palette row at (32, 503), draws the expanding fireball frames of
+  `effects.md` (nine frames checked; the ninth is the dispersing debris). The
+  CLUT rows at x = 32, 48, 64 and 80 on y = 503 hold the four sets' palettes
+  (fire, a pale-blue-white set, a red set, a grey set). This gives the ground
+  truth for an extractor that reads the same pages from the disc's system
+  texture archive.
+- **The three flipbook records are at USA `0x800A3408`** (the Japan address
+  `0x800A37B0` in `effects.md` maps through the layout to this; reading the
+  Japan address returns unrelated data). 64 bytes each. In this frame
+  they hold: record 0, 27 frames (`0x20001B`), frame 6, the fire burst; record
+  1, 30 frames (`0x20001E`), frame 6, Paul's character flipbook; record 2, 21
+  frames (`0x200015`), an older "hit without damage" flipbook. So at this
+  moment two flipbooks are running that the Saturn does not spawn, in the
+  order `effects.md` gives for a damage-21 hit.
+- **Timing.** The tape's hit and the spawns are three ticks old here and both
+  flipbooks are at frame 6 of their loops; at the 8-word step per tick that is
+  the frame the fireball image shows.
+
+Next, in order: extract the flipbook pages and CLUT rows from the disc and
+check them against these dumps; port `EffectSpawn`/`FUN_8007699C` (spawn,
+animation, the random draws) and check the draw order against the
+unpatched original; then the draw path for a sprite of about 48 pixels (see
+section 37). None of these is done; phase 4's parity needs all three.
