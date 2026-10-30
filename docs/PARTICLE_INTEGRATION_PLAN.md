@@ -903,3 +903,37 @@ agree at tick 3390 before any pixel is compared; (d) a Saturn frozen build at
 tick 3394 (`T3_RENDER_BENCH_TICK` accepts up to 3,600; a first attempt was
 interrupted) and the spray-cell comparator. (a) and (c) are the ones that can
 fail and say the premise is wrong.
+
+## 33. PS1 session attempt (2026-10-30, not completed)
+
+`scripts/pcsx_redux_paul_law_tape.lua` (committed in this change) is the
+section 31 session: the Paul-mirror navigation with player 2 choosing Law, and
+in the fight a pad-2 override schedule decoded from the Saturn tape
+(`assets/imported/ptcl-law-spray-tape.lua`, produced from the JSON tape), pad 1
+neutral, no guest writes, a pause at a chosen fight tick, and a read of the
+libc `rand` word and both fighters' roots. What a run established:
+
+- **Character selection works.** The grid read from RAM (`0x80022768`, 6-byte
+  cells, key = character id x 4) puts Paul at column 6 row 0 and Law at column 0
+  row 0; with the key test `player == 1 and 0 or 4` the session reaches the
+  "FIGHT 1, PAUL vs LAW" screen (screenshot via `/api/v1/screen/still`).
+- **The fight counter is not the Saturn's tick.** At the first fight frame
+  `0x800AFA4C` already reads 394 (it counts from boot), so the tape index must
+  be `counter - 394` plus a small offset to be checked against the fighter
+  roots; the script has an `offset` option but the base is not subtracted yet.
+- **The `rand` address is wrong.** `ai_sim.py` gives JP `0x800A3E80`; the
+  layout points map it to USA `0x800A39B8`, but the word read there is
+  `0x800B0000`, a pointer-like constant, not an LCG state. The USA address (or
+  the mapping block) needs to be found another way, e.g. by hooking `rand`
+  with a read-only exec callback as the phase capture does.
+- **The run does not get past the VS screen.** It waits there for input (the
+  Paul mirror skipped this screen). Two attempts to pulse a pad button
+  (Cross, then Start) from the stall detector ended in a Lua `stack overflow`
+  raised inside `clearOverride`, after which the vsync listener stopped
+  reporting; with a `pcall` guard and diagnostics the emulator then sat on the
+  screen without output. The cause is not identified.
+
+So the PS1 frame at the spray tick has not been captured and nothing has been
+compared. Remaining, in the order that can fail: unblock the VS screen, find
+the real `rand` state and base tick, check roots at tick 3390, then the Saturn
+frozen build at tick 3394 and the cell comparator. Phase 4 stays open.
