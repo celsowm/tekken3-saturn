@@ -1723,3 +1723,38 @@ mixes in ratio slots; the quad from section 48 as a distorted indexed sprite or 
 scene face at the burst's depth; the character flipbook the same way (its frames
 come from the attacker's ARC, 15 KB); and the PS1 comparison with the burst
 rectangle un-excluded. None is started.
+
+## 56. Burst step 1 done, step 2 scoped (2026-10-30)
+
+**Step 1, the frames.** `scripts/extract_psx_flipbook.py` builds the burst's 27
+frames (32 x 32 texels, eight to a row in effect page 2 at VRAM (896, 256), 8 words
+by 32 lines each) and the 16-word palette (CLUT (32, 503), the fire ramp ending
+in white-yellow) from the executable, packed two texels a byte (512 bytes a frame,
+13,872 bytes with the header and palette, which fits the 21 KB left in High WRAM).
+`--check` compares them texel for texel with a PS1 VRAM dump: **27 of 27 frames and
+the palette identical** (`checked_against_ps1_vram: true`, sha256 `28d71e58...`,
+private output under `assets/imported/tekken3-usa/flipbook/`).
+
+**Step 2, what the VDP2 set-up has to satisfy**, from `vdp2_color_calc.h` and
+the stage code:
+
+- `sat_vdp2_sprite_color_calc_configure` needs `normal_priority` in 2..7 and
+  reserves selector 1 (faded sprites) at `normal_priority - 1`, so every layer that
+  must stay behind both kinds of sprite has to sit below that. The stage's VDP1
+  sprites are at priority 6, so the faded priority would be 5; the panorama and
+  the floor must be (and have to be checked to be) below 5, while the particle
+  layer (NBG1, priority 7, already colour-calculated in add mode with
+  `sat_vdp2_color_calc_set_add(1)`) stays above.
+- The add mode is already global (set for NBG1), which is what
+  `SAT_VDP2_SPRITE_ADD` needs; nothing in the game currently uses ratio slots
+  (its materials are `SAT_INDEXED_SOLID_OPAQUE`), so there is no mixing conflict.
+- The burst is an indexed8 sprite, so it takes a palette from the VDP2 colour RAM
+  bank the SDK assigns to indexed8 sprites; the game currently uploads only the
+  stage's own palettes (`sat_vdp2_palette_upload`), so the burst's 16 colours need a
+  bank and the SDK's convention for selecting it, which I have not read.
+
+So step 2 is a VDP2 register and palette set-up with a few constraints that can
+be checked on paper and one convention (the indexed8 sprite palette bank) to be
+read in the SDK; the draw (steps 3 to 5) follows from it. It needs Ymir runs for
+every register change, because the stage's VDP2 cycle patterns and priorities are
+shared with the fighters' layers.
