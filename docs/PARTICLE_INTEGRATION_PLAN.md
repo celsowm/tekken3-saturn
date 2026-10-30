@@ -865,3 +865,41 @@ reachable input; the Law AI did it by itself on the Saturn, and the PS1's
 arcade-mode opponent for Paul is unknown), the Saturn-side seed override, and
 the cell-level comparator. None needs a rule to be relaxed. I have not run any
 of it.
+
+## 32. Phase 4 groundwork run in this session (2026-10-30)
+
+Section 31's first missing piece, a pad schedule that produces a spray, now
+exists, and it came from the Saturn instead of the move bank:
+
+1. `build/ptcl-tape` (the playable configuration with `T3_PARTICLES=OFF`,
+   `T3_COLD_FACES=320` and `T3_CAPTURE_INPUT_TAPE=ON`; the capture buffers do
+   not fit beside the particle build in Low WRAM) ran the Law AI against an
+   idle Paul for 5,000 fields and recorded both pads' relative inputs:
+   233 tick-indexed events, 4,483 ticks, no overflow, saved privately as
+   `assets/imported/ptcl-law-spray-tape.json`.
+2. A particle build with `T3_LOCAL_INPUT_TAPE` set to that file and
+   `T3_PARTICLE_TICK_AUDIT=ON` replays it independent of cadence and
+   reproduces the spray: first image at **tick 3391** (frame counter 3390)
+   with 26 visible sprites, then 26, 23, 22, 17, 16, 15, 13, 7, 7, 4 and 2
+   up to tick 3432, twelve images in all (`first_error` 0). Law's inputs
+   around it: down plus right kick (`264`, pressed `256`) at tick 3347, left
+   kick (`128`) at 3349-3350.
+3. Input word key, from `fight.h` and `t3_move_probe_owned_step`: bits 0/1
+   forward/back relative to the facing, bit 2 = pad Up (`0x1000`), bit 3 =
+   pad Down (`0x4000`), bits 5-8 = LP, RP, LK, RK. On the PCSX pad these map
+   to Square (15), Triangle (12), Cross (14), Circle (13); the session script's
+   own scenarios use `{15}` high punch and `{6,14}` low kick as the check.
+   Law is player 2 and faces left, so forward is pad Left (7), back is Right
+   (5), as long as the sides do not swap.
+
+Still missing, in order: (a) the original's libc `rand` state address, to read
+it on the PS1 at the fight's first frame (the Saturn match starts from
+`start_seed=1`, `move_probe.c:380`; the PS1's value depends on how long the
+menus ran, so it must be read, then given to the Saturn as a build option);
+(b) a PS1 session variant that selects Paul and Law (`char == 1` for player 2,
+and the `a ~= 0 or b ~= 0` guard in the fight branch relaxed) and replays the
+tape on pad 2 at fight ticks; (c) a check that the PS1 and Saturn fighter roots
+agree at tick 3390 before any pixel is compared; (d) a Saturn frozen build at
+tick 3394 (`T3_RENDER_BENCH_TICK` accepts up to 3,600; a first attempt was
+interrupted) and the spray-cell comparator. (a) and (c) are the ones that can
+fail and say the premise is wrong.
