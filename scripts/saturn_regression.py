@@ -169,6 +169,8 @@ def particle_stage(args, out):
     root = out / 'particle'
     command = [sys.executable, str(SCRIPTS / 'saturn_particle_suite.py'),
                '--build', str(args.particle_build), '--bios', str(args.bios), '--out', str(root)]
+    if args.particle_real_build:
+        command += ['--real-build', str(args.particle_real_build)]
     record = run_stage('particle', command, out)
     result = read_json(root / 'particle-suite.json')
     if result:
@@ -240,6 +242,8 @@ def main(argv=None):
     parser.add_argument('--particle-build', type=Path,
                         help='spray-fixture build (T3_PARTICLES plus T3_PARTICLE_SPRAY_SELFTEST, '
                              'T3_PARTICLE_CELL_CHECK, T3_PARTICLE_DROP_SELFTEST) for the particle case')
+    parser.add_argument('--particle-real-build', type=Path,
+                        help='T3_PARTICLES build without fixtures; the particle stage also lets the Law AI spawn a real spray')
     parser.add_argument('--frozen-baseline', type=Path, help='frozen capture used as the pixel baseline')
     parser.add_argument('--frozen-candidate', type=Path, help='frozen capture from the gated build')
     parser.add_argument('--include-cached-stage-faces', action='store_true',
@@ -253,6 +257,7 @@ def main(argv=None):
     args.reference_build = args.reference_build.resolve() if args.reference_build else None
     args.reference_export = args.reference_export.resolve() if args.reference_export else None
     args.particle_build = args.particle_build.resolve() if args.particle_build else None
+    args.particle_real_build = args.particle_real_build.resolve() if args.particle_real_build else None
     args.frozen_baseline = args.frozen_baseline.resolve() if args.frozen_baseline else None
     args.frozen_candidate = args.frozen_candidate.resolve() if args.frozen_candidate else None
     preflight(args, parser)

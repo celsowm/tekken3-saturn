@@ -24,6 +24,10 @@ def main():
     p.add_argument('--bios', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--fields', type=int, default=1500)
+    p.add_argument('--real-build', type=Path,
+                   help='the T3_PARTICLES build without fixtures: Law\'s AI attacks an idle Paul and the '
+                        'original game spawns a real spray')
+    p.add_argument('--real-fields', type=int, default=5000)
     a = p.parse_args()
     cmd = [sys.executable, str(Path(__file__).with_name('saturn_probe.py')), '--build', str(a.build),
            '--bios', str(a.bios), '--frames', str(a.fields), '--out', str(a.out)]
@@ -54,6 +58,26 @@ def main():
           v['g_t3_ordered_mask_cell_drops'][0] > 0)
     check('particle cells reached the HUD rectangles and were cleared', v['g_t3_hud_occluded_cells'][0] > 0)
     keep = {k: x for k, x in v.items() if k in SYMBOLS}
+    if a.real_build:
+        real_out = a.out.with_name(a.out.name + '-real')
+        cmd = [sys.executable, str(Path(__file__).with_name('saturn_probe.py')), '--build', str(a.real_build),
+               '--bios', str(a.bios), '--frames', str(a.real_fields), '--port2', 'none', '--out', str(real_out)]
+        for s in SYMBOLS:
+            if not s.startswith('g_t3_cell_check'):  # fixture-only diagnostics
+                cmd += ['--dump-symbol', s]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        dumps = json.loads((real_out / 'symbol-dumps.json').read_text())
+        r = {}
+        for name, entry in dumps.items():
+            raw = (real_out / entry['file']).read_bytes()
+            r[name.lstrip('_')] = [struct.unpack('>I', raw[i:i + 4])[0] for i in range(0, len(raw) - 3, 4)]
+        m = r['g_t3_mixed_ot_frames'][0]
+        check('real game spray: sprites captured', r['g_t3_particle_max_sprites'][0] > 0)
+        check('real game spray: images used the original projection with no fallback',
+              m > 0 and all(0 <= q - m <= 1 for q in r['g_t3_original_projected']) and
+              r['g_t3_original_projected_fallbacks'] == [0, 0])
+        check('real game spray: real fighter faces were masked', r['g_t3_ordered_mask_tiles'][0] > 0)
+        keep.update({'real.' + k: x for k, x in r.items() if k in SYMBOLS})
     result = {'values': keep, 'checks': dict(checks), 'passed': all(ok for _, ok in checks)}
     (a.out / 'particle-suite.json').write_text(json.dumps(result, indent=2))
     for label, ok in checks:
