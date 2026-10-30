@@ -174,6 +174,15 @@ local function frame()
                 s32(0x800AAAB4+0xF68), s32(0x800AAAB4+0xF6C), s32(0x800AAAB4+0xF70), ptr[0xA9228+0xC6], ptr[0xAAAB4+0xC6]))
         end
         if tick - T3_BASE >= target then
+            for f = 3490, 3540 do
+                local row = T3_RC[f]
+                if row then
+                    local parts = {}
+                    for ra, n in pairs(row) do parts[#parts+1] = string.format('0x%08X:%d', ra, n) end
+                    table.sort(parts)
+                    print(string.format('T3_RAND_CALLS frame=%d %s', f, table.concat(parts, ' ')))
+                end
+            end
             print(string.format('T3_TAPE_PAUSE tick=%d', tick))
             PCSX.pauseEmulator()
         end
@@ -183,6 +192,22 @@ local function frame()
     end
 end
 T3_TAPE = assert(loadfile(T3_TAPE_FILE))()
+-- Read-only Exec hook on the libc rand (USA 0x8007A318): per fight frame, count the calls by caller.
+T3_RC = {}
+do
+    local regs = PCSX.getRegisters()
+    T3_RAND_BP = PCSX.addBreakpoint(0x8007A318, 'Exec', 4, 'T3 rand', function()
+        if T3_BASE then
+            local f = u32(0x800AFA4C) - T3_BASE
+            if f >= 3490 and f <= 3540 then
+                T3_RC[f] = T3_RC[f] or {}
+                local ra = tonumber(regs.GPR.n.ra)
+                T3_RC[f][ra] = (T3_RC[f][ra] or 0) + 1
+            end
+        end
+        return true
+    end)
+end
 T3_TAPE_AT = 0
 T3_TAPE_LOG = true
 T3_PAUL_SESSION = {listener = PCSX.Events.createEventListener('GPU::Vsync', function() local ok, err = pcall(frame); if not ok then print('T3_LUA_ERROR ' .. tostring(err):sub(1,300) .. ' held1=' .. #held[1] .. ' held2=' .. #held[2] .. ' stall=' .. tostring(T3_STALL) .. ' at=' .. tostring(T3_TAPE_AT)); for i, b in ipairs(held[2]) do print('held2', i, tostring(b)) end end end)}

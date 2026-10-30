@@ -1205,3 +1205,40 @@ remake's simulation does not. The first is testable cheaply: the original's
 so a run that logs each tick's `rand` calls and the objects initialised on it
 would show which. That measurement, not a rendering change, is the next step for
 the random-state alignment; the flipbook draw path is independent of it.
+
+## 41. The random-state mismatch is one sound draw, not a missing effect (2026-10-30)
+
+Sections 36 and 40 read the PS1's `rand` word on the vertical-blank event,
+which can fall in the middle of a game frame; the "30 then 24" split was that
+sampling, and the "extra effect object" conclusion is withdrawn. Two exact
+sources agree on the real picture:
+
+- The original's reference fight (`parity-effects-pool-original.json`,
+  `rand_calls`) shows its spray as **52 draws in one frame**: 20 + 20 from the
+  type 2 initializer's two call sites and 6 + 6 from the type 1 initializer's.
+- A read-only Exec hook on the PS1's `rand` (USA `0x8007A318`, installed by
+  `pcsx_redux_paul_law_tape.lua` with `-debugger`) counts calls per fight frame
+  by return address. In the Paul-mirror run: frame 3522 (fight frame, base +
+  3522): **2 draws**, from `FUN_80041138` (`FighterSounds`) at `0x8004169C` and
+  from `FUN_80041E08` (the hit/guard voice selection) at `0x80041EA0`; frame
+  3523: **52 draws**, 6 + 6 at the type 1 initializer (`FUN_80070140`,
+  `0x8006FFF4/FFFC`) and 20 + 20 at the type 2 initializer (`FUN_800703A4`,
+  `0x800703E0/E8`).
+
+So the 26 spray objects, their draws and their frame are already the Saturn's.
+The only difference in the random stream is **one draw in the sound path on the
+hit frame**: the PS1 draws two numbers there (the impact sound's, and the
+damage-voice list pick or attack shout), the Saturn draws one
+(`psx_fighter_sounds.c` draws at lines 70, 89, 95, 114, 120, 124, 175; the
+damage-voice branch at 112-116 needs `hit_clean`, `health`, no cooldown and an
+odd `frame_counter`). One draw earlier shifts every spark direction after it,
+which is why forcing the PS1's value did not align the sparks.
+
+Next, in order: log which `random_next` site fires on the Saturn's hit tick (a
+small diagnostic ring in `psx_fighter_sounds.c`), compare with the PS1's two
+sites, and find the condition that differs (frame parity of the session's
+counter against the Saturn's `frame_counter = ticks + 1` is the first
+suspect; this fight's base counter is 394 on the PS1). With the sound draw
+fixed the override of section 35 should reproduce the PS1's spark layout
+exactly, which would turn the remaining spark comparison into a pixel one; the
+flipbook burst stays the separate feature of sections 37-39.
