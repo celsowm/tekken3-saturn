@@ -61,3 +61,16 @@ See [REVERSAL_PROGRESS.md](REVERSAL_PROGRESS.md) for the original reversal
 phase, its private tag-list input and the expanded reference schema. Current
 host fixture data must embed bank bytes (`cold=False`) and use the model
 parts for the original trace's costumes.
+
+## Original hit sparks (optional)
+
+Add `-DT3_PARTICLES=ON` to a configuration that already has the original HUD,
+camera, VDP2 floor and owned match. It forces the particle chain, the original
+vertical viewport for stage and fighters, and the memory settings that link on
+stock RAM (see `docs/PARTICLE_INTEGRATION_PLAN.md`). The gate for it is
+`saturn_regression.py --particle-build <fixture build> --particle-real-build
+<the T3_PARTICLES build>`; the fixture build adds
+`T3_PARTICLE_SPRAY_SELFTEST`, `T3_PARTICLE_CELL_CHECK` and
+`T3_PARTICLE_DROP_SELFTEST`. Pass `-DT3_HIGH_GEOMETRY_SCRATCH:BOOL=OFF`
+explicitly when cloning with `print_release_configure.py`, which omits OFF
+options. Particle pixels have not been compared with a PS1 capture.

@@ -728,3 +728,48 @@ toward-rival). A Ymir run of plain A and B presses, X+A and Y+B at close range
 0. Condition 36 and the restriction values are unmapped here, and so is
 whether those slots are normal stance moves or a special family; that
 mapping, not the rendering, is what the PS1 comparison is waiting on.
+
+## 28. A real spray, and what it does to cadence (2026-10-30)
+
+The search for a scripted 21-damage move was the wrong tool. With port 2
+empty the original Law AI plays, and in one 5,000-field Ymir run
+(`--port2 none`, `T3_PARTICLES` build, no fixture, Paul idle) it landed three
+hits, one of which spawned the original's spray on its own:
+
+| | Real run |
+| --- | ---: |
+| sprites captured (max) | 26 |
+| images with an effect (original projection used) | 14, none fell back |
+| of those, with a visible particle | 10 |
+| fighter-face mask tiles applied | 250 |
+| cell drops | 0 |
+| loop rate over the whole run | 38.4 (about 41 without effects) |
+| discarded fields | 12 in 5,000 |
+| `first_error` | 0 |
+
+So the **25 fps figure of the earlier sections is a stress number**: the
+fixture fires a spray every 90 ticks. A real hit costs 14 slower images, about
+half a second, and the run as a whole stays within 3 fps of the no-particle
+rate. Phase 3 is therefore met for real play, with the per-image cost
+(about 40 ms while an effect is on screen) still the bound during that half
+second.
+
+`saturn_particle_suite.py --real-build BUILD` adds this case and
+`saturn_regression.py --particle-real-build BUILD` runs it as part of the
+`particle` stage. Gate 7 (`assets/imported/ptcl-gate7`) passed all five
+stages: host builds, 26 combat cases (769 s), 3,000 reference ticks (199 s)
+and the particle stage (fixture build plus the real-spray build,
+35 s) for ELF `8774cfa6125f9cfe7e09…`.
+
+**Phase 4.** There is now a deterministic real spray on the Saturn. A PS1
+comparison still needs the same fight on the PS1 (Paul against Law, CPU on
+port 2 started from the same state) paused at the matching fight tick; the
+PS1 AI and RNG would have to line up with the Saturn's, which the 3,000-tick
+reference replay suggests they do for the simulation but has not been shown
+for a PCSX-Redux session. That alignment and the capture are the remaining
+work.
+
+**Phase 5.** `T3_PARTICLES` stays OFF in the CMake default because it needs
+the original HUD, camera, VDP2 floor and owned match and changes the stage
+mapping (a different frozen baseline); `docs/RELEASE.md` now lists it as the
+recommended configuration for builds that want the original sparks.
