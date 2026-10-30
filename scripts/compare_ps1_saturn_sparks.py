@@ -65,6 +65,8 @@ def main():
     p.add_argument('ps1')
     p.add_argument('saturn')
     p.add_argument('--exclude', type=int, nargs=4, metavar=('L', 'T', 'R', 'B'))
+    p.add_argument('--search-shift', action='store_true',
+                   help='also report the best global translation of the Saturn spark mask onto the PS1 one')
     p.add_argument('--out')
     a = p.parse_args()
     ps1 = Image.open(a.ps1).convert('RGB')
@@ -79,6 +81,22 @@ def main():
               'ps1_cells': len(c1), 'saturn_cells': len(c2), 'shared_cells': len(c1 & c2),
               'cell_jaccard': round(len(c1 & c2) / union, 3) if union else None,
               'excluded': a.exclude, 'scope': 'descriptive spark overlap, not pixel parity'}
+    if a.search_shift:
+        def dilate(m):
+            o = m.copy()
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    o |= np.roll(np.roll(m, dy, 0), dx, 1)
+            return o
+        d1m, scores = dilate(m1), []
+        for dy in range(-10, 11):
+            for dx in range(-14, 15):
+                s2 = np.roll(np.roll(m2, dy, 0), dx, 1)
+                scores.append((int((d1m & s2).sum() + (m1 & dilate(s2)).sum()), dx, dy))
+        scores.sort(reverse=True)
+        zero = [sc for sc in scores if sc[1] == 0 and sc[2] == 0][0][0]
+        report['shift_search'] = {'best': scores[0], 'zero_shift_score': zero,
+                                  'meaning': 'score = spark pixels within one pixel of the other mask, both ways; best is (score, dx, dy) applied to the Saturn mask'}
     print(json.dumps(report, indent=2))
     if a.out:
         open(a.out, 'w').write(json.dumps(report, indent=2) + '\n')

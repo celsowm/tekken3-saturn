@@ -1274,3 +1274,37 @@ that does not exist on the Saturn. A pixel match of the hit frame needs both.
 The first is a matter of finishing the random alignment (compare the Saturn's
 and the PS1's per-frame call counts between the override tick and the hit); the
 second is the new feature. Neither is a defect of the particle path built here.
+
+## 43. With the parity bias the random stream matches; the sparks differ by a translation (2026-10-30)
+
+Rebuilt the instrumented replay with `T3_FRAME_COUNTER_BIAS=1`: the Saturn's hit
+frame now draws **2** (the damage-voice site at line 123 and the impact site at
+line 104 of `psx_fighter_sounds.c`), then **52** on the next frame, which is
+the PS1's pattern from the exact `rand` hook (2, then 52, in consecutive
+fight frames, with 6 + 6 and 20 + 20 at the two spray initializers). Before the
+spray the PS1 draws nothing from fight frame 3490 to 3521, and the Saturn
+nothing from tick 3491 to 3525. Seeded with the PS1's value at that quiet
+stretch (the override of section 35), the Saturn's spray therefore starts from
+the same state with the same number of draws as the PS1's.
+
+That changes how the remaining spark difference reads. `compare_ps1_saturn_sparks.py
+--search-shift` (new) slides the Saturn's spark mask over the PS1's: with no
+shift the one-pixel-tolerance match score is **55**; the best translation,
+**(+2, +3) pixels** (the next four are within one pixel of it), scores **175**,
+3.2 times higher, from 359 Saturn spark pixels against 147 on the PS1. The
+8x8-cell overlap of section 42 (Jaccard 0.26) was penalising that offset. So the
+layout is largely the same field of sparks placed about three pixels up and to
+the left on the Saturn; what is left is a translation and about 200 extra spark
+pixels (the PS1's burst covers some, and part of the difference is the
+flipbook). The translation has two candidate sources, neither separated yet:
+the 72-unit common x shift of the two fighters' world roots (section 35), about
+six pixels at this camera distance, and the diagnostic particle viewport mapping
+of `t3_particle_tile_probe` against the fighter viewport of section 25.
+
+Status of phase 4. Established on aligned frames: structure, count, timing and
+random stream of the spray match the PS1; placement agrees to about three
+pixels. Not established: sub-pixel placement, per-pixel colour of the sparks
+(the PS1's additive blend and dither against the Saturn's VDP2 add), and the
+hit flipbooks (sections 37-39), which only the PS1 frame has. A pixel-identical
+frame needs the translation fixed and the flipbook ring ported; this record
+does not claim it.
