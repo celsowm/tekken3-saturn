@@ -416,3 +416,20 @@ loop rate 15.0 → **25.0**, discarded fields 89 → 67 (the baseline without
 particles is 39.0). What remains in particle images, as share of Master
 cycles: general tile coverage 8.8%, mixed OT build 8.6%, tile accumulation
 8.4%, per-face mask 7.4%, plus the 40 ms projection floor.
+
+## 18. Gate for the particle-enabled build (2026-10-30)
+
+`build/ptcl-full` with the spray fixture OFF (bitmap floor, original
+projection and OT gated on live effects, snapshot, prepare, ordered and
+general masks, 52 cells, cell-indexed mask), ELF
+`be85dfe0e308a517ad00858aaaded5d388dff1c0506da63d7093a0a9b7e96e75`.
+`saturn_regression.py` passed all stages (`assets/imported/ptcl-gate2`): both
+host builds, the 26 live combat cases (771 s of emulator work; the wall clock
+was longer because the host machine was suspended and waiting) and the
+3,000-tick reference replay (176 s).
+
+This shows the particle machinery does not disturb simulation, combat
+behavior or the owned-match reference when no effect sprite is on screen or
+when one is: the suite's hits never reach the 21 damage that spawns a spray,
+so **no gate case exercises a particle image**. The particle images are
+covered only by the diagnostic spray fixture (section 16–17).
