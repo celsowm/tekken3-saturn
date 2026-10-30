@@ -1179,3 +1179,29 @@ events, and the draw calls `FUN_8004A954`/`FUN_80077158` are described in
 animation with its random draws, check them against the unpatched original
 (the PS1 two-tick, 30 and 24 draw pattern of section 36 is the target), and
 the large-sprite draw path.
+
+## 40. What the remake says about the spawn, and how the draw counts split (2026-10-30)
+
+Reading `effect_objects.gd` (`hit_objects`, FUN_80076F10) and `effects_view.gd`
+(the `HIT_SPARK` and `EFFECT` events) fixes the structure of the hit effects:
+
+- The two **flipbooks** (set 3 index 0, the attacker's character flipbook) are a
+  presentation event with a drift of `0x1900 / 128` units a frame along the hit
+  direction; the remake spawns them with no random draw in the simulation.
+- The simulation's own hit effects are the **objects**: `_spray(type 2 or 13,
+  20)` then `_spray(type 1 or 12, 6)` in one call, all allocated on the hit tick.
+- Fire and gas descriptors (`0x18`, `0x1A`, breath and gas) take a different
+  branch (`burn`, or return) and do not spray.
+
+The Saturn already matches that: 20 + 6 objects, 52 draws on their first update
+(26 objects at two draws each) plus one unrelated draw the tick before, 53 in
+all. The PS1 log of section 36 (30 draws, then 24, 54 in all) therefore cannot
+come from those 26 objects alone. Candidates, none checked: the objects are not
+all initialised on the same update (a per-update cap or the list order would
+put 15 + 12 objects, 30 and 24 draws, on two ticks), with one extra draw from
+something else; or the flipbook spawns draw in the original even though the
+remake's simulation does not. The first is testable cheaply: the original's
+`EffectsUpdate` runs unpatched in the host harness (`ps1_particle_original_order`),
+so a run that logs each tick's `rand` calls and the objects initialised on it
+would show which. That measurement, not a rendering change, is the next step for
+the random-state alignment; the flipbook draw path is independent of it.
