@@ -71,7 +71,7 @@ def main():
     a = p.parse_args()
     ps1 = Image.open(a.ps1).convert('RGB')
     if ps1.size == (368, 480):
-        ps1 = ps1.crop((0, 20, 368, 468)).resize((320, 224), Image.BILINEAR)
+        ps1 = ps1.crop((0, 20, 368, 468)).resize((320, 224), Image.NEAREST)  # point sampling: smoothing lowers the peaks
     sat = Image.open(a.saturn).convert('RGB')
     m1, m2 = sparks(ps1, a.exclude), sparks(sat, a.exclude)
     d1, d2 = describe(m1), describe(m2)
@@ -81,6 +81,27 @@ def main():
               'ps1_cells': len(c1), 'saturn_cells': len(c2), 'shared_cells': len(c1 & c2),
               'cell_jaccard': round(len(c1 & c2) / union, 3) if union else None,
               'excluded': a.exclude, 'scope': 'descriptive spark overlap, not pixel parity'}
+    # Colour of the paired spark pixels. The same operator (brightest pixel of the 3 x 3
+    # around the location) is applied to both frames: applying it to one side only made
+    # the PS1's sparks look whiter than the Saturn's.
+    def nbmax(img, y, x):
+        reg = img[max(0, y - 1):y + 2, max(0, x - 1):x + 2].reshape(-1, 3)
+        return reg[reg.sum(1).argmax()]
+
+    def dil1(m):
+        o = m.copy()
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                o |= np.roll(np.roll(m, dy, 0), dx, 1)
+        return o
+    pa_img, sa_img = np.asarray(ps1).astype(int), np.asarray(sat).astype(int)
+    ys, xs = np.nonzero(m2 & dil1(m1))
+    if len(ys):
+        pa = np.array([nbmax(pa_img, y, x) for y, x in zip(ys, xs)])
+        sb = np.array([nbmax(sa_img, y, x) for y, x in zip(ys, xs)])
+        report['paired_colour'] = {'pairs': int(len(ys)), 'ps1_mean_rgb': pa.mean(0).round(1).tolist(),
+                                   'saturn_mean_rgb': sb.mean(0).round(1).tolist(),
+                                   'mean_abs_difference_rgb': np.abs(pa - sb).mean(0).round(1).tolist()}
     if a.search_shift:
         def dilate(m):
             o = m.copy()

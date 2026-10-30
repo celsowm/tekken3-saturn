@@ -94,15 +94,40 @@ static uint16_t add_rgb(uint16_t a,uint16_t b) {
     if(z>31)z=31;
     return (uint16_t)(0x8000u|(z<<10)|(g<<5)|r);
 }
+#if defined(T3_PARTICLE_BOX_FILTER)
+/* Area average of the palette colours over a pattern's footprint (transparent texels count
+ * as black), the way a downscaled PS1 frame averages the sprite's texels. */
+static uint16_t box_color(const uint8_t pattern[128],const uint16_t palette[16],
+                          unsigned u0,unsigned u1,unsigned v0,unsigned v1) {
+    if(u1<=u0)u1=u0+1u;
+    if(v1<=v0)v1=v0+1u;
+    unsigned r=0,g=0,b=0;const unsigned n=(u1-u0)*(v1-v0);
+    for(unsigned v=v0;v<v1 && v<16u;++v)for(unsigned u=u0;u<u1 && u<16u;++u) {
+        const unsigned at=v*16u+u;const uint8_t pair=pattern[at/2u];
+        const uint16_t c=palette[(at&1u)?pair&15u:pair>>4u];
+        if(c){r+=c&31u;g+=(c>>5)&31u;b+=(c>>10)&31u;}
+    }
+    r=(r+n/2u)/n;g=(g+n/2u)/n;b=(b+n/2u)/n;
+    return (r|g|b)?(uint16_t)(0x8000u|(b<<10)|(g<<5)|r):0u;
+}
+static unsigned map_hi(const uint8_t map[32],int index,int size) {
+    return index+1<size?map[index+1]:16u;
+}
+#endif
 static int tile_has_color(int tx,int ty,int x0,int y0,int x1,int y1,
-                          int left,int top,const uint8_t u_map[32],const uint8_t v_map[32],
+                          int left,int top,int width,int height,const uint8_t u_map[32],const uint8_t v_map[32],
                           const uint8_t pattern[128],const uint16_t palette[16]) {
     int start_x=tx*8>x0?tx*8:x0,end_x=tx*8+8<x1?tx*8+8:x1;
     int start_y=ty*8>y0?ty*8:y0,end_y=ty*8+8<y1?ty*8+8:y1;
     for(int y=start_y;y<end_y;++y)for(int x=start_x;x<end_x;++x) {
+#if defined(T3_PARTICLE_BOX_FILTER)
+        if(box_color(pattern,palette,u_map[x-left],map_hi(u_map,x-left,width),
+                     v_map[y-top],map_hi(v_map,y-top,height)))return 1;
+#else
         unsigned u=u_map[x-left],v=v_map[y-top],at=v*16u+u;
         uint8_t pair=pattern[at/2u];
         if(palette[(at&1u)?pair&15u:pair>>4u])return 1;
+#endif
     }
     return 0;
 }
@@ -144,7 +169,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
         const unsigned tile=find_tile(out,(unsigned)tx,(unsigned)ty);
         tile_cache[at]=tile==out->count?255u:(uint8_t)tile;
         if(tile==out->count) {
-            color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,u_map,v_map,pattern,palette);
+            color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,width,height,u_map,v_map,pattern,palette);
             needed+=color_cache[at];
         }
     }
@@ -157,7 +182,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
             unsigned tile=find_tile(out,(unsigned)tx,(unsigned)ty);
             if(tile==out->count || !tile_nonempty(out,tile)) {
                 const unsigned at=(unsigned)(ty-ty0)*5u+(unsigned)(tx-tx0);
-                if(color_cache[at]==2)color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,u_map,v_map,pattern,palette);
+                if(color_cache[at]==2)color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,width,height,u_map,v_map,pattern,palette);
                 new_needed+=color_cache[at];
             }
         }
@@ -178,7 +203,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
         unsigned tile=compacted?find_tile(out,(unsigned)tx,(unsigned)ty):
             tile_cache[at]==255u?out->count:tile_cache[at];
         if(tile==out->count) {
-            if(color_cache[at]==2)color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,u_map,v_map,pattern,palette);
+            if(color_cache[at]==2)color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,width,height,u_map,v_map,pattern,palette);
             if(!color_cache[at])continue;
             out->tile_x[tile]=(uint8_t)tx;out->tile_y[tile]=(uint8_t)ty;
             for(unsigned i=0;i<64;++i)out->pixels[tile][i]=0;
@@ -187,8 +212,13 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
         for(int y=0;y<8;++y)for(int x=0;x<8;++x) {
             const int px=tx*8+x,py=ty*8+y;
             if(px<x0 || px>=x1 || py<y0 || py>=y1)continue;
+#if defined(T3_PARTICLE_BOX_FILTER)
+            const uint16_t color=box_color(pattern,palette,u_map[px-left],map_hi(u_map,px-left,width),
+                                           v_map[py-top],map_hi(v_map,py-top,height));
+#else
             const unsigned u=u_map[px-left],v=v_map[py-top],at=v*16u+u;
             const uint8_t pair=pattern[at/2u];const uint16_t color=palette[(at&1u)?pair&15u:pair>>4u];
+#endif
             if(color)out->pixels[tile][y*8+x]=add_rgb(out->pixels[tile][y*8+x],color);
         }
     }

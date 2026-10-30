@@ -1624,3 +1624,40 @@ Next measurement: read the PS1's effect objects (`0x800E8B08` onward, 0x?? bytes
 each; the dump of section 38 holds them) at the pause and compare type, state,
 position and both CLUTs object by object with the Saturn's pool at the matching
 tick.
+
+## 53. Correction: the spark colour gap was a measurement artifact (2026-10-30)
+
+Sections 50-52 compared the *brightest pixel in a 3 x 3 neighbourhood* of the PS1
+frame with the *single pixel* at the same place in the Saturn frame. That operator
+applied to one side raised the PS1's side, which produced the "whiter PS1 cores,
+orange Saturn cores" result and every hypothesis built on it. Two more facts
+removed what was left of it: the PS1 normal-spark primitives carry the same palette
+steps as the Saturn's visible sprites (the PS1's second double-buffer slot is
+`0x7F91` x 6, `0x7F92` x 17, `0x7F93` x 1, `0x7F94` x 2, identical to the Saturn's
+histogram, so section 52's "different ramp steps" reading was wrong), and the
+sprites' palette entries 1 and 2 are pure white on both sides.
+
+Redone with the same operator on both frames and the PS1 frame point-sampled (a
+smoothing resample lowers its peaks), on the 144 paired spark pixels:
+
+| | R | G | B |
+| --- | ---: | ---: | ---: |
+| PS1 mean | 254.5 | 241.7 | 155.9 |
+| Saturn mean | 252.2 | 236.6 | 193.2 |
+| mean absolute difference per pair | 3.1 | 17.8 | 45.1 |
+
+Red and green agree within five levels on average; blue is higher on the Saturn by
+about 37. The per-pair differences are larger than the mean difference because
+pairs are matched to within one pixel, not exactly. The comparison's placement
+score is 310 with no shift and 323 at the best shift (-1, 0). The tests along the
+way that changed nothing measurable: the other palette parity
+(`T3_PARTICLE_CLUT_FLIP`), area-averaging the texels of a downscaled spark
+(`T3_PARTICLE_BOX_FILTER`, off by default), and power (the power timers are 0
+on both sides). `compare_ps1_saturn_sparks.py` now uses the symmetric operator
+and point sampling and reports `paired_colour`.
+
+What this leaves for the sparks: placement within a pixel, palettes identical,
+red and green means within five levels, blue about 37 higher on the Saturn (the
+sparks' additive sum over the stage's blue channel is the first thing to check:
+the Saturn's stage is a different layer from the PS1's). The burst is the larger,
+separate absence.
