@@ -715,3 +715,16 @@ chain, back and down variants, jump kicks and two-button presses. Result:
 blind to stance and range. A directed one would take a move's owning slot,
 the stance that reaches it, and a range check, which is the work still
 needed before phase 4.
+
+A second directed pass read the owning move of each plain-input branch into a
+21-damage slot (host scan of `branch_index` ranges). From the stance family
+(state words `0x00000842`, `0x00010842`, `0x00020842`) the command words
+`0x0004` (a kick bit) and `0x0008` lead to slots 3366-3389 with damage 25 and
+some with condition 36; `0x000C` with restriction 8 leads to slot 312 (30).
+The command word format is: low nibble = button bits, bit 4 = "pressed this
+frame", `0x20 << (d-1)`-style bits = numpad direction d (so `0x0400` is
+toward-rival). A Ymir run of plain A and B presses, X+A and Y+B at close range
+(2,300 fields, `T3_PARTICLES` build) again left `g_t3_particle_max_sprites` at
+0. Condition 36 and the restriction values are unmapped here, and so is
+whether those slots are normal stance moves or a special family; that
+mapping, not the rendering, is what the PS1 comparison is waiting on.
