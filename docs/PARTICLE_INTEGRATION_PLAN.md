@@ -692,3 +692,26 @@ saves (projection about 10 ms plus mask plus SDK draw), and trimming the mask
 passes (33% of those images) is worth at most about 6 ms of 40. The design
 bound is the original projection per image. `T3_PARTICLES` therefore stays
 opt-in; the particle images run at about 25 fps, not the 39 of the rest.
+
+## 27. Looking for a real spray (2026-10-30)
+
+Paul's bank (`divmot/074/bank_0.t3logic`, 372 moves, 1,458 branch rows) has
+attack slots with move-record damage of 21 or more, read on the host with
+`t3_divmot_slot`: 300, 304, 309, 312, 314, 317 and 385/392 (30), 313 (32),
+316 (100, active frames 63-64), 323-328 (25), 375/381/741 (28), 703/707/708 and
+737 (25-30), 715 (33), 718 (26), 721/725/726/729/730/740 (21) and 753/760/761
+(30). Branch rows reaching them: command `0xC00C` (not in `sequences.json`,
+so not an input sequence) into 304 from many moves and into 323 from others;
+`0x000C` with restriction 8 into 312; `0x0402` and `0x0002` into 715; `0x0004`
+into 730; `0x0008` into 740/741; `0x0010` into 705. The command words are
+input bits and the restriction/condition and the owning move decide which
+stance allows each, so a script needs the stance as well.
+
+I ran one 3,200-field Ymir search (`T3_PARTICLES` build, real combat, no
+fixture) with 18 candidate inputs from neutral and a walk-up: dash plus high,
+both punches, down-forward punch, forward with each button, a three-hit
+chain, back and down variants, jump kicks and two-button presses. Result:
+`g_t3_particle_max_sprites` stayed 0, so none produced a spray. The search was
+blind to stance and range. A directed one would take a move's owning slot,
+the stance that reaches it, and a range check, which is the work still
+needed before phase 4.
