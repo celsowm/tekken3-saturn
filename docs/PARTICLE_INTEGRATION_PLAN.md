@@ -773,3 +773,39 @@ work.
 the original HUD, camera, VDP2 floor and owned match and changes the stage
 mapping (a different frozen baseline); `docs/RELEASE.md` now lists it as the
 recommended configuration for builds that want the original sparks.
+
+## 29. Closing the phases (2026-10-30)
+
+**Phase 5, default.** The default stays OFF by design, not by deferral.
+`T3_PARTICLES` forces options that need the private original HUD, camera,
+VDP2 floor, owned match and the generated fighter data, and it forces the
+original-viewport stage mapping. A CMake default of ON would make the public
+configuration (no private assets; this is what CI builds) fail at configure
+time, and would silently change the stage pixels of every private build that
+did not ask for it. The promotion this plan asked for is delivered as: one
+option (`T3_PARTICLES`), a release recipe (`docs/RELEASE.md`), and a gate
+stage that exercises it (`saturn_regression.py --particle-build ...
+--particle-real-build ...`, gate 7). A private configuration that wants the
+sparks adds the one flag.
+
+**Phase 4, PS1 pixels.** What is established and what is not:
+
+- Established earlier and by the host tests: the C projection and quad
+  preparation match the original capture; sprite patterns and palettes
+  published to VDP2 match the original data pixel for pixel
+  (`check_saturn_particle_*`); the original draw order against fighter faces
+  is the OT bucket arithmetic verified on all 3,672 captured stores.
+- Established here: on the Saturn a real spray is drawn, ordered against the
+  fighters, cleared under the HUD, and the SDK and original paths agree to
+  edge level (section 25).
+- Not established: a pixel diff of a Saturn frame with a spray against a PS1
+  frame. A PS1 reference needs the same hit at the same tick, and the PS1's
+  random numbers and AI decisions depend on how the session was started; the
+  Saturn match starts from a fixed seed. Without a controlled seed (a PCSX
+  session that reproduces the reference replay's initial state, which this
+  repository does not have) a capture would be a different fight, as the
+  Paul mirror capture was. That alignment is new tooling, not part of this
+  integration, and is the only item this plan leaves open.
+
+Plan status: phases 0-3 and 5 complete with gate evidence (gate 7); phase 4
+complete except the PS1 frame diff, for the reason above.
