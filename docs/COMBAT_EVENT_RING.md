@@ -38,9 +38,41 @@ Probe counters `event_overflow/hits/blocks/swings/popped` are dumped by
 - 3,000/3,000 independent reference ticks pass on diagnostic ELF
   `44ccb8a2…91eeeb` (`assets/imported/evring-gate`), 177.5 s.
 
+## Original sound requests (2026-10-29)
+
+The portable `psx_fighter_sounds` decisions already ran inside the match (they
+consume the shared RNG) but their output only fed voice-echo effects. The match
+config now has an optional `sound_sink`; `t3_psx_match_effects_sound` forwards
+every request in call order (voice ids already resolved to the character's
+sound code). On Saturn the sink queues `T3_EVENT_SOUND` events in the same ring,
+stamped with the tick that produced them. `sfx.c` then plays the sample
+extracted for that exact code: effect codes (VAB 0), system codes (VAB 1) and
+the firing player's voice codes. With the sink connected the old swing/hit/guard
+and KO-voice heuristics are off; requests without a sample are counted
+(`sfx_unmapped`, first distinct ones dumped as kind:player:code), never
+approximated. Announcer calls still come from the round flow.
+
+`scripts/extract_psx_sfx.py` now also extracts the effect tones the fight
+requests (0x7041/43/44/45/48/59/64, 0x6049, 0x1053/54) and every distinct code
+in each fighter's four voice lists, and writes a (bank, slot, code) key table.
+Two LibSaturn limits had to rise (sibling repo, one prefix rebuilt in place):
+`kSoundCapacity` 24 -> 64 and `kAllocationCapacity` 40 -> 64 (53 samples,
+353,640 bytes of the ~436 KB resident sound RAM). These lib-saturn edits are
+uncommitted in that repository.
+
+Final gate (`assets/imported/evring-gate2`): 101 host tests, 26 live cases
+(718 s) and 3,000/3,000 reference ticks (179 s). Playable ELF `748076b7…ac5`,
+reference ELF `3caea326…7b62`, still `T3_LOCAL_POSE_CACHE_ENTRIES=64`.
+In the live runs the event ring never overflowed and the only unmapped requests
+were 0x104F (`throw-damage`, an empty tone in VAB 0, so no sample exists) and
+0x7059 before it was added; the last full capture of the ko-victory path ran
+before that addition, so its coverage is unchecked.
+
 ## Limits
 
-Counts are checked, not audible output or sound timing against the original.
+Requests and sample choice are checked, not audible output or timing against
+the original; the match's request order is not yet compared with the MIPS
+trace at the Saturn boundary (the portable component is, 2,878 cases).
 The host tick-by-tick comparison of event timelines, native replay-log
 consumption, CD listening and the hardware cadence remain open. Uses a smaller
 pose cache than earlier gates, so their cadence numbers do not carry over.

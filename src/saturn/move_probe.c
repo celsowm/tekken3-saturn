@@ -1,4 +1,5 @@
 #include "move_probe.h"
+#include "combat_events.h"
 #include "saturn/time.h"
 static uint16_t g_start_physical[2];
 #if defined(T3_LOCAL_DIVMOT_ENABLED)
@@ -391,6 +392,8 @@ void t3_move_probe_reset(unsigned round) {
     /* The present private pair is Paul/Law; both voice sets equal base ids. */
     g_owned_config.sound_voice_set[0]=g_owned_config.character[0];
     g_owned_config.sound_voice_set[1]=g_owned_config.character[1];
+    g_owned_config.sound_sink=t3_combat_events_sound;
+    t3_combat_events_connect_sound();
 #endif
     g_owned_config.collapse_on_ko=1; /* measured USA VS regional policy */
     g_owned_config.reactions=t3_local_combat_reactions;

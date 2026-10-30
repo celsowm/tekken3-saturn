@@ -58,10 +58,14 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
 }
 void t3_psx_match_effects_sound(void* user,unsigned kind,unsigned player,uint16_t id) {
     t3_psx_match_t* m=user;
-    if(!m->config->effects || kind!=T3_SOUND_VOICE || player>1 || (id>>12)!=4)return;
+    if(player>1)return;
+    uint16_t code=id;
+    const int voice=kind==T3_SOUND_VOICE && (id>>12)>=2 && (id>>12)<=5 &&
+        t3_psx_sound_voice_code(m->config->sound_tables,m->config->sound_voice_set[player],id,&code)==1;
+    if(m->config->sound_sink && (kind!=T3_SOUND_VOICE || voice))
+        m->config->sound_sink(m->config->sound_sink_user,kind,player,code);
+    if(!m->config->effects || kind!=T3_SOUND_VOICE || (id>>12)!=4 || !voice)return;
     if(m->fighter[player].ground.in_throw)return;
-    uint16_t code;
-    if(t3_psx_sound_voice_code(m->config->sound_tables,m->config->sound_voice_set[player],id,&code)!=1)return;
     t3_psx_spark_t* o=t3_psx_effect_alloc(m->config->effects,17);
     if(o){o->a=(int32_t)player;o->b=code;}
 }

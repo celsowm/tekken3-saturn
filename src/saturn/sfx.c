@@ -6,15 +6,20 @@
 #include <saturn/time.h>
 #include "disc.h"
 #include "combat_events.h"
+#include "psx_fighter_sounds.h"
 #include "move_probe.h"
 #include "t3_local_sfx.h"
 
 /* Sound codes and rates: Tekken3Remake docs/research/code/sound.md
  * (PolyForm Noncommercial; the rules are re-implemented, not copied). */
 static const struct {uint32_t offset,samples,rate;} g_table[T3_SFX_COUNT]={T3_SFX_TABLE};
+static const struct {uint8_t bank,slot;uint16_t code;} g_key[T3_SFX_COUNT]={T3_SFX_KEY_TABLE};
 static sat_sound_t g_sound[T3_SFX_COUNT];
 static uint8_t g_ready;
 /* Dumped by scripts/saturn_probe.py. */
+/* Sound requests with no extracted sample, and the first distinct ones as
+ * (kind<<24 | player<<16 | code). Dumped by scripts/saturn_probe.py. */
+volatile uint32_t g_t3_sfx_unmapped,g_t3_sfx_unmapped_count,g_t3_sfx_unmapped_seen[16];
 volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_ms,g_t3_sfx_play_max_ms,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
 
 sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
@@ -57,11 +62,33 @@ static void play(unsigned id) {
  * original's random draws, so the picks cycle. Events arrive in tick order. */
 static uint32_t g_hurt_tick[2];
 static uint8_t g_hurt_set[2],g_hurt_next[2],g_shout_next[2],g_swings;
+/* A match sound request: the sample extracted for that exact original code, or
+ * counted as unmapped (no approximation). Kinds: T3_SOUND_SYSTEM/VOICE/EFFECT. */
+static void play_request(const t3_combat_event_t* e) {
+    unsigned bank;
+    if(e->sound==T3_SOUND_EFFECT)bank=0u;
+    else if(e->sound==T3_SOUND_SYSTEM)bank=1u;
+    else if(e->sound==T3_SOUND_VOICE)bank=2u;
+    else return; /* voice-off: nothing is playing a script voice here */
+    for(unsigned i=0;i<T3_SFX_COUNT;++i)
+        if(g_key[i].bank==bank && g_key[i].code==e->code && (bank!=2u || g_key[i].slot==e->fighter)) {
+            play(i);return;
+        }
+    const uint32_t key=((uint32_t)e->sound<<24)|((uint32_t)e->fighter<<16)|e->code;
+    unsigned n=g_t3_sfx_unmapped_count;
+    ++g_t3_sfx_unmapped;
+    for(unsigned k=0;k<n;++k)if(g_t3_sfx_unmapped_seen[k]==key)return;
+    if(n<16u){g_t3_sfx_unmapped_seen[n]=key;g_t3_sfx_unmapped_count=n+1u;}
+}
+
 void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
     if(!g_ready)return;
+    const int connected=t3_combat_events_sound_connected();
     for(unsigned n=0;n<count;++n) {
         const t3_combat_event_t* e=&events[n];
         const unsigned i=e->fighter;
+        if(e->kind==T3_EVENT_SOUND) {play_request(e);continue;}
+        if(connected)continue; /* the original decisions arrive as T3_EVENT_SOUND */
         if(e->kind==T3_EVENT_SWING) {
             play(T3_SFX_SWING);
             if((++g_swings&3u)==0u)play(i?T3_SFX_F1_SHOUT0+(g_shout_next[i]++&1u):T3_SFX_F0_SHOUT0+(g_shout_next[i]++&1u));
@@ -106,7 +133,7 @@ void t3_sfx_round_update(void) {
     /* The loser's KO voice (category 0 of g_charVoices) as the collapse begins. */
     for(unsigned i=0;i<2u;++i) {
         const uint8_t down=t3_move_probe_owned_value(i,25u)!=0;
-        if(down && !g_prev_down[i]) {play(i?T3_SFX_F1_KO0:T3_SFX_F0_KO0);++g_t3_sfx_ko_voices;}
+        if(down && !g_prev_down[i] && !t3_combat_events_sound_connected()) {play(i?T3_SFX_F1_KO0:T3_SFX_F0_KO0);++g_t3_sfx_ko_voices;}
         g_prev_down[i]=down;
     }
     g_prev_state=state;g_prev_frame=frame;

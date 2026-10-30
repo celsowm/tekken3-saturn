@@ -236,7 +236,9 @@ def run(args):
         dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
             'played','play_ms','play_max_ms','update_ms','ko_voices'))
         dump_requests.extend(('_g_t3_event_'+n,'event-'+n.replace('_','-')+'.bin') for n in (
-            'overflow','hits','blocks','swings','popped'))
+            'overflow','hits','blocks','swings','sounds','popped'))
+        dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
+            'unmapped','unmapped_count','unmapped_seen'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
@@ -301,9 +303,15 @@ def run(args):
                  'slave_sim_pose_tick','slave_sim_pose_lag','slave_sim_max_wait_ms',
                  'compiled_skin_frames','compiled_skin_fallbacks','compiled_skin_verified',
                  'native_command_frames','cached_stage_faces',
-                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','event_overflow','event_hits','event_blocks','event_swings','event_popped','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
+                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','event_overflow','event_hits','event_blocks','event_swings','event_sounds','event_popped','sfx_unmapped','sfx_unmapped_count','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
+    seen=dump_manifest.get('_g_t3_sfx_unmapped_seen')
+    if seen:
+        raw=(out/seen['file']).read_bytes()
+        count=min(16,optimizations.get('sfx_unmapped_count',0))
+        optimizations['sfx_unmapped_seen']=[
+            '%d:%d:%04X'%(w>>24,(w>>16)&255,w&0xFFFF) for w in struct.unpack('>%dI'%count,raw[:4*count])]
     if '_g_t3_simulation_stack' in dump_manifest:
         stack=(out/'simulation-stack.bin').read_bytes()
         if len(stack)!=saturn_workload.SLAVE_STACK_BYTES or any(b!=0xA5 for b in stack[:256]):

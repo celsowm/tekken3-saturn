@@ -79,6 +79,9 @@ typedef struct {
     struct t3_psx_ai_game* ai;
     t3_psx_sound_tables_t sound_tables;
     uint8_t sound_voice_set[2]; /* private metadata, not inferred from costume */
+    /* Optional consumer of every original sound request, in call order. Voice
+     * ids arrive already resolved to the character's sound code. */
+    t3_psx_sound_emit_t sound_sink;void* sound_sink_user;
     t3_psx_effect_pool_t* effects;
     const uint8_t* effect_tables;size_t effect_table_bytes;
 } t3_psx_match_config_t;

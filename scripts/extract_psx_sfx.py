@@ -21,6 +21,10 @@ SOUNDS = {
     'guard_foot': 0x704E,   # blocked hit from joint 12 and up
     'hit': 0x61A0,          # id 0x81, clean-hit impact
 }
+# Codes FighterSounds requests (psx_fighter_sounds.c): impacts by joint, landing
+# and air sounds and the other effect tones seen in live Paul-Law runs.
+for _code in (0x7041, 0x7043, 0x7044, 0x7045, 0x7048, 0x7059, 0x7064, 0x6049, 0x1053, 0x1054):
+    SOUNDS['fx_%04x' % _code] = _code
 # The system bank (VAB 1, VH at 0x17270, body at 0x10081c): the round announcer.
 SYS_VH, SYS_VB, SYS_BYTES = 0x17270, 0x10081C, 103552
 ANNOUNCER = {
@@ -57,7 +61,9 @@ def decode(frames):
 
 def rate(center, shift, key):
     n = key - (center - 60) + ((shift >> 3) >> 4)
-    pitch = int(4096 * 2 ** (((n % 12) * 16 + ((shift >> 3) & 15)) / 192)) >> (5 - n // 12)
+    pitch = int(4096 * 2 ** (((n % 12) * 16 + ((shift >> 3) & 15)) / 192))
+    octave = 5 - n // 12
+    pitch = pitch >> octave if octave >= 0 else pitch << -octave
     return 44100 * pitch // 4096
 
 
@@ -91,7 +97,15 @@ def voice_codes(d, char):
     light, heavy = struct.unpack_from('<2h', d, off(p2))
     damage = struct.unpack_from('<%dH' % (light + heavy), d, off(p2) + 4)
     unique = lambda seq: list(dict.fromkeys(resolve(v) for v in seq))
-    return unique(shouts)[:2], unique(damage)[:3], list(dict.fromkeys(lists[2]))[:1]
+    return unique(shouts), unique(damage), list(dict.fromkeys(lists[2]))
+
+
+def all_voice_codes(d, char):
+    """Every distinct sound code in the four g_charVoices lists of a character."""
+    off = lambda a: a - 0x80010000 + 0x800
+    p0 = struct.unpack_from('<I', d, 0xB554 + 24 * char)[0]
+    counts = struct.unpack_from('<4h', d, off(p0))
+    return list(dict.fromkeys(struct.unpack_from('<%dH' % sum(counts), d, off(p0) + 8)))
 
 
 def arc_member(arc, index):
@@ -113,26 +127,30 @@ def main():
     vh = d[VH:VH + 0x1220]
     if vh[:4] != b'pBAV' or struct.unpack_from('<I', vh, 12)[0] != VAB_BYTES:
         raise SystemExit('not the USA VAB 0')
-    jobs = [(name, vh, d[VB:VB + VAB_BYTES - 0x1220], code) for name, code in SOUNDS.items()]
+    # key kinds match the match's sound requests: 0 effect (VAB 0), 1 system, 2 voice
+    jobs = [(name, vh, d[VB:VB + VAB_BYTES - 0x1220], code, 0, 0) for name, code in SOUNDS.items()]
     sys_vh_len = 0x820 + d[SYS_VH + 0x12] * 0x200 + 0x200
     sys_vh = d[SYS_VH:SYS_VH + sys_vh_len]
     if sys_vh[:4] != b'pBAV' or struct.unpack_from('<I', sys_vh, 12)[0] != SYS_BYTES:
         raise SystemExit('not the USA VAB 1')
-    jobs += [(name, sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len], code)
+    jobs += [(name, sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len], code, 1, 0)
              for name, code in ANNOUNCER.items()]
     for spec in args.voice:
         slot, char, vh_path, arc_path = spec.split(':', 3)
         char_vh, body = Path(vh_path).read_bytes(), arc_member(Path(arc_path).read_bytes(), 2)
         shouts, hurts, kos = voice_codes(d, int(char))
-        jobs += [(f'f{slot}_shout{i}', char_vh, body, c) for i, c in enumerate(shouts)]
-        jobs += [(f'f{slot}_hurt{i}', char_vh, body, c) for i, c in enumerate(hurts)]
-        jobs += [(f'f{slot}_ko{i}', char_vh, body, c) for i, c in enumerate(kos)]
+        jobs += [(f'f{slot}_shout{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(shouts)]
+        jobs += [(f'f{slot}_hurt{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(hurts)]
+        jobs += [(f'f{slot}_ko{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(kos)]
+        named = set(shouts) | set(hurts) | set(kos)
+        jobs += [(f'f{slot}_v{c:04x}', char_vh, body, c, 2, int(slot))
+                 for c in all_voice_codes(d, int(char)) if c not in named]
     pcm, rows = bytearray(), []
-    for name, job_vh, body, code in jobs:
+    for name, job_vh, body, code, bank, slot in jobs:
         vag, hz, samples = vab_sound(job_vh, body, code)
         while len(pcm) & 3:
             pcm.append(0)
-        rows.append((name, code, vag, hz, len(pcm), len(samples)))
+        rows.append((name, code, vag, hz, len(pcm), len(samples), bank, slot))
         pcm += bytes((v >> 8) & 255 for v in samples)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'psx_sfx.bin').write_bytes(pcm)
@@ -145,6 +163,8 @@ def main():
                  f'#define T3_SFX_MAX_SAMPLES {max(r[5] for r in rows)}u']
         lines += [f'#define T3_SFX_{r[0].upper()} {i}u' for i, r in enumerate(rows)]
         lines += ['#define T3_SFX_TABLE \\'] + [f'    {{{r[4]}u,{r[5]}u,{r[3]}u}}, \\' for r in rows]
+        lines[-1] = lines[-1].rstrip(' \\')
+        lines += ['#define T3_SFX_KEY_TABLE \\'] + [f'    {{{r[6]}u,{r[7]}u,0x{r[1]:04X}u}}, \\' for r in rows]
         lines[-1] = lines[-1].rstrip(' \\')
         (args.generated / 't3_local_sfx.h').write_text('\n'.join(lines + ['#endif', '']))
     for r in rows:
