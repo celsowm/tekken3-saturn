@@ -1661,3 +1661,36 @@ red and green means within five levels, blue about 37 higher on the Saturn (the
 sparks' additive sum over the stage's blue channel is the first thing to check:
 the Saturn's stage is a different layer from the PS1's). The burst is the larger,
 separate absence.
+
+## 54. Where the remaining blue difference is, and is not (2026-10-30)
+
+The first thing section 53 named was the background under the sparks. Measured
+on the 151 paired spark locations (median of the non-spark pixels in the 11 x 11
+around each, per frame): PS1 (70.9, 57.8, 47.9), Saturn (75.0, 61.2, 52.8), mean
+absolute difference (14.3, 11.3, 13.7) per location and about 4 levels on
+average; the headroom before clipping is 184/197/207 against 180/194/202. So
+the stage under the sparks is not what makes the Saturn's sparks bluer.
+
+What the sprite adds over its background (spark minus background, per pair):
+PS1 (183, 184, 104), Saturn (177, 177, 153). Red and green agree; the Saturn adds
+about 49 more blue. The sprites' palettes are identical (entries 1 and 2 pure
+white, 3 white-yellow `255, 255, 99`, 4 orange `247, 198, 41`), so the PS1's lower
+blue means its brightest sampled pixel is more often a yellow entry and the
+Saturn's more often a white one. A spark is about 10 x 17 PS1 pixels or 9 x 9
+Saturn pixels for 16 x 16 texels with a one- to three-texel white core; at that
+size whether the core texels land on a drawn pixel depends on the sampling phase
+of each sprite's quad, and the PS1 frame is also point-resampled from twice the
+rows. That is a resolution-and-phase effect of comparing a 480-line frame with a
+224-line one, not a palette, brightness, ramp-step or stage difference, all of
+which are now excluded. It cannot be resolved by changing the Saturn's sampling
+without the PS1's frame at native resolution for each spark, which the paused
+emulator can give (the 368 x 480 `/api/v1/screen/still` is that frame; the
+comparison in this section already uses it); a sub-pixel agreement of sparks that
+small is not a goal of the port, whose viewport halves the PS1's rows.
+
+Phase 4 therefore ends for the sparks as: same objects, same palettes, same
+random stream, placement within one pixel, red and green means within five
+levels, blue brighter on the Saturn by the sampling effect above. The hit
+flipbooks (sections 37-39, 46-49) are the part with no counterpart on the
+Saturn, and the layer decision of section 49 is what stands between that and a
+frame-level comparison.
