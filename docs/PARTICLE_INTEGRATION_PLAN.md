@@ -547,3 +547,43 @@ partly (real faces are masked, per-cell fallback and HUD order not done);
 phase 3 partly (cadence in particle images 25 fps against 39); phase 4 not
 done (needs a PS1 capture and, per section 21, a coherent original viewport
 for camera, stage and actors); phase 5 done for the switch only.
+
+## 23. Per-cell fallback and HUD cells; final gate of this session (2026-10-30)
+
+**Per-cell fallback (phase 2).** A face the mask cannot describe (non-8x8
+texture, or geometry the general tile coverage rejects) now zeroes the
+particle pixels in the cells it touches (`drop_cell`, counter
+`g_t3_ordered_mask_cell_drops`) instead of blanking the whole image, and a
+particle the accumulator rejects as unsupported loses only itself. Both
+rejections happen before the canvas changes. On the spray fixture the face
+path never fired (0 cell drops, 0 face failures; 3 particles dropped for
+capacity), so the new code is built and gated but its fallback branch has not
+been exercised by a real unsupported face. A missing spark piece is the
+failure mode; a spark drawn over a nearer fighter is not.
+
+**HUD (phase 2).** The particle layer sits above the VDP1 sprites, HUD
+included, so `t3_original_hud_occlude_particles` clears the particle cells
+under the HUD rectangles (both health bars exactly; timer digits, plates and
+names as rectangles, which also hides particles behind their transparent
+pixels; round-win marks and the ROUND/READY text are not covered) before the
+overlay is published. The fixture has a second spray aimed at the bar height;
+the image at field 772 shows clean bars and sparks elsewhere, `first_error`
+0. No spark was seen to reach a bar, so the clearing itself is untested by a
+pixel.
+
+**Gate.** ELF `6bebf28f751ac39e31ff4c76e6889f11a7fe40bf220d0c816e4b5d6c212716ef`
+(`T3_PARTICLES` build with both changes) passed all stages
+(`assets/imported/ptcl-gate4`): host builds, 26 live combat cases, 3,000
+reference ticks. An earlier gate (`ptcl-gate3`) passed for the per-cell change
+alone (ELF `dea7b621…`).
+
+**Not done in this session**
+- Phase 3: cadence in particle images is about 25 fps against 39 (the
+  projection floor of about 40 ms is the main term).
+- Phase 4: no PS1 pixel comparison. PCSX-Redux is built at
+  `~/dev/pcsx-redux` but a capture needs an interactive session on the USA
+  disc scripted to a spray; it also needs the coherent original viewport of
+  section 21 first, or the comparison would measure the 7% mapping error.
+- The release gate does not run the particle suite
+  (`scripts/saturn_particle_suite.py`).
+- Playable default: `T3_PARTICLES` stays OFF.
