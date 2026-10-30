@@ -621,3 +621,44 @@ Remaining, and honestly outside what I could close:
 - **Viewport coherence.** The 7% vertical mismatch between the SDK and
   original paths (section 20) makes gated particles pop at effect start/end.
 - **Default.** `T3_PARTICLES` stays OFF.
+
+## 25. Coherent viewport for the gated build (2026-10-30)
+
+Section 21's experiment moved the camera and so the stage, and put the shift
+in the projection's z row (`m[9]`), which was wrong: the matrices are
+row-major (`m[4..7]` is the y row, `m[12..15]` the w row). Done properly:
+
+- `T3_PARTICLES` now also forces `T3_STAGE_ORIGINAL_VERTICAL_PROBE`, which
+  maps the stage to the original viewport (picture centre on row 110, scale
+  1/2) relative to the unmodified camera.
+- With gating on, the SDK scene gets its own copy of the camera
+  (`scene_camera` in `prepare_scene`): clip row y becomes 15/14 y plus 2/112
+  of w (`T3_VIEWPORT_SIGN`, in rows), and row x gains 6/160 of w
+  (`T3_VIEWPORT_DX`, the original's GTE centre at x=167 against 160, six after
+  tuning). The stage keeps reading the unadjusted camera.
+- `T3_PARTICLE_GATED_PROJECTION=OFF` can be passed with `T3_PARTICLES` to keep
+  the original projection in every image; that is the reference below.
+
+**Measurement.** Frozen tick 120, no effect on screen, 1,200 fields, cache
+on, SDK path (gated) against the original-projection build, both with the
+probe stage: differing pixels **11,850 -> 6,422** (dx 7: 6,604; dx 8: 8,752;
+dx 9: 9,948; dy 1: 8,285; dy 3: 6,258). The diff image is outlines and
+internal texture detail on both fighters, not a body-sized offset. The two
+paths still differ because the SDK and the original rasterize different
+face sets and textures; the pop at an effect boundary is now edge-level, not
+a 7% scale change.
+
+**Not valid, withdrawn.** I briefly compared both paths with
+`assets/imported/parity-ps1-view/normalized.png`. That capture is a Paul
+mirror match with a different camera, so the numbers mean nothing and are not
+recorded. A PS1 comparison needs a new Paul-versus-Law capture of the same
+tick and camera.
+
+**Gate 6** (`assets/imported/ptcl-gate6`) passed all five stages for the
+`T3_PARTICLES` build, ELF `8774cfa6125f9cfe7e09…`: both host builds, 26
+combat cases (751 s), 3,000 reference ticks (179 s) and the particle stage
+against the fixture build `d7b9b1f1ff66819c97c7…`.
+
+Status: viewport coherence done to edge level; phases 0-2 and 5 (switch)
+done as opt-in; phase 3 (about 25 fps in particle images) and phase 4 (PS1
+pixels) open; `T3_PARTICLES` remains OFF by default.
