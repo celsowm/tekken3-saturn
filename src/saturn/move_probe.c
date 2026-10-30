@@ -148,6 +148,9 @@ t3_particle_image_t g_t3_particle_image __attribute__((section(".wram_l")));
 t3_particle_image_t g_t3_particle_image T3_HOT_WRAM;
 #endif
 volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;
+#if defined(T3_RAND_PROBE)
+volatile uint32_t g_t3_rand_probe[56];
+#endif
 #if defined(T3_PARTICLE_PREPARE)
 const t3_psx_trig_t* t3_move_probe_particle_trig(void) {return &g_camera_trig;}
 #endif
@@ -1143,6 +1146,11 @@ reference_complete:;
 #endif
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
+#endif
+#if defined(T3_RAND_PROBE)
+    /* Diagnostic: the shared random state after each tick 3490..3545. */
+    volatile uint32_t* probe=g_t3_rand_probe;
+    if(g_owned_match.ticks>=3490u && g_owned_match.ticks<3546u)probe[g_owned_match.ticks-3490u]=g_owned_match.camera.rand;
 #endif
 #if defined(T3_RAND_OVERRIDE_TICK)
     /* Diagnostic for the PS1 comparison: the Saturn's random state and the session's

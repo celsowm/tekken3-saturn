@@ -1065,3 +1065,34 @@ the PS1 frame by eye; exact spark positions and the fire burst are not
 reproduced. Pixel parity for hit effects is not achieved and is blocked by the
 active-glow effect type and a random-state alignment that this run could not
 establish. Those are two separate pieces of work outside this integration plan.
+
+## 36. Why the random state could not be matched (2026-10-30)
+
+Per-tick random-state logs from both sides around the spray (PS1 read only from
+`0x800A39B8`; Saturn from the new `T3_RAND_PROBE` diagnostic, `g_t3_rand_probe`)
+show the state is constant for about thirty ticks and then changes twice:
+
+| | first change | second change | LCG draws |
+| --- | --- | --- | --- |
+| PS1 (fight tick) | 3523: `0x01E7F1E3` -> `0x7B3D527D` | 3524: -> `0xCAF8B4A5` | **30, then 24** (54) |
+| Saturn (tick) | 3526: `0xEB535908` -> `0x7BCD88A1` | 3527: -> `0x9259D12D` | **1, then 52** (53) |
+
+(draw counts are the LCG steps `x * 0x41C64E6D + 0x3039` between the two
+values). The two sides agree on when the hit's effect work happens (three ticks
+apart, i.e. the PS1 base is three ticks later than the Saturn's tick 0 by this
+measure, four by the fighter roots) and on there being two consecutive ticks
+of draws, but not on what is drawn: the PS1 draws 30 numbers on the first tick
+and 24 on the second, the Saturn one and then 52, and the PS1 draws one more in
+total. That is what two different object sets look like, not a seed
+difference, so forcing the PS1's value into the Saturn (section 35's override)
+could not make the sparks match, and it explains the fire burst in the PS1
+frame: the PS1 spawns the glow object (and a normal spray) over two ticks, the
+Saturn only the spray.
+
+So the open items for hit-effect pixel parity are the effect types
+`t3_psx_match_effects_hit` skips ("fire needs its full object/segment path":
+joint codes `0x18`/`0x1A`, and the `power_timer` path) and their RNG draw order.
+Doing them means porting `effects.md`'s remaining object types against the
+original's `EffectsUpdate`, which the host harness already runs unpatched
+(`ps1_particle_original_order`), so each type can be checked draw by draw the way
+the spray was. This plan's phases are otherwise complete.

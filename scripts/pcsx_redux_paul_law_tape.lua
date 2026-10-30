@@ -167,7 +167,7 @@ local function frame()
             down(2, buttons)
         end
         release(1)
-        if T3_TAPE_LOG and ((tick - T3_BASE) % 100 == 0 or (tick - T3_BASE) >= target - 3) then
+        if T3_TAPE_LOG and ((tick - T3_BASE) % 100 == 0 or ((tick - T3_BASE) >= target - 40)) then
             local function s32(addr) local v=u32(addr); if v>=2147483648 then return v-4294967296 end; return v end
             print(string.format('T3_TAPE tick=%d idx=%d rand=0x%08X p0root=%d,%d,%d p1root=%d,%d,%d side=%d,%d', tick - T3_BASE, T3_TAPE_AT,
                 u32(0x800A39B8), s32(0x800A9228+0xF68), s32(0x800A9228+0xF6C), s32(0x800A9228+0xF70),
