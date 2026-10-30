@@ -937,3 +937,16 @@ So the PS1 frame at the spray tick has not been captured and nothing has been
 compared. Remaining, in the order that can fail: unblock the VS screen, find
 the real `rand` state and base tick, check roots at tick 3390, then the Saturn
 frozen build at tick 3394 and the cell comparator. Phase 4 stays open.
+
+Later runs of the same session narrowed the VS-screen problem without solving
+it. With no pad input the screen stays up for at least 20,000 vsyncs
+(`guest=394`, state 8), so it does wait for input rather than load slowly.
+Holding Cross on pad 1 from a guarded `pcall` once the counter had not moved for
+120 vsyncs printed `T3_VS_PRESS` and then the emulator produced no further
+output (no `T3_VS_RELEASE`, no `T3_SESSION` lines) until it was killed; the
+earlier unguarded variants raised `stack overflow` in `clearOverride`. Pad
+overrides set the same way in the UI states and in the Paul-mirror fight work,
+so the failure is specific to setting or clearing an override during this
+screen from the vsync listener. Next options, none tried: press from a
+separate `PCSX.Events` timer or the `-dofile` main thread instead of the
+vsync listener; or take the web server's input route if the build exposes one.

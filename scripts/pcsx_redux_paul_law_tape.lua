@@ -103,16 +103,19 @@ local function frame()
             T3_SEEN_FIGHT = true
             print(string.format('T3_FIGHT_ENTER vsync=%d tick=%d chars=%d,%d rand=0x%08X', frames, tick, a, b, u32(0x800A39B8)))
         end
-        -- The VS screen waits for a button before the fight loads; pulse Start on pad 1
-        -- until the fight counter moves (pad override only).
         if T3_LAST_TICK == tick then
             T3_STALL = (T3_STALL or 0) + 1
-            if T3_STALL > 90 then
-                local phase = T3_STALL % 90
-                if phase == 1 then down(1, {3}) elseif phase == 7 then release(1) end
-                return
+            -- The VS screen waits for input; hold Cross on pad 1 (override only) until the fight counter moves.
+            if T3_STALL == 120 then
+                print('T3_VS_PRESS vsync=' .. frames)
+                print(pcall(function() pads[1].setOverride(14) end))
             end
+            if T3_STALL >= 120 then T3_LAST_TICK = tick; return end
         else
+            if T3_STALL and T3_STALL >= 120 then
+                print('T3_VS_RELEASE tick=' .. tick)
+                pcall(function() pads[1].clearOverride(14) end)
+            end
             T3_STALL = 0
         end
         T3_LAST_TICK = tick
