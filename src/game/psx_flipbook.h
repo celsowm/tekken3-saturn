@@ -7,13 +7,14 @@
 #include <stdint.h>
 enum { T3_PSX_FLIPBOOK_RECORDS=3 };
 typedef struct {
-    uint8_t active,set,index;
+    uint8_t active,set,index,mirror;
     uint16_t frames,frame;     /* frame counts from 1; the record ends once it passes `frames` */
     int32_t pos[3];            /* world position << 7, as stored by the original */
     int32_t vel[3];            /* per frame, same scale */
 } t3_psx_flipbook_t;
 typedef struct {
     t3_psx_flipbook_t record[T3_PSX_FLIPBOOK_RECORDS];
+    t3_psx_flipbook_t shown[T3_PSX_FLIPBOOK_RECORDS]; /* the records as drawn: copied by the step, before it advances them */
     uint8_t cursor;
     int32_t last_point[3];     /* diagnostic: the last spawn's point and direction vector */
     int16_t last_vector[3];
@@ -23,7 +24,7 @@ void t3_psx_flipbook_clear(t3_psx_flipbook_pool_t* pool);
  * the velocity is `vector * 0x1900 / ISqrt(|vector|^2)` per component (zero for a zero
  * vector). `frames` is the set's frame count. */
 void t3_psx_flipbook_spawn(t3_psx_flipbook_pool_t* pool,unsigned set,unsigned index,unsigned frames,
-                           const int32_t point[3],const int16_t vector[3],int no_velocity);
+                           const int32_t point[3],const int16_t vector[3],int no_velocity,int mirror);
 /* One game frame after the spawns: frame + 1, velocity -= velocity * 5 / 64 (C division),
  * position += velocity; records past their last frame end. */
 void t3_psx_flipbook_step(t3_psx_flipbook_pool_t* pool);

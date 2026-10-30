@@ -987,6 +987,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     endif()
     option(T3_FLIPBOOK_BURST "Enable VDP2 sprite colour-calc add for the hit flipbook burst" OFF)
     if(T3_FLIPBOOK_BURST)
+        if(NOT T3_PARTICLE_PREPARE)
+            message(FATAL_ERROR "T3_FLIPBOOK_BURST requires T3_PARTICLE_PREPARE")
+        endif()
+        add_custom_command(OUTPUT "${_t3_particle_gen}/FLIPBOOK.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_flipbook.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_particle_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_flipbook.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        target_sources(tekken3_saturn PRIVATE src/saturn/flipbook_burst.c "${_t3_particle_gen}/FLIPBOOK.BIN")
+        list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPBOOK.BIN")
         target_compile_definitions(tekken3_saturn PRIVATE T3_FLIPBOOK_BURST=1)
     endif()
     option(T3_PARTICLE_CELL_CHECK "Diagnostic: verify the cell-indexed face walk against the full list scan" OFF)

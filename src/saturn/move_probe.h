@@ -37,10 +37,14 @@ sat_result_t t3_move_probe_simulation_sync(int full);
 #if defined(T3_PARTICLE_IMAGE_SNAPSHOT)
 #include "psx_particle_snapshot.h"
 #include "psx_camera.h"
+#include "psx_flipbook.h"
 typedef struct {
     t3_psx_particle_snapshot_t sprites;
     t3_psx_camera_view_t camera;
     uint32_t frame_counter;
+#if defined(T3_FLIPBOOK_BURST)
+    t3_psx_flipbook_t flipbook[T3_PSX_FLIPBOOK_RECORDS]; /* as drawn this image */
+#endif
 } t3_particle_image_t;
 extern t3_particle_image_t g_t3_particle_image;
 extern volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;

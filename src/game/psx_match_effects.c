@@ -55,10 +55,10 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
             const int16_t vec[3]={(int16_t)(s0->end.x-s0->start.x),(int16_t)(s0->end.y-s0->start.y),
                                   (int16_t)(s0->end.z-s0->start.z)};
             t3_psx_flipbook_pool_t* book=&m->config->effects->flipbook;
-            t3_psx_flipbook_spawn(book,3,0,27,at,vec,0);
+            t3_psx_flipbook_spawn(book,3,0,27,at,vec,0,attacker->side_flag);
             if(damage>=21) {
                 const unsigned id=m->config->character[a];
-                t3_psx_flipbook_spawn(book,a,0,(id==9||id==13||id==17||id==19)?22u:30u,at,vec,1);
+                t3_psx_flipbook_spawn(book,a,0,(id==9||id==13||id==17||id==19)?22u:30u,at,vec,1,attacker->side_flag);
             }
         }
     }

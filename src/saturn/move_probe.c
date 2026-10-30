@@ -168,6 +168,9 @@ sat_result_t t3_move_probe_capture_particles(void) {
     if(!t3_psx_particle_snapshot(&g_t3_particle_image.sprites,&g_effect_pool))return SAT_ERR_VERIFY_FAILED;
     g_t3_particle_image.camera=g_owned_match.camera.camera.view;
     g_t3_particle_image.frame_counter=g_owned_match.frame_counter;
+#if defined(T3_FLIPBOOK_BURST)
+    for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i)g_t3_particle_image.flipbook[i]=g_effect_pool.flipbook.shown[i];
+#endif
     if(g_t3_particle_image.sprites.count>g_t3_particle_max_sprites)
         g_t3_particle_max_sprites=g_t3_particle_image.sprites.count;
     ++g_t3_particle_images;

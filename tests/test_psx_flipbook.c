@@ -10,8 +10,8 @@ int main(void) {
         {-3673,-2158,-284},{-3387,-1990,-262},{-3123,-1835,-242},{-2880,-1692,-224},{-2655,-1560,-207}};
     t3_psx_flipbook_pool_t pool={0};
     const int32_t point[3]={-4217,-383,-164};const int16_t vector[3]={-417,-245,-32};
-    t3_psx_flipbook_spawn(&pool,3,0,27,point,vector,0);
-    t3_psx_flipbook_spawn(&pool,0,0,30,point,vector,1);
+    t3_psx_flipbook_spawn(&pool,3,0,27,point,vector,0,0);
+    t3_psx_flipbook_spawn(&pool,0,0,30,point,vector,1,0);
     int bad=0;
     for(unsigned f=0;f<9;++f) {
         t3_psx_flipbook_step(&pool);

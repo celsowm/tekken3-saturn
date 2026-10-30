@@ -46,6 +46,7 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "move_probe.h"
 #include "perf.h"
 #include "sfx.h"
+#include "flipbook_burst.h"
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
 #include "psx_hud_messages.h"
@@ -1600,6 +1601,9 @@ int main(void) {
 #if defined(T3_PARTICLE_PREPARE)
     SAT_PANIC_IF_ERROR(t3_particle_prepare_init());
 #endif
+#if defined(T3_FLIPBOOK_BURST)
+    SAT_PANIC_IF_ERROR(t3_flipbook_burst_init(g_faces,sizeof g_faces));
+#endif
     /* The face store is idle until the first scene: it holds the sound file. */
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_faces,sizeof g_faces));
 #if defined(T3_VDP1_COVERAGE_PROBE)
@@ -1800,6 +1804,9 @@ int main(void) {
         const uint16_t native_hud_started=sat_time_frc();
 #endif
         T3_PERF_START(hud_started);
+#if defined(T3_FLIPBOOK_BURST)
+        SAT_PANIC_IF_ERROR(t3_flipbook_burst_draw());
+#endif
         if(T3_PERF_MODE!=1)draw_hud();
 #if defined(T3_VDP1_COVERAGE_PROBE)
         SAT_PANIC_IF_ERROR(t3_coverage_probe_draw());

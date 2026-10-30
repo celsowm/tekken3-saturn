@@ -14,14 +14,14 @@ static uint32_t isqrt(uint32_t v) {
     return r;
 }
 void t3_psx_flipbook_clear(t3_psx_flipbook_pool_t* pool) {
-    for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i)pool->record[i].active=0;
+    for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i)pool->record[i].active=pool->shown[i].active=0;
     pool->cursor=0;
 }
 void t3_psx_flipbook_spawn(t3_psx_flipbook_pool_t* pool,unsigned set,unsigned index,unsigned frames,
-                           const int32_t point[3],const int16_t vector[3],int no_velocity) {
+                           const int32_t point[3],const int16_t vector[3],int no_velocity,int mirror) {
     t3_psx_flipbook_t* r=&pool->record[pool->cursor];
     pool->cursor=(uint8_t)(pool->cursor+1u>=T3_PSX_FLIPBOOK_RECORDS?0u:pool->cursor+1u);
-    r->active=1;r->set=(uint8_t)set;r->index=(uint8_t)index;r->frames=(uint16_t)frames;r->frame=1;
+    r->active=1;r->set=(uint8_t)set;r->index=(uint8_t)index;r->frames=(uint16_t)frames;r->frame=1;r->mirror=mirror?1u:0u;
     for(unsigned k=0;k<3;++k) {
         r->pos[k]=(int32_t)((uint32_t)point[k]<<7);
         pool->last_point[k]=point[k];pool->last_vector[k]=vector?vector[k]:0;
@@ -38,6 +38,7 @@ void t3_psx_flipbook_spawn(t3_psx_flipbook_pool_t* pool,unsigned set,unsigned in
     }
 }
 void t3_psx_flipbook_step(t3_psx_flipbook_pool_t* pool) {
+    for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i)pool->shown[i]=pool->record[i];
     for(unsigned i=0;i<T3_PSX_FLIPBOOK_RECORDS;++i) {
         t3_psx_flipbook_t* r=&pool->record[i];
         if(!r->active)continue;
