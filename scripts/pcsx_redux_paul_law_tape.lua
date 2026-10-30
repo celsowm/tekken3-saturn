@@ -81,7 +81,7 @@ local function frame()
                     for r = 0, 2 do
                         for c = 0, 6 do
                             local key = u16(0x80022768 + 6*(c+7*r) + 4) % 256
-                            if key == (player == 1 and 0 or 4) then target_col, target_row = c, r end
+                            if key == (T3_TAPE_OPTIONS and T3_TAPE_OPTIONS.p2_key or 4) * (player - 1) then target_col, target_row = c, r end
                         end
                     end
                     if target_col ~= nil then
@@ -98,7 +98,8 @@ local function frame()
     elseif state == 8 then
         local tick = u32(0x800AFA4C)
         local a, b = u16(0x800A9240), u16(0x800AAACC) -- fighter charId +0x18
-        if a ~= 0 or b ~= 1 then return end
+        local want_b = (T3_TAPE_OPTIONS and T3_TAPE_OPTIONS.p2_char) or 1
+        if a ~= 0 or b ~= want_b then return end
         if not T3_SEEN_FIGHT then
             T3_SEEN_FIGHT = true
             print(string.format('T3_FIGHT_ENTER vsync=%d tick=%d chars=%d,%d rand=0x%08X', frames, tick, a, b, u32(0x800A39B8)))
@@ -119,10 +120,33 @@ local function frame()
             T3_STALL = 0
         end
         T3_LAST_TICK = tick
+        if u32(0x800A9288) == 0 or u32(0x800AAB14) == 0 then return end
+        if T3_BASE == nil then
+            T3_BASE = tick
+            print(string.format('T3_BASE tick=%d vsync=%d', tick, frames))
+            T3_SNAP = {}
+            for addr = 0x80090000, 0x800AFFFC, 4 do T3_SNAP[#T3_SNAP+1] = u32(addr) end
+        elseif T3_BASE ~= nil and not T3_SCANNED and tick >= T3_BASE + 2 then
+            T3_SCANNED = true
+            local found = 0
+            for i = 1, #T3_SNAP do
+                local addr = 0x80090000 + (i-1)*4
+                local w1, w2 = T3_SNAP[i], u32(addr)
+                if w1 ~= w2 then
+                    local x = w1
+                    for k = 1, 400 do
+                        x = (x * 0x41C64E6D + 0x3039) % 4294967296
+                        if x == w2 then print(string.format('T3_RAND_CANDIDATE addr=0x%08X steps=%d w1=0x%08X w2=0x%08X', addr, k, w1, w2)); found = found + 1; break end
+                    end
+                end
+            end
+            print('T3_RAND_SCAN candidates=' .. found)
+            T3_SNAP = nil
+        end
         local offset = (T3_TAPE_OPTIONS and T3_TAPE_OPTIONS.offset) or 0
         local target = (T3_TAPE_OPTIONS and T3_TAPE_OPTIONS.pause_tick) or 3393
         local tape = T3_TAPE
-        local want = tick + offset
+        local want = tick - T3_BASE + offset
         while T3_TAPE_AT < #tape and tape[T3_TAPE_AT + 1][1] <= want do T3_TAPE_AT = T3_TAPE_AT + 1 end
         local ev = tape[T3_TAPE_AT]
         if ev then
@@ -139,13 +163,13 @@ local function frame()
             down(2, buttons)
         end
         release(1)
-        if T3_TAPE_LOG and (tick % 100 == 0 or tick >= target - 3) then
+        if T3_TAPE_LOG and ((tick - T3_BASE) % 100 == 0 or (tick - T3_BASE) >= target - 3) then
             local function s32(addr) local v=u32(addr); if v>=2147483648 then return v-4294967296 end; return v end
             print(string.format('T3_TAPE tick=%d idx=%d rand=0x%08X p0root=%d,%d,%d p1root=%d,%d,%d hp=%d,%d', tick, T3_TAPE_AT,
                 u32(0x800A39B8), s32(0x800A9228), s32(0x800A922C), s32(0x800A9230),
                 s32(0x800AAAB4), s32(0x800AAAB8), s32(0x800AAABC), s32(0x800A9228+0x14), s32(0x800AAAB4+0x14)))
         end
-        if tick >= target then
+        if tick - T3_BASE >= target then
             print(string.format('T3_TAPE_PAUSE tick=%d', tick))
             PCSX.pauseEmulator()
         end

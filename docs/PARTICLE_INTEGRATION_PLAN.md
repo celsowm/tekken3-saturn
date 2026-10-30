@@ -967,3 +967,49 @@ did for Law, and replay that tape on the PS1 Paul mirror, whose session script
 (`pcsx_redux_paul_session.lua`) reaches the fight in about 1,300 vsyncs. That
 removes the Law load but depends on a Paul AI hit of 21 damage or more
 occurring in the recording, which is untested.
+
+## 34. The Paul mirror route: a PS1 spray frame, not yet aligned (2026-10-30)
+
+Section 33's two-Paul alternative was carried out:
+
+1. A two-Paul Saturn build (`T3_SECOND_CHARACTER_ID=0`, actor 1 from Paul's
+   KMD, no second bank or camera, `T3_LOCAL_SFX` off because its extractor
+   assumes Law as player 2, `T3_CAPTURE_INPUT_TAPE=ON`, particles off) recorded
+   the Paul AI against an idle Paul for 9,000 fields: 326 events over 8,002
+   ticks, 10 hits (`assets/imported/ptcl-paul-spray-tape.json`, private).
+2. Replaying that tape in a particle build (`T3_LOCAL_INPUT_TAPE`,
+   `T3_PARTICLE_TICK_AUDIT`) shows a real spray: first image at **tick 3528**
+   with 26 sprites, 12 images to tick 3571.
+3. `pcsx_redux_paul_law_tape.lua` (now with `p2_key`, `p2_char` and a base tick
+   taken at the first fight frame) ran on the Paul mirror, which does reach the
+   fight, replayed the tape on pad 2 and paused at base + 3531. The paused
+   emulator gave a **PS1 frame with the original spray** (a large orange burst
+   with sprites around it while the left Paul is launched; saved privately as
+   `assets/imported/ps1-law-tape/ps1-spray.png`, 368 x 480) and its RAM.
+4. The libc `rand` word at USA `0x800A39B8` is a real, changing LCG state
+   during the fight (the earlier `0x800B0000` was read before the match
+   initialized); the exhaustive scan for an LCG successor found none in the
+   window because it ran too early.
+
+**Alignment fails.** The Saturn frozen frame at tick 3531
+(`build/ptcl-fz2p`, `assets/imported/ptcl-fz2p`) has `sim_ticks` 3531 and fighter
+roots (-4625, -1690, -38) and (-3452, -616, 77) with both fighters airborne; the
+PS1 at base + 3531 has (-4736, ?, -42) and (-1759, ?, 3) (the y address in the
+script is wrong, it reads 0). Along the timeline the PS1 and Saturn rounds
+start at about the same time (Saturn round start near tick 2829, PS1 near base
++ 2900), but the positions diverge from the first hundred ticks (Saturn tick
+1379: (-7586, -2489) and (-8070, -3217); PS1 at base + 1000: (-5439, -2095) and
+(-3529, -1303)). Likely causes, neither tested: the tape holds the AI's inputs
+relative to its facing and the script maps forward and back to pad Left and Right
+assuming player 2 always faces left, which is false after the fighters cross or
+turn; and the fight base tick is taken at the first frame with the fighters
+initialized, not at the Saturn's tick 0, so the tape may be off by a round
+intro. Until the fight states agree at a chosen tick, the PS1 frame and the
+Saturn frame show different moments and a pixel comparison would be
+meaningless.
+
+So phase 4 now has its PS1 reference frame but not an aligned Saturn frame. The
+next steps are to read the original's screen-side/facing flag per frame (read
+only) and map forward/back from it, to read the fighters' y correctly, and to
+sync on the round-start tick instead of the first fight frame; then compare
+roots at several ticks before comparing pixels.
