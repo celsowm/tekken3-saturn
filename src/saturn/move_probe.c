@@ -151,6 +151,9 @@ t3_particle_image_t g_t3_particle_image __attribute__((section(".wram_l")));
 t3_particle_image_t g_t3_particle_image T3_HOT_WRAM;
 #endif
 volatile uint32_t g_t3_particle_images,g_t3_particle_max_sprites;
+#if defined(T3_POWER_PROBE)
+volatile uint32_t g_t3_power_probe[55][2];
+#endif
 #if defined(T3_FLIPBOOK_PROBE)
 volatile uint32_t g_t3_flip_diag[24];
 #endif
@@ -1165,6 +1168,12 @@ reference_complete:;
             g_t3_flip_diag[6+4*r]=book->record[r].active?book->record[r].frame:0u;
             for(unsigned k=0;k<3;++k)g_t3_flip_diag[7+4*r+k]=(uint32_t)book->record[r].pos[k];
         }
+    }
+#endif
+#if defined(T3_POWER_PROBE)
+    if(g_owned_match.ticks>=3495u && g_owned_match.ticks<3550u) {
+        g_t3_power_probe[g_owned_match.ticks-3495u][0]=(uint32_t)(int32_t)g_owned_match.fighter[0].ground.power_timer;
+        g_t3_power_probe[g_owned_match.ticks-3495u][1]=(uint32_t)(int32_t)g_owned_match.fighter[1].ground.power_timer;
     }
 #endif
 #if defined(T3_RAND_PROBE)

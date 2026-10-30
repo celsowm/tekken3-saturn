@@ -24,6 +24,9 @@ t3_prepared_particle_image_t g_t3_prepared_particles __attribute__((section(".wr
 t3_prepared_particle_image_t g_t3_prepared_particles T3_HOT_WRAM;
 #endif
 volatile uint32_t g_t3_particle_prepare_images,g_t3_particle_prepare_peak;
+#if defined(T3_PARTICLE_CLUT_HIST)
+volatile uint32_t g_t3_clut_hist[32];
+#endif
 sat_result_t t3_particle_prepare_init(void) {
     sat_cdfs_volume_t* volume;sat_cdfs_file_t file;uint32_t read=0;
     /* The asset reader keeps pointers into this buffer, so it stays resident. */
@@ -70,6 +73,14 @@ sat_result_t t3_particle_prepare_image(void) {
             return SAT_ERR_VERIFY_FAILED;
         visible+=draw->quad.visible;
     }
+#if defined(T3_PARTICLE_CLUT_HIST)
+    /* Diagnostic: the palette ids of this image's visible sprites, 0x7F80 + index. */
+    for(unsigned i=0;i<32;++i)g_t3_clut_hist[i]=0;
+    for(unsigned i=0;i<count;++i)if(g_t3_prepared_particles.draw[i].quad.visible) {
+        const unsigned id=g_t3_prepared_particles.draw[i].clut-0x7F80u;
+        if(id<32u)++g_t3_clut_hist[id];else ++g_t3_clut_hist[31];
+    }
+#endif
     g_t3_prepared_particles.count=count;g_t3_prepared_particles.visible=visible;
     g_t3_prepared_particles.frame_counter=image->frame_counter;
 #if defined(T3_PARTICLE_MULTI_PROBE) && !defined(T3_PARTICLE_ORDERED_MASK_PROBE)

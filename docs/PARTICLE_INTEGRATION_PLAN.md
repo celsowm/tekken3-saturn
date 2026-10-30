@@ -1593,3 +1593,34 @@ over each other in the original where the Saturn's accumulation would also add
 them (checked equal in the host test, not on this frame). Reading the colour
 bytes of the spark primitives in the PS1's ordering table at the pause would
 settle the first.
+
+## 52. The power hypothesis is false; the sparks' palette steps differ (2026-10-30)
+
+- **Power.** The PS1's `powerTimer` (`+0x122`) of both fighters is 0 on every
+  fight frame from 3495 to 3540, and the Saturn's `power_timer` is 0 on every
+  tick from 3520 to 3540 (`T3_POWER_PROBE`, `g_t3_power_probe`): the hit is a
+  normal one on both sides, so the spray types (2 + 1, not 13 + 12) and the
+  model (1) agree. Reading the PS1's spark primitives (all `POLY_FT4`, code 0x2E,
+  colour 128, page `0x3F`, additive, uv (128, 144), 10 to 11 by 17 to 18 PS1 pixels)
+  also shows no brightness modulation (colour byte 128 is neutral) and the same
+  16 x 16 pattern the Saturn samples (pattern 0, `v = 144`). Brightness and
+  pattern are ruled out as the cause of the colour gap.
+- **Palette steps.** The PS1's 52 spark primitives (26 objects x 2 double-buffer
+  primitives) carry CLUT ids `0x7F91` x 23, `0x7F92` x 24, `0x7F93` x 3, `0x7F94` x 2;
+  the Saturn's 26 visible sprites (`T3_PARTICLE_CLUT_HIST`, `g_t3_clut_hist`)
+  carry `0x7F91` x 6, `0x7F92` x 17, `0x7F93` x 1, `0x7F94` x 2. Whole-set
+  per buffer the PS1 has roughly 26 sprites at one id and a few at the next; the
+  Saturn's displayed buffer has 6 on the earlier ramp step where the PS1's
+  matching buffer has none. A spark's palette id is its own ramp position (set
+  by the per-object ramp initializer and advanced as it ages), so a few
+  Saturn sparks are on a different ramp step from the PS1's at the same drawn
+  frame. Palette rows 509 and 510 are identical, so this is object state, not
+  data.
+
+That narrows the colour gap to the pool's per-object ramp state (initial ramp
+offset and advance) in this fight, which the effect-pool parity test of
+`tests/test_psx_effect_pool.py` covers only for the reference fight's objects.
+Next measurement: read the PS1's effect objects (`0x800E8B08` onward, 0x?? bytes
+each; the dump of section 38 holds them) at the pause and compare type, state,
+position and both CLUTs object by object with the Saturn's pool at the matching
+tick.

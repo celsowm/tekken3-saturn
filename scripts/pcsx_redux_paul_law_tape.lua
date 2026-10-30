@@ -175,6 +175,11 @@ local function frame()
         end
         do
             local rel = tick - T3_BASE
+            if rel >= 3495 and rel <= 3540 and T3_PT_LAST ~= rel then
+                T3_PT_LAST = rel
+                local function s16(a) local v=u16(a); if v>=32768 then return v-65536 end; return v end
+                print(string.format('T3_POWER rel=%d p0=%d p1=%d', rel, s16(0x800A9228+0x122), s16(0x800AAAB4+0x122)))
+            end
             if rel >= 3518 and rel <= 3540 and T3_REC_LAST ~= rel then
                 T3_REC_LAST = rel
                 for r = 0, 2 do
