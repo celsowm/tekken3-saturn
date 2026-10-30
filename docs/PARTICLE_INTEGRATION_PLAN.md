@@ -333,3 +333,51 @@ attack produces sprites on this build, these remain unmeasured:
 Next concrete step: find or record a script that produces an effect spray
 (candidates: Paul's strong launchers, counter hits, or the throw), keep it
 under `scripts/` as a fixture, and run items 1–3.
+
+## 16. Spray fixture and first particle images on the gated build (2026-10-29)
+
+**Fixture.** `T3_PARTICLE_SPRAY_SELFTEST` (diagnostic, default OFF) spawns the
+original normal spray (`t3_psx_effect_spray`) at fighter 1's joint 8 world
+origin every 90 ticks from tick 200. Pool, RNG and update are the real ones;
+only the trigger is synthetic, because no scripted attack here reaches the
+21 damage the original requires. `scripts/particle_run.sh BUILD OUT FIELDS`
+runs a build and prints the projection/mask counters.
+
+**Bug found and fixed by it.** My earlier change that read HUD.BIN into the
+idle face store also moved `EFFECTS.BIN` there, but the particle asset reader
+keeps pointers into that buffer, so after boot the scene overwrote the model
+corners: sprites were thousands of pixels wide and never visible (every
+particle image reported "no visible particle"). `particle_prepare.c` now owns
+a 3 KB resident buffer and `t3_original_hud_scratch` is gone. This only
+affected builds with `T3_PARTICLE_PREPARE`; the playable candidate does not
+contain it (its ELF `f0245ec0…` is unchanged).
+
+**Result** (`build/ptcl-full`: bitmap floor, original projection and OT,
+gated projection, ordered and general masks, 52 cells, spray fixture;
+1,500 fields, Ymir):
+
+| | Value |
+| --- | ---: |
+| particle images (effect pool non-empty) | 114 |
+| of those, with a visible particle | 102 |
+| original projection used | 114 / 114, 0 fallbacks |
+| `first_error` | 0 |
+| loop rate (whole run) | 15.0 |
+| frame work (last sample) | 40 ms |
+| discarded fields | 89 |
+
+A screenshot at field 850 shows the sparks flying around both fighters
+(`assets/imported/ptcl-spray/frame-850.png`). From the loop rate, images that
+carry particles cost about 150 ms each (about 6–7 fps), against 26 ms
+without. That is the Phase 3 problem, and it is large: during a spray the
+game would run at a fraction of its cadence. The mask pass dominates; where
+exactly is not yet profiled.
+
+**Still unmeasured:** whether fighter pixels jump when the image switches
+between SDK and original projection; mask correctness against the original;
+HUD ordering.
+
+Plan status: phase 0 done, gated projection built and shown to work,
+phase 1 partly (particles render on the gated build; no live case yet),
+phases 2–5 not started. Next: profile the 150 ms particle images
+(`T3_PARTICLE_MASK_TIMING` plus a debug profile at fields 820–880).

@@ -38,13 +38,6 @@ static uint16_t g_text_lut[TEXT_PALETTES]
 static uint8_t* g_hud_file;
 static unsigned g_hud_capacity;
 
-#if defined(T3_PARTICLE_PREPARE)
-void* t3_original_hud_scratch(unsigned* bytes) {
-    if(bytes)*bytes=g_hud_capacity;
-    return g_hud_file;
-}
-#endif
-
 static unsigned u16(const uint8_t* p) {return (unsigned)p[0]|((unsigned)p[1]<<8);}
 
 sat_result_t t3_original_hud_init(void* scratch,unsigned bytes) {

@@ -1141,6 +1141,17 @@ reference_complete:;
 #else
     if(!t3_psx_match_step(&g_owned_match,p0,p1))return SAT_ERR_INVALID_ARG;
 #endif
+#if defined(T3_PARTICLE_SPRAY_SELFTEST)
+    /* Diagnostic fixture: the scripted fights here never land the 21 damage the
+     * original needs for a spray, so spawn the original's normal spray at the
+     * defender's pelvis every 90 ticks. The pool, RNG and update are the real
+     * ones; only the trigger is synthetic. */
+    if(g_owned_match.ticks>=200u && (g_owned_match.ticks-200u)%90u==0u) {
+        const t3_psx_joint_t* joint=&g_owned_match.fighter[1].world[8];
+        const t3_vec3i_t point=joint->origin;
+        t3_psx_effect_spray(&g_effect_pool,point,0,0x400,0);
+    }
+#endif
     view->total_ticks=g_owned_match.ticks;
 #if defined(T3_CAPTURE_INPUT_TAPE) && defined(T3_CPU_AI)
     /* The CPU's P2 input of this tick, for a pad replay of the same fight. */

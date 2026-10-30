@@ -22,8 +22,10 @@ t3_prepared_particle_image_t g_t3_prepared_particles T3_HOT_WRAM;
 #endif
 volatile uint32_t g_t3_particle_prepare_images,g_t3_particle_prepare_peak;
 sat_result_t t3_particle_prepare_init(void) {
-    sat_cdfs_volume_t* volume;sat_cdfs_file_t file;unsigned capacity;uint32_t read=0;
-    void* buffer=t3_original_hud_scratch(&capacity);
+    sat_cdfs_volume_t* volume;sat_cdfs_file_t file;uint32_t read=0;
+    /* The asset reader keeps pointers into this buffer, so it stays resident. */
+    static uint8_t effects_file[3072] __attribute__((aligned(4)));
+    void* buffer=effects_file;const unsigned capacity=sizeof effects_file;
     SAT_TRY(t3_disc_volume(&volume));
     SAT_TRY(sat_cdfs_lookup(volume,"EFFECTS.BIN",&file));
     if(file.size>capacity)return SAT_ERR_VERSION;
