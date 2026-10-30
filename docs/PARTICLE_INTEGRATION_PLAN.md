@@ -1384,3 +1384,42 @@ This is a feature of the size of the particle path's first phases (assets,
 state, compositor generalisation, memory budget, gates), not a patch to the
 compositor, and no part of it is built. Until it is, the plan's phase 4 reads:
 sprays at pixel placement parity on the reference hit, hit flipbooks absent.
+
+## 46. The flipbook spawn, read from the decompilation (2026-10-30)
+
+`work/decomp/SLPS_013.00.c` (private, Japan Rev.1 addresses) gives the spawn
+exactly, and the PS1 records of section 38 confirm it:
+
+- `FUN_80076B6C(set, index, point, noVelocity)`, for `index & 0x80 == 0`: take
+  the next of three 64-byte records round robin (`0x800A3960` the cursor, wraps
+  at 3), initialise it with `FUN_8007699C(record, set, index)` (frame counter 0,
+  size 0x20 x 0x20, the VRAM layout from `0x80027C48 + 0x30 * block + 0x0C *
+  index`, the frame count from `0x800A3970`'s row, the CLUT x and y from the
+  same row), set the active byte (`+4`) to 1, call the point light
+  (`FUN_8003A160`) for sets below 3, store the position `<< 7` at `+0x24..+0x2C`,
+  and the velocity at `+0x30..+0x38`: with `noVelocity == 0` and a non-zero
+  length, `component * 0x1900 / FUN_8004B174(sum of squares)` for the three
+  shorts at `point + 0x10, +0x12, +0x14`, otherwise zero. `+0x3C` gets a sign bit
+  of a cross product of the contact point and the camera target
+  (`0x800A8A9C / 0x800A8AA4`), presumably which way the sprite is flipped.
+- `FUN_80076F10(damage, defender, attacker, hit_slot)`, the damaging hit: spawn
+  set 3 index 0 at the hit slot with velocity (the burst); when damage is at
+  least `0x15` (21) also set *attacker index*, index 0, **without** velocity
+  (the character flipbook, stationary); then the fire/gas branch, or, for
+  damage of 21 or more, the sprays and the spray log entries. Each spawn is
+  logged by `FUN_8004A840` for the replay. The guard and no-damage cases
+  (`FUN_80076EB8`) spawn set 3 with index 2 or 1.
+
+This matches the dump: record 0 (the burst) has a non-zero velocity
+`(-3673, -2158, -284)` and record 1 (Paul's flipbook) has `(0, 0, 0)`; both
+carry a frame counter of 6 at fight frame 3527, and record 0's position `<< 7`
+decodes to a world point `(-4387, -483, -177)` beside the fighters. Two
+questions the dump raises are not answered here: the velocity's length is
+4,264 where `0x1900 = 6400` is the nominal, a factor of about 2/3 that is either
+`FUN_8004B174` not being an exact square root or a per-frame change in the draw
+and update code (`FUN_80077158`, `FUN_80077744`, which also hold the advance
+and the fade); and which fields of the hit slot are the three shorts at `+0x10`.
+Both are measurable by pausing the PS1 on consecutive fight frames and reading
+the three records (the session of section 33 does it in about ten minutes per
+frame), which is the next step for the state half of the port; the draw half
+is the compositor work sized in section 45.
