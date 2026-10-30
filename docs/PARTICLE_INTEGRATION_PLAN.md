@@ -1344,3 +1344,43 @@ individual spark pixels, which was not compared (the PS1's additive blend and
 dithering against the Saturn's VDP2 add, and 15-bit against 24-bit output).
 Phase 4's pixel comparison is therefore complete for the sprays and open for
 the flipbook ring.
+
+## 45. Sizing the flipbook ring port (2026-10-30)
+
+Numbers for what remains, from the PS1 dump of section 38 and the code as it is:
+
+- **Records.** Three 64-byte records (`0x800A3408` USA): word 0 the frame
+  counter (frame 6 at the pause), word 1 the frame count (27 fire, 30
+  character, 21 hit-without-damage) and set bits, words 8-14 the position
+  `<< 7` and drift, word 15 the flags. The remake gives the spawn as
+  presentation-only (no random draws); the exact PS1 stream of section 41 agrees
+  (nothing but the 2 + 52 draws on the hit frames), so the ring needs no
+  simulation randomness, only the three records, their per-tick advance and the
+  drift `0x1900 / 128` units a frame along the hit direction.
+- **Assets.** 27 frames of 32 x 32 4-bit texels = 13.8 KB for the fire set, plus
+  the attacker's character flipbook, 30 frames = 15.4 KB from the character
+  ARC's member 1 (verified-extractable pages: section 39). Together about
+  29 KB against the 24 KB left in High WRAM, so the character flipbook has to
+  stream or be limited to the fire set first.
+- **On-screen size.** A flipbook sprite is 754 world units; at the fight camera
+  (distance about 5,800, H 500) that is about 65 pixels in the PS1 picture, so
+  about 57 x 32 pixels on the Saturn: 8 x 4 = **32 cells each**, 64 for two.
+  The particle layer holds 52 cells (the link limit with the current memory
+  settings) and a spray alone can fill it, so the burst needs its own budget
+  (a second surface with its own cells, or 64 more cells of Low WRAM) and a
+  priority over the sparks when cells run out.
+- **Compositor.** `psx_particle_tile.c` handles 16 x 16 patterns and quads of at
+  most 5 x 5 cells (`tile_cache[25]`); the flipbook is 32 x 32 and up to 9 x 5
+  cells, so the accumulate path, its cell cache and the host tests
+  (`test_psx_particle_tile.c`) need a pattern size parameter. The mixed OT
+  already orders sprites by bucket; a flipbook is one more entry with its own
+  depth (`FUN_80077158`'s `otz`), and the mask of later fighter faces applies to
+  it unchanged.
+- **Gates.** The records are checkable against the PS1 dumps tick by tick, the
+  sprite against the PS1 frame through `compare_ps1_saturn_sparks.py` with the
+  burst rectangle un-excluded, and the particle suite gains a flipbook case.
+
+This is a feature of the size of the particle path's first phases (assets,
+state, compositor generalisation, memory budget, gates), not a patch to the
+compositor, and no part of it is built. Until it is, the plan's phase 4 reads:
+sprays at pixel placement parity on the reference hit, hit flipbooks absent.
