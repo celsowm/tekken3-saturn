@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Print the CMake configure command that reproduces a Saturn build directory.
 
-Reads the build's CMakeCache.txt and keeps every T3_* option that is set and
-not empty/OFF, plus the toolchain and SDK paths, so the command for the
+Reads the build's CMakeCache.txt and keeps every T3_* option, including empty,
+OFF and zero values, plus the toolchain and SDK paths, so the command for the
 Paul-against-Law release image is whatever `build/t30-law` actually used:
 
     python3 scripts/print_release_configure.py build/t30-law build/release
@@ -25,7 +25,9 @@ def main():
             continue
         key, rest = line.split(':', 1)
         kind, value = rest.split('=', 1)
-        if (key in KEEP or key.startswith('T3_')) and value not in ('', 'OFF', '0', 'NO'):
+        if (key in KEEP or key.startswith('T3_')) and kind in ('BOOL', 'STRING', 'PATH', 'FILEPATH', 'UNINITIALIZED'):
+            if kind == 'UNINITIALIZED':
+                kind = 'STRING'
             args.append(f'-D{key}:{kind}={value}')
     print('cmake -S . -B', shlex.quote(target), '-G Ninja \\\n  ' + ' \\\n  '.join(shlex.quote(a) for a in args))
 

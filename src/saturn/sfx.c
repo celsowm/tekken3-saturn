@@ -71,7 +71,9 @@ static void play_request(const t3_combat_event_t* e) {
     else if(e->sound==T3_SOUND_VOICE)bank=2u;
     else return; /* voice-off: nothing is playing a script voice here */
     for(unsigned i=0;i<T3_SFX_COUNT;++i)
-        if(g_key[i].bank==bank && g_key[i].code==e->code && (bank!=2u || g_key[i].slot==e->fighter)) {
+        if(g_key[i].bank==bank &&
+           (bank==0u ? (e->code>>12 && (g_key[i].code&0xfffu)==(e->code&0xfffu)) : g_key[i].code==e->code) &&
+           (bank!=2u || g_key[i].slot==e->fighter)) {
             play(i);return;
         }
     const uint32_t key=((uint32_t)e->sound<<24)|((uint32_t)e->fighter<<16)|e->code;

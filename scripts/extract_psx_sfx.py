@@ -2,40 +2,65 @@
 """Extract the combat sound effects the Saturn build plays from the USA executable.
 
 Reads VAB 0 (the combat bank in SLUS_004.02: VH at 0x16050, body at 0xC3E6C),
-decodes the PS-ADPCM samples of a fixed list of sound codes and writes one
-private blob plus a table: `psx_sfx.bin` is 8-bit signed PCM, `psx_sfx.tsv` has
-`name code vag rate offset samples` per sound. Sound codes, playback rate and
+resolves selected sound IDs through the USA executable's sound table, decodes
+the PS-ADPCM samples and writes one private blob plus a table: `psx_sfx.bin` is
+8-bit signed PCM, `psx_sfx.tsv` has `name request vag rate offset samples` per
+sound. Sound codes, playback rate and
 the ADPCM rule follow third_party/Tekken3Remake/docs/research/{code/sound.md,
 formats/vab-banks.md} (PolyForm Noncommercial; rules re-implemented here, see
 NOTICE.md). The output is retail data: keep it under assets/imported/.
 """
 import argparse
+import hashlib
 import struct
 from pathlib import Path
 
 VH, VB, VAB_BYTES = 0x16050, 0xC3E6C, 252880
-# name -> sound code (bits 4-5 program, bits 0-3 tone; bank 1 = VAB 0)
+# name -> fighter sound request (low 12 bits index the sound table)
 SOUNDS = {
     'swing': 0x604A,        # id 0x4A, one frame before an attack's active window
     'guard_hand': 0x704D,   # blocked hit from joints below 12
     'guard_foot': 0x704E,   # blocked hit from joint 12 and up
-    'hit': 0x61A0,          # id 0x81, clean-hit impact
+    'hit': 0x7081,          # id 0x81, clean-hit impact
 }
 # Codes FighterSounds requests (psx_fighter_sounds.c): impacts by joint, landing
 # and air sounds and the other effect tones seen in live Paul-Law runs.
-for _code in (0x7041, 0x7043, 0x7044, 0x7045, 0x7048, 0x7059, 0x7064, 0x6049, 0x1053, 0x1054):
+for _code in (0x7041, 0x7042, 0x7043, 0x7044, 0x7045, 0x7046, 0x7047, 0x7048, 0x7059, 0x7064, 0x6049, 0x104F, 0x1053, 0x1054, 0x105A):
     SOUNDS['fx_%04x' % _code] = _code
 # The system bank (VAB 1, VH at 0x17270, body at 0x10081c): the round announcer.
 SYS_VH, SYS_VB, SYS_BYTES = 0x17270, 0x10081C, 103552
 ANNOUNCER = {
-    'ann_round': 0x870D,    # id 0x3B, before the round number
-    'ann_final': 0x86CC,    # id 0x3A, the deciding round
-    'ann_one': 0x86D0,      # ids 0x34-0x36
-    'ann_two': 0x8711,
-    'ann_three': 0x8652,
-    'ann_fight': 0x8781,    # id 0x3C
+    'ann_round': 0x3B,
+    'ann_final': 0x3A,
+    'ann_one': 0x34,
+    'ann_two': 0x35,
+    'ann_three': 0x36,
+    'ann_fight': 0x3C,
 }
 FILTERS = ((0, 0), (60, 0), (115, -52), (98, -55), (122, -60))
+USA_EXE_SHA256 = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
+# g_soundTable at USA 0x80097050, mapped from Rev.1 0x80097474.
+SOUND_TABLE_OFFSET, SOUND_TABLE_COUNT = 0x87850, 212
+
+
+def effect_code(exe, request):
+    """Resolve FighterSoundById's low 12-bit ID to a VAB 0 sound code."""
+    index = request & 0xfff
+    if not request >> 12 or index >= SOUND_TABLE_COUNT:
+        raise ValueError('invalid fighter sound request')
+    code = struct.unpack_from('<H', exe, SOUND_TABLE_OFFSET + index * 2)[0]
+    if code >> 14 != 1:
+        raise ValueError('fighter sound request does not select VAB 0')
+    return code
+
+
+def system_code(exe, index):
+    if not 0 <= index < SOUND_TABLE_COUNT:
+        raise ValueError('invalid system sound ID')
+    code = struct.unpack_from('<H', exe, SOUND_TABLE_OFFSET + index * 2)[0]
+    if code >> 14 != 2:
+        raise ValueError('system sound ID does not select VAB 1')
+    return code
 
 
 def decode(frames):
@@ -124,30 +149,33 @@ def main():
                    help='also write SFX.BIN and t3_local_sfx.h (the Saturn build\'s inputs) here')
     args = p.parse_args()
     d = args.exe.read_bytes()
+    if hashlib.sha256(d).hexdigest() != USA_EXE_SHA256:
+        raise SystemExit('unsupported USA executable')
     vh = d[VH:VH + 0x1220]
     if vh[:4] != b'pBAV' or struct.unpack_from('<I', vh, 12)[0] != VAB_BYTES:
         raise SystemExit('not the USA VAB 0')
     # key kinds match the match's sound requests: 0 effect (VAB 0), 1 system, 2 voice
-    jobs = [(name, vh, d[VB:VB + VAB_BYTES - 0x1220], code, 0, 0) for name, code in SOUNDS.items()]
+    jobs = [(name, vh, d[VB:VB + VAB_BYTES - 0x1220], request, 0, 0,
+             effect_code(d, request)) for name, request in SOUNDS.items()]
     sys_vh_len = 0x820 + d[SYS_VH + 0x12] * 0x200 + 0x200
     sys_vh = d[SYS_VH:SYS_VH + sys_vh_len]
     if sys_vh[:4] != b'pBAV' or struct.unpack_from('<I', sys_vh, 12)[0] != SYS_BYTES:
         raise SystemExit('not the USA VAB 1')
-    jobs += [(name, sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len], code, 1, 0)
-             for name, code in ANNOUNCER.items()]
+    jobs += [(name, sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len], request, 1, 0,
+              system_code(d, request)) for name, request in ANNOUNCER.items()]
     for spec in args.voice:
         slot, char, vh_path, arc_path = spec.split(':', 3)
         char_vh, body = Path(vh_path).read_bytes(), arc_member(Path(arc_path).read_bytes(), 2)
         shouts, hurts, kos = voice_codes(d, int(char))
-        jobs += [(f'f{slot}_shout{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(shouts)]
-        jobs += [(f'f{slot}_hurt{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(hurts)]
-        jobs += [(f'f{slot}_ko{i}', char_vh, body, c, 2, int(slot)) for i, c in enumerate(kos)]
+        jobs += [(f'f{slot}_shout{i}', char_vh, body, c, 2, int(slot), c) for i, c in enumerate(shouts)]
+        jobs += [(f'f{slot}_hurt{i}', char_vh, body, c, 2, int(slot), c) for i, c in enumerate(hurts)]
+        jobs += [(f'f{slot}_ko{i}', char_vh, body, c, 2, int(slot), c) for i, c in enumerate(kos)]
         named = set(shouts) | set(hurts) | set(kos)
-        jobs += [(f'f{slot}_v{c:04x}', char_vh, body, c, 2, int(slot))
+        jobs += [(f'f{slot}_v{c:04x}', char_vh, body, c, 2, int(slot), c)
                  for c in all_voice_codes(d, int(char)) if c not in named]
     pcm, rows = bytearray(), []
-    for name, job_vh, body, code, bank, slot in jobs:
-        vag, hz, samples = vab_sound(job_vh, body, code)
+    for name, job_vh, body, code, bank, slot, tone_code in jobs:
+        vag, hz, samples = vab_sound(job_vh, body, tone_code)
         while len(pcm) & 3:
             pcm.append(0)
         rows.append((name, code, vag, hz, len(pcm), len(samples), bank, slot))

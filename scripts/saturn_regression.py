@@ -109,12 +109,17 @@ def combat_stage(args, out):
                '--with-ko', '--with-timeout']
     if args.sh2_cache:
         command += ['--sh2-cache', args.sh2_cache]
+    if args.disc:
+        command += ['--disc', str(args.disc)]
+    if getattr(args, 'title_start_field', None) is not None:
+        command += ['--title-start-field', str(args.title_start_field)]
     record = run_stage('combat', command, out)
     suite = read_json(root / 'suite.json')
     cases = suite.get('cases', {})
     record['detail'].update(cases=len(cases), case_names=sorted(cases),
                             input_offset_fields=suite.get('input_offset_fields'),
                             input_offset_measured=suite.get('input_offset_measured'),
+                            title_start_field=suite.get('title_start_field'),
                             native_round_replay_victory_validated=suite.get('native_round_replay_victory_validated'),
                             original_vs_timeout_scoring_validated=suite.get('original_vs_timeout_scoring_validated'))
     if record['exit_code'] not in (None, 0) and not cases:
@@ -183,6 +188,8 @@ def preflight(args, parser):
     elf = args.build / 'tekken3_saturn.elf'
     if not elf.is_file():
         problems.append('no built ELF at ' + str(elf))
+    if args.disc and not args.disc.is_file():
+        problems.append('no selected disc at ' + str(args.disc))
     if not args.skip_combat and not args.bios:
         problems.append('--bios (or LIBSATURN_BIOS) is required by the combat gate')
     if not args.skip_reference:
@@ -217,6 +224,7 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--build', type=Path, default=ROOT / 'build/saturn',
                         help='release build directory containing tekken3_saturn.elf')
+    parser.add_argument('--disc', type=Path, help='alternate ISO or mixed-mode CUE for the combat gate')
     parser.add_argument('--workload', choices=('paul-law-release', 'two-paul-release', 'diagnostic'),
                         default='paul-law-release')
     parser.add_argument('--bios', type=Path, default=DEFAULT_BIOS,
@@ -228,6 +236,8 @@ def main(argv=None):
     parser.add_argument('--label', default='', help='free-form name recorded in the summary')
     parser.add_argument('--sh2-cache', choices=('on', 'off'),
                         help='pass an explicit Ymir cache setting to the live gates')
+    parser.add_argument('--title-start-field', type=int,
+                        help='send START at this field in each title-screen combat run')
     parser.add_argument('--host-build', type=Path, action='append', default=[],
                         help='host CTest build to gate; repeatable')
     parser.add_argument('--skip-host', action='store_true')
@@ -251,6 +261,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     args.build = args.build.resolve()
+    args.disc = args.disc.resolve() if args.disc else None
     args.out = args.out.resolve()
     if args.bios:
         args.bios = args.bios.resolve()
@@ -289,6 +300,9 @@ def main(argv=None):
                    stages=[], passed=False)
     if args.bios:
         summary['bios'] = dict(path=str(args.bios), sha256=digest(args.bios))
+    if args.disc:
+        from saturn_probe import disc_provenance
+        summary['disc'] = dict(path=str(args.disc), **disc_provenance(args.disc))
 
     def publish():
         summary['duration_seconds'] = round(time.time() - started, 2)

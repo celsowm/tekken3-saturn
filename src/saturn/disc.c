@@ -21,3 +21,11 @@ sat_result_t t3_disc_volume(sat_cdfs_volume_t** out_volume) {
     *out_volume=&g_volume;
     return SAT_OK;
 }
+
+sat_result_t t3_disc_block(sat_cd_block_t** out_block) {
+    sat_cdfs_volume_t* volume;
+    if(!out_block)return SAT_ERR_INVALID_ARG;
+    SAT_TRY(t3_disc_volume(&volume));
+    *out_block=&g_cd;
+    return SAT_OK;
+}

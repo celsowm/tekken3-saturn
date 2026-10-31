@@ -25,6 +25,16 @@ def delayed_script(script, fields):
 GAMEPLAY_LEAD_FIELDS=50
 
 
+def startup_script(args):
+    """Neutral pads, optionally followed by a title-screen START pulse."""
+    result='0 1 buttons=NONE\n0 2 buttons=NONE\n'
+    field=getattr(args,'title_start_field',None)
+    if field is not None:
+        if field <= 0:raise ValueError('title START field must be positive')
+        result+=f'{field} 1 buttons=START\n{field+10} 1 buttons=NONE\n'
+    return result
+
+
 def first_gameplay_field(args,runner=saturn_probe.run,limit=1200,resolution=10):
     """Return the first program field with a controllable fight.
 
@@ -34,7 +44,7 @@ def first_gameplay_field(args,runner=saturn_probe.run,limit=1200,resolution=10):
     def ticked(fields):
         a=copy.copy(args);a.out=args.out/f'gameplay-start-{fields}';a.out.mkdir(parents=True,exist_ok=True)
         a.frames=fields;a.port2='pad';a.workload='diagnostic';a.device_script=a.out/'input.devices'
-        a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n')
+        a.device_script.write_text(startup_script(args))
         try:
             state=coherent_case(a,runner)['state']
             return state['sim_ticks']>0 and (not state.get('psx_round_flow_active') or
@@ -89,10 +99,13 @@ def execute(args):
     offset=getattr(args,'input_offset_fields',None)
     measured=offset is None
     if measured:offset=first_gameplay_field(args)+GAMEPLAY_LEAD_FIELDS
+    title_field=getattr(args,'title_start_field',None)
+    if title_field is not None and offset < title_field+10:
+        raise ValueError('input offset must follow the title START release')
     def case(name,script='',frames=300):
         a=copy.copy(args);a.out=root/name;a.out.mkdir(parents=True,exist_ok=True)
         a.frames=frames+offset;a.port2='pad';a.device_script=a.out/'input.devices'
-        a.device_script.write_text('0 1 buttons=NONE\n0 2 buttons=NONE\n'+delayed_script(script,offset))
+        a.device_script.write_text(startup_script(args)+delayed_script(script,offset))
         r=coherent_case(a);results[name]=r;s=r['state']
         require(s.get('psx_combat_active')==1,'original combat must be active')
         require(s.get('psx_round_flow_active')==1,'original round controller must be active')
@@ -286,6 +299,7 @@ def execute(args):
                 'second neutral draw must finish at 2-2 and report a drawn match')
     report=dict(passed=True,bounded_round_policy_validated=False,
                 input_offset_fields=offset,input_offset_measured=measured,
+                title_start_field=title_field,
                 native_round_replay_victory_validated=bool(args.with_ko),
                 original_vs_timeout_scoring_validated=bool(getattr(args,'with_timeout',False)),
                 original_round_flow_parity=False,ps1_input_replay_parity=False,cases=results)
@@ -298,6 +312,8 @@ if __name__=='__main__':
     parser.add_argument('--input-offset-fields',type=int,default=None,
                         help='delay all inputs and endpoints by this many fields; default measures the first simulation tick')
     parser.add_argument('--with-timeout',action='store_true',help='Run two neutral timeout scoring/restart checkpoints')
+    parser.add_argument('--title-start-field',type=int,default=None,
+                        help='press START for ten fields at this program field to leave the title screen')
     parser.set_defaults(build=saturn_probe.ROOT/'build/paul-combat',
                         out=saturn_probe.ROOT/'assets/imported/saturn-original-combat-suite')
     execute(parser.parse_args())

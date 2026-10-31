@@ -18,14 +18,33 @@ git submodule update --remote third_party/Tekken3Remake
 
 **License boundary:** the submodule uses **PolyForm Noncommercial 1.0.0** with the upstream project's required attribution. Its Godot application is not compiled by the Saturn build. The C adaptations in `src/game/move_clock.c`, `move_lifecycle.c`, `psx_ground.c`, `psx_match.c`, `psx_body.c`, `psx_exact_contact.c`, `psx_hit_transaction.c` and `psx_round.c` retain that license; see [NOTICE.md](NOTICE.md). The local MIT license does not replace those terms. No Tekken 3 retail data is part of the submodule checkout.
 
+## Current playable build
+
+The private Paul-versus-Law build uses both fighters' original models, motion
+banks, combat data, stage, HUD and sound from a locally supplied USA disc.
+It supports a second controller or a CPU opponent, rounds and KO replay. The
+latest verified gameplay gate and build instructions are in
+[docs/RELEASE.md](docs/RELEASE.md); presentation, performance, real-hardware
+and public-distribution qualification remain open. Historical prototype and
+research descriptions below do not describe every feature of that build.
+
+The current demo candidate displays **TEKKEN 3 V0.1** and a LibSaturn credit
+while loading. At the title, connect a second controller for two-player VS or
+leave port 2 empty to fight the CPU as Paul, then press START on controller 1.
+During a match, START resets it. The mixed-mode build is launched from
+`music.cue` so that its stage music track is present.
+
+The generated Paul–Law disc contains retail data and is for local use; it is
+not a publishable itch.io download. A shareable release requires a suitable
+distribution method and the applicable rights. The adapted research code is
+also subject to the upstream noncommercial license described in [NOTICE.md](NOTICE.md).
+
 ## Milestone 0: executable foundation
 
-The [current private milestone](docs/NEXT_PLAYABLE_PROGRESS.md) renders two
-original Paul models with converted textures and independently controlled
-DIVMOT poses, confirmed through Mednafen CD boot and headless Ymir tests.
-Original USA Paul mirror-match input/health/defense observations have also been
-captured in PCSX-Redux and cross-checked against paused RAM. Live Saturn combat
-still uses the provisional match below; original combat parity is pending.
+The historical [private milestone](docs/NEXT_PLAYABLE_PROGRESS.md) rendered two
+original Paul models and established the first combat comparisons. The
+prototype described below remains available independently of the newer
+Paul–Law build.
 
 - A portable, integer-only, deterministic 60 Hz fight simulation.
 - Two fighters, four distinct limb attacks, hit/guard stun, spacing, sidesteps, collision, health, a timer, and best-of-three rounds.
@@ -255,7 +274,16 @@ Disc artifacts are generated in `build/saturn/disc/`. Firmware startup and boot 
 
 D-pad LEFT/RIGHT: move away/toward the rival; UP/DOWN: sidestep.
 X: left punch, Y: right punch, A: left kick, B: right kick.
-L: guard; START: reset match. Connect a second pad to control P2.
+L: guard, R: crouch, C: jump; START: reset match. Connect a second pad to control P2.
+
+For Mednafen keyboard play, `python3 scripts/configure_mednafen_controls.py`
+backs up the existing configuration and maps the arrow keys to movement, A/S to
+punches, Z/X to kicks, C to jump, Q to guard, W to crouch and Return to START.
+Press START on the title artwork to open the menu. Use UP/DOWN to select
+OPTION MODE, press START, and use LEFT/RIGHT
+to change DEBUG. Press START or B to go back, then select ARCADE MODE or VS MODE.
+The script disconnects Saturn port 2 for the CPU opponent; use `--keep-port2` to preserve
+that port's existing setting. Close Mednafen before changing its configuration.
 
 ## Scope, fidelity, and legal terms
 
@@ -277,7 +305,7 @@ The playable build has **no external ROM requirement** and must never ship copyr
 
 ### Hardware/performance instrumentation
 
-Press **Z** during gameplay for the lightweight diagnostic overlay (loop rate x10, scene faces, VDP1 command usage, frame work time). The ELF also exports a fixed-layout `g_t3_diagnostics` record defined in `src/saturn/diagnostics.h` for emulator memory inspection. It includes VBlank count, simulation ticks, VDP1 command count/capacity, culled/rejected faces, late swaps and draw timeouts.
+On builds with a title screen, set **DEBUG: ON** with LEFT/RIGHT before pressing START to show the lightweight diagnostic overlay (loop rate x10, scene faces, VDP1 command usage, frame work time). The ELF also exports a fixed-layout `g_t3_diagnostics` record defined in `src/saturn/diagnostics.h` for emulator memory inspection. It includes VBlank count, simulation ticks, VDP1 command count/capacity, culled/rejected faces, late swaps and draw timeouts.
 
 The [harness-led measurements](docs/SATURN_PERFORMANCE_PLAN.md) now distinguish
 actual application submissions, logic ticks and VDP lifecycle events. The

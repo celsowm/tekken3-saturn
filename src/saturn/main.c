@@ -30,6 +30,9 @@
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
 #include "saturn/vdp1.h"
+#if defined(T3_ORIGINAL_TITLE)
+#include "disc.h"
+#endif
 #include "saturn/time.h"
 #if defined(T3_OVERLAP_VDP1)
 #include "saturn/irq.h"
@@ -47,6 +50,7 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "perf.h"
 #include "sfx.h"
 #include "flipbook_burst.h"
+#include "stage_cdda.h"
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
 #include "psx_hud_messages.h"
@@ -459,7 +463,7 @@ volatile t3_diagnostics_t g_t3_diagnostics __attribute__((section(".wram_l")));
 enum {
     BOOT_MODEL, BOOT_PLAYER1, BOOT_PLAYER2, BOOT_MOVES, BOOT_POSES, BOOT_READY,
     LOADING_TITLE_Y = 64, LOADING_LABEL_Y = 100, LOADING_STAGE_Y = 124,
-    LOADING_BAR_Y = 160, LOADING_PERCENT_MAX = 100,
+    LOADING_BAR_Y = 160, LOADING_CREDIT_Y = 200, LOADING_PERCENT_MAX = 100,
     FRAME_BACKGROUND = SAT_RGB555(2,3,8), LOADING_FILL = SAT_RGB555(28,5,4)
 };
 
@@ -473,9 +477,10 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1", W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/LibSaturn", W / 2, LOADING_CREDIT_Y));
     SAT_PANIC_IF_ERROR(sat_loading_screen_draw_bar(&screen,
         (uint16_t)(completed * LOADING_PERCENT_MAX / BOOT_READY)));
     SAT_PANIC_IF_ERROR(sat_end_frame());
@@ -544,6 +549,8 @@ static void box3(sat_fx16_t x, sat_fx16_t y, sat_fx16_t z,
 
 #if defined(T3_VDP2_FLOOR) && defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
 static int32_t g_stage_input[3]; /* the world centre the image's camera was built around */
+#endif
+#if defined(T3_VDP2_FLOOR) && defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS) && !defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 /* Hit and guard sparks: a four-point flash at the defender, 6 images long. The
  * original spawns effect sprites at the contact point (HitSpawnEffect,
  * FUN_80076F10); the flash sits on the hitting segment's end point. */
@@ -553,7 +560,7 @@ static void spark_events(const t3_combat_event_t* events,unsigned count) {
     uint8_t fresh[2]={0,0};
     for(unsigned n=0;n<count;++n) {
         const t3_combat_event_t* e=&events[n];
-        if(e->kind==T3_EVENT_SWING)continue;
+        if(e->kind!=T3_EVENT_HIT && e->kind!=T3_EVENT_BLOCK)continue;
         const unsigned i=e->fighter;
         /* The attacker's hitting segment end, in PS1 world units (as the camera reads it). */
         g_spark[i].age=1u;g_spark[i].block=e->kind==T3_EVENT_BLOCK;
@@ -736,25 +743,117 @@ static uint16_t original_start_buttons(const sat_pad_state_t* pad) {
 #endif
 
 #if defined(T3_TITLE_SCREEN)
-/* Title: waits for START on pad 1, then re-reads port 2 (a pad means VS, an
- * empty port means ARCADE against the CPU). */
+/* Title composition follows Tekken3Remake docs/research/code/modes.md;
+ * Copyright (c) 2026 n0madic, PolyForm Noncommercial; see NOTICE.md.
+ * Port 2 determines whether the playable mode is arcade or VS. */
 static void title_screen(void) {
+    unsigned selected=0,options=0;
+#if defined(T3_ORIGINAL_TITLE)
+    unsigned attract=1;
+#endif
+#if defined(T3_ORIGINAL_TITLE)
+    sat_vdp1_texture_t title_texture,namco_texture;
+    sat_cdfs_volume_t* volume;
+    sat_cdfs_file_t file;
+    uint32_t read=0;
+    _Static_assert(sizeof(g_faces)>=512u+136u*200u+72u*16u,"title scratch too small");
+    SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
+    SAT_PANIC_IF_ERROR(sat_cdfs_lookup(volume,"TITLE.BIN",&file));
+    SAT_PANIC_IF_ERROR(sat_cdfs_read_at(volume,&file,0,g_faces,512u+136u*200u+72u*16u,&read));
+    if(read!=512u+136u*200u+72u*16u)SAT_PANIC_IF_ERROR(SAT_ERR_IO);
+    SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8(&title_texture,(const uint8_t*)g_faces+512u,
+        136,200,(const uint16_t*)g_faces,7));
+    SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8_pixels(&namco_texture,
+        (const uint8_t*)g_faces+512u+136u*200u,72,16,7));
+#endif
     for(unsigned blink=0;;++blink) {
         sat_pad_state_t pad0={0},pad1={0};
+        unsigned was_options=options;
+#if defined(T3_ORIGINAL_TITLE)
+        unsigned was_attract=attract;
+#endif
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#if defined(T3_ORIGINAL_TITLE)
+        SAT_PANIC_IF_ERROR(sat_set_clear_color(SAT_RGB555(0,0,0)));
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_RGB555(0,0,0)));
+#else
         SAT_PANIC_IF_ERROR(sat_set_clear_color(FRAME_BACKGROUND));
         SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
+#endif
         SAT_PANIC_IF_ERROR(sat_input_poll());
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&pad1));
+#if defined(T3_ORIGINAL_TITLE)
+        if(attract) {
+            if(pad0.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_X))attract=0;
+        } else
+#endif
+        if(options) {
+            if(pad0.pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))g_show_profiler^=1u;
+            if(pad0.pressed&(SAT_PAD_B|SAT_PAD_START))options=0;
+        } else if(pad0.pressed&(SAT_PAD_UP|SAT_PAD_DOWN))selected^=1u;
         SAT_PANIC_IF_ERROR(sat_begin_frame());
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN 3",W/2,70));
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PAUL  VS  LAW",W/2,96));
+#if defined(T3_ORIGINAL_TITLE)
+        if(attract) {
+            SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&title_texture,160,112,320,224,7));
+            if(blink&48u)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+                pad1.connected?"PUSH P1 AND/OR P2 BUTTON":"PUSH P1 START BUTTON",W/2,169));
+            SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&namco_texture,160,184,63,8,7));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"(C)1994 1995 1996 1998 NAMCO LTD.",W/2,192));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"ALL RIGHTS RESERVED",W/2,203));
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.1",278,4));
+        } else {
+        {
+            SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&title_texture,160,112,320,224,7));
+        }
+        if(options) {
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"OPTION MODE",W/2,150));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+                g_show_profiler?"< DEBUG: ON >":"< DEBUG: OFF >",W/2,174));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"B OR START: BACK",W/2,204));
+        } else {
+            SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,35,selected?186:162,250,2,1,1,
+                SAT_RGB555(25,25,25),SAT_RGB555(25,25,25)));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+                pad1.connected?"VS MODE":"ARCADE MODE",W/2,170));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+                "OPTION MODE",W/2,194));
+        }
+        }
+#else
+        {
+            const char* logo="TEKKEN 3";
+            for(unsigned i=0;logo[i];++i)if(logo[i]!=' ')
+                SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(
+                    &g_font.glyphs[(unsigned)logo[i]-32u],64+(int)i*24,28,24,32,
+                    g_hud.palette));
+        }
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.1  -  PAUL VS LAW",W/2,70));
+        SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,44,88,232,2,1,1,
+            SAT_RGB555(22,4,3),SAT_RGB555(22,4,3)));
+        if(options) {
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"OPTIONS",W/2,105));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+                g_show_profiler?"< DEBUG: ON >":"< DEBUG: OFF >",W/2,134));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"LEFT/RIGHT: CHANGE",W/2,164));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"B OR START: BACK",W/2,181));
+        } else {
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
-            pad1.connected?"2 PLAYER VS":"1 PLAYER ARCADE",W/2,128));
-        if(blink&32u)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"PRESS START",W/2,160));
+            pad1.connected?"2 PLAYER VS":"1 PLAYER ARCADE",W/2,103));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+            selected?"  START GAME":"\x3e START GAME",W/2,130));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,
+            selected?"\x3e OPTIONS":"  OPTIONS",W/2,150));
+        if(blink&32u)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"UP/DOWN  -  START: SELECT",W/2,185));
+        }
+#endif
         SAT_PANIC_IF_ERROR(sat_end_frame());
-        if(pad0.pressed&SAT_PAD_START) {
+        if(!was_options &&
+#if defined(T3_ORIGINAL_TITLE)
+           !was_attract &&
+#endif
+           (pad0.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_X))) {
+            if(selected) { options=1; continue; }
             choose_cpu(&pad1);
 #if !defined(T3_REFERENCE_REPLAY)
             t3_move_probe_set_start_buttons(original_start_buttons(&pad0),original_start_buttons(&pad1));
@@ -1026,9 +1125,8 @@ static void draw_hud(void) {
 #if !defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "WINS ", game->wins[0], 8, 47));
 #endif
-    /* One-based render submission serial, independent of logic ticks and
-     * VBlanks. Keep it visible even when the optional profiler is hidden. */
-#if !defined(T3_RENDER_BENCH_HIDE_STATUS)
+    /* One-based render submission serial, independent of logic ticks and VBlanks. */
+#if !defined(T3_RENDER_BENCH_HIDE_STATUS) && !defined(T3_HIDE_FRAME_COUNTER)
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "FRAME ", g_render_submissions + 1u, 112, HUD_FRAME_Y));
 #endif
 #if defined(T3_CPU_DIAGNOSTICS)
@@ -1610,6 +1708,7 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_coverage_probe_init());
 #endif
     loading_frame(BOOT_READY, "READY");
+    SAT_PANIC_IF_ERROR(t3_stage_cdda_start());
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
         g_t3_simulation_stack[stack_byte]=0xA5u;
@@ -1659,7 +1758,6 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
         T3_PERF_ADD(input,input_started);
-        if (pad0.pressed & SAT_PAD_Z) g_show_profiler ^= 1u;
         if (pad0.pressed & SAT_PAD_START) {
 #if defined(T3_SLAVE_SIMULATION)
             SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));
@@ -1684,6 +1782,7 @@ int main(void) {
             while(count<32u && t3_combat_events_pop(&events[count]))++count;
             t3_sfx_play_events(events,count);
             t3_sfx_round_update();
+            t3_stage_cdda_mix();
             spark_events(events,count);
         }
         now = display_fields();

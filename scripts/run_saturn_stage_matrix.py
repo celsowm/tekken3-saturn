@@ -20,6 +20,9 @@ def cache_options(path):
         key,value=line.split('=',1);name,kind=key.split(':',1)
         # Plain -DNAME=value entries are UNINITIALIZED until CMake declares
         # a cache type. Dropping them silently changes replicated workloads.
+        if name == '_Python3_EXECUTABLE' and kind == 'INTERNAL':
+            entries.setdefault('Python3_EXECUTABLE',('FILEPATH',value))
+            continue
         if kind == 'UNINITIALIZED':kind='STRING'
         if kind not in ('BOOL','STRING','FILEPATH','PATH'):continue
         entries[name]=(kind,value)

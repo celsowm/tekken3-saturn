@@ -21,11 +21,11 @@ enum { SETS=3, MAX_FRAMES=30, FRAME_BYTES=512, HEADER_BYTES=16+32, SYSTEM_SET=2 
  * SDK's registry, so a clash with them fails the upload at boot. */
 static const char* const g_file[SETS]={"FLIPC0.BIN","FLIPC1.BIN","FLIPBOOK.BIN"};
 /* The last ten frames of a record fade (modulation byte 0x80 - ((frame - frames + 10) * 0x9999 >> 12),
- * 119 down to 32 of 128). VDP1 colour-bank sprites cannot be shaded, so three banks hold the palette at
- * about 100%, 60% and 30% and the sprite picks one with its palette override; same texels, no extra VRAM. */
+ * 119 down to 33 of 128). VDP1 colour-bank sprites cannot be shaded, so three banks approximate the
+ * eleven modulation levels. The sprite picks the nearest bank; same texels, no extra VRAM. */
 enum { FADE_BANKS=3 };
 static const uint8_t g_fade_bank[FADE_BANKS]={5,4,3};
-static const uint8_t g_fade_scale[FADE_BANKS]={128,77,38}; /* of 128 */
+static const uint8_t g_fade_scale[FADE_BANKS]={128,85,47}; /* of 128 */
 static uint16_t g_palette[256];
 static sat_vdp1_texture_t g_frame_texture[SETS][MAX_FRAMES];
 static uint8_t g_frames[SETS];
@@ -123,9 +123,9 @@ sat_result_t t3_flipbook_burst_draw(void) {
         cmd.x[2]=(int16_t)far_x;cmd.y[2]=(int16_t)y1;
         cmd.x[3]=(int16_t)near_x;cmd.y[3]=(int16_t)y1;
         cmd.texture=&g_frame_texture[set][r->frame-1u];
-        /* frames - frame + 1 .. 10 is the fade: steps 1..3 full, 4..7 60%, 8..10 30%. */
+        /* The nearest of 128, 85 and 47 for the original modulation at each fade step. */
         const int fade=(int)r->frame-(int)r->frames+10;
-        cmd.palette_override=g_fade_bank[fade>7?2:fade>3?1:0];
+        cmd.palette_override=g_fade_bank[fade>6?2:fade>2?1:0];
         SAT_TRY(sat_draw_sprite_distorted_color_calc(&cmd,SAT_VDP2_SPRITE_ADD));
         ++g_t3_flipbook_drawn;
         g_t3_flipbook_last[0]=x0;g_t3_flipbook_last[1]=y0;g_t3_flipbook_last[2]=x1;g_t3_flipbook_last[3]=y1;

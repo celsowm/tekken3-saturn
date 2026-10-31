@@ -70,6 +70,26 @@ def summarize(path):
     return dict(path=str(path), **result)
 
 
+def sound_summary(path):
+    source, data = read_run(path)
+    if 'state' in data:
+        cases = {source.parent.name: data}
+    elif 'cases' in data and 'passed' in data:
+        cases = data['cases']
+    else:
+        raise ValueError(f'{source}: sound counters require a probe or combat suite')
+    missing, rows = [], {}
+    for name, case in cases.items():
+        counters = case.get('optimizations', {})
+        if not all(key in counters for key in ('sfx_played', 'sfx_unmapped', 'sfx_unmapped_seen')):
+            missing.append(name)
+            continue
+        rows[name] = {key: counters[key] for key in ('sfx_played', 'sfx_unmapped', 'sfx_unmapped_seen')}
+    return dict(complete=bool(cases) and not missing, missing_cases=sorted(missing),
+                cases=rows, unmapped_cases=sorted(name for name, row in rows.items() if row['sfx_unmapped']),
+                scope='Counts are per independent probe; they do not prove audible fidelity or untested move coverage.')
+
+
 def cadence(start, end, hz):
     if hz <= 0:
         raise ValueError('refresh rate must be positive')
@@ -114,24 +134,37 @@ def main():
     parser.add_argument('--cadence', type=Path, nargs=2, metavar=('START', 'END'))
     parser.add_argument('--fields', nargs='+', metavar='STATE_FIELD',
                         help='include selected diagnostic state fields from each probe')
+    parser.add_argument('--optimizations', nargs='+', metavar='COUNTER',
+                        help='include selected optimization and sound counters from each probe')
     parser.add_argument('--provenance', action='store_true',
                         help='include the recorded build and emulator hashes')
+    parser.add_argument('--sound', action='store_true',
+                        help='report sound request coverage for probes or combat suites')
     parser.add_argument('--hz', type=float, default=60)
     args = parser.parse_args()
     if not args.runs and not args.cadence:
         parser.error('provide saved runs or --cadence START END')
     try:
         runs = [summarize(path) for path in args.runs]
-        if args.fields or args.provenance:
+        if args.sound:
+            for path, run in zip(args.runs, runs):
+                run['sound'] = sound_summary(path)
+        if args.fields or args.optimizations or args.provenance:
             for path, run in zip(args.runs, runs):
                 source, data = read_run(path)
                 if run['kind'] != 'probe':
-                    raise ValueError(f'{source}: --fields/--provenance require a probe')
+                    raise ValueError(f'{source}: selected counters and provenance require a probe')
                 if args.fields:
                     missing = [key for key in args.fields if key not in data['state']]
                     if missing:
                         raise ValueError(f'{source}: unknown state fields: {missing}')
                     run['state'] = {key: data['state'][key] for key in args.fields}
+                if args.optimizations:
+                    counters = data.get('optimizations', {})
+                    missing = [key for key in args.optimizations if key not in counters]
+                    if missing:
+                        raise ValueError(f'{source}: unknown optimization counters: {missing}')
+                    run['optimizations'] = {key: counters[key] for key in args.optimizations}
                 if args.provenance:
                     run['provenance'] = data.get('provenance')
         result = dict(runs=runs, passed=all(run['passed'] for run in runs))

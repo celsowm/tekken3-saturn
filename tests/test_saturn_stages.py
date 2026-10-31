@@ -59,6 +59,10 @@ class StageRingTests(unittest.TestCase):
             options,compiler=cache_options(cache)
             self.assertIn('-DCMAKE_C_FLAGS_RELEASE:STRING=-O3 -DNDEBUG',options)
             self.assertEqual(compiler,Path('/compiler/bin'))
+            cache.write_text(cache.read_text().replace('Python3_EXECUTABLE:FILEPATH=',
+                                                       '_Python3_EXECUTABLE:INTERNAL='))
+            options,_=cache_options(cache)
+            self.assertIn('-DPython3_EXECUTABLE:FILEPATH=/fixture/Python3_EXECUTABLE',options)
             cache.write_text(cache.read_text().replace('-O3 -DNDEBUG',''))
             with self.assertRaisesRegex(ValueError,'Release C flags'):cache_options(cache)
 

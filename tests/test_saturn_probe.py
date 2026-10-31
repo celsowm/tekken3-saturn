@@ -1,7 +1,9 @@
 """Validate the external debugger ABI without depending on host C layout."""
 from pathlib import Path
+import hashlib
 import struct
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -9,6 +11,19 @@ import saturn_probe as probe
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_cue_provenance_hashes_actual_binary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'mixed track.bin').write_bytes(b'audio and data')
+            cue = root / 'music.cue'
+            cue.write_text('FILE "mixed track.bin" BINARY\n  TRACK 01 MODE1/2352\n')
+            result = probe.disc_provenance(cue)
+            self.assertEqual(result['disc_files_sha256']['mixed track.bin'],
+                             hashlib.sha256(b'audio and data').hexdigest())
+            cue.write_text('not a cue')
+            with self.assertRaisesRegex(ValueError, 'no quoted binary'):
+                probe.disc_provenance(cue)
+
     def test_native_panic_cannot_hide_behind_stale_diagnostics(self):
         raw=struct.pack('>Iii32s',0x50414E43,-8,193,b'main.c\0')
         self.assertEqual(probe.decode_panic(raw),dict(code=-8,line=193,file='main.c'))

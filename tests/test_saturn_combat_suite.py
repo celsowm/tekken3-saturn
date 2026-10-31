@@ -23,6 +23,12 @@ class CoherentCaseTests(unittest.TestCase):
                          '180 1 buttons=RIGHT\n260 1 buttons=NONE\n')
         with self.assertRaises(ValueError):suite.delayed_script('',-1)
 
+    def test_title_start_pulse_precedes_gameplay(self):
+        args=argparse.Namespace(title_start_field=400)
+        self.assertEqual(suite.startup_script(args),
+                         '0 1 buttons=NONE\n0 2 buttons=NONE\n400 1 buttons=START\n410 1 buttons=NONE\n')
+        with self.assertRaises(ValueError):suite.startup_script(argparse.Namespace(title_start_field=0))
+
     def test_torn_snapshot_is_retained_and_actual_endpoint_reported(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);inputs=root/'input.devices';inputs.write_text('0 1 buttons=X\n')
@@ -64,6 +70,15 @@ if __name__=='__main__':unittest.main()
 
 
 class GameplayStartTests(unittest.TestCase):
+    def test_gameplay_search_replays_title_pulse_at_every_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args=argparse.Namespace(out=Path(directory),frames=0,device_script=None,title_start_field=400)
+            def run(a):
+                self.assertIn('400 1 buttons=START\n410 1 buttons=NONE\n',a.device_script.read_text())
+                return dict(state=dict(sim_ticks=max(0,a.frames-650)))
+            found=suite.first_gameplay_field(args,run)
+            self.assertTrue(650<=found<=660,found)
+
     def test_start_is_found_within_resolution_for_any_boot_length(self):
         for boot in (0,7,91,276,640):
             with tempfile.TemporaryDirectory() as directory:

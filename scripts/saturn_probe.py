@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -147,6 +148,14 @@ def decode_panic(raw):
     if magic!=0x50414E43:return None
     return dict(code=code,line=line,file=filename.split(b'\0',1)[0].decode('utf-8',errors='replace'))
 
+def disc_provenance(disc):
+    result = {'disc_sha256': hashlib.sha256(disc.read_bytes()).hexdigest()}
+    if disc.suffix.lower() == '.cue':
+        files = re.findall(r'^\s*FILE\s+"([^"]+)"\s+BINARY\s*$', disc.read_text(), re.IGNORECASE | re.MULTILINE)
+        if not files:raise ValueError('CUE has no quoted binary files')
+        result['disc_files_sha256'] = {name:hashlib.sha256((disc.parent/name).read_bytes()).hexdigest() for name in files}
+    return result
+
 def run(args):
     build, out = args.build.resolve(), args.out.resolve()
     workload = saturn_workload.inspect(build)
@@ -161,7 +170,8 @@ def run(args):
     address, size = syms['_g_t3_diagnostics']
     start = syms['_start'][0]
     probe = args.probe or args.libsaturn / 'harness/build-macos/probe'
-    command = [str(probe.resolve()), '--iso', str(build / 'disc/tekken3_saturn.iso'),
+    disc = (getattr(args, 'disc', None) or build / 'disc/tekken3_saturn.iso').resolve()
+    command = [str(probe.resolve()), '--iso', str(disc),
                '--bin', str(binary), '--bios', str(args.bios.resolve()),
                '--boot-frames', '90', '--frames', str(args.frames),
                '--out', str(out / 'ymir.json'),
@@ -189,6 +199,8 @@ def run(args):
                 command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
     if args.device_script:
         command.extend(['--device-script', str(args.device_script.resolve())])
+    if getattr(args,'capture_audio',False):
+        command.extend(['--dump-audio',str(out/'audio.s16le')])
     if getattr(args,'wram_low_fill',None) is not None:
         if not 0<=args.wram_low_fill<=255:raise ValueError('Low WRAM fill must be a byte')
         command.extend(['--wram-low-fill',str(args.wram_low_fill)])
@@ -344,6 +356,7 @@ def run(args):
     for name, path in [('app', binary), ('iso', build / 'disc/tekken3_saturn.iso'),
                        ('probe', probe), ('bios', args.bios)]:
         provenance[name + '_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    provenance.update(disc_provenance(disc))
     for name, path in [('project', ROOT), ('libsaturn', args.libsaturn),
                        ('research', ROOT / 'third_party/Tekken3Remake')]:
         revision = subprocess.run(['git', '-C', str(path), 'describe', '--always', '--dirty'],
@@ -367,6 +380,7 @@ def run(args):
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build', type=Path, default=ROOT / 'build/saturn')
+    p.add_argument('--disc', type=Path, help='alternate ISO or mixed-mode CUE from this build')
     p.add_argument('--workload', choices=saturn_workload.PROFILES, default='diagnostic',
                    help='release profiles refuse procedural, frozen or instrumented timing builds')
     p.add_argument('--libsaturn', type=Path, default=ROOT.parent / 'lib-saturn')
@@ -381,6 +395,7 @@ def parser():
     p.add_argument('--port2', choices=('pad', 'none'), default='pad')
     p.add_argument('--device-script', type=Path)
     p.add_argument('--capture-inputs',action='store_true',help='dump an explicitly instrumented input recording build')
+    p.add_argument('--capture-audio',action='store_true',help='capture Ymir SCSP output as private stereo s16le audio')
     p.add_argument('--profile', action='store_true', help='capture PC, cycle, instruction and transfer profiles')
     p.add_argument('--wram-low-fill',type=lambda s:int(s,0),help='injected boot with Low WRAM initialized to this byte')
     p.add_argument('--sh2-cache',choices=('on','off'),help='explicit Ymir cache emulation; separate from guest CCR')

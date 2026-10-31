@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from report_saturn_runs import cadence, summarize
+from report_saturn_runs import cadence, sound_summary, summarize
 
 
 class RunReportTests(unittest.TestCase):
@@ -83,6 +84,32 @@ class RunReportTests(unittest.TestCase):
         path = self.root / 'run.json'
         path.write_text(json.dumps(dict(returncode=1, seconds_requested=35, scope='CD boot')))
         self.assertFalse(summarize(path)['passed'])
+
+    def test_selected_optimization_counters(self):
+        path = self.probe('sound', 100, 12, 48)
+        file = path / 'observation.json'
+        data = json.loads(file.read_text())
+        data['optimizations'] = {'sfx_unmapped': 0, 'sfx_unmapped_seen': []}
+        file.write_text(json.dumps(data))
+        command = [sys.executable, str(Path(__file__).resolve().parents[1] / 'scripts/report_saturn_runs.py'),
+                   str(path), '--optimizations', 'sfx_unmapped', 'sfx_unmapped_seen']
+        result = json.loads(subprocess.check_output(command))
+        self.assertEqual(result['runs'][0]['optimizations'], data['optimizations'])
+        failed = subprocess.run(command + ['missing'], capture_output=True, text=True)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn('unknown optimization counters', failed.stderr)
+
+    def test_sound_suite_reports_missing_and_unmapped_cases(self):
+        path = self.probe('sound-case', 100, 12, 48)
+        data = json.loads((path / 'observation.json').read_text())
+        sound = dict(data, optimizations={'sfx_played': 3, 'sfx_unmapped': 1,
+                                         'sfx_unmapped_seen': ['3:1:105A']})
+        suite = self.root / 'suite.json'
+        suite.write_text(json.dumps(dict(passed=True, cases={'mapped': data, 'unmapped': sound})))
+        report = sound_summary(suite)
+        self.assertFalse(report['complete'])
+        self.assertEqual(report['missing_cases'], ['mapped'])
+        self.assertEqual(report['unmapped_cases'], ['unmapped'])
 
 
 if __name__ == '__main__':

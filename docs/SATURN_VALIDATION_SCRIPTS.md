@@ -74,10 +74,44 @@ The separate `owned-camera-v1` mode uses fresh configuration and physical
 pads without that feedback; each comparison records `independent_camera`.
 The wrapper uses the chosen fixture's length: selecting 500 or 600 ticks
 does not satisfy the release gate's 3,000-tick requirement.
+
+`saturn_probe.py` and `saturn_combat_suite.py` accept `--disc <path>` when the
+build uses a mixed-mode CUE. The probe fingerprints the selected CUE and its
+referenced binary files as well as the build's ELF, rather than treating the
+data-only ISO as the tested disc. `saturn_regression.py --disc <path>` also
+forwards the disc to its live combat gate and records its identity; its
+separate original-reference build retains its own disc and configuration.
+For short audio investigations, `saturn_probe.py --capture-audio` asks the
+external Ymir harness for raw stereo signed 16-bit little-endian SCSP output
+in `audio.s16le`. Its harness convention is 44,100 Hz; convert it with FFmpeg
+using `-f s16le -ar 44100 -ac 2` before passing it to
+`scripts/check_cdda_capture.py`. Keep the JSON results and delete captured
+audio after inspection. This is an injected emulator run, not a CD boot.
+Its optional `--timeline-offset` restricts each correlation search to a
+shared expected source timeline, with `--tolerance` setting the allowed drift;
+this helps distinguish repeated music phrases from consistent progression.
+`scripts/analyze_loading_capture.py` counts nearly uniform frames in a short
+selected video window; inspect the screenshots and compare image hashes when
+the image viewer appears inconsistent. Delete the video after analysis.
+On macOS, `record_mednafen.py --start-after 20` can send a Return/START pulse
+to its isolated emulator process after approximately 20 seconds; it requires
+Swift and accessibility access. The screenshot or gameplay evidence must
+still show that the title accepted input. Keep captures short and delete the
+recording immediately after analysis, as required by AGENTS.md.
+`scripts/analyze_fight_cadence.py` counts exact image changes in a cropped
+fight window of such a recording. It is a visual observation, not a direct
+measure of display swaps or physical Saturn performance.
 The live suite now waits for an observed FIGHT state before starting its
 input schedule, including production round one's original intro. The
+optional `--title-start-field 400` sends START at field 400 and releases it at
+410 in every run, including the search for the first controllable fight; use
+it with a title build whose loading completes before that pulse. The suite
+still measures the fight start and refuses a manual input offset preceding the
+release. The
 configuration-initialized first-round reference has a separate manifest and
 comparison described in [FIRST_ROUND_START.md](FIRST_ROUND_START.md).
+The release-gate wrapper accepts and forwards the same `--title-start-field`
+option to its combat gate.
 
 ## Inspect saved runs
 
@@ -98,6 +132,17 @@ python3 scripts/report_saturn_runs.py \
 The command prints JSON and exits nonzero for failed runs, malformed inputs or
 missing required fields. It does not rerun gameplay assertions or replace
 `saturn_combat_suite.py`. Keep capture artifacts private under `assets/imported/`.
+
+Use `--optimizations` to inspect counters outside the main state, for example:
+
+```sh
+python3 scripts/report_saturn_runs.py assets/imported/demo-audio-fix-cpu \
+  --optimizations sfx_played sfx_unmapped sfx_unmapped_seen event_hits
+```
+
+`--sound` summarizes these counters for a probe or every case in a completed
+combat suite, and explicitly lists cases whose counters are missing. A zero
+count only covers the requests exercised by those runs.
 
 ## Compare gameplay cadence
 

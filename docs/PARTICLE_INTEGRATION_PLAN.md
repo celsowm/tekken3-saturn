@@ -1839,3 +1839,19 @@ the earlier screenshots. The burst now uses bank 5 and, for its fade, banks 4 an
 - Still not done: drawing the burst between fighter faces by its bucket
   `(otz - 0x6E) >> 3` (it is drawn over both fighters, which hides nothing in the
   compared frame), and the exact modulation of the fade.
+
+## 60. Closer three-bank fade (2026-10-30)
+
+The same three palette banks now use modulation levels 128, 85 and 47, selecting
+the nearest level for each original fade step. For steps 0 through 10 the
+original levels are 128, 119, 109, 100, 90, 81, 71, 61, 52, 42 and 33. With
+full brightness fixed at 128, 85 and 47 minimize the sum of squared errors over
+those eleven levels: 1,346 instead of 1,940 for the previous selection. The
+maximum modulation error falls from 28 to 19. Palette quantization and the
+hardware blend still prevent an exact pixel match; this calculation does not
+establish a visual comparison.
+
+The `burst-2p` Saturn build and disc-image checks pass with both flipbook and
+particle preparation enabled. The host flipbook state test passes. The separate
+original spark phases test terminated with an illegal instruction in its Python
+harness on this run, so it was not verified. Depth ordering remains open.

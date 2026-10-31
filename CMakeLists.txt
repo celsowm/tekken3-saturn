@@ -38,14 +38,16 @@ target_sources(tekken3_fight PRIVATE src/game/psx_world_pose.c)
 # the USA executable's tables from the private import and the fighter's raw
 # DIVMOT bank (BNS record; its camera sections). Never in public builds.
 set(T3_LOCAL_CAMERA_BANK "" CACHE FILEPATH "Private raw DIVMOT bank (BNS record) for the original fight camera")
+set(T3_LOCAL_CAMERA_EXE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/SLUS_004.02"
+    CACHE FILEPATH "Private USA executable containing the original fight camera tables")
 set(T3_LOCAL_SECOND_CAMERA_BANK "" CACHE FILEPATH "Private raw P2 DIVMOT bank for its fight camera")
 option(T3_COMPACT_CAMERA_STREAMS "Keep original compact camera stream words" OFF)
 option(T3_COLD_CAMERA_STREAMS "Load compact camera stream words from CAMERA.BIN to Low WRAM" OFF)
 set(T3_LOCAL_CAMERA_SPLINE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_spline.bin"
     CACHE FILEPATH "Private 0x660-byte PS1 spline window for the camera streams")
 function(t3_add_private_camera target)
-    if(NOT EXISTS "${T3_LOCAL_CAMERA_BANK}" OR NOT EXISTS "${T3_LOCAL_CAMERA_SPLINE}")
-        message(FATAL_ERROR "The original fight camera requires T3_LOCAL_CAMERA_BANK and T3_LOCAL_CAMERA_SPLINE")
+    if(NOT EXISTS "${T3_LOCAL_CAMERA_BANK}" OR NOT EXISTS "${T3_LOCAL_CAMERA_SPLINE}" OR NOT EXISTS "${T3_LOCAL_CAMERA_EXE}")
+        message(FATAL_ERROR "The original fight camera requires T3_LOCAL_CAMERA_BANK, T3_LOCAL_CAMERA_SPLINE and T3_LOCAL_CAMERA_EXE")
     endif()
     set(_t3_second_camera_args "")
     set(_t3_camera_format_args "")
@@ -72,12 +74,12 @@ function(t3_add_private_camera target)
     add_custom_command(OUTPUT "${_gen}/t3_local_camera.c" "${_gen}/t3_local_camera.h"
             ${_t3_camera_outputs}
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
-            --bank "${T3_LOCAL_CAMERA_BANK}" --spline-tables "${T3_LOCAL_CAMERA_SPLINE}"
+            --bank "${T3_LOCAL_CAMERA_BANK}" --spline-tables "${T3_LOCAL_CAMERA_SPLINE}" --exe "${T3_LOCAL_CAMERA_EXE}"
             --output "${_gen}" ${_t3_second_camera_args} ${_t3_camera_format_args}
         DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
             "${CMAKE_SOURCE_DIR}/scripts/psx_camera_tables.py"
             "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"
-            "${T3_LOCAL_CAMERA_BANK}" "${T3_LOCAL_CAMERA_SPLINE}"
+            "${T3_LOCAL_CAMERA_BANK}" "${T3_LOCAL_CAMERA_SPLINE}" "${T3_LOCAL_CAMERA_EXE}"
             ${T3_LOCAL_SECOND_CAMERA_BANK}
         VERBATIM COMMENT "Embed PRIVATE original fight camera tables (never distribute)")
     target_sources(${target} PRIVATE "${_gen}/t3_local_camera.c")
@@ -352,6 +354,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE T3_PARALLEL_SKINNING=1)
     endif()
     set(T3_RENDER_BENCH_TICK "0" CACHE STRING "Private fixed-pose render benchmark tick; 0 keeps live gameplay")
+    option(T3_HIDE_FRAME_COUNTER "Hide the render submission counter in the live HUD" OFF)
+    if(T3_HIDE_FRAME_COUNTER)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_HIDE_FRAME_COUNTER=1)
+    endif()
     option(T3_RENDER_BENCH_HIDE_STATUS "Diagnostic: hide benchmark label in fixed-pose screenshots" OFF)
     if(T3_RENDER_BENCH_HIDE_STATUS)
         if(T3_RENDER_BENCH_TICK EQUAL 0)
@@ -481,7 +487,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_TITLE_SCREEN)
         target_compile_definitions(tekken3_saturn PRIVATE T3_TITLE_SCREEN=1)
     endif()
+    set(T3_LOCAL_TITLE_OVERLAY "" CACHE FILEPATH "Private USA title.ovl record for original title artwork")
+    if(T3_TITLE_SCREEN AND T3_LOCAL_TITLE_OVERLAY)
+        set(_t3_title_gen "${CMAKE_BINARY_DIR}/generated/private_title")
+        add_custom_command(OUTPUT "${_t3_title_gen}/TITLE.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_title_art.py"
+                --overlay "${T3_LOCAL_TITLE_OVERLAY}" --out "${_t3_title_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_title_art.py" "${T3_LOCAL_TITLE_OVERLAY}" VERBATIM)
+        target_sources(tekken3_saturn PRIVATE "${_t3_title_gen}/TITLE.BIN")
+        list(APPEND _t3_stage_disc_files "${_t3_title_gen}/TITLE.BIN")
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_TITLE=1)
+    endif()
     set(T3_LOCAL_SFX "" CACHE PATH "Private USA import (SLUS_004.02, raw/072, 073, 080; Law ARC via T3_LOCAL_ACTOR1_ARC): adds the original combat sounds and voices")
+    set(T3_STAGE_CDDA_WAV "" CACHE FILEPATH "Private stage music WAV for the mixed-mode disc")
+    option(T3_STAGE_CDDA "Play the stage theme from audio track 2 after boot loading" OFF)
+    if(T3_STAGE_CDDA)
+        if(NOT T3_LOCAL_SFX OR NOT EXISTS "${T3_STAGE_CDDA_WAV}")
+            message(FATAL_ERROR "T3_STAGE_CDDA requires T3_LOCAL_SFX and T3_STAGE_CDDA_WAV")
+        endif()
+        target_sources(tekken3_saturn PRIVATE src/saturn/stage_cdda.c)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_STAGE_CDDA=1)
+    endif()
     if(T3_LOCAL_SFX)
         set(_t3_sfx_gen "${CMAKE_BINARY_DIR}/generated/private_sfx")
         add_custom_command(OUTPUT "${_t3_sfx_gen}/SFX.BIN" "${_t3_sfx_gen}/t3_local_sfx.h"
@@ -1391,8 +1417,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     target_compile_options(tekken3_saturn PRIVATE -Wall -Wextra -O2)
     libsaturn_configure_executable(tekken3_saturn)
     libsaturn_add_binary(tekken3_saturn MAX_BYTES 983040)
+    set(T3_BOOT_PAYLOADS "" CACHE FILEPATH "Optional LibSaturn native boot payload manifest")
+    set(_t3_boot_payload_args "")
+    if(T3_BOOT_PAYLOADS)
+        if(NOT EXISTS "${T3_BOOT_PAYLOADS}")
+            message(FATAL_ERROR "T3_BOOT_PAYLOADS manifest does not exist")
+        endif()
+        list(APPEND _t3_boot_payload_args BOOT_PAYLOADS "${T3_BOOT_PAYLOADS}")
+    endif()
     libsaturn_add_disc(tekken3_saturn NAME tekken3_saturn
-        IP_TEMPLATE_KIND native ROOT_FILES ${_t3_stage_disc_files} ALL)
+        IP_TEMPLATE_KIND native ${_t3_boot_payload_args} ROOT_FILES ${_t3_stage_disc_files} ALL)
+    if(T3_STAGE_CDDA)
+        add_custom_command(
+            OUTPUT "${CMAKE_BINARY_DIR}/disc/music.cue" "${CMAKE_BINARY_DIR}/disc/music.bin"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_stage_cdda_disc.py"
+                --build "${CMAKE_BINARY_DIR}" --wav "${T3_STAGE_CDDA_WAV}"
+                --libsaturn "${LIBSATURN_SOURCE_DIR}" --force
+            DEPENDS tekken3_saturn_disc "${CMAKE_BINARY_DIR}/disc/tekken3_saturn.cue" "${T3_STAGE_CDDA_WAV}"
+                "${CMAKE_SOURCE_DIR}/scripts/build_stage_cdda_disc.py"
+                "${CMAKE_SOURCE_DIR}/scripts/build_cd_audio.py"
+                "${CMAKE_SOURCE_DIR}/scripts/convert_cd_audio.py"
+                "${LIBSATURN_SOURCE_DIR}/tools/iso_to_raw.py"
+            VERBATIM COMMENT "Build private mixed-mode CD-audio disc")
+        add_custom_target(tekken3_saturn_mixed_disc ALL
+            DEPENDS "${CMAKE_BINARY_DIR}/disc/music.cue" "${CMAKE_BINARY_DIR}/disc/music.bin")
+    endif()
 else()
     find_path(T3_SATURN_MATH_INCLUDE_DIR saturn/int_math.h
         HINTS "${LIBSATURN_SOURCE_DIR}/include" "$ENV{LIBSATURN_PREFIX}/include"

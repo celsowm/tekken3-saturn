@@ -100,16 +100,22 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
   matchups remain unmeasured.
 - [~] Drop shadows: a blob under each fighter, not the PSSDW mesh.
 - [ ] Floor distance shading (VDP2 has no per-line brightness ramp without losing texture contrast).
-- [~] Sound: swing, hand/foot guard and hit samples from VAB 0, plus Paul's and Law's shouts and hurt voices; no KO or result voices, music or most effects.
-- [~] Effects: a hit/guard spark at the contact point (HUD cross); the original effect sprites are not ported.
+- [~] Sound: selected original effects, Paul and Law voices and round
+  announcements are present; the mixed-mode candidate also plays Paul's stage
+  theme. Coverage of all moves, full mixing and hardware remain unqualified.
+  See [RELEASE.md](RELEASE.md) for the tested scope.
+- [~] Effects: the current candidate draws original hit flipbooks and
+  particles. Other effects and complete visual parity remain open; see
+  [PARTICLE_INTEGRATION_PLAN.md](PARTICLE_INTEGRATION_PLAN.md).
 - [~] HUD: private original system-texture bar caps/fills, round marks and timer
   digits upload to VDP1 with `T3_ORIGINAL_HUD=ON` and draw during gameplay at
   the exact mapped original 384 × 480 positions, with both fighters' original
   name sprites on their plates. The original four-field health-bar transition
   advances at 60 Hz and matches 33,575 original trace transitions. The
-  original text font, round messages ("ROUND n", "READY?", "K.O.", result
-  texts) and mode lines remain pending. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
-- [~] Menus: an optional title screen (`T3_TITLE_SCREEN`); no select or mode menus.
+  original text and round messages are also present in the current build;
+  complete visual parity remains open. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
+- [~] Menus: the demo candidate enables the title screen (`T3_TITLE_SCREEN`);
+  there are no character-select or mode menus.
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 
 ## Milestone 4: completeness and fidelity
