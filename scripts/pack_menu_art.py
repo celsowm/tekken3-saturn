@@ -33,7 +33,7 @@ import overlay_images  # noqa: E402
 import system_textures  # noqa: E402
 
 W, H = 352, 448
-PORT_W, PORT_H, PORT_COLOURS = 126, 208, 116
+PORT_W, PORT_H, PORT_COLOURS = 126, 208, 92
 PORT_STRIDE = 128                       # VDP1 textures are a multiple of 8 wide
 FACES, FACE_W, FACE_H = 20, 32, 58
 CELL_W, CELL_H, PITCH = 28, 50, 34
@@ -141,12 +141,17 @@ def select(record, exe, out, tmp):
             tiles.paste(tile_pics[rows[row * 8 + column]], (column * 48 - 8, row * 64))
     background(tiles, 'TILEBG.BIN', out)
     canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    # Layout from the PS1 capture (368 x 480 scaled to 352 x 448): the glass panels start near y 56,
+    # the plates sit at 300 with the portraits' shoulders reaching them, the grid below. The
+    # PLAYER SELECT picture is ghosted behind the panels, its black plate see-through.
     logo, box = trim(pic(14))
     lx = (W - logo.width) // 2
-    canvas.paste(logo.convert('RGB'), (lx, 2))
-    py0 = 2 + logo.height + 2
-    port_y = py0 + 14
-    plate_y = port_y + PORT_H
+    mask = logo.getchannel('A').point(lambda v: v)
+    luma = logo.convert('L').point(lambda v: min(255, v * 3))
+    canvas.paste(logo.convert('RGB'), (lx, 24), luma)
+    port_y = 56
+    py0 = port_y - 14
+    plate_y = 300
     left_x, right_x = 10, W - PORT_W - 10
     for tim, x0, x1, dest in ((frame[10], 0, 146, 0), (frame[11], 38, 184, W - 146)):
         strip = tim_image(tim, tmp).crop((x0, 0, x1, 14))
@@ -159,9 +164,7 @@ def select(record, exe, out, tmp):
     for tim, x0, x1, dest in ((frame[16], 0, 146, 0), (frame[19], 38, 184, W - 146)):
         strip = tim_image(tim, tmp).crop((x0, 8, x1, 22))
         canvas.paste(strip.convert('RGB'), (dest, plate_y + 16))
-    for x in (left_x, right_x):
-        draw.rectangle((x - 2, port_y, x + PORT_W + 1, plate_y - 1), fill=(0, 0, 0, 255))
-    grid_y = plate_y + 16 + 14 + 2
+    grid_y = plate_y + 16 + 14 + 4
     grid_x = (W - 10 * PITCH + (PITCH - CELL_W)) // 2
     tims = system_textures.members(exe.read_bytes(), 'usa')
     # the two rows follow t3_select_grid's cell table, written by the C side;
@@ -188,7 +191,8 @@ def select(record, exe, out, tmp):
     return {'SEL_PORT_Y': port_y, 'SEL_PORT_LEFT_X': left_x, 'SEL_PORT_RIGHT_X': right_x,
             'SEL_PLATE_Y': plate_y, 'SEL_GRID_X': grid_x, 'SEL_GRID_Y': grid_y,
             'SEL_CELL_W': CELL_W, 'SEL_CELL_H': CELL_H, 'SEL_PITCH': PITCH,
-            'SEL_ROW_PITCH': CELL_H + 2, 'SEL_LOGO_H': logo.height}
+            'SEL_ROW_PITCH': CELL_H + 2, 'SEL_LOGO_H': logo.height,
+            'SEL_SPRITE_Y': plate_y - PORT_H, 'SEL_GLOW_H': plate_y - port_y}
 
 
 def glow_colour(image):
@@ -233,6 +237,113 @@ def names(record, out, tmp):
     (out / 'NAMES.BIN').write_bytes(bytes(head) + bytes(6) + bytes(body))
 
 
+# ---- text in the original fonts ----------------------------------------------------------------
+FONT_TABLE = 0x80021D64                  # USA: 4 x 16 bytes, glyph UV table first (extract_psx_hud.py)
+MODES = ('ARCADE', 'VS', 'TEAM BATTLE', 'TIME ATTACK', 'SURVIVAL', 'TEKKEN FORCE', 'PRACTICE', 'OPTION')
+# CLUT rows of the system fonts (rows 480+, x 256..): picked against the PS1 capture.
+GOLD, RED, CYAN, WHITE, YELLOW = 5, 2, 3, 6, 39
+DIM = 0.6
+
+
+class Fonts:
+    """Strings drawn with the original fonts: glyphs from the system texture VRAM, indices 0-15."""
+
+    def __init__(self, exe):
+        self.exe = exe
+        self.vram = system_textures.build_vram(system_textures.members(exe, 'usa'))
+
+    def word(self, x, y):
+        return struct.unpack_from('<H', self.vram, 2 * (1024 * y + x))[0]
+
+    def palette(self, k):
+        return [self.word(256 + 16 * (k & 15) + i, ((k >> 4) + 24) | 480) for i in range(16)]
+
+    def render(self, text, font):
+        table, advance, _, width, height, page, _, _ = struct.unpack_from(
+            '<I5H2B', self.exe, FONT_TABLE - 0x80010000 + 0x800 + 16 * font)
+        px, py = (page & 15) * 64, ((page >> 4) & 1) * 256
+        out = np.zeros((height, advance * len(text) + width), np.uint8)
+        for n, char in enumerate(text):
+            if char == ' ':
+                continue
+            uv, = struct.unpack_from('<H', self.exe, table - 0x80010000 + 0x800 + 2 * ord(char))
+            u0, v0 = uv & 255, uv >> 8
+            for y in range(height):
+                for x in range(width):
+                    packed = self.word(px + (u0 + x) // 4, py + v0 + y)
+                    out[y, n * advance + x] = (packed >> (4 * ((u0 + x) & 3))) & 15
+        cols = np.where(out.any(axis=0))[0]
+        return out[:, cols.min():cols.max() + 1]
+
+
+def dimmed(words):
+    return [word(*(int(c * DIM) for c in rgb555(w))) if w else 0 for w in words]
+
+
+def texts(exe, out):
+    """TEXT.BIN: every menu string as 4-bit glyph indices turned into VDP1 codes.
+
+    'T3TX0001', u16 palettes, u16 textures; palettes (group, base code, 16 words); textures
+    (group, palette, w, h, w*h codes). Group 0 is the title and mode list (palettes at codes
+    16, 32 ...), group 1 the select (yellow, cyan, white at 208, 224, 240)."""
+    fonts = Fonts(exe)
+    base = lambda w: [word(*rgb555(v)) if v else 0 for v in w]            # noqa: E731
+    colours = {'gold': fonts.palette(GOLD), 'red': fonts.palette(RED), 'cyan': fonts.palette(CYAN),
+               'white': fonts.palette(WHITE), 'yellow': fonts.palette(YELLOW)}
+    colours['dimred'], colours['dimcyan'] = dimmed(colours['red']), dimmed(colours['cyan'])
+    colours = {k: [(v & 0x7FFF) | 0x8000 if v else 0 for v in w] for k, w in colours.items()}
+    title_blocks = ['gold', 'red', 'cyan', 'white', 'dimred', 'dimcyan']
+    select_blocks = {'yellow': 208, 'cyan': 224, 'white': 240}
+    palettes = [(0, 16 * (i + 1), colours[name]) for i, name in enumerate(title_blocks)]
+    palettes += [(1, code, colours[name]) for name, code in select_blocks.items()]
+    code_of = {(0, name): 16 * (i + 1) for i, name in enumerate(title_blocks)}
+    code_of.update({(1, name): code for name, code in select_blocks.items()})
+    pictures, names = [], []
+
+    def add(name, group, block, font, string):
+        glyphs = fonts.render(string, font)
+        height, width = glyphs.shape
+        width8 = (width + 7) & ~7
+        codes = np.zeros((height, width8), np.uint8)
+        codes[:, :width] = np.where(glyphs > 0, glyphs + code_of[(group, block)] - 1, 0)
+        # the font's index 1.. are the visible colours; index 0 is transparent
+        codes[:, :width][glyphs == 0] = 0
+        pictures.append(struct.pack('>BBHH', group, 0, width8, height) + codes.tobytes())
+        names.append((name, group, width, height))
+
+    add('NAMCO', 0, 'red', 0, 'NAMCO')
+    add('PRESENTS', 0, 'white', 0, 'PRESENTS.')
+    add('PROMPT_ONE', 0, 'gold', 1, 'PUSH P1 START BUTTON')
+    add('PROMPT_BOTH', 0, 'gold', 1, 'PUSH P1 AND/OR P2 BUTTON')
+    add('COPYRIGHT', 0, 'white', 0, '@1994 1995 1996 1998 NAMCO LTD.')
+    add('RESERVED', 0, 'white', 0, 'ALL RIGHTS RESERVED')
+    for number, mode in enumerate(MODES):
+        label = mode + ' MODE'
+        normal = 'cyan' if mode == 'OPTION' else 'red'
+        add(f'MODE{number}_SELECTED', 0, 'gold', 1, label)
+        add(f'MODE{number}_NORMAL', 0, normal, 1, label)
+        add(f'MODE{number}_DIM', 0, 'dim' + normal, 1, label)
+    add('INSERT_COIN', 1, 'cyan', 0, 'INSERT COIN')
+    for tag in ('1P', '2P', 'CPU'):
+        add(f'TAG_{tag}', 1, 'white', 0, tag)
+    for digit in range(10):
+        add(f'DIGIT{digit}', 1, 'yellow', 2, str(digit))
+    blob = bytearray(b'T3TX0001' + struct.pack('>HH', len(palettes), len(pictures)))
+    for group, code, words in palettes:
+        blob += struct.pack('>BB16H', group, code, *words)
+    for picture in pictures:
+        blob += picture
+    (out / 'TEXT.BIN').write_bytes(bytes(blob))
+    lines = ['/* Generated by scripts/pack_menu_art.py: ids of the pictures in TEXT.BIN. */', 'enum {']
+    lines += [f'    TX_{name}={i},' for i, (name, *_rest) in enumerate(names)]
+    lines += [f'    TX_COUNT={len(names)},']
+    lines += ['    TX_GROUP0=%d,' % sum(1 for n in names if n[1] == 0), '};']
+    lines += ['/* width, height of the original glyph rows (before padding to 8) */',
+              'static const unsigned short g_text_size[TX_COUNT][2]={'] + \
+        [f'    {{{w},{h}}},' for _, _, w, h in names] + ['};']
+    (out / 'menu_text.h').write_text('\n'.join(lines) + '\n')
+
+
 def portraits(record, out):
     tims = next(t for t in archives(record, 22) if len(t) == 22)
     sheet = Image.new('RGB', (7 * PORT_W, 3 * PORT_H))
@@ -273,6 +384,7 @@ def main():
     portraits(args.select, out)
     with tempfile.TemporaryDirectory() as tmp:
         names(args.select, out, tmp)
+    texts(args.exe.read_bytes(), out)
     lines = ['/* Generated by scripts/pack_menu_art.py: where the baked art puts things. */',
              f'enum {{ MENU_BG_W={W}, MENU_BG_H={H}, MENU_PORT_W={PORT_W}, MENU_PORT_H={PORT_H},']
     lines += [f'       {k}={v},' for k, v in layout.items()]

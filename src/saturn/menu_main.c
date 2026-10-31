@@ -18,6 +18,7 @@
 #include "menu_layout.h"
 #include "select_grid.h"
 #include "stage_cdda.h"
+#include "menu_text.h"
 #include "saturn/app.h"
 #include "saturn/audio.h"
 #include "saturn/color.h"
@@ -35,11 +36,11 @@ const char* t3_fighter_name(unsigned id);
 
 enum {
     SCREEN_W=704, SCREEN_H=448, BG_STRIDE=512, BG_BASE=0, BG_BANK=0, SPR_BANK=7,
-    BG_HEADER=12+512, PORT_STRIDE=128, PORT_BYTES=PORT_STRIDE*MENU_PORT_H, PORT_PAL_WORDS=116,
+    BG_HEADER=12+512, PORT_STRIDE=128, PORT_BYTES=PORT_STRIDE*MENU_PORT_H, PORT_PAL_WORDS=92,
     PORT_HEADER=4, PORT_FILE=PORT_HEADER+PORT_PAL_WORDS*2+PORT_BYTES, FIGHTERS=21, SILHOUETTE=21,
-    FONT_SETS=6, TILE_BASE=0x40000, TILE_BANK=1,
+    FONT_SETS=3, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
-    SLOT_A=8, SLOT_B=124, GLOW_P1=240, GLOW_P2=244, CODE_BLACK=248, CODE_CYAN=249, CODE_RED=250, CODE_BAR=251, CODE_BAR_EDGE=252,
+    SLOT_A=8, SLOT_B=100, GLOW_P1=192, GLOW_P2=198, GLOW_BANDS=6, CODE_BLACK=204, CODE_BAR=205, CODE_BAR_EDGE=206,
     BOOT_ARG_BYTES=8, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
@@ -50,7 +51,7 @@ static sat_cdfs_volume_t* g_volume;
 /* The largest file read in one go: a backdrop. */
 static uint8_t g_io[BG_HEADER+MENU_BG_W*512+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
-static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold, black, cyan, red */
+static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
@@ -75,15 +76,13 @@ static void sprite_palette(void) {
     g_pal[CODE_WHITE]=(uint16_t)w555(31,31,31);
     g_pal[CODE_GREY]=(uint16_t)w555(18,18,20);
     g_pal[CODE_GOLD]=(uint16_t)w555(31,26,6);
-    g_pal[CODE_P1]=(uint16_t)w555(6,14,31);
-    g_pal[CODE_P2]=(uint16_t)w555(31,14,3);
+    g_pal[CODE_P1]=(uint16_t)w555(31,5,5);
+    g_pal[CODE_P2]=(uint16_t)w555(6,14,31);
     g_pal[CODE_BLACK]=(uint16_t)w555(0,0,0);
-    g_pal[CODE_CYAN]=(uint16_t)w555(6,28,28);
-    g_pal[CODE_RED]=(uint16_t)w555(30,5,5);
     g_pal[CODE_BAR]=(uint16_t)w555(15,15,16);
     g_pal[CODE_BAR_EDGE]=(uint16_t)w555(6,6,7);
-    g_pal[CODE_P1_HI]=(uint16_t)w555(20,26,31);
-    g_pal[CODE_P2_HI]=(uint16_t)w555(31,24,14);
+    g_pal[CODE_P1_HI]=(uint16_t)w555(31,22,18);
+    g_pal[CODE_P2_HI]=(uint16_t)w555(20,26,31);
     for(unsigned i=0;i<4;++i) {
         g_pal[GLOW_P1+i]=(uint16_t)w555(1+i,2+2*i,5+4*i);
         g_pal[GLOW_P2+i]=(uint16_t)w555(5+4*i,2+2*i,1+i);
@@ -91,7 +90,7 @@ static void sprite_palette(void) {
 }
 
 static void init_fonts(void) {
-    static const uint8_t codes[FONT_SETS]={CODE_WHITE,CODE_GREY,CODE_GOLD,CODE_BLACK,CODE_CYAN,CODE_RED};
+    static const uint8_t codes[FONT_SETS]={CODE_WHITE,CODE_GREY,CODE_GOLD};
     for(unsigned set=0;set<FONT_SETS;++set)
         for(unsigned glyph=0;glyph<SAT_ASCII_FONT_GLYPH_COUNT;++glyph) {
             uint8_t tall[16*16]={0};
@@ -231,6 +230,54 @@ static void text(unsigned set,const char* s,int bg_cx,int y) {
     (void)sat_ascii_font_draw_text_screen_centered_indexed8(&g_font[set],s,bg_cx*2,y,14,0,0);
 }
 
+/* The strings in the original fonts (TEXT.BIN, scripts/pack_menu_art.py): glyph codes ready for the
+ * sprite bank, one group per screen. A picture is drawn 2 dots per texel across and 1:1 down: a
+ * vertical scale would shimmer between the interlaced fields. */
+static uint8_t g_text_blob[160*1024] __attribute__((section(".wram_l"),aligned(4)));
+static const uint8_t* g_text_data[TX_COUNT];
+static sat_vdp1_texture_t g_tx[TX_COUNT];
+static unsigned g_text_palettes;
+
+static unsigned be16(const uint8_t* p) {return ((unsigned)p[0]<<8)|p[1];}
+
+static sat_result_t read_text(void) {
+    sat_cdfs_file_t file;
+    SAT_TRY(sat_cdfs_lookup(g_volume,"TEXT.BIN",&file));
+    if(file.size>sizeof g_text_blob)return SAT_ERR_CAPACITY;
+    SAT_TRY(read_file("TEXT.BIN",0,g_text_blob,file.size));
+    for(unsigned i=0;i<8;++i)if(g_text_blob[i]!=(uint8_t)"T3TX0001"[i])return SAT_ERR_VERSION;
+    g_text_palettes=be16(g_text_blob+8);
+    const uint8_t* at=g_text_blob+12+g_text_palettes*34u;
+    for(unsigned i=0;i<TX_COUNT;++i) {
+        g_text_data[i]=at;                       /* group, pad, w, h, codes */
+        at+=6u+be16(at+2)*be16(at+4);
+    }
+    return SAT_OK;
+}
+
+/* Uploads one screen's palettes into the master palette and its pictures into VDP1 VRAM. */
+static void load_text_group(unsigned group) {
+    const uint8_t* at=g_text_blob+12;
+    for(unsigned i=0;i<g_text_palettes;++i,at+=34)
+        if(at[0]==group)for(unsigned c=0;c<16;++c)g_pal[at[1]+c]=(uint16_t)be16(at+2+2*c);
+    for(unsigned i=0;i<TX_COUNT;++i)
+        if(g_text_data[i][0]==group)
+            SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8(&g_tx[i],g_text_data[i]+6,
+                (uint16_t)be16(g_text_data[i]+2),(uint16_t)be16(g_text_data[i]+4),g_pal,SPR_BANK));
+}
+
+/* Draws picture `id` with its left edge at bg_x (352-wide units) and its middle at screen y. */
+static void pic_left(unsigned id,int bg_x,int y) {
+    const unsigned w=be16(g_text_data[id]+2),h=be16(g_text_data[id]+4);
+    (void)sat_draw_sprite_scaled_screen(&g_tx[id],(int16_t)(bg_x*2+(int)w),(int16_t)y,(uint16_t)(w*2),
+                                        (uint16_t)h,0);
+}
+
+/* The same, centred on bg_cx by the glyphs' own width. */
+static void pic(unsigned id,int bg_cx,int y) {
+    pic_left(id,bg_cx-(int)g_text_size[id][0]/2*1,y);
+}
+
 static void rect(int x,int y,int w,int h,unsigned code) {
     (void)sat_draw_rect_screen((int16_t)x,(int16_t)y,(uint16_t)w,(uint16_t)h,(uint16_t)code);
 }
@@ -250,13 +297,12 @@ static int mode_playable(unsigned mode,const pads_t* pads) {
 
 static void prompt(const pads_t* pads,unsigned frame) {
     if(!(frame&0x30u))return;
-    text(0,pads->pad[1].connected?"PUSH P1 AND/OR P2 BUTTON":"PUSH P1 START BUTTON",
-         MENU_BG_W/2,TITLE_PROMPT_Y);
+    pic(pads->pad[1].connected?TX_PROMPT_BOTH:TX_PROMPT_ONE,MENU_BG_W/2,TITLE_PROMPT_Y+12);
 }
 
 static void copyright(void) {
-    text(1,"(C)1994 1995 1996 1998 NAMCO LTD.",MENU_BG_W/2,TITLE_COPY_Y0);
-    text(1,"ALL RIGHTS RESERVED",MENU_BG_W/2,TITLE_COPY_Y1);
+    pic_left(TX_COPYRIGHT,43,TITLE_COPY_Y0+8);
+    pic_left(TX_RESERVED,43,TITLE_COPY_Y1+8);
 }
 
 /* Returns the chosen mode; the profiler flag may change in OPTION. */
@@ -270,8 +316,8 @@ static unsigned title_flow(void) {
             int level=f<32?-255+(int)(f*255/32):f>=122?-(int)((f-122)*255/32):0;
             fade(level);
             frame_begin(&pads);
-            text(0,"NAMCO",MENU_BG_W/2-34,MENU_BG_H/2-16);
-            text(1,"PRESENTS.",MENU_BG_W/2+30,MENU_BG_H/2-16);
+            pic_left(TX_NAMCO,112,MENU_BG_H/2);
+            pic_left(TX_PRESENTS,112+(int)g_text_size[TX_NAMCO][0]+9,MENU_BG_H/2);
             frame_end();
             if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
@@ -306,8 +352,6 @@ static unsigned title_flow(void) {
 menu:;
     {
         /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
-        static const char* const names[MODES]={"ARCADE MODE","VS MODE","TEAM BATTLE MODE","TIME ATTACK MODE",
-            "SURVIVAL MODE","TEKKEN FORCE MODE","PRACTICE MODE","OPTION MODE"};
         unsigned selected=0,idle=0,option=0;
         backdrop_show(1);
         fade(0);
@@ -332,9 +376,8 @@ menu:;
             for(int k=-2;k<=2;++k) {
                 const unsigned mode=(selected+MODES+(unsigned)(k+MODES))%MODES;
                 const int distance=k<0?-k:k;
-                const unsigned set=distance==0?2u:distance==2||!mode_playable(mode,&pads)?1u
-                                   :mode==MODE_OPTION?4u:5u;
-                text(set,names[mode],MENU_BG_W/2,350+k*26-8);
+                const unsigned variant=distance==0?0u:distance==2||!mode_playable(mode,&pads)?2u:1u;
+                pic(TX_MODE0_SELECTED+mode*3u+variant,MENU_BG_W/2,350+k*26);
             }
             if(pads.pad[0].pressed&SAT_PAD_UP) {selected=selected?selected-1u:MODES-1u;idle=0;sfx(SFX_UPDOWN);}
             if(pads.pad[0].pressed&SAT_PAD_DOWN) {selected=(selected+1u)%MODES;idle=0;sfx(SFX_UPDOWN);}
@@ -394,12 +437,12 @@ static void portrait_palette(unsigned side,unsigned level) {
 
 /* The panel behind a portrait is its dominant colour, brightest at the top. */
 static void glow_palette(unsigned side,unsigned colour) {
-    static const unsigned level[4]={31,22,14,8};
-    uint16_t out[4];
-    for(unsigned i=0;i<4;++i)
+    static const unsigned level[GLOW_BANDS]={31,26,21,16,11,7};
+    uint16_t out[GLOW_BANDS];
+    for(unsigned i=0;i<GLOW_BANDS;++i)
         out[i]=(uint16_t)w555(((colour&31u)*level[i])/31u,(((colour>>5)&31u)*level[i])/31u,
                               (((colour>>10)&31u)*level[i])/31u);
-    (void)sat_vdp2_palette_upload(out,4,(uint16_t)(SPR_BANK*256u+(side?GLOW_P2:GLOW_P1)));
+    (void)sat_vdp2_palette_upload(out,GLOW_BANDS,(uint16_t)(SPR_BANK*256u+(side?GLOW_P2:GLOW_P1)));
 }
 
 /* The original name pictures (NAMES.BIN): a black glyph mask per fighter, 96 x 16, and its extent. */
@@ -455,7 +498,6 @@ typedef struct {int16_t x,y;int16_t life;} spark_t;
 enum { SPARKS=8 };
 static spark_t g_spark[SPARKS];
 
-static const char* side_label(int empty1) {return empty1?"CHOOSE YOUR FIGHTER":"";}
 
 static void select_flow(uint8_t picks[2]) {
     pads_t pads;
@@ -464,6 +506,7 @@ static void select_flow(uint8_t picks[2]) {
     backdrop_show(0);
     SAT_PANIC_IF_ERROR(load_backdrop("SELBG.BIN"));
     SAT_PANIC_IF_ERROR(load_bitmap("TILEBG.BIN",TILE_BASE,TILE_BANK,MENU_BG_W,512,512));
+    load_text_group(1);
     SAT_PANIC_IF_ERROR(cache_portraits());
     (void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,1);
     backdrop_show(1);
@@ -503,11 +546,12 @@ static void select_flow(uint8_t picks[2]) {
             if(shown[side]<=SILHOUETTE && fade_in[side]<=PORT_FADE_FRAMES)
                 portrait_palette(side,2u*fade_in[side]++);
             if(shown[side]<=SILHOUETTE) {
-                for(unsigned i=0;i<4;++i)
-                    rect((bg_x-2)*2,SEL_PORT_Y+(int)i*(MENU_PORT_H/4),(MENU_PORT_W+4)*2,MENU_PORT_H/4,
-                         (side?GLOW_P2:GLOW_P1)+i);
+                const int band=(SEL_GLOW_H+GLOW_BANDS-1)/GLOW_BANDS;
+                for(unsigned i=0;i<GLOW_BANDS;++i)
+                    rect((bg_x-2)*2,SEL_PORT_Y+(int)i*band,(MENU_PORT_W+4)*2,
+                         i+1==GLOW_BANDS?SEL_GLOW_H-(int)i*band:band,(side?GLOW_P2:GLOW_P1)+i);
                 (void)sat_draw_sprite_scaled_screen(&g_port_tex[side],(int16_t)((bg_x+MENU_PORT_W/2)*2),
-                    (int16_t)(SEL_PORT_Y+MENU_PORT_H/2),PORT_STRIDE*2,MENU_PORT_H,0);
+                    (int16_t)(SEL_SPRITE_Y+MENU_PORT_H/2),PORT_STRIDE*2,MENU_PORT_H,0);
             }
             if(id!=SILHOUETTE)draw_name(id==20u?14u:id,bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
         }
@@ -535,8 +579,8 @@ static void select_flow(uint8_t picks[2]) {
             const unsigned left=(SELECT_FRAMES-elapsed+SELECT_TIMER_UNIT-1u)/SELECT_TIMER_UNIT;
             for(unsigned digit=0;digit<2;++digit) {
                 const unsigned value=digit?left%10u:(left/10u)%10u;
-                (void)sat_draw_sprite_scaled_screen(&g_font[2].glyphs[16u+value],
-                    (int16_t)(MENU_BG_W+(int)digit*34-17),(int16_t)(SEL_PORT_Y+MENU_PORT_H/2+10),32,44,0);
+                (void)sat_draw_sprite_scaled_screen(&g_tx[TX_DIGIT0+value],
+                    (int16_t)(MENU_BG_W+(int)digit*50-25),(int16_t)252,48,38,0);
             }
         }
         for(unsigned side=0;side<2;++side) {
@@ -544,11 +588,11 @@ static void select_flow(uint8_t picks[2]) {
             if(side&&empty1)continue;
             if(!chosen[side]&&(elapsed&16u)&&!(side==0u&&!pads.pad[1].connected&&chosen[0]))continue;
             cell_frame(side,cursor[side],elapsed,(int)chosen[side]);
-            text(0,side?(pads.pad[1].connected?"2P":"CPU"):"1P",
-                 SEL_GRID_X+(int)cursor[side].column*SEL_PITCH+SEL_CELL_W/2,
-                 SEL_GRID_Y+(int)cursor[side].row*SEL_ROW_PITCH+2);
+            pic_left(side?(pads.pad[1].connected?TX_TAG_2P:TX_TAG_CPU):TX_TAG_1P,
+                     SEL_GRID_X+(int)cursor[side].column*SEL_PITCH+2,
+                     SEL_GRID_Y+(int)cursor[side].row*SEL_ROW_PITCH+9);
         }
-        text(1,side_label(empty1),MENU_BG_W/2,SEL_PORT_Y-12);
+        if(empty1 && (elapsed&32u))pic_left(TX_INSERT_COIN,MENU_BG_W-128,SEL_PORT_Y-26);
         /* The steel tiles drift diagonally. */
         (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,0,(int32_t)((elapsed*3u/2u)&511u)<<16);
         frame_end();
@@ -568,6 +612,8 @@ int main(void) {
     init_video();
     SAT_PANIC_IF_ERROR(t3_disc_volume(&g_volume));
     init_sfx();
+    SAT_PANIC_IF_ERROR(read_text());
+    load_text_group(0);
     if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
     else g_arg[0]=0;                                  /* cold boot: the title first */
     unsigned mode=MODE_ARCADE;

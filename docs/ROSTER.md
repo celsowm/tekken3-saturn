@@ -30,8 +30,8 @@ uses bank 9.
   frame, face grid). Only what moves is VDP1: text, cursors, glow and the two
   126x208 portraits (`PORTnn.BIN`, 116 colours each, streamed from the disc as
   the cursor rests). Hi-res VDP1 draws codes of one 256-colour CRAM bank, so
-  codes are split: text and cursors 1-7, portrait slots 8-123 and 124-239, glow
-  240-247. The title follows `modes.md`: NAMCO PRESENTS, white flash, fade in
+  codes are split: cursors 1-7, portrait slots 8-99 and 100-191 (92 colours each), glow
+  192-203, bars 204-206, text palettes at 16.. (title) or 208/224/240 (select). The title follows `modes.md`: NAMCO PRESENTS, white flash, fade in
   from white, 300 frames with the blinking prompt, then the mode list. The
   frame counter is the original's 60 Hz clock; a hi-res picture takes two
   fields, so each frame advances it by 2.
@@ -47,6 +47,12 @@ uses bank 9.
   `scripts/extract_select_music.py` and placed first on the CD-DA track (60 s,
   4500 sectors); the fight starts the stage theme after it. All 22 portraits are
   read before the music starts, because a data read stops CD-DA.
+- **Original fonts.** Every title and mode-list string (NAMCO PRESENTS, the prompt,
+  the copyright lines, the mode names, INSERT COIN, the 1P/2P/CPU tags and the
+  timer digits) is drawn with the system fonts' own glyphs and colour rows,
+  baked into `TEXT.BIN` by `scripts/pack_menu_art.py` (fonts 0-2 of the USA
+  executable, the PS1 capture picking the colour rows). The SDK font is left on
+  the option and result pages only.
 - **Checking against the PS1.** `scripts/capture_ps1_menus.py` plays the USA disc
   in PCSX-Redux and saves the original mode list and select screens
   (`build/ps1-menus/`); the mode list ring, highlight bar, colours, silhouette,
