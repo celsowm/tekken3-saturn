@@ -1511,8 +1511,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             message(FATAL_ERROR "T3_FIGHTER_PACKS needs T3_LOCAL_HUD_EXE, T3_LOCAL_TITLE_OVERLAY and T3_LOCAL_SELECT_OVERLAY for the menus")
         endif()
         set(_t3_menu_gen "${CMAKE_BINARY_DIR}/generated/private_menu")
-        set(_t3_menu_files "${_t3_menu_gen}/TITLEBG.BIN" "${_t3_menu_gen}/SELBG.BIN" "${_t3_menu_gen}/menu_layout.h")
-        foreach(_i RANGE 0 20)
+        set(_t3_menu_files "${_t3_menu_gen}/TITLEBG.BIN" "${_t3_menu_gen}/SELBG.BIN" "${_t3_menu_gen}/TILEBG.BIN" "${_t3_menu_gen}/menu_layout.h")
+        foreach(_i RANGE 0 21)
             string(LENGTH "${_i}" _len)
             if(_len EQUAL 1)
                 set(_i "0${_i}")
@@ -1541,6 +1541,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             DEPENDS tekken3_menu VERBATIM)
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files})
         set(_t3_disc_depends tekken3_menu)
+        set(_t3_select_wav_args "")
+        set(_t3_select_wav_deps "")
+        if(T3_STAGE_CDDA)
+            # The original select music (XA stream 0x11) leads the CD-DA track: 60 s, then the stage theme.
+            set(_t3_select_wav "${_t3_menu_gen}/select.wav")
+            add_custom_command(OUTPUT "${_t3_select_wav}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_select_wav}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py" "${T3_LOCAL_HUD_EXE}" VERBATIM)
+            target_sources(tekken3_menu PRIVATE src/saturn/stage_cdda.c "${_t3_select_wav}")
+            target_compile_definitions(tekken3_menu PRIVATE T3_STAGE_CDDA=1 T3_SELECT_CDDA_SECTORS=4500)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_SELECT_CDDA_SECTORS=4500)
+            set(_t3_select_wav_args --select-wav "${_t3_select_wav}")
+            set(_t3_select_wav_deps "${_t3_select_wav}")
+        endif()
         target_sources(tekken3_saturn PRIVATE ${_t3_pack_files})
     endif()
     target_link_libraries(tekken3_saturn PRIVATE tekken3_fight LibSaturn::Saturn)
@@ -1562,9 +1577,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         add_custom_command(
             OUTPUT "${CMAKE_BINARY_DIR}/disc/music.cue" "${CMAKE_BINARY_DIR}/disc/music.bin"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_stage_cdda_disc.py"
-                --build "${CMAKE_BINARY_DIR}" --wav "${T3_STAGE_CDDA_WAV}"
+                --build "${CMAKE_BINARY_DIR}" --wav "${T3_STAGE_CDDA_WAV}" ${_t3_select_wav_args}
                 --libsaturn "${LIBSATURN_SOURCE_DIR}" --force
             DEPENDS tekken3_saturn_disc "${CMAKE_BINARY_DIR}/disc/tekken3_saturn.cue" "${T3_STAGE_CDDA_WAV}"
+                ${_t3_select_wav_deps}
                 "${CMAKE_SOURCE_DIR}/scripts/build_stage_cdda_disc.py"
                 "${CMAKE_SOURCE_DIR}/scripts/build_cd_audio.py"
                 "${CMAKE_SOURCE_DIR}/scripts/convert_cd_audio.py"

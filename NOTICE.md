@@ -65,7 +65,8 @@ implementation of Tekken3Remake.
   `src/game/psx_hud_messages.c` (normal round text selection from
   `remake/core/fight/round_hud.gd` and the replay label from `fight-frame.md`),
   `src/saturn/menu_main.c`, `scripts/pack_menu_art.py`,
-  `scripts/extract_menu_art.py` (the title sequence timings, main menu, character
+  `scripts/extract_menu_art.py`, `scripts/extract_select_music.py`,
+  `scripts/pcsx_redux_menu_capture.lua` (the title sequence timings, main menu, character
   select grid order, layout, big portrait bands and HUD portrait source from
   `docs/research/code/modes.md`, `formats/system-textures.md`,
   `formats/overlay-images.md` and `tools/research/select_sim.py`),

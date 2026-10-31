@@ -38,11 +38,24 @@ uses bank 9.
 - **Select rules.** Cursor rules in `src/game/select_grid.c`. Port 2 connected:
   each pad picks its fighter. No port 2: pad 1 picks both, and B takes the
   first pick back.
-- **Not in the menus yet.** No select music (the original streams XA 0x11 or
-  0x2B), no costume choice (one costume per fighter), no scrolling background
-  tiles or rising sparks, no attract demonstration after the title, no sounds;
-  Team Battle, Time Attack, Survival, Tekken Force and Practice are listed but
-  do nothing. Name plates use the SDK font, not the original name sheet.
+- **Select details.** The steel tiles scroll diagonally on their own VDP2 layer
+  (`TILEBG.BIN`, NBG1); the panel behind a portrait takes that portrait's
+  dominant colour; the side with nobody yet shows the original silhouette; the
+  timer is the big gold two-digit counter; sparks rise from the portraits every
+  4th tick. The select music is the original XA stream 0x11, decoded by
+  `scripts/extract_select_music.py` and placed first on the CD-DA track (60 s,
+  4500 sectors); the fight starts the stage theme after it. All 22 portraits are
+  read before the music starts, because a data read stops CD-DA.
+- **Checking against the PS1.** `scripts/capture_ps1_menus.py` plays the USA disc
+  in PCSX-Redux and saves the original mode list and select screens
+  (`build/ps1-menus/`); the mode list ring, highlight bar, colours, silhouette,
+  panel glow, plates and timer follow them. `scripts/menu_flow.py` captures ours.
+- **Not in the menus yet.** No costume choice (one costume per fighter), no menu
+  sounds, no attract demonstration after the title (it loops back to NAMCO
+  PRESENTS), the steel background is one repeated tile rather than the
+  original's tile map, and the title leaves out the opening movie. Team Battle,
+  Time Attack, Survival, Tekken Force and Practice are listed but do nothing.
+  Name plates use the SDK font, not the original name sheet.
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has

@@ -3,6 +3,9 @@
 #include <saturn/core.h>
 #if defined(T3_STAGE_CDDA)
 sat_result_t t3_stage_cdda_start(void);
+#if defined(T3_SELECT_CDDA_SECTORS)
+sat_result_t t3_select_cdda_start(void);
+#endif
 void t3_stage_cdda_mix(void);
 #else
 static inline sat_result_t t3_stage_cdda_start(void) { return SAT_OK; }

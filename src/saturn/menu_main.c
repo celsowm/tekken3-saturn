@@ -17,6 +17,7 @@
 #include "disc.h"
 #include "menu_layout.h"
 #include "select_grid.h"
+#include "stage_cdda.h"
 #include "saturn/app.h"
 #include "saturn/color.h"
 #include "saturn/exec.h"
@@ -34,22 +35,25 @@ const char* t3_fighter_name(unsigned id);
 enum {
     SCREEN_W=704, SCREEN_H=448, BG_STRIDE=512, BG_BASE=0, BG_BANK=0, SPR_BANK=7,
     BG_HEADER=12+512, PORT_STRIDE=128, PORT_BYTES=PORT_STRIDE*MENU_PORT_H, PORT_PAL_WORDS=116,
-    PORT_FILE=PORT_PAL_WORDS*2+PORT_BYTES, FIGHTERS=21,
+    PORT_HEADER=4, PORT_FILE=PORT_HEADER+PORT_PAL_WORDS*2+PORT_BYTES, FIGHTERS=21, SILHOUETTE=21,
+    FONT_SETS=6, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
-    SLOT_A=8, SLOT_B=124, GLOW_P1=240, GLOW_P2=244, CODE_BLACK=248,
+    SLOT_A=8, SLOT_B=124, GLOW_P1=240, GLOW_P2=244, CODE_BLACK=248, CODE_CYAN=249, CODE_RED=250, CODE_BAR=251, CODE_BAR_EDGE=252,
     BOOT_ARG_BYTES=5, PHASE_SELECT='S', PHASE_FIGHT='F',
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
-    LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
+    LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
 };
 
 static sat_cdfs_volume_t* g_volume;
 /* The largest file read in one go: a backdrop. */
 static uint8_t g_io[BG_HEADER+MENU_BG_W*MENU_BG_H+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
-static sat_ascii_font_t g_font[3];     /* white, grey, gold */
+static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold, black, cyan, red */
 static sat_vdp1_texture_t g_port_tex[2];
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
+/* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
+static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
 static uint8_t g_arg[BOOT_ARG_BYTES]={PHASE_SELECT,0,1,0,0};
 
 static unsigned w555(unsigned r,unsigned g,unsigned b) {return 0x8000u|r|(g<<5)|(b<<10);}
@@ -73,6 +77,10 @@ static void sprite_palette(void) {
     g_pal[CODE_P1]=(uint16_t)w555(6,14,31);
     g_pal[CODE_P2]=(uint16_t)w555(31,14,3);
     g_pal[CODE_BLACK]=(uint16_t)w555(0,0,0);
+    g_pal[CODE_CYAN]=(uint16_t)w555(6,28,28);
+    g_pal[CODE_RED]=(uint16_t)w555(30,5,5);
+    g_pal[CODE_BAR]=(uint16_t)w555(15,15,16);
+    g_pal[CODE_BAR_EDGE]=(uint16_t)w555(6,6,7);
     g_pal[CODE_P1_HI]=(uint16_t)w555(20,26,31);
     g_pal[CODE_P2_HI]=(uint16_t)w555(31,24,14);
     for(unsigned i=0;i<4;++i) {
@@ -82,8 +90,8 @@ static void sprite_palette(void) {
 }
 
 static void init_fonts(void) {
-    static const uint8_t codes[3]={CODE_WHITE,CODE_GREY,CODE_GOLD};
-    for(unsigned set=0;set<3;++set)
+    static const uint8_t codes[FONT_SETS]={CODE_WHITE,CODE_GREY,CODE_GOLD,CODE_BLACK,CODE_CYAN,CODE_RED};
+    for(unsigned set=0;set<FONT_SETS;++set)
         for(unsigned glyph=0;glyph<SAT_ASCII_FONT_GLYPH_COUNT;++glyph) {
             uint8_t tall[16*16]={0};
             SAT_PANIC_IF_ERROR(sat_font_pack_8x8_glyph_indexed8(tall,16,16,0,0,
@@ -112,12 +120,27 @@ static void init_video(void) {
     layer.bitmap_size=SAT_VDP2_BITMAP_512X512;
     layer.color_mode=SAT_VDP2_COLOR_MODE_256;
     layer.palette=BG_BANK;
-    layer.priority=1;
-    layer.transparent=0;
+    layer.priority=2;
+    layer.transparent=1;
     for(unsigned i=0;i<4;++i)layer.plane_address[i]=BG_BASE;
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_configure(&layer));
     /* 352 baked columns over 704 dots. */
+    layer.priority=2;
+    layer.transparent=1;
+    SAT_PANIC_IF_ERROR(sat_vdp2_layer_configure(&layer));
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_zoom(SAT_VDP2_NBG0,0x20000u,0x10000u));
+    /* The scrolling steel tiles behind the select's frame. */
+    sat_vdp2_layer_config_default(SAT_VDP2_NBG1,&layer);
+    layer.bitmap=1;
+    layer.bitmap_size=SAT_VDP2_BITMAP_512X256;
+    layer.color_mode=SAT_VDP2_COLOR_MODE_256;
+    layer.palette=TILE_BANK;
+    layer.priority=1;
+    layer.transparent=0;
+    for(unsigned i=0;i<4;++i)layer.plane_address[i]=TILE_BASE;
+    SAT_PANIC_IF_ERROR(sat_vdp2_layer_configure(&layer));
+    SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_zoom(SAT_VDP2_NBG1,0x20000u,0x10000u));
+    SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,0));
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,0,0));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_COLOR_BLACK));
     SAT_PANIC_IF_ERROR(sat_vdp2_color_offset_enable(LAYERS,SAT_VDP2_COLOR_OFFSET_A));
@@ -130,31 +153,26 @@ static void fade(int level) {
 
 static void backdrop_show(int on) {(void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG0,(uint8_t)on);}
 
-static sat_result_t load_backdrop(const char* name) {
+/* A baked picture ('T3BG0001' + 256 palette words + w*h codes) into a w-wide VDP2 bitmap of
+ * `stride` x `rows` dots, padded with code 0 so a wrapped view never shows old VRAM. */
+static sat_result_t load_bitmap(const char* name,uint32_t base,unsigned bank,unsigned w,unsigned h,
+                                unsigned rows) {
     uint16_t palette[256];
-    SAT_TRY(read_file(name,0,g_io,BG_HEADER+MENU_BG_W*MENU_BG_H));
+    static uint16_t row[BG_STRIDE/2];
+    SAT_TRY(read_file(name,0,g_io,BG_HEADER+w*h));
     for(unsigned i=0;i<8;++i)if(g_io[i]!=(uint8_t)"T3BG0001"[i])return SAT_ERR_VERSION;
     __builtin_memcpy(palette,g_io+12,sizeof palette);
-    SAT_TRY(sat_vdp2_palette_upload(palette,256,BG_BANK*256));
-    /* Whole 512x512 bitmap: the picture, then black, so a shifted or shrunk view never shows old VRAM. */
-    static uint16_t row[BG_STRIDE/2];
-    for(unsigned y=0;y<BG_STRIDE;++y) {
+    SAT_TRY(sat_vdp2_palette_upload(palette,256,(uint16_t)(bank*256u)));
+    for(unsigned y=0;y<rows;++y) {
         __builtin_memset(row,0,sizeof row);
-        if(y<MENU_BG_H)__builtin_memcpy(row,g_io+BG_HEADER+y*MENU_BG_W,MENU_BG_W);
-        SAT_TRY(sat_vdp2_vram_write_words((BG_BASE+y*BG_STRIDE)/2u,row,BG_STRIDE/2u));
+        if(y<h)__builtin_memcpy(row,g_io+BG_HEADER+y*w,w);
+        SAT_TRY(sat_vdp2_vram_write_words((base+y*BG_STRIDE)/2u,row,BG_STRIDE/2u));
     }
     return SAT_OK;
 }
 
-/* The title picture whole, or shrunk to the top so the mode list fits below it. */
-static void backdrop_view(int menu) {
-    if(menu) {
-        (void)sat_vdp2_layer_set_zoom(SAT_VDP2_NBG0,0x11A00u,0x8CCCu);        /* 1.1 x 0.55 */
-        (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,(int32_t)(368u<<16),0);  /* 144 dots right */
-    } else {
-        (void)sat_vdp2_layer_set_zoom(SAT_VDP2_NBG0,0x20000u,0x10000u);
-        (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,0,0);
-    }
+static sat_result_t load_backdrop(const char* name) {
+    return load_bitmap(name,BG_BASE,BG_BANK,MENU_BG_W,MENU_BG_H,BG_STRIDE);
 }
 
 /* ---- frame helpers ---- */
@@ -181,11 +199,6 @@ static void text(unsigned set,const char* s,int bg_cx,int y) {
     (void)sat_ascii_font_draw_text_screen_centered_indexed8(&g_font[set],s,bg_cx*2,y,14,0,0);
 }
 
-static void number(unsigned set,unsigned value,int bg_cx,int y) {
-    char s[4]={(char)('0'+(value/10u)%10u),(char)('0'+value%10u),0,0};
-    text(set,s,bg_cx,y);
-}
-
 static void rect(int x,int y,int w,int h,unsigned code) {
     (void)sat_draw_rect_screen((int16_t)x,(int16_t)y,(uint16_t)w,(uint16_t)h,(uint16_t)code);
 }
@@ -194,8 +207,6 @@ static void rect(int x,int y,int w,int h,unsigned code) {
 
 typedef enum {MODE_ARCADE,MODE_VS,MODE_TEAM,MODE_TIME,MODE_SURVIVAL,MODE_FORCE,MODE_PRACTICE,MODE_OPTION}
     mode_t3;
-static const char* const g_modes[]={"ARCADE","VS","TEAM BATTLE","TIME ATTACK","SURVIVAL",
-                                    "TEKKEN FORCE","PRACTICE","OPTION"};
 enum { MODES=8 };
 #define START_BUTTONS (SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)
 
@@ -259,32 +270,36 @@ static unsigned title_flow(void) {
     }
 menu:;
     {
+        /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
+        static const char* const names[MODES]={"ARCADE MODE","VS MODE","TEAM BATTLE MODE","TIME ATTACK MODE",
+            "SURVIVAL MODE","TEKKEN FORCE MODE","PRACTICE MODE","OPTION MODE"};
         unsigned selected=0,idle=0,option=0;
         backdrop_show(1);
-        backdrop_view(1);
         fade(0);
         for(;;) {
             frame_begin(&pads);
-            rect(0,250,SCREEN_W,SCREEN_H-250,CODE_BLACK);
             idle+=2u;
             if(idle>480u && !option) {
                 frame_end();
-                backdrop_view(0);
                 return title_flow();
             }
+            rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
             if(option) {
-                text(2,"OPTION MODE",MENU_BG_W/2,200);
-                text(0,g_arg[4]?"DEBUG: ON":"DEBUG: OFF",MENU_BG_W/2,240);
+                text(2,"OPTION MODE",MENU_BG_W/2,330);
+                text(0,g_arg[4]?"DEBUG: ON":"DEBUG: OFF",MENU_BG_W/2,370);
                 if(pads.pad[0].pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))g_arg[4]^=1u;
                 if(pads.pad[0].pressed&(SAT_PAD_B|SAT_PAD_START))option=0;
                 frame_end();
                 continue;
             }
-            const unsigned first=selected>3u?(selected-3u<MODES-7u?selected-3u:MODES-7u):0u;
-            for(unsigned row=0;row<7u;++row) {
-                const unsigned mode=first+row;
-                const unsigned set=mode==selected?2u:mode_playable(mode,&pads)?0u:1u;
-                text(set,g_modes[mode],MENU_BG_W/2,254+(int)row*26);
+            rect(0,350-12,SCREEN_W,24,CODE_BAR_EDGE);
+            rect(48,350-12,SCREEN_W-96,24,CODE_BAR);
+            for(int k=-2;k<=2;++k) {
+                const unsigned mode=(selected+MODES+(unsigned)(k+MODES))%MODES;
+                const int distance=k<0?-k:k;
+                const unsigned set=distance==0?2u:distance==2||!mode_playable(mode,&pads)?1u
+                                   :mode==MODE_OPTION?4u:5u;
+                text(set,names[mode],MENU_BG_W/2,350+k*26-8);
             }
             if(pads.pad[0].pressed&SAT_PAD_UP) {selected=selected?selected-1u:MODES-1u;idle=0;}
             if(pads.pad[0].pressed&SAT_PAD_DOWN) {selected=(selected+1u)%MODES;idle=0;}
@@ -313,12 +328,30 @@ static void portrait_palette(unsigned side,unsigned level) {
     (void)sat_vdp2_palette_upload(out,PORT_PAL_WORDS,(uint16_t)(SPR_BANK*256u+(side?SLOT_B:SLOT_A)));
 }
 
+/* The panel behind a portrait is its dominant colour, brightest at the top. */
+static void glow_palette(unsigned side,unsigned colour) {
+    static const unsigned level[4]={31,22,14,8};
+    uint16_t out[4];
+    for(unsigned i=0;i<4;++i)
+        out[i]=(uint16_t)w555(((colour&31u)*level[i])/31u,(((colour>>5)&31u)*level[i])/31u,
+                              (((colour>>10)&31u)*level[i])/31u);
+    (void)sat_vdp2_palette_upload(out,4,(uint16_t)(SPR_BANK*256u+(side?GLOW_P2:GLOW_P1)));
+}
+
+static sat_result_t cache_portraits(void) {
+    for(unsigned id=0;id<=SILHOUETTE;++id) {
+        char name[12]={'P','O','R','T',(char)('0'+id/10u),(char)('0'+id%10u),'.','B','I','N',0,0};
+        SAT_TRY(read_file(name,0,g_port_cache[id],PORT_FILE));
+    }
+    return SAT_OK;
+}
+
 static sat_result_t load_portrait(unsigned side,unsigned id) {
-    char name[12]={'P','O','R','T',(char)('0'+id/10u),(char)('0'+id%10u),'.','B','I','N',0,0};
     const unsigned offset=side?SLOT_B-1u:SLOT_A-1u;
-    SAT_TRY(read_file(name,0,g_io,PORT_FILE));
-    __builtin_memcpy(g_port_pal[side],g_io,sizeof g_port_pal[side]);
-    uint8_t* pixels=g_io+PORT_PAL_WORDS*2;
+    __builtin_memcpy(g_io,g_port_cache[id],PORT_FILE);
+    glow_palette(side,((unsigned)g_io[0]<<8)|g_io[1]);
+    __builtin_memcpy(g_port_pal[side],g_io+PORT_HEADER,sizeof g_port_pal[side]);
+    uint8_t* pixels=g_io+PORT_HEADER+PORT_PAL_WORDS*2;
     for(unsigned i=0;i<PORT_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+offset);
     return sat_vdp1_vram_write((uint32_t)g_port_tex[side].srca*8u,pixels,PORT_BYTES);
 }
@@ -330,14 +363,25 @@ static void cell_frame(unsigned side,t3_select_cursor_t cursor,unsigned frame,in
     rect(x,y,w,3,code);rect(x,y+h-3,w,3,code);rect(x,y,4,h,code);rect(x+w-4,y,4,h,code);
 }
 
+typedef struct {int16_t x,y;int16_t life;} spark_t;
+enum { SPARKS=8 };
+static spark_t g_spark[SPARKS];
+
+static const char* side_label(int empty1) {return empty1?"CHOOSE YOUR FIGHTER":"";}
+
 static void select_flow(uint8_t picks[2]) {
     pads_t pads;
     t3_select_cursor_t cursor[2]={t3_select_find(picks[0]),t3_select_find(picks[1])};
-    unsigned chosen[2]={0,0},shown[2]={FIGHTERS,FIGHTERS},rest[2]={0,0},fade_in[2]={0,0};
+    unsigned chosen[2]={0,0},shown[2]={FIGHTERS+1,FIGHTERS+1},rest[2]={0,0},fade_in[2]={0,0};
     backdrop_show(0);
     SAT_PANIC_IF_ERROR(load_backdrop("SELBG.BIN"));
-    backdrop_view(0);
+    SAT_PANIC_IF_ERROR(load_bitmap("TILEBG.BIN",TILE_BASE,TILE_BANK,512,256,256));
+    SAT_PANIC_IF_ERROR(cache_portraits());
+    (void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,1);
     backdrop_show(1);
+#if defined(T3_SELECT_CDDA_SECTORS)
+    if(t3_select_cdda_start()==SAT_OK)t3_stage_cdda_mix();
+#endif
     for(unsigned elapsed=0,t0=g_now;elapsed<SELECT_FRAMES&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
         frame_begin(&pads);
         fade(elapsed<FADE_FRAMES?-255+(int)(elapsed*255/FADE_FRAMES):0);
@@ -356,8 +400,10 @@ static void select_flow(uint8_t picks[2]) {
             cursor[1]=steer(cursor[1],&pads.pad[0]);
             if(pads.pad[0].pressed&START_BUTTONS)chosen[1]=1;
         }
+        /* Until the first pick is made the CPU's side is the empty silhouette. */
+        const int empty1=!pads.pad[1].connected&&!chosen[0];
         for(unsigned side=0;side<2;++side) {
-            const unsigned id=t3_select_id(cursor[side]);
+            const unsigned id=(side&&empty1)?SILHOUETTE:t3_select_id(cursor[side]);
             const int bg_x=side?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
             if(id!=shown[side]) {
                 if(++rest[side]>=PORT_REST_FRAMES) {
@@ -366,28 +412,57 @@ static void select_flow(uint8_t picks[2]) {
                     shown[side]=id;rest[side]=0;fade_in[side]=0;
                 }
             } else rest[side]=0;
-            if(shown[side]<FIGHTERS && fade_in[side]<=PORT_FADE_FRAMES)
+            if(shown[side]<=SILHOUETTE && fade_in[side]<=PORT_FADE_FRAMES)
                 portrait_palette(side,2u*fade_in[side]++);
-            if(shown[side]<FIGHTERS) {
-                const unsigned pulse=(elapsed>>3)&3u,band=SEL_PORT_Y;
+            if(shown[side]<=SILHOUETTE) {
                 for(unsigned i=0;i<4;++i)
-                    rect((bg_x-2)*2,band+(int)i*(MENU_PORT_H/4),(MENU_PORT_W+4)*2,MENU_PORT_H/4,
-                         (side?GLOW_P2:GLOW_P1)+((i+pulse)&3u));
+                    rect((bg_x-2)*2,SEL_PORT_Y+(int)i*(MENU_PORT_H/4),(MENU_PORT_W+4)*2,MENU_PORT_H/4,
+                         (side?GLOW_P2:GLOW_P1)+i);
                 (void)sat_draw_sprite_scaled_screen(&g_port_tex[side],(int16_t)((bg_x+MENU_PORT_W/2)*2),
                     (int16_t)(SEL_PORT_Y+MENU_PORT_H/2),PORT_STRIDE*2,MENU_PORT_H,0);
             }
-            text(0,t3_fighter_name(id),bg_x+MENU_PORT_W/2,SEL_PLATE_Y+1);
-            text(2,side?(pads.pad[1].connected?"2P":"CPU"):"1P",bg_x+MENU_PORT_W/2,SEL_PORT_Y+4);
+            if(id!=SILHOUETTE)text(3,t3_fighter_name(id),bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
         }
-        text(2,"TIME",MENU_BG_W/2,SEL_PORT_Y+40);
-        number(0,(SELECT_FRAMES-elapsed+SELECT_TIMER_UNIT-1u)/SELECT_TIMER_UNIT,MENU_BG_W/2,SEL_PORT_Y+60);
-        text(0,"VS",MENU_BG_W/2,SEL_PORT_Y+104);
+        /* Rising sparks: every 4th tick a 40-dot streak leaves a portrait, clipped above the plates. */
+        if(!(elapsed&3u)) {
+            static unsigned seed=12345u;
+            seed=seed*1103515245u+12345u;
+            for(unsigned i=0;i<SPARKS;++i)if(!g_spark[i].life) {
+                const int bg_x=(elapsed&4u)?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
+                g_spark[i]=(spark_t){(int16_t)((bg_x+(int)((seed>>16)%MENU_PORT_W))*2),(int16_t)SEL_PLATE_Y,24};
+                break;
+            }
+        }
+        for(unsigned i=0;i<SPARKS;++i)if(g_spark[i].life) {
+            spark_t* spark=&g_spark[i];
+            spark->y=(int16_t)(spark->y-5);
+            --spark->life;
+            if(spark->y<SEL_PORT_Y+40)spark->life=0;
+            else {
+                rect(spark->x,spark->y,2,40,spark->life>12?CODE_WHITE:CODE_GREY);
+            }
+        }
+        /* The big gold timer between the portraits. */
+        {
+            const unsigned left=(SELECT_FRAMES-elapsed+SELECT_TIMER_UNIT-1u)/SELECT_TIMER_UNIT;
+            for(unsigned digit=0;digit<2;++digit) {
+                const unsigned value=digit?left%10u:(left/10u)%10u;
+                (void)sat_draw_sprite_scaled_screen(&g_font[2].glyphs[16u+value],
+                    (int16_t)(MENU_BG_W+(int)digit*34-17),(int16_t)(SEL_PORT_Y+MENU_PORT_H/2+10),32,44,0);
+            }
+        }
         for(unsigned side=0;side<2;++side) {
             if(cursor[side].column>=T3_SELECT_DRAWN_COLUMNS)continue;
+            if(side&&empty1)continue;
             if(!chosen[side]&&(elapsed&16u)&&!(side==0u&&!pads.pad[1].connected&&chosen[0]))continue;
             cell_frame(side,cursor[side],elapsed,(int)chosen[side]);
+            text(0,side?(pads.pad[1].connected?"2P":"CPU"):"1P",
+                 SEL_GRID_X+(int)cursor[side].column*SEL_PITCH+SEL_CELL_W/2,
+                 SEL_GRID_Y+(int)cursor[side].row*SEL_ROW_PITCH+2);
         }
-        if(!pads.pad[1].connected&&chosen[0])text(1,"CHOOSE THE OPPONENT  B: BACK",MENU_BG_W/2,SEL_PORT_Y+150);
+        text(1,side_label(empty1),MENU_BG_W/2,SEL_PORT_Y-12);
+        /* The steel tiles drift diagonally. */
+        (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,(int32_t)((elapsed/2u)&511u)<<16,(int32_t)((elapsed/2u)&255u)<<16);
         frame_end();
     }
     picks[0]=(uint8_t)t3_select_id(cursor[0]);

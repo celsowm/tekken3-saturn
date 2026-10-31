@@ -36,7 +36,8 @@ void t3_stage_cdda_mix(void) {
     EXTS_RIGHT=(uint16_t)((EXTS_RIGHT&0xff00u)|0x00afu);
 }
 
-sat_result_t t3_stage_cdda_start(void) {
+/* Plays the range [track start + skip, + length) of audio track 2 on repeat; length 0 is to its end. */
+static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
     sat_cd_block_t* block;
     SAT_TRY(t3_disc_block(&block));
     const uint16_t toc[4]={0x0200u,0u,0u,0u}, end[4]={0x0600u,0u,0u,0u};
@@ -63,8 +64,10 @@ sat_result_t t3_stage_cdda_start(void) {
     if(response[1]!=204u)return SAT_ERR_IO;
     const uint32_t start=track&0xffffffu,finish=lead&0xffffffu;
     if((track>>24u)!=1u || ((last>>16u)&255u)!=2u || finish<=start)return SAT_ERR_INVALID_ARG;
-    const uint32_t length=finish-start;
-    const uint16_t play[4]={(uint16_t)(0x1080u|(start>>16u)),(uint16_t)start,
+    if(finish-start<=skip+limit)return SAT_ERR_INVALID_ARG;
+    const uint32_t length=limit?limit:finish-start-skip;
+    const uint32_t from=start+skip;
+    const uint16_t play[4]={(uint16_t)(0x1080u|(from>>16u)),(uint16_t)from,
                             (uint16_t)(0x0f80u|(length>>16u)),(uint16_t)length};
     SAT_TRY(sat_cd_block_command(block,play,response));
     if((response[0]>>8u)==0xffu)return SAT_ERR_IO;
@@ -72,4 +75,11 @@ sat_result_t t3_stage_cdda_start(void) {
     t3_stage_cdda_mix();
     return SAT_OK;
 }
+#if defined(T3_SELECT_CDDA_SECTORS)
+/* The stage theme follows the select music on the same track. */
+sat_result_t t3_stage_cdda_start(void) {return cdda_play(T3_SELECT_CDDA_SECTORS,0);}
+sat_result_t t3_select_cdda_start(void) {return cdda_play(0,T3_SELECT_CDDA_SECTORS);}
+#else
+sat_result_t t3_stage_cdda_start(void) {return cdda_play(0,0);}
+#endif
 #endif
