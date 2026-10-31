@@ -55,11 +55,16 @@ uses bank 9.
   `MENU.BIN` fades out and starts a CPU-vs-CPU fight (`PHASE_DEMO`, a short
   rotation of pairs); any button or the end of the match returns to the title.
   The original's opening movie is not played.
+- **Menu sounds.** The original cursor, pick, list and START sounds
+  (`scripts/extract_menu_sfx.py`: codes 0x55F5, 0x50F4, 0x546C, 0x4D87 and 0x4CC0
+  from the combat bank VAB 0) play through the SDK audio (`MENUSFX.BIN`).
+- **Practice.** PRACTICE leads to the select, then a fight where P2 stands still
+  (or is a second human on pad 2); the match starts again by itself, and START
+  leaves for the select. The flag travels in bit 1 of the boot argument's last byte.
 - **Not in the menus yet.** No costume choice (one costume per fighter, so a
-  choice would change nothing), no menu sounds (the cursor and pick sounds come
-  from the executable's own sound bank, which the Saturn build does not load),
-  and Team Battle, Time Attack, Survival, Tekken Force and Practice are listed
-  but do nothing: each needs fight rules the port does not have yet.
+  choice would change nothing), and Team Battle, Time Attack, Survival and
+  Tekken Force are listed but do nothing: each needs fight rules the port does
+  not have yet (team and survival health carry-over, Tekken Force's stages).
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has

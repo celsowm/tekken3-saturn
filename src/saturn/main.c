@@ -741,9 +741,12 @@ static void arcade_advance(int winner) {
 /* The title's demonstration: both fighters are CPU, and any button or the end of the match goes back. */
 static uint8_t g_demo;
 static unsigned g_demo_ticks;
+/* Practice: P2 is a dummy (or a second human), the match starts again by itself, START leaves. */
+static uint8_t g_practice;
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
     if(g_demo) {t3_move_probe_set_cpu(3u,1u,5u);return;}
+    if(g_practice) {t3_move_probe_set_cpu(0u,1u,4u);return;}
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
@@ -898,7 +901,7 @@ static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
-    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)g_show_profiler};
+    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1))};
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
     SAT_PANIC_IF_ERROR(sat_exec(volume,phase==PHASE_FIGHT?"0.BIN":"MENU.BIN",arg,sizeof arg));
@@ -914,7 +917,7 @@ static void enter_fight_phase(void) {
     uint32_t arg_bytes=0;
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
-        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4];
+        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;
     }
     g_demo=restarted && arg[0]==PHASE_DEMO;
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
@@ -1832,14 +1835,18 @@ int main(void) {
         if(g_demo && (pad0.pressed || pad1.pressed || g_game.match_done || ++g_demo_ticks>5400u))
             restart_program(PHASE_TITLE);
 #endif
-        if (pad0.pressed & SAT_PAD_START) {
+        const int practice_again=g_practice && g_game.match_done;
+        if ((pad0.pressed & SAT_PAD_START) || practice_again) {
+#if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
+            if(g_practice && !practice_again)restart_program(PHASE_SELECT);
+#endif
 #if defined(T3_SLAVE_SIMULATION)
             SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));
             ++g_simulation_epoch;
 #endif
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
             /* A finished match goes back to the select screen. */
-            if(g_game.match_done) {
+            if(g_game.match_done && !g_practice) {
                 arcade_advance(g_game.winner);
                 restart_program(PHASE_SELECT);
             }

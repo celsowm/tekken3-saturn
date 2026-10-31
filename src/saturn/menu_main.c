@@ -19,6 +19,7 @@
 #include "select_grid.h"
 #include "stage_cdda.h"
 #include "saturn/app.h"
+#include "saturn/audio.h"
 #include "saturn/color.h"
 #include "saturn/exec.h"
 #include "saturn/font.h"
@@ -175,6 +176,31 @@ static sat_result_t load_backdrop(const char* name) {
     return load_bitmap(name,BG_BASE,BG_BANK,MENU_BG_W,MENU_BG_H,BG_STRIDE);
 }
 
+/* ---- sounds ---- */
+
+enum { SFX_MOVE, SFX_PICK, SFX_UPDOWN, SFX_CONFIRM, SFX_START, SFX_COUNT, SFX_HEAD=64 };
+static sat_sound_t g_sfx[SFX_COUNT];
+static int g_sfx_ready;
+
+/* MENUSFX.BIN: the original menu sounds (scripts/extract_menu_sfx.py). Silent if they are absent. */
+static void init_sfx(void) {
+    uint8_t* const data=g_io;
+    sat_cdfs_file_t file;
+    if(sat_cdfs_lookup(g_volume,"MENUSFX.BIN",&file)!=SAT_OK || file.size>sizeof g_io)return;
+    if(read_file("MENUSFX.BIN",0,data,file.size)!=SAT_OK || sat_audio_init()!=SAT_OK)return;
+    for(unsigned i=0;i<SFX_COUNT;++i) {
+        const uint32_t* row=(const uint32_t*)(data+12*i);       /* offset, samples, rate */
+        const sat_sound_desc_t desc={data+SFX_HEAD+row[0],row[1],row[2],0,0,SAT_AUDIO_PCM_S8,0,0,0};
+        if(sat_sound_create(&g_sfx[i],&desc)!=SAT_OK)return;
+    }
+    g_sfx_ready=1;
+}
+
+static void sfx(unsigned id) {
+    const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
+    if(g_sfx_ready)(void)sat_sound_play(g_sfx[id],&params,NULL);
+}
+
 /* ---- frame helpers ---- */
 
 typedef struct {sat_pad_state_t pad[2];} pads_t;
@@ -192,7 +218,13 @@ static void frame_begin(pads_t* pads) {
     SAT_PANIC_IF_ERROR(sat_begin_frame());
 }
 
-static void frame_end(void) {SAT_PANIC_IF_ERROR(sat_end_frame());}
+static void frame_end(void) {
+    SAT_PANIC_IF_ERROR(sat_end_frame());
+    if(g_sfx_ready)(void)sat_audio_update();
+#if defined(T3_SELECT_CDDA_SECTORS)
+    t3_stage_cdda_mix();
+#endif
+}
 
 /* Text in baked-bitmap coordinates (352 wide): the screen is twice as wide. */
 static void text(unsigned set,const char* s,int bg_cx,int y) {
@@ -211,7 +243,8 @@ enum { MODES=8 };
 #define START_BUTTONS (SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)
 
 static int mode_playable(unsigned mode,const pads_t* pads) {
-    return mode==MODE_ARCADE || mode==MODE_OPTION || (mode==MODE_VS && pads->pad[1].connected);
+    return mode==MODE_ARCADE || mode==MODE_PRACTICE || mode==MODE_OPTION ||
+           (mode==MODE_VS && pads->pad[1].connected);
 }
 
 static void prompt(const pads_t* pads,unsigned frame) {
@@ -239,7 +272,7 @@ static unsigned title_flow(void) {
             text(0,"NAMCO",MENU_BG_W/2-34,MENU_BG_H/2-16);
             text(1,"PRESENTS.",MENU_BG_W/2+30,MENU_BG_H/2-16);
             frame_end();
-            if(pads.pad[0].pressed&SAT_PAD_START)goto menu;
+            if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         /* White flash: 25 frames up, 11 held; then the picture fades in from white over 86. */
         for(unsigned f=0,t0=g_now;f<36;f=g_now-t0) {
@@ -252,7 +285,7 @@ static unsigned title_flow(void) {
             fade(255-(int)(f*255/86));
             frame_begin(&pads);
             frame_end();
-            if(pads.pad[0].pressed&SAT_PAD_START)goto menu;
+            if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         fade(0);
         for(unsigned f=0,t0=g_now;f<300;f=g_now-t0) {
@@ -260,7 +293,7 @@ static unsigned title_flow(void) {
             prompt(&pads,f);
             copyright();
             frame_end();
-            if(pads.pad[0].pressed&START_BUTTONS || pads.pad[1].pressed&START_BUTTONS)goto menu;
+            if(pads.pad[0].pressed&START_BUTTONS || pads.pad[1].pressed&START_BUTTONS) {sfx(SFX_START);goto menu;}
         }
         for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
             fade(-(int)(f*255/FADE_FRAMES));
@@ -302,9 +335,10 @@ menu:;
                                    :mode==MODE_OPTION?4u:5u;
                 text(set,names[mode],MENU_BG_W/2,350+k*26-8);
             }
-            if(pads.pad[0].pressed&SAT_PAD_UP) {selected=selected?selected-1u:MODES-1u;idle=0;}
-            if(pads.pad[0].pressed&SAT_PAD_DOWN) {selected=(selected+1u)%MODES;idle=0;}
+            if(pads.pad[0].pressed&SAT_PAD_UP) {selected=selected?selected-1u:MODES-1u;idle=0;sfx(SFX_UPDOWN);}
+            if(pads.pad[0].pressed&SAT_PAD_DOWN) {selected=(selected+1u)%MODES;idle=0;sfx(SFX_UPDOWN);}
             if((pads.pad[0].pressed&START_BUTTONS) && mode_playable(selected,&pads)) {
+                sfx(SFX_CONFIRM);
                 if(selected==MODE_OPTION)option=1;
                 else {frame_end();return selected;}
             }
@@ -317,6 +351,7 @@ menu:;
 
 static t3_select_cursor_t steer(t3_select_cursor_t cursor,const sat_pad_state_t* pad) {
     const int across=(pad->pressed&SAT_PAD_RIGHT)?1:(pad->pressed&SAT_PAD_LEFT)?-1:0;
+    if(pad->pressed&(SAT_PAD_RIGHT|SAT_PAD_LEFT|SAT_PAD_UP|SAT_PAD_DOWN))sfx(SFX_MOVE);
     return t3_select_move(cursor,across,(pad->pressed&(SAT_PAD_UP|SAT_PAD_DOWN))!=0);
 }
 
@@ -414,16 +449,16 @@ static void select_flow(uint8_t picks[2]) {
             for(unsigned side=0;side<2;++side) {
                 if(chosen[side])continue;
                 cursor[side]=steer(cursor[side],&pads.pad[side]);
-                if(pads.pad[side].pressed&START_BUTTONS)chosen[side]=1;
+                if(pads.pad[side].pressed&START_BUTTONS) {chosen[side]=1;sfx(SFX_PICK);}
             }
         } else if(!chosen[0]) {
             cursor[0]=steer(cursor[0],&pads.pad[0]);
-            if(pads.pad[0].pressed&START_BUTTONS)chosen[0]=1;
+            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;sfx(SFX_PICK);}
         } else if(pads.pad[0].pressed&SAT_PAD_B) {
             chosen[0]=0;
         } else {
             cursor[1]=steer(cursor[1],&pads.pad[0]);
-            if(pads.pad[0].pressed&START_BUTTONS)chosen[1]=1;
+            if(pads.pad[0].pressed&START_BUTTONS) {chosen[1]=1;sfx(SFX_PICK);}
         }
         /* Until the first pick is made the CPU's side is the empty silhouette. */
         const int empty1=!pads.pad[1].connected&&!chosen[0];
@@ -504,9 +539,13 @@ int main(void) {
     uint8_t arg[SAT_EXEC_ARG_MAX];
     init_video();
     SAT_PANIC_IF_ERROR(t3_disc_volume(&g_volume));
+    init_sfx();
     if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
     else g_arg[0]=0;                                  /* cold boot: the title first */
-    if(g_arg[0]!=PHASE_SELECT && title_flow()==MODE_DEMO) {
+    unsigned mode=MODE_ARCADE;
+    if(g_arg[0]!=PHASE_SELECT && (mode=title_flow())!=MODE_DEMO)
+        g_arg[4]=(uint8_t)((g_arg[4]&1u)|(mode==MODE_PRACTICE?2u:0u));   /* bit 1: practice */
+    if(mode==MODE_DEMO) {
         /* The demonstration: two CPU fighters from a rotation, ended by any button. */
         static const uint8_t pairs[][2]={{1,8},{0,3},{7,4},{14,15},{5,2},{9,6}};
         const unsigned pair=(g_now/2u)%(sizeof pairs/sizeof pairs[0]);

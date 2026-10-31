@@ -1527,6 +1527,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/overlay_images.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
                 "${T3_LOCAL_HUD_EXE}" "${T3_LOCAL_TITLE_OVERLAY}" "${T3_LOCAL_SELECT_OVERLAY}" VERBATIM)
+        add_custom_command(OUTPUT "${_t3_menu_gen}/MENUSFX.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_menu_sfx.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_menu_gen}/MENUSFX.BIN"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_menu_sfx.py" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py"
+                "${T3_LOCAL_HUD_EXE}" VERBATIM)
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
@@ -1539,7 +1544,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_menu>/tekken3_menu.app.bin"
                 "${CMAKE_BINARY_DIR}/menu/MENU.BIN"
             DEPENDS tekken3_menu VERBATIM)
-        list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files})
+        list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files}
+            "${_t3_menu_gen}/MENUSFX.BIN")
         set(_t3_disc_depends tekken3_menu)
         set(_t3_select_wav_args "")
         set(_t3_select_wav_deps "")

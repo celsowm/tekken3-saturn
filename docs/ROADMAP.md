@@ -115,8 +115,8 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
   original text and round messages are also present in the current build;
   complete visual parity remains open. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
 - [~] Menus: the roster build has the original title sequence, a mode list and
-  the character select at 704x448 (`MENU.BIN`, see `docs/ROSTER.md`); only
-  ARCADE, VS and OPTION lead anywhere, and the select has no music.
+  the character select at 704x448 (`MENU.BIN`, see `docs/ROSTER.md`); ARCADE,
+  VS, PRACTICE and OPTION lead somewhere; the rest are listed only.
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 
 ## Milestone 4: completeness and fidelity
