@@ -89,6 +89,8 @@ static void sprite_palette(void) {
     }
 }
 
+static void fade(int level);
+
 static void init_fonts(void) {
     static const uint8_t codes[FONT_SETS]={CODE_WHITE,CODE_GREY,CODE_GOLD};
     for(unsigned set=0;set<FONT_SETS;++set)
@@ -105,6 +107,13 @@ static void init_video(void) {
     sat_video_config_t video={SCREEN_W,SCREEN_H,SAT_VIDEO_AUTO,0};
     sat_vdp2_layer_config_t layer;
     SAT_PANIC_IF_ERROR(sat_init(&video));
+    /* The VDP1 framebuffer holds whatever the last program left until the first frame is drawn, and
+     * loading the fonts takes seconds: show black, and send one empty frame to clear it. */
+    SAT_PANIC_IF_ERROR(sat_vdp2_color_offset_enable(LAYERS,SAT_VDP2_COLOR_OFFSET_A));
+    fade(-255);
+    (void)sat_vdp2_layers_commit();
+    SAT_PANIC_IF_ERROR(sat_begin_frame());
+    SAT_PANIC_IF_ERROR(sat_end_frame());
     sprite_palette();
     init_fonts();
     SAT_PANIC_IF_ERROR(sat_vdp2_palette_upload(g_pal,256,SPR_BANK*256));
@@ -316,6 +325,7 @@ static unsigned title_flow(void) {
             int level=f<32?-255+(int)(f*255/32):f>=122?-(int)((f-122)*255/32):0;
             fade(level);
             frame_begin(&pads);
+            rect(0,0,SCREEN_W,SCREEN_H,CODE_BLACK);   /* nothing behind: do not trust the framebuffer */
             pic_left(TX_NAMCO,112,MENU_BG_H/2);
             pic_left(TX_PRESENTS,112+(int)g_text_size[TX_NAMCO][0]+9,MENU_BG_H/2);
             frame_end();
@@ -325,6 +335,7 @@ static unsigned title_flow(void) {
         for(unsigned f=0,t0=g_now;f<36;f=g_now-t0) {
             fade(f<25?(int)(10*f+10):255);
             frame_begin(&pads);
+            rect(0,0,SCREEN_W,SCREEN_H,CODE_BLACK);
             frame_end();
         }
         backdrop_show(1);
