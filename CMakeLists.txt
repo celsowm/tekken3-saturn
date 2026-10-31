@@ -1532,6 +1532,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_menu_gen}/MENUSFX.BIN"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_menu_sfx.py" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py"
                 "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        option(T3_HIRES_SPIKE "Also build the Phase 0 hi-res menu spike (tests/spike_hires_menu.c)" OFF)
+        if(T3_HIRES_SPIKE)
+            add_executable(tekken3_spike_hires tests/spike_hires_menu.c)
+            target_compile_options(tekken3_spike_hires PRIVATE -Wall -Wextra -Os)
+            target_link_libraries(tekken3_spike_hires PRIVATE LibSaturn::Saturn)
+            libsaturn_configure_executable(tekken3_spike_hires)
+            libsaturn_add_binary(tekken3_spike_hires MAX_BYTES 983040)
+        endif()
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)

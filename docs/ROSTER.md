@@ -71,6 +71,12 @@ uses bank 9.
   (`survival_time_attack_rules`: levels, survival ends at a loss, time attack at
   the tenth win). On Ymir: the result screen, and a survival loss back to the
   title; a tenth win itself was not played.
+- **Phase 0 spike.** `tests/spike_hires_menu.c` (`-DT3_HIRES_SPIKE=ON`, built after
+  the menus, though the plan wanted it first) checks the approach on its own: a
+  352-wide VDP2 bitmap shown 2x wide, a VDP1 8-bit sprite and text over it, and a
+  colour-offset fade from white, all at 704x448 on Ymir. All four work. It cannot
+  show interlace flicker: screenshots composite both fields, so flicker is not
+  measured anywhere in this work.
 - **Not in the menus yet.** No costume choice (one costume per fighter, so a
   choice would change nothing), and Team Battle and Tekken Force are listed but
   do nothing: team needs a roster of members with swap-in, Tekken Force needs
