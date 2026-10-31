@@ -12,8 +12,6 @@ implementation of Tekken3Remake.
   `scripts/build_cd_audio.py` and `scripts/convert_cd_audio.py` are adapted
   from LibSaturn, Copyright (c) 2026 libsaturn contributors, under MIT; the
   full MIT permission notice is in [LICENSE](LICENSE).
-  `patches/libsaturn-paul-law.patch` contains LibSaturn changes under the same
-  license and attribution.
 - **Tekken3Remake**, by n0madic:
   https://github.com/n0madic/Tekken3Remake . Its current project source is
   licensed under PolyForm Noncommercial 1.0.0 and carries the required notice

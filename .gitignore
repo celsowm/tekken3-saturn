@@ -42,3 +42,6 @@ __pycache__/
 *.psx-combat.jsonl
 *.psx-combat.jsonl.tmp
 *.psx-ram
+
+# Editor config with absolute paths, written by scripts/gen_clangd.py
+/.clangd

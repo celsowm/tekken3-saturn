@@ -30,7 +30,7 @@
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
 #include "saturn/vdp1.h"
-#if defined(T3_ORIGINAL_TITLE)
+#if defined(T3_ORIGINAL_TITLE) || defined(T3_FIGHTER_PACKS)
 #include "disc.h"
 #endif
 #include "saturn/time.h"

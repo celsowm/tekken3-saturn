@@ -324,22 +324,13 @@ that build recorded three hits, one block, five swings and zero unmapped sound
 requests (`demo-source-kit-probe/`); it does not establish CD boot or hardware
 behavior. Outputs remain private and this is not yet an itch.io installer.
 
-The SDK used for these checks had local changes at
-`d0f1eac57c9662966d624ba7342467c558823164`. The configured demo needs its
-rotation-bitmap API and capacity for 59 resident sounds; the base revision
-has neither that API nor more than 24 sound slots. The relevant local changes
-are recorded as [a patch](../patches/libsaturn-paul-law.patch). Fighter packs
-also need `sat_character_asset_compact`, recorded as
-[a second patch](../patches/libsaturn-fighter-packs.patch). The first was checked
-against the base revision's index and reverse-checked against the current SDK
-working tree. To use it with an existing clean checkout at that revision:
+The configured demo needs LibSaturn's rotation-bitmap API and capacity for 59
+resident sounds, and fighter packs need `sat_character_asset_compact`. All three
+are on LibSaturn `main` from `d9787ca`, which replaced the bitmap API the checks
+above were run with, so an older SDK no longer builds the game. The local patches
+this section used to describe are gone from `patches/`.
 
-```sh
-git -C /path/to/lib-saturn apply --check /path/to/tekken3-saturn/patches/libsaturn-paul-law.patch
-git -C /path/to/lib-saturn apply /path/to/tekken3-saturn/patches/libsaturn-paul-law.patch
-```
-
-Rebuild and install that SDK into its existing prefix before building the game.
+Install that SDK into its existing prefix before building the game.
 `scripts/build_paul_law_demo.py` checks the installed archive for the bitmap
 symbol and the sound registry size before configuring. To run this separately:
 

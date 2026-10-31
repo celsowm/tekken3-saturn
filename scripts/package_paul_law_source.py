@@ -25,8 +25,6 @@ EXTRA = (
     'scripts/mednafen_press_start.swift',
     'scripts/configure_mednafen_controls.py',
     'scripts/package_private_demo.py',
-    'patches/libsaturn-paul-law.patch',
-    'patches/libsaturn-fighter-packs.patch',
     'scripts/check_cdda_capture.py', 'scripts/extract_psx_stage_music.py',
     'scripts/inspect_psx_sound_ids.py', 'scripts/prepare_paul_law_assets.py',
     'scripts/package_paul_law_source.py', 'src/saturn/stage_cdda.c', 'src/saturn/stage_cdda.h',

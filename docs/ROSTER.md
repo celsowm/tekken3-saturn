@@ -31,7 +31,7 @@ uses bank 9.
 
 ## SDK changes
 
-Recorded in `patches/libsaturn-fighter-packs.patch`:
+On LibSaturn `main` from `d9787ca`, which the game now needs:
 
 - `sat_character_asset_compact` moves a decoded character out of its archive
   without the texture pixels, once they are uploaded. About 70% of a textured
@@ -45,13 +45,15 @@ Recorded in `patches/libsaturn-fighter-packs.patch`:
 
 | Limit | Use | Margin |
 | --- | --- | --- |
-| High WRAM, below the 16 KiB Master stack reserve at `0x060FC000` | `__bss_end` `0x060FBC6C` | 916 bytes |
+| High WRAM, below the 16 KiB Master stack reserve at `0x060FC000` | `__bss_end` `0x060FB498` | 2,920 bytes |
 | Low WRAM, below the 512 bytes `sat_exec` reserves at `0x002FFE00` | `__wram_l_end` `0x002FFD00` | 256 bytes |
 
 Both are nearly full, and the linker refuses any overflow. To stay inside, the
 files in the `T3_FIGHTER_PACKS` block of `CMakeLists.txt` build with `-Os`.
 Compiling `main.c` this way cost 3,346 images against 3,358 over 6,000 frames of
-Paul vs Law on Ymir (-0.4%).
+Paul vs Law on Ymir (-0.4%). The merged SDK's extra code later ran over the
+reserve, so `psx_ground.c`, `psx_ik.c` and `stage_backdrop.c` joined them: 3,337
+images over the same run.
 
 `scripts/map_sizes.py MAP` lists what fills a RAM range.
 

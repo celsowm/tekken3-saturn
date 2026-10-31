@@ -564,8 +564,9 @@ sat_result_t t3_stage_vdp2_init(void) {
         .priority=2,
 #endif
         .transparent=0,
-        .palette=PALETTE,.over=SAT_VDP2_ROTATION_OVER_REPEAT,.coefficients=1,
-        .coefficient_mode=SAT_VDP2_COEFFICIENT_KXKY,.bitmap_address=CHARS,.table_address=PARAM_A};
+        .palette=PALETTE,.over=SAT_VDP2_ROTATION_OVER_REPEAT,
+        .coefficients_a={.enabled=1,.mode=SAT_VDP2_COEFFICIENT_KXKY},
+        .bitmap_address=CHARS,.table_address=PARAM_A};
     g_t3_stage_boot_step=14;
     if((st=sat_vdp2_rotation_bitmap_configure(&config))!=SAT_OK)return st;
 #else
@@ -576,7 +577,7 @@ sat_result_t t3_stage_vdp2_init(void) {
     config.name_bank_mask=SAT_VDP2_BANK_B1;
     config.char_base_address=CHARS;
     config.table_address=PARAM_A;
-    config.coefficients=1; config.transparent=0;
+    config.coefficients_a.enabled=1; config.transparent=0;
     config.palette=PALETTE;
     config.over=SAT_VDP2_ROTATION_OVER_REPEAT;
     config.priority=2;
@@ -630,7 +631,8 @@ sat_result_t t3_stage_vdp2_init(void) {
         return st;
     g_params=(sat_vdp2_rotation_params_t){0};
     g_params.coefficient_address=COEFFICIENT_A;g_params.coefficient_step=SAT_FX16_ONE;
-    if((st=sat_vdp2_rotation_write_params(PARAM_A,&g_params))!=SAT_OK)return st;
+    /* Parameter set A is the only one read; the swap handler keeps it fresh. */
+    if((st=sat_vdp2_rotation_write_params(PARAM_A,&g_params,&g_params))!=SAT_OK)return st;
     if((st=sat_vdp2_layers_commit())!=SAT_OK)return st;
     if((st=sat_vdp1_set_swap_handler(publish,NULL))!=SAT_OK)return st;
 #if defined(T3_FLIPBOOK_BURST)

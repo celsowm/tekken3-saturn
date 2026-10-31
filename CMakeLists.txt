@@ -1489,8 +1489,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_FIGHTER_PACKS)
         # The largest game code that runs once a tick: High WRAM holds both packs' stores.
         set_source_files_properties(src/game/psx_ai.c src/game/psx_camera.c src/game/psx_effect_fire.c
-            src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_hit_transaction.c
-            src/game/select_grid.c src/saturn/char_select.c src/saturn/fighter_pack.c src/saturn/main.c
+            src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_ground.c
+            src/game/psx_hit_transaction.c src/game/psx_ik.c src/game/select_grid.c
+            src/game/stage_backdrop.c src/saturn/char_select.c src/saturn/fighter_pack.c src/saturn/main.c
             PROPERTIES COMPILE_OPTIONS "-Os")
         target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/char_select.c
             "${_t3_pack_gen}/t3_roster.h")

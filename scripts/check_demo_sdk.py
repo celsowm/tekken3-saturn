@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check the installed LibSaturn archive for this demo's known SDK requirements.
 
-The sound-size check applies to the registry ABI at LibSaturn d0f1eac and the
-accompanying patch. An unknown layout is reported as unverified.
+The sound-size check applies to the registry ABI at LibSaturn d9787ca. An
+unknown layout is reported as unverified.
 """
 import argparse
 import os
@@ -28,10 +28,10 @@ def inspect_symbols(output):
         symbols[fields[3]] = (fields[2], size)
     if not any(name.lstrip('_') == 'sat_vdp2_rotation_bitmap_configure'
                and kind.upper() == 'T' for name, (kind, _) in symbols.items()):
-        raise ValueError('installed LibSaturn lacks the rotation-bitmap API; apply the demo SDK patch and reinstall')
+        raise ValueError('installed LibSaturn lacks the rotation-bitmap API; update it to d9787ca or later and reinstall')
     if not any(name.lstrip('_') == 'sat_character_asset_compact'
                and kind.upper() == 'T' for name, (kind, _) in symbols.items()):
-        raise ValueError('installed LibSaturn lacks the compact character asset; apply the fighter-pack patch and reinstall')
+        raise ValueError('installed LibSaturn lacks the compact character asset; update it to d9787ca or later and reinstall')
     matches = [(name, kind, size) for name, (kind, size) in symbols.items()
                if name.endswith(REGISTRY_SUFFIX)]
     if len(matches) != 1:
@@ -41,7 +41,7 @@ def inspect_symbols(output):
         raise ValueError('cannot verify the installed sound registry layout')
     capacity = size // REGISTRY_ENTRY_BYTES
     if capacity < MIN_SOUNDS:
-        raise ValueError(f'installed LibSaturn has {capacity} sound slots; the demo needs at least {MIN_SOUNDS}; apply the SDK patch and reinstall')
+        raise ValueError(f'installed LibSaturn has {capacity} sound slots; the demo needs at least {MIN_SOUNDS}; update it to d9787ca or later and reinstall')
     return capacity
 
 
