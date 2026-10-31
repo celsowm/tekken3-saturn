@@ -743,6 +743,19 @@ static uint8_t g_demo;
 static unsigned g_demo_ticks;
 /* Practice: P2 is a dummy (or a second human), the match starts again by itself, START leaves. */
 static uint8_t g_practice;
+/* Run modes (modes.md): 0 arcade or VS, 1 survival, 2 time attack. The wins and the seconds fought
+ * so far travel in the boot argument; the player picks every opponent. */
+enum { RUN_ARCADE, RUN_SURVIVAL, RUN_TIME_ATTACK, TIME_ATTACK_FIGHTS=10 };
+static uint8_t g_run_mode,g_wins;
+static uint16_t g_run_seconds;
+static uint32_t g_run_mark;
+
+/* Survival's CPU level from the number of wins (arcade.ovl 0x800B104C): the middle of each range,
+ * and level 0 on every tenth win. */
+static uint8_t survival_level(unsigned wins) {
+    if(wins && wins%10u==0)return 0u;
+    return wins<5u?2u:wins<10u?3u:wins<20u?5u:6u;
+}
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
     if(g_demo) {t3_move_probe_set_cpu(3u,1u,5u);return;}
@@ -751,7 +764,12 @@ static void choose_cpu(const sat_pad_state_t* pad1) {
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
     if(pad1->connected)g_arcade_stage=0u;
-    t3_move_probe_set_cpu(pad1->connected?0u:2u,1u,(uint8_t)(4u+g_arcade_stage));
+    {
+        uint8_t level=(uint8_t)(4u+g_arcade_stage);
+        if(g_run_mode==RUN_SURVIVAL)level=survival_level(g_wins);
+        else if(g_run_mode==RUN_TIME_ATTACK)level=(uint8_t)(4u+(g_wins>=9u?3u:g_wins/3u));
+        t3_move_probe_set_cpu(pad1->connected?0u:2u,1u,level);
+    }
 #endif
 }
 
@@ -896,12 +914,13 @@ static void title_screen(void) {
 /* Title and select run before anything is loaded. The fight restarts this same
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
-enum { BOOT_ARG_BYTES=5u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D' };
+enum { BOOT_ARG_BYTES=8u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R' };
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
-    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1))};
+    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)),
+        g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds};
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
     SAT_PANIC_IF_ERROR(sat_exec(volume,phase==PHASE_FIGHT?"0.BIN":"MENU.BIN",arg,sizeof arg));
@@ -918,6 +937,7 @@ static void enter_fight_phase(void) {
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
         g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;
+        g_run_mode=(arg[4]>>2)&3u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
     }
     g_demo=restarted && arg[0]==PHASE_DEMO;
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
@@ -1793,6 +1813,7 @@ int main(void) {
 #endif
     prev_frame = display_fields();
     g_rate_sample_vblank = prev_frame;
+    g_run_mark = prev_frame;
 #if defined(T3_OVERLAP_VDP1)
     /* Initialize the original pose before the first gameplay image. Later
      * iterations overlap preparation; this one startup wait is not repeated. */
@@ -1846,6 +1867,12 @@ int main(void) {
 #endif
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
             /* A finished match goes back to the select screen. */
+            if(g_game.match_done && !g_practice && g_run_mode) {
+                g_run_seconds=(uint16_t)(g_run_seconds+(display_fields()-g_run_mark)/60u);
+                if(g_game.winner==0)++g_wins;
+                else if(g_run_mode==RUN_SURVIVAL)restart_program(PHASE_RESULT);
+                restart_program(g_run_mode==RUN_TIME_ATTACK && g_wins>=TIME_ATTACK_FIGHTS?PHASE_RESULT:PHASE_SELECT);
+            }
             if(g_game.match_done && !g_practice) {
                 arcade_advance(g_game.winner);
                 restart_program(PHASE_SELECT);

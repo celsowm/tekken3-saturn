@@ -40,7 +40,7 @@ enum {
     FONT_SETS=6, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=124, GLOW_P1=240, GLOW_P2=244, CODE_BLACK=248, CODE_CYAN=249, CODE_RED=250, CODE_BAR=251, CODE_BAR_EDGE=252,
-    BOOT_ARG_BYTES=5, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', MODE_DEMO=100,
+    BOOT_ARG_BYTES=8, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
     LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
@@ -55,7 +55,7 @@ static sat_vdp1_texture_t g_port_tex[2];
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
 static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
-static uint8_t g_arg[BOOT_ARG_BYTES]={PHASE_SELECT,0,1,0,0};
+static uint8_t g_arg[BOOT_ARG_BYTES]={PHASE_SELECT,0,1,0,0,0,0,0};
 
 static unsigned w555(unsigned r,unsigned g,unsigned b) {return 0x8000u|r|(g<<5)|(b<<10);}
 
@@ -243,7 +243,8 @@ enum { MODES=8 };
 #define START_BUTTONS (SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)
 
 static int mode_playable(unsigned mode,const pads_t* pads) {
-    return mode==MODE_ARCADE || mode==MODE_PRACTICE || mode==MODE_OPTION ||
+    return mode==MODE_ARCADE || mode==MODE_PRACTICE || mode==MODE_OPTION || mode==MODE_TIME ||
+           mode==MODE_SURVIVAL ||
            (mode==MODE_VS && pads->pad[1].connected);
 }
 
@@ -344,6 +345,33 @@ menu:;
             }
             frame_end();
         }
+    }
+}
+
+/* ---- run results ---- */
+
+static void digits(char* out,unsigned value,unsigned width) {
+    for(unsigned i=width;i-->0;value/=10u)out[i]=(char)('0'+value%10u);
+}
+
+/* After a survival loss or the tenth time attack win: the wins or the time, until START. */
+static void result_flow(void) {
+    pads_t pads;
+    const int survival=((g_arg[4]>>2)&3u)==1u;
+    const unsigned seconds=((unsigned)g_arg[6]<<8)|g_arg[7];
+    char line[16]={0};
+    SAT_PANIC_IF_ERROR(load_backdrop("TITLEBG.BIN"));
+    backdrop_show(1);
+    fade(0);
+    if(survival) {__builtin_memcpy(line,"WINS 00",8);digits(line+5,g_arg[5],2);}
+    else {__builtin_memcpy(line,"TIME 00:00",11);digits(line+5,(seconds/60u)%100u,2);digits(line+8,seconds%60u,2);}
+    for(unsigned f=0,t0=g_now;f<1800u;f=g_now-t0) {
+        frame_begin(&pads);
+        rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
+        text(2,survival?"SURVIVAL RESULT":"TIME ATTACK RESULT",MENU_BG_W/2,330);
+        text(0,line,MENU_BG_W/2,370);
+        frame_end();
+        if(pads.pad[0].pressed&START_BUTTONS)break;
     }
 }
 
@@ -543,8 +571,14 @@ int main(void) {
     if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
     else g_arg[0]=0;                                  /* cold boot: the title first */
     unsigned mode=MODE_ARCADE;
+    if(g_arg[0]==PHASE_RESULT) {result_flow();g_arg[0]=0;}
     if(g_arg[0]!=PHASE_SELECT && (mode=title_flow())!=MODE_DEMO)
-        g_arg[4]=(uint8_t)((g_arg[4]&1u)|(mode==MODE_PRACTICE?2u:0u));   /* bit 1: practice */
+    {
+        /* bit 1 practice, bits 2-3 run mode (1 survival, 2 time attack); a fresh run starts at no wins. */
+        const unsigned run=mode==MODE_SURVIVAL?1u:mode==MODE_TIME?2u:0u;
+        g_arg[4]=(uint8_t)((g_arg[4]&1u)|(mode==MODE_PRACTICE?2u:0u)|(run<<2));
+        g_arg[5]=g_arg[6]=g_arg[7]=0;
+    }
     if(mode==MODE_DEMO) {
         /* The demonstration: two CPU fighters from a rotation, ended by any button. */
         static const uint8_t pairs[][2]={{1,8},{0,3},{7,4},{14,15},{5,2},{9,6}};

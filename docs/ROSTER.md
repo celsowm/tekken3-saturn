@@ -61,10 +61,18 @@ uses bank 9.
 - **Practice.** PRACTICE leads to the select, then a fight where P2 stands still
   (or is a second human on pad 2); the match starts again by itself, and START
   leaves for the select. The flag travels in bit 1 of the boot argument's last byte.
+- **Survival and Time Attack.** Both are runs over the same select. Survival
+  raises the CPU level with the wins (middle of the ranges in `modes.md`, level 0
+  on every tenth win) and ends at the first loss; Time Attack is ten wins on the
+  arcade ladder, a loss repeats the stage. Either ends on a result screen (wins,
+  or the time) in `MENU.BIN`. The wins and seconds travel in bytes 5-7 of the
+  boot argument; bits 2-3 of byte 4 hold the run. Health does not carry over and
+  no record table is kept. Verified on Ymir: the result screen, and a survival
+  loss back to the title; the tenth Time Attack win was not run.
 - **Not in the menus yet.** No costume choice (one costume per fighter, so a
-  choice would change nothing), and Team Battle, Time Attack, Survival and
-  Tekken Force are listed but do nothing: each needs fight rules the port does
-  not have yet (team and survival health carry-over, Tekken Force's stages).
+  choice would change nothing), and Team Battle and Tekken Force are listed but
+  do nothing: team needs a roster of members with swap-in, Tekken Force needs
+  its own stages.
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has
