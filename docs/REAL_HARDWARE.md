@@ -78,3 +78,126 @@ Mednafen booted the mixed-mode CUE from CD into the attract fight, with sound di
 `scripts/mednafen_shots.py` key presses did not register in that session, so the options menu
 and the switch were not exercised on Mednafen, and the build's CD audio was not heard there.
 No real Saturn has run this build yet.
+
+## Load estimates without hardware (2026-10-31)
+
+These come from ELF `4609f6e7…`, attract fight (two CPU fighters), neutral pads, which is
+the emulators' view only. Evidence is in `assets/imported/slowhit-study/`.
+
+### VDP1 is probably not the cause of "very slow"
+
+`scripts/vdp1_load.py` walks the real command list that Ymir holds in VRAM. In fight images:
+
+| Measure | Per image |
+|---|---|
+| Commands | 714–749 |
+| Lines | 4,722–5,195 |
+| Pixels written | 102,000–105,000 |
+| Of those, the clearing polygon | 71,680 (about 69%) |
+
+`T3_FRAME_ON_SUBMIT` means the hardware erase never runs, so LibSaturn starts each list with
+a full-screen polygon. Mednafen 1.32.1 charges 1.1875 clocks per pixel, 4 per line and 16 per
+command (`src/ss/vdp1_common.h`, `src/ss/vdp1.cpp`). That is about 155,000 clocks, or 0.35 of
+a field. To hold an image past the 4-field cap, VDP1 would need about 17 clocks per pixel. The
+Mednafen figures are a model; the true hardware rate has not been measured here.
+
+Direct test, Mednafen, 110 s, with the clearing polygon removed by a temporary
+`sat_vdp1_set_erase_enabled(0)`:
+
+| Run | Observed fields | Discarded | Ticks | Images | Images/s |
+|---|---|---|---|---|---|
+| Control | 3,411 | 241 (7.1%) | 3,170 | 1,012 | 17.8 |
+| No clear | 3,415 | 238 (7.0%) | 3,177 | 1,017 | 17.9 |
+
+Removing 69% of VDP1's pixels changed almost nothing, so VDP1 does not limit the loop on
+Mednafen. The CPUs do. Images/s divides `frame_serial` by observed fields; the two counters
+may start slightly apart. The no-clear picture is smeared, as expected
+(`no-clear-frame.png`), and the test build was discarded.
+
+### The margin above the catch-up cap is small
+
+Mednafen runs this fight at about 18 images/s and already discards 7.1% of its fields. Ymir
+with cache on runs about 33 images/s and discards 2.0% (89 of 4,439). Below 15 images/s, game
+speed is `images/s × 4 / 60`, so 10 images/s would play at 67% speed. A console about 20%
+slower than Mednafen would therefore be in visible slow motion. This is an inference and fits
+the Satiator report, but it does not explain why SAROO was reported near normal speed.
+
+### Where Ymir's discards come from
+
+`scripts/discard_map.py` lists every discard (89 in 6,000 fields, in clusters). Profiles of
+8 fields, Slave, with CPU move selection counted as `rd`, `native_*`, `bank_*`, `bus_read`,
+`row_address` and `t3_move_index_*`:
+
+| Field window | Discards nearby | Move selection, cycles | Share of Slave |
+|---|---|---|---|
+| 1818 | Yes | 1,221,000 | 34% |
+| 2588 | Yes | 1,263,000 | 35% |
+| 3156 | Yes | 1,196,000 | 33% |
+| 3196 | Yes | 1,363,000 | 38% |
+| 5716 | Yes | 280,000 | 8% |
+| 3500 | No | 171,000 | 5% |
+| 3776 | No | 745,000 | 21% |
+
+In the four move-selection windows the Master spends 2.0–2.5M of its 3.6M cycles waiting.
+Move selection is the main cause there, but not the only one: the 5716 window is mostly
+projection and pose sampling. On Mednafen, one AI update averages 9% of a field and peaks at
+84% (3,130 of 3,728 FRT/128 ticks), with 1.66 updates per tick. A player against the CPU
+needs fewer updates than this attract fight, which has two CPU fighters.
+
+### Per-fighter move selection caches
+
+The AI kept one table of picks and one last collection. With two CPU fighters each update
+replaced the other's, so the demonstration fight repeated its candidate walks in full. Each
+fighter now has its own (`src/game/psx_ai.c`); entries in the shared AI block are saved only
+when the other fighter is about to overwrite them, so a fight with one CPU fighter copies nothing.
+
+`scripts/ai_cost.py`, Ymir, cache on, 6,000 fields, ELF `6e2826e2a458c097…` against the same tree before
+the change:
+
+| Fight | Build | Pad hash | Images / fields | Discarded | AI mean, peak (of a field) |
+|---|---|---|---|---|---|
+| Attract, two CPU | Before | `0x640e32c0` | 1,956 / 4,437 | 87 | 0.078, 0.722 |
+| Attract, two CPU | After | `0x640e32c0` | 2,097 / 4,436 | 11 | 0.059, 0.634 |
+| Arcade, one CPU | Before | `0x4c460e70` | 1,669 / 3,027 | 0 | 0.050, 0.448 |
+| Arcade, one CPU | After | `0x4c460e70` | 1,662 / 3,027 | 0 | 0.053, 0.448 |
+
+Mednafen, 110 s, attract, against the control above:
+
+| Build | Observed fields | Discarded | Ticks | Images | Images/s | AI mean, peak |
+|---|---|---|---|---|---|---|
+| Before | 3,411 | 241 (7.1%) | 3,170 | 1,012 | 17.8 | 0.09, 0.84 |
+| After | 3,408 | 132 (3.9%) | 3,276 | 1,053 | 18.5 | 0.07, 0.73 |
+
+The pad hash covers the first 2,000 updates and matches on both emulators, so the CPU's choices
+did not change. `scripts/verify_psx_ai.py --cases 300` reports 0 mismatches against the original
+code, without these caches. Discards on Ymir: 89 before, 11 now, clustered near fields 4010 and 5611.
+
+**This helps the demonstration fight, not a fight against one CPU**, which is what a player
+normally sees: arcade is about 0.4% slower here, cause not established. The
+Mednafen margin above the cap barely moved. Arcade could not be run on Mednafen because its key
+presses did not register.
+
+The peak update is not explained. The FRT reports about 300,000 cycles, but a 12-field profile
+near the field of the peak (field 4144 attract, 4135 arcade) shows at most 28,000, and a 200-field
+trace makes the probe fail. Either the window missed it or the reading is not CPU work.
+
+### One CPU fighter on Mednafen and Ymir (arcade)
+
+Key presses do work with `scripts/mednafen_shots.py` (new `--mednafen-arg`, for
+`-ss.input.port2 none`) and with `record_mednafen.py --input-script`, using Return at 25, 30, 36
+and 41 s after launch. The earlier failure was a timing mistake: the title appears only about
+22 s after launch. Arcade then reaches a fight against one CPU (`mednafen-arcade-frame.png`).
+
+Mednafen, 90 s, ELF `6e2826e2…`, one CPU fighter, P1 neutral: 2,214 observed fields, 93 discarded
+(4.2%), 2,121 scheduled ticks. This is about the same discard rate as the two-CPU attract fight
+(3.9%), so on Mednafen the one-CPU fight is not clearly easier. There is no control build for this
+scenario, so it says nothing about the per-fighter change.
+
+Ymir, arcade, 12 fields from field 4000 (`arcade-profile-functions.txt`): six images in 12 fields,
+each CPU about 900,000 cycles per image. The Slave is idle in `slave_wait_request` and its FRT
+polling about 11% of the time. Its largest self cost is `project_q15` (18%, with no hot spot: its
+cost is spread over the per-vertex loop), then `t3_psx_mul_rot` (5.6%), `sample_one` (5.2%),
+`memcpy` (4.2%), pose and compose (about 8% together) and `native_collect` (2.2%). On the Master
+`submit_instance` is 30% and `project_q15` 17%. No single routine offers a large gain; a real
+saving would have to remove work (fewer vertices or poses per image), not tune a loop.
+

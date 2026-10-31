@@ -40,6 +40,7 @@ def main():
     p.add_argument('--step', action='append', default=[], metavar='SECONDS:ACTION[:NAME]')
     p.add_argument('--mednafen', default='mednafen')
     p.add_argument('--snaps', type=Path, default=Path.home() / '.mednafen/snaps')
+    p.add_argument('--mednafen-arg', action='append', default=[], help='extra emulator option, e.g. --mednafen-arg=-ss.input.port2 --mednafen-arg=none')
     p.add_argument('--keep-open', action='store_true', help='leave the emulator running afterwards')
     args = p.parse_args()
     steps = []
@@ -47,7 +48,7 @@ def main():
         seconds, action, *name = text.split(':')
         steps.append((float(seconds), action, name[0] if name else action))
     args.out.mkdir(parents=True, exist_ok=True)
-    emulator = subprocess.Popen([args.mednafen, '-sound', '0', str(args.disc.resolve())],
+    emulator = subprocess.Popen([args.mednafen, '-sound', '0', *args.mednafen_arg, str(args.disc.resolve())],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     started = time.time()
     try:

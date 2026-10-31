@@ -179,8 +179,8 @@ The watch prints only 64 particle events, so burst 5 was not reached in the fixe
 
 Over the whole run, discarded fields fell from 147 to 85, and scheduled ticks rose from
 4,290 to 4,350 of about 4,436 observed fields. The average image rate went from 33.4 to
-33.0 images/s, and the longest Master wait for the Slave from 45 to 62 ms. The other 85
-discarded fields were not attributed.
+33.0 images/s, and the longest Master wait for the Slave from 45 to 62 ms. For the other
+discarded fields, see "Where Ymir's discards come from" in `REAL_HARDWARE.md`.
 
 What changed:
 
