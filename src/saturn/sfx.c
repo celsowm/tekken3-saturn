@@ -9,12 +9,21 @@
 #include "psx_fighter_sounds.h"
 #include "move_probe.h"
 #include "t3_local_sfx.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#endif
 
 /* Sound codes and rates: Tekken3Remake docs/research/code/sound.md
  * (PolyForm Noncommercial; the rules are re-implemented, not copied). */
 static const struct {uint32_t offset,samples,rate;} g_table[T3_SFX_COUNT]={T3_SFX_TABLE};
 static const struct {uint8_t bank,slot;uint16_t code;} g_key[T3_SFX_COUNT]={T3_SFX_KEY_TABLE};
 static sat_sound_t g_sound[T3_SFX_COUNT];
+#if defined(T3_FIGHTER_PACKS)
+/* Each fighter's voices come from its pack; a mirror match shares one set. */
+static sat_sound_t g_voice[2][T3_ROSTER_VOICES];
+static uint16_t g_voice_code[2][T3_ROSTER_VOICES];
+static uint8_t g_voice_count[2];
+#endif
 static uint8_t g_ready;
 /* Dumped by scripts/saturn_probe.py. */
 /* Sound requests with no extracted sample, and the first distinct ones as
@@ -22,10 +31,40 @@ static uint8_t g_ready;
 volatile uint32_t g_t3_sfx_unmapped,g_t3_sfx_unmapped_count,g_t3_sfx_unmapped_seen[16];
 volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_ms,g_t3_sfx_play_max_ms,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
 
+#if defined(T3_FIGHTER_PACKS)
+_Static_assert(T3_ROSTER_MAX_VOICE_SAMPLES>0u,"voices");
+static sat_result_t load_voices(unsigned actor,void* scratch,uint32_t scratch_bytes) {
+    /* Rows are big-endian words: code, PCM offset, samples, rate. */
+    uint32_t rows[T3_ROSTER_VOICES][4];
+    const t3_fighter_pack_t* pack=t3_fighter_pack(actor);
+    const uint32_t pcm_bytes=t3_fighter_pack_section_bytes(actor,T3_PACK_PCM);
+    uint32_t window=0,window_bytes=0;
+    SAT_TRY(t3_fighter_pack_read(actor,T3_PACK_VOICES,0,rows,pack->voice_count*sizeof rows[0]));
+    for(unsigned i=0;i<pack->voice_count;++i) {
+        if(!window_bytes || rows[i][1]<window || rows[i][1]+rows[i][2]>window+window_bytes) {
+            uint32_t want=pcm_bytes-rows[i][1];
+            if(want>scratch_bytes)want=scratch_bytes;
+            if(rows[i][2]>want)return SAT_ERR_CAPACITY;
+            SAT_TRY(t3_fighter_pack_read(actor,T3_PACK_PCM,rows[i][1],scratch,want));
+            window=rows[i][1];window_bytes=want;
+        }
+        const sat_sound_desc_t desc={(const uint8_t*)scratch+(rows[i][1]-window),rows[i][2],
+                                     rows[i][3],0,0,SAT_AUDIO_PCM_S8,0,0,0};
+        SAT_TRY(sat_sound_create(&g_voice[actor][i],&desc));
+        g_voice_code[actor][i]=(uint16_t)rows[i][0];
+    }
+    g_voice_count[actor]=(uint8_t)pack->voice_count;
+    return SAT_OK;
+}
+#endif
+
 sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
     sat_cdfs_volume_t* volume;sat_cdfs_file_t file;sat_result_t st;
     uint32_t window=0,window_bytes=0;
     if(scratch_bytes<T3_SFX_MAX_SAMPLES)return SAT_ERR_INVALID_ARG;
+#if defined(T3_FIGHTER_PACKS)
+    if(scratch_bytes<T3_ROSTER_MAX_VOICE_SAMPLES)return SAT_ERR_INVALID_ARG;
+#endif
     if((st=t3_disc_volume(&volume))!=SAT_OK)return st;
     if((st=sat_cdfs_lookup(volume,"SFX.BIN",&file))!=SAT_OK)return st;
     if(file.size!=T3_SFX_FILE_BYTES)return SAT_ERR_VERSION;
@@ -44,6 +83,15 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
                                      g_table[i].rate,0,0,SAT_AUDIO_PCM_S8,0,0,0};
         if((st=sat_sound_create(&g_sound[i],&desc))!=SAT_OK)return st;
     }
+#if defined(T3_FIGHTER_PACKS)
+    SAT_TRY(load_voices(0,scratch,scratch_bytes));
+    if(t3_fighter_pack(0)->id==t3_fighter_pack(1)->id) {
+        g_voice_count[1]=g_voice_count[0];
+        for(unsigned i=0;i<g_voice_count[0];++i) {
+            g_voice[1][i]=g_voice[0][i];g_voice_code[1][i]=g_voice_code[0][i];
+        }
+    } else SAT_TRY(load_voices(1,scratch,scratch_bytes));
+#endif
     g_ready=1u;
     return SAT_OK;
 }
@@ -70,6 +118,16 @@ static void play_request(const t3_combat_event_t* e) {
     else if(e->sound==T3_SOUND_SYSTEM)bank=1u;
     else if(e->sound==T3_SOUND_VOICE)bank=2u;
     else return; /* voice-off: nothing is playing a script voice here */
+#if defined(T3_FIGHTER_PACKS)
+    if(bank==2u && e->fighter<2u) {
+        for(unsigned i=0;i<g_voice_count[e->fighter];++i)
+            if(g_voice_code[e->fighter][i]==e->code) {
+                const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
+                if(sat_sound_play(g_voice[e->fighter][i],&params,NULL)==SAT_OK)++g_t3_sfx_played;
+                return;
+            }
+    }
+#endif
     for(unsigned i=0;i<T3_SFX_COUNT;++i)
         if(g_key[i].bank==bank &&
            (bank==0u ? (e->code>>12 && (g_key[i].code&0xfffu)==(e->code&0xfffu)) : g_key[i].code==e->code) &&
@@ -90,6 +148,11 @@ void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
         const t3_combat_event_t* e=&events[n];
         const unsigned i=e->fighter;
         if(e->kind==T3_EVENT_SOUND) {play_request(e);continue;}
+#if defined(T3_FIGHTER_PACKS)
+        /* The original sound decisions are always connected in a pack build. */
+        (void)connected;(void)i;
+        continue;
+#else
         if(connected)continue; /* the original decisions arrive as T3_EVENT_SOUND */
         if(e->kind==T3_EVENT_SWING) {
             play(T3_SFX_SWING);
@@ -107,6 +170,7 @@ void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
                 g_hurt_tick[i]=e->tick;g_hurt_set[i]=1u;
             }
         }
+#endif
     }
     const uint32_t updated=sat_time_ms();
     (void)sat_audio_update();
@@ -132,12 +196,14 @@ void t3_sfx_round_update(void) {
     } else if(state==1 && (g_prev_state==0 ||
               /* Round 1 has no intro: "fight" at the match's start or after a reset. */
               (played==1 && frame<=40 && (g_prev_state!=1 || frame<g_prev_frame))))play(T3_SFX_ANN_FIGHT);
+#if !defined(T3_FIGHTER_PACKS)
     /* The loser's KO voice (category 0 of g_charVoices) as the collapse begins. */
     for(unsigned i=0;i<2u;++i) {
         const uint8_t down=t3_move_probe_owned_value(i,25u)!=0;
         if(down && !g_prev_down[i] && !t3_combat_events_sound_connected()) {play(i?T3_SFX_F1_KO0:T3_SFX_F0_KO0);++g_t3_sfx_ko_voices;}
         g_prev_down[i]=down;
     }
+#endif
     g_prev_state=state;g_prev_frame=frame;
 }
 

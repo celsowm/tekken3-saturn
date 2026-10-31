@@ -7,6 +7,15 @@
 static const uint8_t body_parts[T3_PSX_HURT_ZONES] =
     {17u,14u,10u,6u,16u,13u,9u,5u,2u,8u,4u,0u,15u,12u};
 
+int t3_psx_hurt_profile(unsigned character) {
+    /* g_hurtRadiusByChar: Kuma and Gun Jack are large; Gon and True Ogre have their own head. */
+    switch(character) {
+        case 11u: case 16u: return 1;
+        case 17u: return 2;
+        case 20u: return 3;
+        default: return 0;
+    }
+}
 int t3_psx_hurt_from_parts(const t3_psx_joint_t parts[T3_PSX_DRAW_PARTS],
                            uint32_t valid_mask, int large,
                            t3_hurt_cylinder_t out[T3_PSX_HURT_ZONES]) {

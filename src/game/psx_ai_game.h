@@ -16,7 +16,7 @@ struct t3_psx_match;
 #define T3_PSX_AI_BLOCK_SIZE 0xFC0u
 #define T3_PSX_AI_MEMO 256u
 /* g_divmotBuffer's banks in the original (fight traces): fighter 0, the
- * second fighter's at +0x62958 (+0x5233C after bank type 3), divmot99. */
+ * second fighter's at +0x62958 (+0x5233C when it uses bank type 3), divmot99. */
 #define T3_PSX_AI_BANK_BUFFER 0x800F9EA0u
 /* Fighter fields below this offset are copied into an image per call. */
 #define T3_PSX_AI_IMAGE 0x130u

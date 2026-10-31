@@ -328,7 +328,9 @@ The SDK used for these checks had local changes at
 `d0f1eac57c9662966d624ba7342467c558823164`. The configured demo needs its
 rotation-bitmap API and capacity for 59 resident sounds; the base revision
 has neither that API nor more than 24 sound slots. The relevant local changes
-are recorded as [a patch](../patches/libsaturn-paul-law.patch). It was checked
+are recorded as [a patch](../patches/libsaturn-paul-law.patch). Fighter packs
+also need `sat_character_asset_compact`, recorded as
+[a second patch](../patches/libsaturn-fighter-packs.patch). The first was checked
 against the base revision's index and reverse-checked against the current SDK
 working tree. To use it with an existing clean checkout at that revision:
 

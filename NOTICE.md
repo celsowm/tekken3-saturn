@@ -26,6 +26,11 @@ implementation of Tekken3Remake.
   from `remake/core/fight/replay_state.gd` and `docs/research/code/sound.md`),
   `src/game/psx_spark.c` (normal/power hit-spark phases and integer trajectories
   from `remake/core/effects/effect_objects.gd` and `docs/research/code/effects.md`),
+  `src/game/psx_effect_fire.c` (fire breath, clouds, Gon's flame and gas, smoke,
+  floor fire and burning from `remake/core/effects/effect_objects.gd`),
+  True Ogre's sway in `src/game/psx_match.c` (from
+  `remake/core/fighter/fighter_animation.gd`, `fighter_hands.gd` and
+  `docs/research/formats/animation.md`),
   `src/game/psx_effect_pool.c`, `src/game/psx_match_effects.c` and
   `scripts/extract_psx_effect_tables.py` (effect allocation/update ordering,
   power glows/particles, hit spawning and metadata from the same effect
@@ -61,6 +66,9 @@ implementation of Tekken3Remake.
   FighterOpponent from `move_system.gd` and `fight_state.gd`),
   `src/game/psx_hud_messages.c` (normal round text selection from
   `remake/core/fight/round_hud.gd` and the replay label from `fight-frame.md`),
+  `src/saturn/char_select.c`, `scripts/extract_select_art.py` (the character
+  select grid order, layout and HUD portrait source from
+  `docs/research/code/modes.md` and `formats/system-textures.md`),
   `src/saturn/original_hud.c`, `scripts/extract_psx_hud.py` (HUD sprites,
   font texels, metrics and CLUT rules from `docs/research/code/hud.md`
   and `tools/remake_import/hud.py`),

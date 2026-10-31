@@ -272,6 +272,8 @@ def run(args):
         dump_requests.append((symbol,'symbol-'+str(i)+'.bin'))
     dump_manifest={}
     for symbol,filename in dump_requests:
+        # Fighter packs have no KO fallback: the voices come from the combat events.
+        if symbol=='_g_t3_sfx_ko_voices' and symbol not in syms:continue
         if symbol not in syms:raise ValueError('missing dump symbol: '+symbol)
         location,length=syms[symbol]
         if not length:raise ValueError('dump symbol has no size: '+symbol)

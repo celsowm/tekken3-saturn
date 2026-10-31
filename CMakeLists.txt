@@ -18,11 +18,11 @@ target_sources(tekken3_fight PRIVATE src/game/psx_replay.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_replay_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_spark.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_vertex_exchange.c src/game/psx_vertex_project.c src/game/psx_projected_mesh.c src/game/psx_fighter_ot.c src/game/psx_face_coverage.c src/game/psx_scene_ot.c src/game/psx_particle_projection.c src/game/psx_particle_assets.c src/game/psx_particle_snapshot.c src/game/psx_particle_prepare.c src/game/psx_particle_order.c src/game/psx_particle_tile.c src/game/psx_flipbook.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_match_effects.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c)
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_bitmap.c src/game/stage_floor_center.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_local_pose.c)
@@ -41,6 +41,9 @@ set(T3_LOCAL_CAMERA_BANK "" CACHE FILEPATH "Private raw DIVMOT bank (BNS record)
 set(T3_LOCAL_CAMERA_EXE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/SLUS_004.02"
     CACHE FILEPATH "Private USA executable containing the original fight camera tables")
 set(T3_LOCAL_SECOND_CAMERA_BANK "" CACHE FILEPATH "Private raw P2 DIVMOT bank for its fight camera")
+set(T3_SECOND_CHARACTER_ID "1" CACHE STRING "Original character id of the second bank (1: Law, 6: Hwoarang)")
+option(T3_FIGHTER_PACKS "Play the whole roster: load the two fighters chosen on the select screen from Fnn.BIN packs" OFF)
+set(T3_BOOT_FIGHTERS "" CACHE STRING "Test builds: the pair of character ids (P1;P2) to start with, skipping the menus")
 option(T3_COMPACT_CAMERA_STREAMS "Keep original compact camera stream words" OFF)
 option(T3_COLD_CAMERA_STREAMS "Load compact camera stream words from CAMERA.BIN to Low WRAM" OFF)
 set(T3_LOCAL_CAMERA_SPLINE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_spline.bin"
@@ -52,6 +55,13 @@ function(t3_add_private_camera target)
     set(_t3_second_camera_args "")
     set(_t3_camera_format_args "")
     set(_t3_camera_outputs "")
+    if(T3_FIGHTER_PACKS)
+        # Each pack carries its own choices and streams.
+        if(NOT T3_COMPACT_CAMERA_STREAMS OR T3_COLD_CAMERA_STREAMS OR T3_LOCAL_SECOND_CAMERA_BANK)
+            message(FATAL_ERROR "T3_FIGHTER_PACKS requires compact streams, no CAMERA.BIN and no second camera bank")
+        endif()
+        list(APPEND _t3_camera_format_args --tables-only)
+    endif()
     if(T3_COLD_CAMERA_STREAMS)
         if(NOT T3_COMPACT_CAMERA_STREAMS OR NOT T3_COLD_LOW_WRAM)
             message(FATAL_ERROR "T3_COLD_CAMERA_STREAMS requires compact streams and cold Low WRAM")
@@ -117,6 +127,35 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(_t3_gen "${CMAKE_BINARY_DIR}/generated/characters")
     file(GLOB _t3_pipeline CONFIGURE_DEPENDS
         "${LIBSATURN_SOURCE_DIR}/tools/model_pipeline/*.py")
+    if(T3_FIGHTER_PACKS)
+        if(NOT T3_LOCAL_SFX OR NOT T3_COLD_LOW_WRAM OR NOT T3_ORIGINAL_HUD)
+            message(FATAL_ERROR "T3_FIGHTER_PACKS requires T3_LOCAL_SFX, T3_COLD_LOW_WRAM and T3_ORIGINAL_HUD")
+        endif()
+        set(_t3_pack_gen "${CMAKE_BINARY_DIR}/generated/fighters")
+        set(_t3_pack_files "")
+        foreach(_t3_pack_id RANGE 0 20)
+            if(_t3_pack_id LESS 10)
+                set(_t3_pack_id "0${_t3_pack_id}")
+            endif()
+            list(APPEND _t3_pack_files "${_t3_pack_gen}/F${_t3_pack_id}.BIN")
+        endforeach()
+        add_custom_command(OUTPUT ${_t3_pack_files} "${_t3_pack_gen}/t3_roster.h"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
+                --raw "${T3_LOCAL_SFX}/raw" --exe "${T3_LOCAL_SFX}/SLUS_004.02"
+                --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --out "${_t3_pack_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
+                "${CMAKE_SOURCE_DIR}/scripts/fighter_roster.py"
+                "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
+                "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
+                "${CMAKE_SOURCE_DIR}/scripts/kmd_to_ska.py"
+                "${CMAKE_SOURCE_DIR}/scripts/divmot_to_logic.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py"
+                "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
+                ${_t3_pipeline}
+            VERBATIM COMMENT "Build the PRIVATE fighter packs (never distribute)")
+    endif()
     # Explicit opt-in, private author-owned local data only. Neither normal
     # builds nor CI extract a game image or include Namco model bytes.
     set(T3_LOCAL_KMD "" CACHE FILEPATH
@@ -135,7 +174,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_LOCAL_CHARACTER_ARC AND NOT T3_LOCAL_KMD)
         message(FATAL_ERROR "T3_LOCAL_CHARACTER_ARC requires T3_LOCAL_KMD")
     endif()
-    if(T3_LOCAL_KMD)
+    if(T3_FIGHTER_PACKS)
+        add_custom_command(
+            OUTPUT "${_t3_gen}/t3_generated_character.c"
+                "${_t3_gen}/t3_generated_character.h"
+                "${_t3_gen}/manifest.json"
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
+                --fighter-packs --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --output "${_t3_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
+                ${_t3_pipeline}
+            VERBATIM COMMENT "Generate the roster's character limits")
+    elseif(T3_LOCAL_KMD)
         get_filename_component(T3_LOCAL_KMD "${T3_LOCAL_KMD}" ABSOLUTE)
         if(NOT EXISTS "${T3_LOCAL_KMD}")
             message(FATAL_ERROR "T3_LOCAL_KMD file not found: ${T3_LOCAL_KMD}")
@@ -508,16 +558,26 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_sources(tekken3_saturn PRIVATE src/saturn/stage_cdda.c)
         target_compile_definitions(tekken3_saturn PRIVATE T3_STAGE_CDDA=1)
     endif()
+    set(T3_LOCAL_ACTOR1_VAB "${T3_LOCAL_SFX}/raw/080.bin" CACHE FILEPATH "Private P2 voice header (BNS 72+4n; 80 Law, 120 Hwoarang)")
+    set(T3_ACTOR1_NAME_WIDTH "26" CACHE STRING "P2 name sprite width in texels (26 Law, 71 Hwoarang)")
     if(T3_LOCAL_SFX)
         set(_t3_sfx_gen "${CMAKE_BINARY_DIR}/generated/private_sfx")
+        # A pack build keeps the fixed sounds here and each fighter's voices in its pack.
+        set(_t3_sfx_voice_args "")
+        set(_t3_sfx_voice_inputs "")
+        if(NOT T3_FIGHTER_PACKS)
+            set(_t3_sfx_voice_args
+                --voice "0:0:${T3_LOCAL_SFX}/raw/072.bin:${T3_LOCAL_SFX}/raw/073.bin"
+                --voice "1:${T3_SECOND_CHARACTER_ID}:${T3_LOCAL_ACTOR1_VAB}:${T3_LOCAL_ACTOR1_ARC}")
+            set(_t3_sfx_voice_inputs "${T3_LOCAL_SFX}/raw/072.bin" "${T3_LOCAL_SFX}/raw/073.bin"
+                "${T3_LOCAL_ACTOR1_VAB}" "${T3_LOCAL_ACTOR1_ARC}")
+        endif()
         add_custom_command(OUTPUT "${_t3_sfx_gen}/SFX.BIN" "${_t3_sfx_gen}/t3_local_sfx.h"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py"
                 --exe "${T3_LOCAL_SFX}/SLUS_004.02" --out "${_t3_sfx_gen}/tables" --generated "${_t3_sfx_gen}"
-                --voice "0:0:${T3_LOCAL_SFX}/raw/072.bin:${T3_LOCAL_SFX}/raw/073.bin"
-                --voice "1:1:${T3_LOCAL_SFX}/raw/080.bin:${T3_LOCAL_ACTOR1_ARC}"
+                ${_t3_sfx_voice_args}
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" "${T3_LOCAL_SFX}/SLUS_004.02"
-                "${T3_LOCAL_SFX}/raw/072.bin" "${T3_LOCAL_SFX}/raw/073.bin" "${T3_LOCAL_SFX}/raw/080.bin"
-                "${T3_LOCAL_ACTOR1_ARC}" VERBATIM)
+                ${_t3_sfx_voice_inputs} VERBATIM)
         target_sources(tekken3_saturn PRIVATE src/saturn/sfx.c "${_t3_sfx_gen}/t3_local_sfx.h")
         target_include_directories(tekken3_saturn PRIVATE "${_t3_sfx_gen}")
         list(APPEND _t3_stage_disc_files "${_t3_sfx_gen}/SFX.BIN")
@@ -530,6 +590,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         CACHE FILEPATH "Private P2 costume texture ARC for the original name plate")
     option(T3_ORIGINAL_HUD "Draw private original fight HUD bar, timer and mark sprites" OFF)
     if(T3_ORIGINAL_HUD)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ACTOR1_NAME_WIDTH=${T3_ACTOR1_NAME_WIDTH})
         option(T3_ORIGINAL_HUD_BARS "Draw original health bar sprites (off isolates their cost)" ON)
         if(NOT T3_LOCAL_HUD_EXE OR NOT EXISTS "${T3_LOCAL_HUD_EXE}")
             message(FATAL_ERROR "T3_ORIGINAL_HUD requires T3_LOCAL_HUD_EXE")
@@ -545,6 +606,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_hud_gen}"
                 --actor0-arc "${T3_LOCAL_HUD_ACTOR0_ARC}"
                 --actor1-arc "${T3_LOCAL_HUD_ACTOR1_ARC}"
+                --actor1-name-width "${T3_ACTOR1_NAME_WIDTH}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
                 "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
@@ -1028,15 +1090,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         if(NOT T3_LOCAL_HUD_ACTOR0_ARC OR NOT T3_LOCAL_HUD_ACTOR1_ARC)
             message(FATAL_ERROR "T3_FLIPBOOK_BURST requires T3_LOCAL_HUD_ACTOR0_ARC and T3_LOCAL_HUD_ACTOR1_ARC")
         endif()
-        foreach(_t3_fb_slot 0 1)
-            add_custom_command(OUTPUT "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
-                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
-                    --arc "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" --out "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
-                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
-                    "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" VERBATIM)
-            target_sources(tekken3_saturn PRIVATE "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
-            list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
-        endforeach()
+        if(NOT T3_FIGHTER_PACKS)
+            foreach(_t3_fb_slot 0 1)
+                add_custom_command(OUTPUT "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
+                    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
+                        --arc "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" --out "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN"
+                    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_char_flipbook.py"
+                        "${T3_LOCAL_HUD_ACTOR${_t3_fb_slot}_ARC}" VERBATIM)
+                target_sources(tekken3_saturn PRIVATE "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
+                list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPC${_t3_fb_slot}.BIN")
+            endforeach()
+        endif()
         target_sources(tekken3_saturn PRIVATE src/saturn/flipbook_burst.c "${_t3_particle_gen}/FLIPBOOK.BIN")
         list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FLIPBOOK.BIN")
         target_compile_definitions(tekken3_saturn PRIVATE T3_FLIPBOOK_BURST=1)
@@ -1373,6 +1437,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             endif()
         endif()
         set(T3_SECOND_CHARACTER_ID "1" CACHE STRING "Original character id of the second bank (1: Law)")
+        if(T3_FIGHTER_PACKS)
+            # The merged reaction and sound tables cover every roster bank; the
+            # banks themselves stay in the packs.
+            if(T3_LOCAL_SECOND_DIVMOT)
+                message(FATAL_ERROR "T3_FIGHTER_PACKS replaces T3_LOCAL_SECOND_DIVMOT")
+            endif()
+            list(APPEND _t3_cold_args --roster-banks "${_t3_pack_gen}/banks")
+            list(APPEND _t3_private_banks "${_t3_pack_gen}/t3_roster.h")
+        endif()
         if(T3_LOCAL_SECOND_DIVMOT)
             list(APPEND _t3_cold_args --second-bank "${T3_LOCAL_SECOND_DIVMOT}")
             list(APPEND _t3_private_banks "${T3_LOCAL_SECOND_DIVMOT}")
@@ -1412,6 +1485,34 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     endif()
     if(T3_COLD_CAMERA_STREAMS)
         list(APPEND _t3_stage_disc_files "${_t3_camera_disc_file}")
+    endif()
+    if(T3_FIGHTER_PACKS)
+        # The largest game code that runs once a tick: High WRAM holds both packs' stores.
+        set_source_files_properties(src/game/psx_ai.c src/game/psx_camera.c src/game/psx_effect_fire.c
+            src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_hit_transaction.c
+            src/game/select_grid.c src/saturn/char_select.c src/saturn/fighter_pack.c src/saturn/main.c
+            PROPERTIES COMPILE_OPTIONS "-Os")
+        target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/char_select.c
+            "${_t3_pack_gen}/t3_roster.h")
+        target_include_directories(tekken3_saturn PRIVATE "${_t3_pack_gen}")
+        target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_PACKS=1 T3_SECOND_CHARACTER=1)
+        if(T3_BOOT_FIGHTERS)
+            list(GET T3_BOOT_FIGHTERS 0 _t3_boot_fighter_0)
+            list(GET T3_BOOT_FIGHTERS 1 _t3_boot_fighter_1)
+            # On main.c alone, so changing the pair rebuilds one file.
+            set_property(SOURCE src/saturn/main.c APPEND PROPERTY COMPILE_DEFINITIONS
+                T3_BOOT_FIGHTER_0=${_t3_boot_fighter_0} T3_BOOT_FIGHTER_1=${_t3_boot_fighter_1})
+        endif()
+        list(APPEND _t3_stage_disc_files ${_t3_pack_files})
+        set(_t3_select_gen "${CMAKE_BINARY_DIR}/generated/private_select")
+        add_custom_command(OUTPUT "${_t3_select_gen}/SELECT.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_select_art.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_select_gen}/SELECT.BIN"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_select_art.py"
+                "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        target_sources(tekken3_saturn PRIVATE "${_t3_select_gen}/SELECT.BIN" ${_t3_pack_files})
+        list(APPEND _t3_stage_disc_files "${_t3_select_gen}/SELECT.BIN")
     endif()
     target_link_libraries(tekken3_saturn PRIVATE tekken3_fight LibSaturn::Saturn)
     target_compile_options(tekken3_saturn PRIVATE -Wall -Wextra -O2)
@@ -1485,6 +1586,14 @@ else()
         target_link_libraries(test_psx_particle_tile PRIVATE tekken3_fight)
         target_compile_options(test_psx_particle_tile PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME ps1_particle_diagnostic_tiles COMMAND test_psx_particle_tile)
+        add_executable(test_psx_effect_fire tests/test_psx_effect_fire.c)
+        target_link_libraries(test_psx_effect_fire PRIVATE tekken3_fight)
+        target_compile_options(test_psx_effect_fire PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME psx_effect_fire COMMAND test_psx_effect_fire)
+        add_executable(test_select_grid tests/test_select_grid.c)
+        target_link_libraries(test_select_grid PRIVATE tekken3_fight)
+        target_compile_options(test_select_grid PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME character_select_grid COMMAND test_select_grid)
         add_executable(test_psx_face_preflight tests/test_psx_face_preflight.c)
         target_link_libraries(test_psx_face_preflight PRIVATE tekken3_fight)
         target_compile_options(test_psx_face_preflight PRIVATE -Wall -Wextra -Werror -UNDEBUG)

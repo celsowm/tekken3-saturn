@@ -200,11 +200,23 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
     ++g_probe_particle_count[slot];return SAT_OK;
 }
 volatile uint32_t g_t3_hud_occluded_cells;
+int t3_stage_particle_multi_has_cell(unsigned x,unsigned y) {
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    return x<40u && y<28u && g_particle_cell[y][x]!=0xFFu;
+#else
+    (void)x;(void)y;return 1;
+#endif
+}
 sat_result_t t3_stage_particle_multi_occlude(unsigned x,unsigned y,const uint8_t coverage[8]) {
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
-    if(x<40u && y<28u && g_particle_cell[y][x]!=0xFFu)++g_t3_hud_occluded_cells;
-#endif
+    if(x>=40u || y>=28u || !coverage)return SAT_ERR_INVALID_ARG;
+    const unsigned index=g_particle_cell[y][x];
+    if(index==0xFFu)return SAT_OK;
+    ++g_t3_hud_occluded_cells;
+    return t3_particle_tile_occlude_index(&g_probe_tiles[g_probe_slot],index,coverage)?SAT_OK:SAT_ERR_INVALID_ARG;
+#else
     return t3_particle_tile_occlude(&g_probe_tiles[g_probe_slot],x,y,coverage)?SAT_OK:SAT_ERR_INVALID_ARG;
+#endif
 }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 volatile uint32_t g_t3_ordered_mask_tiles,g_t3_ordered_mask_index8_tiles,g_t3_ordered_mask_lut4_tiles;

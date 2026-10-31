@@ -72,8 +72,9 @@ int T3_SIM_IMPL(t3_psx_head_look)(t3_psx_head_t* state,const t3_psx_body_tables_
     }
     if(!sqrt_pair(t,local[1],local[2],&v) || !angle(t,v,s16(local[0]),&pitch))return 0;
     pitch=s16(-pitch);if(pitch>0x11C7)pitch=0x11C7;if(pitch< -0x2AAA)pitch=-0x2AAA;
-    if(!angle(t,s16(local[1]),s16(local[2]),&yaw) ||
-       !sqrt_pair(t,own[1].rotation.m[0][0],own[1].rotation.m[2][0],&v) ||
+    if(state->no_yaw)yaw=0;
+    else if(!angle(t,s16(local[1]),s16(local[2]),&yaw))return 0;
+    if(!sqrt_pair(t,own[1].rotation.m[0][0],own[1].rotation.m[2][0],&v) ||
        !angle(t,v,own[1].rotation.m[1][0],&tilt))return 0;
     if(tilt+0x4000<0xAAB)limit=0x38E3;
     else if(tilt+0x4000<0x38E3)limit=0x38E3-(tilt+0x3556)*0x238E/0x2E39;

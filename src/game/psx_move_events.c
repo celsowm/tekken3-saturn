@@ -45,6 +45,7 @@ int t3_psx_move_events_sample(const t3_divmot_t* bank,
         ++sample.fired;
         hi=command>>8u;
         if(hi>=1u && hi<=3u)sample.shake=(uint8_t)hi;
+        if(hi>=14u && hi<=61u)sample.hand=command;
         if(hi>=11u && hi<=13u) {
             sample.extra_kind=(uint8_t)(hi-10u);
             sample.extra_damage=(uint8_t)command;

@@ -11,7 +11,8 @@ import subprocess
 
 REGISTRY_SUFFIX = '16g_sound_registryE'
 REGISTRY_ENTRY_BYTES = 28
-MIN_SOUNDS = 59
+# The fixed effects and system sounds, plus two fighters of up to 18 voices.
+MIN_SOUNDS = 61
 
 
 def inspect_symbols(output):
@@ -28,6 +29,9 @@ def inspect_symbols(output):
     if not any(name.lstrip('_') == 'sat_vdp2_rotation_bitmap_configure'
                and kind.upper() == 'T' for name, (kind, _) in symbols.items()):
         raise ValueError('installed LibSaturn lacks the rotation-bitmap API; apply the demo SDK patch and reinstall')
+    if not any(name.lstrip('_') == 'sat_character_asset_compact'
+               and kind.upper() == 'T' for name, (kind, _) in symbols.items()):
+        raise ValueError('installed LibSaturn lacks the compact character asset; apply the fighter-pack patch and reinstall')
     matches = [(name, kind, size) for name, (kind, size) in symbols.items()
                if name.endswith(REGISTRY_SUFFIX)]
     if len(matches) != 1:

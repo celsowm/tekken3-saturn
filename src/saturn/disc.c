@@ -5,8 +5,10 @@
  * master-only and fits High WRAM after pruning unreachable sound scripts;
  * retain the linker's full 16 KiB stack reservation. */
 static sat_cdfs_volume_t g_volume;
-static sat_cd_block_t g_cd __attribute__((section(".wram_l")));
-static sat_cd_device_t g_device __attribute__((section(".wram_l")));
+/* sat_exec stages the next program in Work RAM Low, so the volume, device and
+ * CD block it reads through must live elsewhere. */
+static sat_cd_block_t g_cd;
+static sat_cd_device_t g_device;
 static uint8_t g_mounted;
 
 sat_result_t t3_disc_volume(sat_cdfs_volume_t** out_volume) {

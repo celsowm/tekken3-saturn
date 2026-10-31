@@ -30,7 +30,13 @@ static uint32_t blend_row(const t3_divmot_t* bank,unsigned slot) {
     if(!t3_move_index_entry(bank,slot,&source,&id))return T3_DIVMOT_EMPTY_SLOT;
     return id>=0x40000000u || source==bank?id:id|0x20000000u;
 }
-typedef struct { const t3_psx_match_t* match;const t3_divmot_t* bank; } blend_user_t;
+/* FUN_80038B60: a throw victim takes its partner's scale. */
+static unsigned actor_scale(const t3_psx_match_t* match,unsigned actor) {
+    const t3_psx_match_config_t* c=match->config;
+    if(match->fighter[actor].ground.throw_state<0)actor=1u-actor;
+    return c->actor_scale_percent[actor]?c->actor_scale_percent[actor]:c->scale_percent;
+}
+typedef struct { const t3_psx_match_t* match;const t3_divmot_t* bank;unsigned scale_percent; } blend_user_t;
 static int blend_sample(void* user,uint32_t row,unsigned frame,int16_t root[3],t3_psx_matrix_t out[18]) {
     const blend_user_t* u=user;
     const t3_psx_match_config_t* c=u->match->config;
@@ -50,7 +56,7 @@ static int blend_sample(void* user,uint32_t row,unsigned frame,int16_t root[3],t
     /* fight_sim _pose_slots: slots IK leaves unwritten stay zero. */
     for(unsigned k=0;k<18u;++k)if(!(mask&(1u<<k)))out[k]=(t3_psx_matrix_t){{{0}}};
     for(unsigned i=0;i<3;++i) {
-        int32_t value=sat_floor_shift_i32((int32_t)pose[i]*(int32_t)(c->scale_percent*4096u/100u),12);
+        int32_t value=sat_floor_shift_i32((int32_t)pose[i]*(int32_t)(u->scale_percent*4096u/100u),12);
         uint16_t bits=(uint16_t)value;
         root[i]=(int16_t)(bits<32768u?(int32_t)bits:(int32_t)bits-65536);
     }
@@ -95,7 +101,10 @@ void t3_psx_match_branch_facts(const t3_psx_match_t* n,unsigned i,t3_branch_cont
     if(c->enable_rounds==2)facts->known|=T3_FACT_SIDE;
     facts->side_flag=f->side_flag;
     facts->opponent_bank=t3_psx_match_bank(c,1u-i)->bank_type;facts->own_character=c->character[i];
-    facts->distance=facts->adjusted_distance=(int32_t)f->ground.distance;
+    facts->distance=(int32_t)f->ground.distance;
+    /* Kuma and True Ogre read as 0x28 closer, each. */
+    facts->adjusted_distance=facts->distance-0x28*((c->character[i]==11u||c->character[i]==20u)+
+                                                  (c->character[1u-i]==11u||c->character[1u-i]==20u));
     facts->relative_angle=f->ground.relative_angle;facts->heading_delta=f->ground.heading_delta;
     facts->facing_quadrant=f->ground.facing_quadrant;facts->opponent_quadrant=f->ground.opponent_quadrant;
     facts->recover_frames=f->ground.recover_frames;facts->recover_mash=f->ground.recover_mash;
@@ -209,15 +218,16 @@ static int T3_SIM_IMPL(place)(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     int16_t xyz[3],pose[T3_PSX_POSE_CHANNELS]={0};
     t3_psx_joint_t result;
     const t3_psx_match_config_t* c=match->config;
-    const blend_user_t user={match,t3_psx_match_bank(c,(unsigned)(f-match->fighter))};
-    int32_t scale=(int32_t)(c->scale_percent*4096u/100u);
+    const unsigned scale_percent=actor_scale(match,(unsigned)(f-match->fighter));
+    const blend_user_t user={match,t3_psx_match_bank(c,(unsigned)(f-match->fighter)),scale_percent};
+    int32_t scale=(int32_t)(scale_percent*4096u/100u);
     if(f->vm.clock.root_frame<1 || f->vm.clock.pose_frame<1)return 0;
     if(f->ground.anchor_dirty) {
         int frame=f->vm.clock.root_frame-f->vm.clock.frame_step-1;
         const t3_vec3i_t zero={0,0,0};
         if(!root_pose(match,f,(unsigned)(frame<0?0:frame),xyz))return 0;
         pose[0]=xyz[0];pose[1]=xyz[1];pose[2]=xyz[2];
-        if(!t3_psx_pose_world_root(pose,c->scale_percent,zero,f->ground.facing,f->ground.heading,
+        if(!t3_psx_pose_world_root(pose,scale_percent,zero,f->ground.facing,f->ground.heading,
                                   &c->ground_tables.trig,&result))return 0;
         f->ground.anchor.x=f->ground.root.x-result.origin.x;
         f->ground.anchor.z=f->ground.root.z-result.origin.z;
@@ -225,15 +235,15 @@ static int T3_SIM_IMPL(place)(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     }
     if(!root_pose(match,f,(unsigned)f->vm.clock.root_frame-1u,xyz))return 0;
     pose[0]=xyz[0];pose[1]=xyz[1];pose[2]=xyz[2];
-    /* Paul's scale is 100%; keep the displayed root displacement explicit
-     * for tracking modes that read its sign. */
+    /* Keep the displayed root displacement explicit for tracking modes that
+     * read its sign. */
     {
         int64_t x=(int64_t)xyz[0]*scale;
         int32_t scaled=(int32_t)(x>=0?x/4096:-((-x+4095)/4096));
         uint16_t bits=(uint16_t)scaled;
         f->ground.root_dx=(int16_t)(bits<32768u?(int32_t)bits:(int32_t)bits-65536);
     }
-    if(!t3_psx_pose_world_root(pose,c->scale_percent,f->ground.anchor,f->ground.facing,
+    if(!t3_psx_pose_world_root(pose,scale_percent,f->ground.anchor,f->ground.facing,
                               f->ground.heading,&c->ground_tables.trig,&result))return 0;
     if(c->rsqrt.data) {
         t3_psx_blend_facts_t facts={0};
@@ -270,6 +280,79 @@ T3_SIM_WRAP_ACTOR(static int,place,T3_SIM_ROOT,
     (t3_psx_match_t* match,t3_psx_fighter_t* f),
     (match,f),(unsigned)(f-match->fighter))
 
+/* HandFaceCommand's level channel for True Ogre: shapes 2 and 3 raise it, the others lower it. */
+static void ogre_command(t3_psx_fighter_t* f,unsigned shape,int speed) {
+    if(!speed)speed=1;
+    const int rate=speed<0?256/(1-speed):256/(speed+1);
+    const int up=shape==2u || shape==3u;
+    f->ogre_target=up?256:0;
+    f->ogre_rate=(up?f->ogre_level<256:f->ogre_level>0)?(int16_t)rate:0;
+}
+static void ogre_events(t3_psx_fighter_t* f) {
+    const unsigned hi=(unsigned)f->events.hand>>8u,lo=f->events.hand&0xFFu;
+    if(!hi)return;
+    /* 20 opens both hands; 21 takes the costume's shape, which is 0 here. */
+    if(hi==20u || hi==21u)ogre_command(f,0,(int)lo);
+    else ogre_command(f,(hi-14u)&7u,(int8_t)lo);
+}
+static void ogre_level_step(t3_psx_fighter_t* f) {
+    if(f->ogre_level<f->ogre_target) {
+        f->ogre_level=(int16_t)(f->ogre_level+f->ogre_rate);
+        if(f->ogre_level>=f->ogre_target){f->ogre_rate=0;f->ogre_level=f->ogre_target;}
+    } else if(f->ogre_target<f->ogre_level) {
+        f->ogre_level=(int16_t)(f->ogre_level-f->ogre_rate);
+        if(f->ogre_target>=f->ogre_level){f->ogre_rate=0;f->ogre_level=f->ogre_target;}
+    }
+}
+static int32_t ogre_scale(int32_t v,int32_t scale) {
+    const int32_t a=v*scale;
+    return (int16_t)(uint16_t)((uint32_t)(a<0?a+0xFF:a)>>8);
+}
+/* FUN_80033C54: True Ogre's joints 5 and 6 sway with a counter and his level
+ * channel; each is placed with the offset of the slot it borrows. */
+static int ogre_sway(const t3_psx_match_t* match,t3_psx_fighter_t* f,const t3_psx_part_t* parts,
+                     t3_psx_matrix_t complete[T3_PSX_ROTATION_SLOTS],t3_psx_part_t out[T3_PSX_DRAW_PARTS]) {
+    const t3_psx_match_config_t* c=match->config;
+    const t3_psx_trig_t* trig=&c->ground_tables.trig;
+    __builtin_memcpy(out,parts,sizeof(t3_psx_part_t)*T3_PSX_DRAW_PARTS);
+    t3_vec3i_t borrowed[2]={{0,0,0},{0,0,0}};
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i) {
+        if(parts[i].slot==18u)borrowed[0]=parts[i].offset;
+        if(parts[i].slot==5u)borrowed[1]=parts[i].offset;
+    }
+    if(!match->flow.freeze) {
+        f->ogre_sway=(int16_t)(f->ogre_sway+1);
+        ogre_level_step(f);
+    }
+    int32_t height=-f->world[6].origin.y/2;
+    height=height<0?0:height>256?256:height;
+    const int32_t tilt=c->camera?t3_psx_camera_atan4096(c->camera->tables,complete[5].m[0][0],complete[5].m[0][1])*-4:0;
+    const int32_t level=f->ogre_level;
+    int32_t amount=height*(256-level);
+    amount=(amount<0?amount+0xFF:amount)>>8;
+    const unsigned px=((unsigned)f->ogre_sway&0x7Fu)<<5,py=((unsigned)f->ogre_sway&0x3Fu)<<6;
+    const int32_t first=((level<0?level+3:level)>>2)+256,other=((level<0?level+7:level)>>3)+256;
+    for(unsigned k=0;k<2u;++k) {
+        const uint8_t* sx=trig->data+2u*((px+k*0x400u)&0xFFFu);
+        const uint8_t* sy=trig->data+2u*((py+k*0x400u)&0xFFFu);
+        const int32_t x=(int16_t)(uint16_t)(sx[0]|(sx[1]<<8))*amount;
+        const int32_t y=(int16_t)(uint16_t)(sy[0]|(sy[1]<<8))*amount;
+        const int16_t angle_x=(int16_t)((x<0?x+0x1FF:x)>>9);
+        const int16_t angle_y=(int16_t)(uint16_t)(((uint32_t)(y<0?y+0xFF:y)>>8)+(uint32_t)tilt);
+        t3_psx_matrix_t rot;
+        if(!t3_psx_euler_matrix(0,angle_x,angle_y,trig,&rot))return 0;
+        for(unsigned r=0;r<3u;++r) {
+            complete[5u+k].m[r][0]=(int16_t)ogre_scale(rot.m[r][0],first);
+            complete[5u+k].m[r][1]=(int16_t)ogre_scale(rot.m[r][1],other);
+            complete[5u+k].m[r][2]=(int16_t)ogre_scale(rot.m[r][2],other);
+        }
+    }
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i) {
+        if(parts[i].slot==5u)out[i].offset=borrowed[0];
+        if(parts[i].slot==6u)out[i].offset=borrowed[1];
+    }
+    return 1;
+}
 static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     t3_psx_fighter_t* f=&match->fighter[index];
     const t3_psx_match_config_t* c=match->config;
@@ -298,7 +381,7 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
         root_xx=slots[0].m[0][0];
     }
     T3_SIM_START(world_root,T3_SIM_WORLD_ROOT);
-    const int rooted=t3_psx_pose_world_root(f->pose,c->scale_percent,f->ground.anchor,f->ground.facing,
+    const int rooted=t3_psx_pose_world_root(f->pose,actor_scale(match,index),f->ground.anchor,f->ground.facing,
                                f->ground.heading,&c->ground_tables.trig,&root);
     T3_SIM_END(world_root);
     if(!rooted)return 0;
@@ -317,8 +400,14 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     if(c->enable_rounds==2 && match->flow.camera!=2)f->head.active=0;
     else if(f->parts_mask) {
         t3_psx_body_tables_t tables={c->ground_tables,c->body_tables,384u};
+        f->head.no_yaw=c->character[index]==17u;
         if(!t3_psx_head_look(&f->head,&tables,f->world,match->fighter[1u-index].world,
                             &f->vm.move,f->vm.clock.pose_frame,f->no_look_at,&complete[2]))return 0;
+    }
+    t3_psx_part_t ogre_parts[T3_PSX_DRAW_PARTS];
+    if(c->character[index]==20u) {
+        if(!ogre_sway(match,f,parts,complete,ogre_parts))return 0;
+        parts=ogre_parts;
     }
     const int composed=c->world_pose_cache?
         t3_psx_compose_cached(parts,complete,mask,&root,c->world_pose_cache,f->world,&f->parts_mask):
@@ -337,7 +426,8 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     }
     if(replay_playing(match))return 1;
     T3_SIM_START(shapes,T3_SIM_SHAPES);
-    const int shaped=t3_psx_body_shapes(&f->body,f->world,f->parts_mask,c->body_tables+384,
+    const int shaped=t3_psx_body_shapes(&f->body,f->world,f->parts_mask,
+                 c->actor_body_shapes[index]?c->actor_body_shapes[index]:c->body_tables+384,
                  &f->vm.move,f->vm.clock.pose_frame,f->ground.in_air,f->ground.was_hit_this_move);
     T3_SIM_END(shapes);
     return shaped;
@@ -346,29 +436,74 @@ T3_SIM_WRAP_ACTOR(static int,compose,T3_SIM_COMPOSE,
     (t3_psx_match_t* match,unsigned index),
     (match,index),index)
 
+/* CollisionShapesUpdate's weapon points: spare joints the descriptors of these
+ * fighters name outside the active window. Rules from Tekken3Remake
+ * docs/research/code/combat.md; PolyForm Noncommercial, NOTICE.md.
+ * Required Notice: Copyright (c) 2026 n0madic. */
+enum { SPARE_JOINT=18u,SEGMENT_JOINTS=24u,ANY_CHARACTER=0xFFu };
+static const struct {uint8_t bank,character,joint,target;int16_t point[3];} g_weapon_points[]={
+    {4u,ANY_CHARACTER,10u,18u,{100,-720,0}},{4u,ANY_CHARACTER,10u,19u,{100,-360,0}},
+    {14u,20u,11u,22u,{100,-500,0}},{14u,20u,2u,23u,{800,0,600}},
+    {19u,ANY_CHARACTER,11u,21u,{200,900,0}},{19u,ANY_CHARACTER,2u,23u,{400,0,100}},
+};
+static void weapon_points(const t3_psx_fighter_t* f,unsigned bank,unsigned character,
+                          t3_vec3i_t spare[SEGMENT_JOINTS-SPARE_JOINT]) {
+    __builtin_memset(spare,0,sizeof(t3_vec3i_t)*(SEGMENT_JOINTS-SPARE_JOINT));
+    for(unsigned j=SPARE_JOINT;j<T3_PSX_DRAW_PARTS;++j)spare[j-SPARE_JOINT]=f->world[j].origin;
+    for(unsigned k=0;k<sizeof g_weapon_points/sizeof g_weapon_points[0];++k) {
+        const int32_t point[3]={g_weapon_points[k].point[0],g_weapon_points[k].point[1],g_weapon_points[k].point[2]};
+        const t3_psx_joint_t* joint=&f->world[g_weapon_points[k].joint];
+        if(g_weapon_points[k].bank!=bank ||
+           (g_weapon_points[k].character!=ANY_CHARACTER && g_weapon_points[k].character!=character))continue;
+        spare[g_weapon_points[k].target-SPARE_JOINT]=(t3_vec3i_t){
+            joint->origin.x+t3_psx_dot12(joint->rotation.m[0],point),
+            joint->origin.y+t3_psx_dot12(joint->rotation.m[1],point),
+            joint->origin.z+t3_psx_dot12(joint->rotation.m[2],point)};
+    }
+}
+/* A descriptor's joint: Ogre's 0x13 is joint 6; 0x18 and above name no joint. */
+static const t3_vec3i_t* segment_joint(const t3_psx_fighter_t* f,const t3_vec3i_t* spare,
+                                       unsigned joint,unsigned character) {
+    if(joint==0x13u && character==14u)joint=6u;
+    if(joint>=SEGMENT_JOINTS)return NULL;
+    return joint<SPARE_JOINT?&f->world[joint].origin:&spare[joint-SPARE_JOINT];
+}
 static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     t3_attack_sample_t sample;t3_world_attack_t result;
     const t3_move_vm_t* vm=&f->vm;
+    const unsigned index=(unsigned)(f-match->fighter);
+    const unsigned character=match->config->character[index];
     int decoded=t3_attack_sample(vm->active_bank,&vm->move,
         vm->move.active_first,0,&sample);
     if(decoded<0)return 0;
     if(!decoded)return f->ground.active_segments==0u;
     f->strike_joint=sample.joint_a[0];
     if(vm->clock.pose_frame>=vm->move.active_first && vm->clock.pose_frame<=vm->move.active_last) {
-        decoded=t3_attack_sample(vm->active_bank,&vm->move,vm->clock.pose_frame,0,&sample);
+        /* Projectiles take their segments from the effect buffer, not the record. */
+        if(sample.joint_a[0]>=SEGMENT_JOINTS)return 1;
+        /* Ogre and Mokujin read the record's alternative point block. */
+        decoded=t3_attack_sample(vm->active_bank,&vm->move,vm->clock.pose_frame,
+                                 character==14u || character==15u,&sample);
         if(decoded!=1 || !t3_psx_attack_place(&sample,
                 (unsigned)(vm->clock.pose_frame-vm->move.active_first),
                 f->ground.anchor,f->previous_anchor,f->ground.root,f->ground.heading,f->ground.facing,
                 &match->config->ground_tables.trig,&f->strike,&result))return 0;
+        /* A layout may bake fewer segments than the descriptor names; the rest
+         * keep the points the joints last gave them. */
+        for(unsigned k=result.segment_count;k<f->ground.attack_segment_count;++k)
+            result.segments[k]=f->strike.segments[k];
+        if(result.segment_count<f->ground.attack_segment_count)
+            result.segment_count=f->ground.attack_segment_count;
         f->strike=result;
     } else {
         unsigned count=f->ground.attack_segment_count;
-        if(count>sample.segment_count)return 0;
+        t3_vec3i_t spare[SEGMENT_JOINTS-SPARE_JOINT];
+        weapon_points(f,t3_psx_match_bank(match->config,index)->bank_type,character,spare);
         for(unsigned k=0;k<count;++k) {
-            unsigned a=sample.joint_a[k],b=sample.joint_b[k];
-            if(a>=18u || b>=18u)return 0;
-            f->strike.segments[k].end=f->world[a].origin;
-            if(b)f->strike.segments[k].start=f->world[b].origin;
+            const t3_vec3i_t* end=segment_joint(f,spare,sample.joint_a[k],character);
+            const t3_vec3i_t* start=sample.joint_b[k]?segment_joint(f,spare,sample.joint_b[k],character):NULL;
+            if(end)f->strike.segments[k].end=*end;
+            if(start)f->strike.segments[k].start=*start;
         }
         f->strike.segment_count=(uint8_t)count;
     }
@@ -377,16 +512,33 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
 static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[2][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<2;++i)if(!t3_psx_hurt_from_parts(match->fighter[i].world,
-                              match->fighter[i].parts_mask,0,hurt[i]))return 0;
+                              match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
     for(unsigned i=0;i<2;++i) {
         t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[1u-i];
         t3_psx_hit_test_facts_t facts={0};t3_world_attack_t active=f->strike;
-        unsigned segment=0;int zone=-1;
-        active.segment_count=f->ground.active_segments;
-        if(active.segment_count>f->strike.segment_count)return 0;
-        if(active.segment_count)zone=t3_psx_attack_contact(&active,hurt[1u-i],&segment);
-        if(zone< -1)return 0;
-        f->geometry=(t3_psx_shadow_result_t){active.segment_count?
+        unsigned segment=0;int zone=-1,any=0;
+        uint8_t descriptor[4];
+        f->projectile_hit=0;
+        if(t3_attack_descriptor_joints(f->vm.active_bank,&f->vm.move,descriptor)==1 && descriptor[0]>=SEGMENT_JOINTS) {
+            /* HitTestSegments: a projectile tests the segments its owner's objects published. */
+            const t3_psx_effect_pool_t* pool=match->config->effects;
+            if(pool)for(unsigned k=pool->head;k!=T3_PSX_EFFECT_NONE && zone<0;k=pool->next[k]) {
+                const t3_psx_spark_t* o=&pool->object[k];
+                if(!(o->flags&2u) || !(o->flags&(i?8u:0x10u)))continue;
+                active.segment_count=1;any=1;
+                active.segments[0]=(t3_world_segment_t){{o->px,o->py,o->pz},{o->x,o->y,o->z},0};
+                zone=t3_psx_attack_contact(&active,hurt[1u-i],&segment);
+                if(zone< -1)return 0;
+            }
+            if(zone>=0){f->projectile=active.segments[0];f->projectile_hit=1;}
+        } else {
+            active.segment_count=f->ground.active_segments;
+            if(active.segment_count>f->strike.segment_count)return 0;
+            any=active.segment_count!=0;
+            if(any)zone=t3_psx_attack_contact(&active,hurt[1u-i],&segment);
+            if(zone< -1)return 0;
+        }
+        f->geometry=(t3_psx_shadow_result_t){any?
             (zone>=0?T3_SHADOW_CONTACT:T3_SHADOW_MISS):T3_SHADOW_INACTIVE,0,(int8_t)zone,(int8_t)segment};
         if(zone>=0)++f->contact_frames;
         facts.geometry=f->geometry;facts.attack_word=f->vm.move.attack_word;
@@ -517,6 +669,7 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
        config->ground_tables.atan_size!=1025u || !config->ground_tables.trig.data ||
        config->ground_tables.trig.size!=T3_PSX_TRIG_BYTES ||
        config->max_health_q16<=0 || config->scale_percent<1u || config->scale_percent>200u ||
+       config->actor_scale_percent[0]>200u || config->actor_scale_percent[1]>200u ||
        config->enable_rounds>2 || config->start_intro>1 ||
        (config->start_intro && config->enable_rounds!=2))return 0;
     if(config->effects && (config->enable_rounds!=2 || !config->camera))return 0;
@@ -669,6 +822,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         T3_MATCH_PHASE(140+i);
         t3_psx_fighter_t* f=&n->fighter[i];
         const t3_command_frame_t input=t3_history_at(&f->input,0);
+        f->ground.character=c->character[i];f->ground.opp_character=c->character[1u-i];
         if(!t3_psx_ground_step(&f->ground,&n->fighter[1u-i].ground,&f->vm,
                 &n->fighter[1u-i].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
         if(f->ground.flight_landed)f->vm.clock.ballistic=0u;
@@ -693,9 +847,10 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             t3_psx_fighter_t* f=&n->fighter[i];
             if(t3_psx_move_events_sample(f->vm.active_bank,&f->vm.move,f->previous_pose_frame,
                                          f->vm.clock.pose_frame,&f->events)!=1)return 0;
+            if(c->character[i]==20u)ogre_events(f);
         }
-        /* FightFrame runs HitApply every frame, after a KO too; only the
-         * debug no-damage modes (0x800958A0/D8) keep health. */
+        /* FightFrame runs HitApply every frame, after a KO too; the round's
+         * no-damage flag (0x800958A0) keeps health then. */
         if(c->enable_rounds==2 || !c->enable_rounds || !n->round.done) {
             T3_MATCH_PHASE(180);
             int32_t hp[2]={n->fighter[0].health_q16,n->fighter[1].health_q16};
@@ -797,8 +952,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
            t3_move_vm_queue_input(&f->vm,&f->input,c->enable_combat?&facts:NULL,c->sequences,c->sequence_count)<0)return 0;
         if(c->enable_combat && f->vm.pending_valid && f->vm.queued.branch_kind!=1u) {
             unsigned code=f->vm.queued.transition,slot=f->vm.pending_slot;
-            int unsupported=(code>=30u && code<=32u) || code==34u || code==36u;
-            if(f->vm.pending_move.active_first && !c->all_attacks && slot!=295u && slot!=355u && slot!=357u)unsupported=1;
+            const int unsupported=f->vm.pending_move.active_first && !c->all_attacks && slot!=295u && slot!=355u && slot!=357u;
             if(unsupported) {
                 f->vm.pending_valid=0;++f->unsupported_moves;
                 f->unsupported_slot=(uint16_t)slot;f->unsupported_transition=(uint16_t)code;

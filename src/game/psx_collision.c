@@ -109,6 +109,8 @@ int t3_hurt_from_psx_joints(const t3_vec3i_t joints[T3_PSX_JOINT_COUNT],
         temp[i].center=joints[joint[i]];
         temp[i].radius=large?bigger[i]:standard[i];
     }
+    if(large==2)temp[8].radius=400;
+    if(large==3)temp[8].radius=675;
     temp[8].center.y-=120;
     temp[11].center.y-=60;
     if (!valid(&temp[8].center) || !valid(&temp[11].center))return 0;

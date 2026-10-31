@@ -34,6 +34,8 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         staged_t* s=&staged[i];
         s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;
         frame.health_q16=f->health_q16;frame.max_health_q16=c->max_health_q16;
+        /* Once the round is over a move's exchange events no longer change health. */
+        frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
         if(gate->status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<i))) {
@@ -75,7 +77,8 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
              * its first attack segment's end minus its start. */
             {
                 const t3_world_segment_t* g=&attacker->strike.segments[0];
-                s->ground.hit_dir=(t3_vec3i_t){(int32_t)((uint32_t)g->end.x-(uint32_t)g->start.x),
+                s->ground.hit_dir=attacker->projectile_hit?(t3_vec3i_t){0,0,0}:
+                    (t3_vec3i_t){(int32_t)((uint32_t)g->end.x-(uint32_t)g->start.x),
                     (int32_t)((uint32_t)g->end.y-(uint32_t)g->start.y),(int32_t)((uint32_t)g->end.z-(uint32_t)g->start.z)};
             }
             reaction_facts.defender_slot=f->vm.slot;reaction_facts.defender_pose_frame=f->vm.clock.pose_frame;

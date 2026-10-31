@@ -14,6 +14,7 @@ typedef struct {
     uint8_t extra_damage; /* original low byte, zero -> live damage fallback */
     uint16_t extra_frame; /* last extra event's authored frame, 0 if none */
     uint16_t fired;       /* number of all frame events crossed */
+    uint16_t hand;        /* the last hand command crossed (high byte 14..61), 0 if none */
     uint8_t shake;        /* 0 none, else 1 + the last camera shake script started (high byte 1/2/3) */
 } t3_psx_move_events_t;
 

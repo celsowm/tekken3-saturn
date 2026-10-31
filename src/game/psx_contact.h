@@ -26,6 +26,8 @@ typedef struct {
  * Neither the 18-part array nor the resulting zones imply calibrated world
  * root placement: the caller must supply parts in the SAME space as attacks.
  * Returns 1 if all body joints are known, 0 otherwise (no output changes). */
+/* The `large` argument of t3_psx_hurt_from_parts for a roster character. */
+int t3_psx_hurt_profile(unsigned character);
 int t3_psx_hurt_from_parts(const t3_psx_joint_t parts[T3_PSX_DRAW_PARTS],
                            uint32_t valid_mask, int large,
                            t3_hurt_cylinder_t out[T3_PSX_HURT_ZONES]);

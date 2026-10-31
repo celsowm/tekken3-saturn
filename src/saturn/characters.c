@@ -6,6 +6,17 @@
  * texture residency, and palette management.
  */
 #include "characters.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#if defined(T3_COMPILED_RENDERER) || defined(T3_SHARE_ACTOR_RESOURCES)
+#error "these paths read a fighter's pixels after boot or share one embedded mesh"
+#endif
+#define ACTOR_FACE_OT(actor) (t3_fighter_pack(actor)->face_ot)
+#elif defined(T3_SECOND_MESH)
+#define ACTOR_FACE_OT(actor) ((actor)?t3_kmd_face_ot1:t3_kmd_face_ot)
+#else
+#define ACTOR_FACE_OT(actor) t3_kmd_face_ot
+#endif
 #include "move_probe.h"
 #include "original_hud.h"
 #include "psx_skin_bridge.h"
@@ -147,7 +158,10 @@ _Static_assert(sizeof(g_stage_world_scratch[0]) >= T3_PROJECTED_VERTEX_COUNT*siz
     "fighter OT needs room for every original projected vertex");
 #endif
 #endif
-#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
+#if defined(T3_FIGHTER_PACKS)
+/* The texture table is only read while decoding, in the arena. */
+static actor_t g_actors[ACTOR_COUNT] T3_HOT_WRAM;
+#elif defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
 /* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
 static sat_model_texture_asset_t g_texture_tables[ASSET_COUNT][T3_TEXTURE_COUNT] __attribute__((section(".wram_l")));
 static actor_t g_actors[ACTOR_COUNT] T3_HOT_WRAM;
@@ -158,7 +172,7 @@ static actor_t g_actors[ACTOR_COUNT];
 /* Keep independently mutable geometry together. Texture/material tables and
  * topology retain their own lifetime and bank; the placement option moves only
  * these hot arrays, with identical capacity and CPU publication rules. */
-#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_GEOMETRY_SCRATCH)
+#if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES && !defined(T3_HIGH_GEOMETRY_SCRATCH) && !defined(T3_FIGHTER_PACKS)
 static actor_geometry_t g_actor_geometry[ACTOR_COUNT] __attribute__((section(".wram_l")));
 #else
 static actor_geometry_t g_actor_geometry[ACTOR_COUNT];
@@ -271,6 +285,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     const sat_parallel_config_t parallel={SAT_PARALLEL_AUTO,NULL,0,0,GEOMETRY_TIMEOUT_TICKS};
     if((st=sat_parallel_init(&parallel))!=SAT_OK)return st;
 #endif
+#if !defined(T3_FIGHTER_PACKS)
     {
         uint8_t* const archives[ASSET_COUNT]={t3_archive.bytes
 #if defined(T3_SECOND_MESH)
@@ -294,6 +309,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
                 asset->model.texture_count > T3_TEXTURE_COUNT) return SAT_ERR_CAPACITY;
         }
     }
+#endif
     if (progress) progress(context, T3_CHARACTER_LOAD_MODEL_READY);
 
     int share_resources=0;
@@ -311,6 +327,25 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 
     for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
+#if defined(T3_FIGHTER_PACKS)
+        /* The archive and its texture table borrow the arena until compacted
+         * below; a loaded actor keeps only its store. */
+        sat_character_asset_t* const owned = &g_assets[i];
+        {
+            uint8_t* const arena=t3_fighter_pack_arena();
+            const uint32_t bytes=t3_fighter_pack_section_bytes(i,T3_PACK_ARCHIVE);
+            sat_model_texture_asset_t* const tables=
+                (sat_model_texture_asset_t*)(void*)(arena+((bytes+15u)&~15u));
+            if(bytes>T3_ROSTER_ARCHIVE_BYTES)return SAT_ERR_CAPACITY;
+            if((st=t3_fighter_pack_read(i,T3_PACK_ARCHIVE,0,arena,bytes))!=SAT_OK)return st;
+            if((st=sat_character_asset_decode(arena,bytes,g_clips[i],T3_CLIP_COUNT,
+                    tables,T3_TEXTURE_COUNT,owned))!=SAT_OK)return st;
+            if((st=sat_skin_validate(&owned->skin))!=SAT_OK)return st;
+            if((st=sat_model_validate(&owned->model))!=SAT_OK)return st;
+            if(owned->model.vertex_count>T3_VERTEX_COUNT || owned->model.face_count>T3_FACE_COUNT ||
+               owned->model.texture_count>T3_TEXTURE_COUNT)return SAT_ERR_CAPACITY;
+        }
+#endif
         const sat_character_asset_t* asset = &g_assets[i < ASSET_COUNT ? i : 0u];
         a->asset = asset;
         a->clips = g_clips[i < ASSET_COUNT ? i : 0u];
@@ -382,6 +417,13 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             return st;
         if ((st = sat_skin_validate_mesh(&asset->skin, &a->mesh)) != SAT_OK)
             return st;
+#if defined(T3_FIGHTER_PACKS)
+        {
+            uint32_t capacity,kept;
+            void* const storage=t3_fighter_pack_asset_storage(i,&capacity);
+            if((st=sat_character_asset_compact(owned,storage,capacity,&kept))!=SAT_OK)return st;
+        }
+#endif
 #if defined(T3_ASSET_TOPOLOGY)
         /* The application owns the mutable archive; decode has already made
          * its tables native-endian. After boot both actors only read topology.
@@ -422,6 +464,10 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
         a->original_mesh=a->mesh;
         a->original_mesh.vertex_cap=T3_PROJECTED_VERTEX_COUNT;
+#if defined(T3_FIGHTER_PACKS)
+        a->original_mesh.vertex_count=(uint16_t)t3_fighter_pack(i)->projected_vertices;
+        a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_fighter_pack(i)->projected_faces;
+#else
         a->original_mesh.vertex_count=(uint16_t)t3_kmd_projected_vertex_count;
         a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_kmd_projected_faces;
 #if defined(T3_SECOND_MESH)
@@ -429,6 +475,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             a->original_mesh.vertex_count=(uint16_t)t3_kmd_projected1_vertex_count;
             a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_kmd_projected1_faces;
         }
+#endif
 #endif
         if((st=sat_scene3d_instance_binding_init(&a->original_binding,&a->original_mesh,
                 a->materials,a->texture_count,a->instance.face_materials))!=SAT_OK)return st;
@@ -439,9 +486,13 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
          * test, which reads every corner again, is left out. */
 #if T3_CLIP_COUNT == 1
         a->instance.cull_backfaces = SAT_SCENE3D_CULL_SCREEN;
+#if defined(T3_FIGHTER_PACKS)
+        a->instance.double_sided_faces = t3_fighter_pack(i)->double_sided;
+#else
         a->instance.double_sided_faces = t3_kmd_double_sided;
 #if defined(T3_SECOND_MESH)
         if (i == 1u) a->instance.double_sided_faces = t3_kmd_double_sided1;
+#endif
 #endif
 #else
         a->instance.cull_backfaces = 1u;
@@ -963,10 +1014,7 @@ static void census_particle_faces(const sat_scene_t* scene,const t3_psx_particle
     const unsigned first=g_fused_actors.original_first[0],end=g_fused_actors.original_after[1];
     for(unsigned actor=0;actor<2;++actor) {
         const actor_t* a=&g_actors[actor];const uint16_t* indices=a->original_mesh.indices;
-        const uint8_t (*meta)[2]=t3_kmd_face_ot;
-#if defined(T3_SECOND_MESH)
-        if(actor==1u)meta=t3_kmd_face_ot1;
-#endif
+        const uint8_t (*meta)[2]=ACTOR_FACE_OT(actor);
         for(unsigned f=0;f<a->original_mesh.face_count;++f) {
             unsigned at=end-1u-(g_fused_actors.original_first[actor]+f-first);
             if(scene->faces.keys[at]==0xffffffffu)continue;
@@ -1023,10 +1071,7 @@ static int apply_original_fighter_ot(sat_scene_t* scene,const fused_actor_contex
     for(unsigned actor=0;actor<2;++actor) {
         const actor_t* a=&g_actors[actor];if(!a->original_active)continue;
         const t3_psx_projected_vertex_t* raw=(const t3_psx_projected_vertex_t*)(const void*)a->world_vertices;
-        const uint8_t (*meta)[2]=t3_kmd_face_ot;
-#if defined(T3_SECOND_MESH)
-        if(actor==1u)meta=t3_kmd_face_ot1;
-#endif
+        const uint8_t (*meta)[2]=ACTOR_FACE_OT(actor);
         const uint16_t* indices=a->original_mesh.indices;
         for(unsigned f=0;f<a->original_mesh.face_count;++f) {
             int32_t nclip;uint16_t bucket=t3_psx_fighter_native_indexed_bucket(raw,&indices[4*f],meta[f][1],&nclip);
@@ -1076,10 +1121,15 @@ static int project_original(const fused_actor_context_t* context,actor_t* actor)
     /* The worker can retain cached data from the previous image. Read the
      * published camera and joint snapshot through the shared alias. */
     context=sat_parallel_uncached_address(context);
+#if defined(T3_FIGHTER_PACKS)
+    const t3_psx_projected_part_t* parts=t3_fighter_pack(n)->projected;
+    unsigned count=t3_fighter_pack(n)->projected_count;
+#else
     const t3_psx_projected_part_t* parts=t3_kmd_projected;
     unsigned count=t3_kmd_projected_count;
 #if defined(T3_SECOND_MESH)
     if(n==1u){parts=t3_kmd_projected1;count=t3_kmd_projected1_count;}
+#endif
 #endif
     actor_geometry_t* geometry=&g_actor_geometry[n];
 #if defined(T3_ORIGINAL_FIGHTER_OT)

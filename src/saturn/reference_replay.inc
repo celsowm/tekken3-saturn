@@ -145,7 +145,7 @@ static int reference_prepare_config(void) {
     if(!bad)g_reference_owned_camera=1;
 #endif
 #if T3_REFERENCE_OWN_EFFECTS
-    if(!g_owned_config.effects || g_owned_config.effect_table_bytes!=440)return 0;
+    if(!g_owned_config.effects || g_owned_config.effect_table_bytes!=T3_PSX_EFFECT_TABLE_BYTES)return 0;
     if(!bad)g_reference_owned_effects=1;
 #endif
     return !bad;

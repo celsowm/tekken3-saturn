@@ -43,6 +43,12 @@ def inspect(build):
     cache = cache_entries(build / 'CMakeCache.txt')
     header = (build / 'generated/characters/t3_generated_character.h').read_text()
     defines = dict(re.findall(r'^#define\s+(T3_\w+)\s+(\d+)u?\s*$', header, re.M))
+    roster = build / 'generated/fighters/t3_roster.h'
+    if roster.is_file():
+        # Fighter packs size the macros for the largest mesh of the roster.
+        found = dict(re.findall(r'^#define\s+T3_ROSTER_(\w+)\s+(\d+)u?\s*$', roster.read_text(), re.M))
+        defines.update(T3_VERTEX_COUNT=found['VERTICES'], T3_FACE_COUNT=found['FACES'],
+                       T3_TEXTURE_COUNT=found['TEXTURES'], T3_ARCHIVE_BYTES=found['ARCHIVE_BYTES'])
     manifest = json.loads((build / 'generated/characters/manifest.json').read_text())
     shape = {key: int(defines[macro]) for key, macro in SHAPE_MACROS.items()}
     shape['blend_vertices'] = manifest.get('blend_vertices')

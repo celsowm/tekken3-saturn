@@ -44,6 +44,10 @@ def load_character_vram(arc):
         at += 8
         if flags & 8:
             at = upload_block(vram, data, at, 0, 504)
+        # A CLUT-only TIM (Gon's ARCs 241 and 245) has a length word and no image.
+        if struct.unpack_from('<I', data, at)[0] == 4:
+            at += 4
+            continue
         at = upload_block(vram, data, at, 384, 0)
         count += 1
     if not count:

@@ -78,7 +78,7 @@ def stream_definitions(prefix: str, entries: list, samples: list,
 
 def generate(bank_path: Path, spline_path: Path, out: Path, exe_path: Path, layout: Path,
              with_streams: bool, second_bank_path: Path | None = None,
-             compact: bool = False, cold: bool = False):
+             compact: bool = False, cold: bool = False, tables_only: bool = False):
     if with_streams and compact or cold and not compact:
         raise ValueError('use either sampled or compact streams; cold requires compact')
     t = tables(Exe.usa(exe_path, layout))
@@ -87,6 +87,8 @@ def generate(bank_path: Path, spline_path: Path, out: Path, exe_path: Path, layo
     if bank[1] == 99:
         raise ValueError("the camera bank must be a character bank")
     choices = [struct.unpack_from("<hHi", bank, a) for a in range(sec[CHOICE_SECTION], sec[CHOICE_SECTION + 1] - 7, 8)]
+    if tables_only:
+        choices = []
     second_choices = []
     second_bank = None
     second_sec = None
@@ -198,10 +200,12 @@ def main():
                    help="retain original compact stream words instead of sampled frames")
     p.add_argument("--cold-streams", action="store_true",
                    help="write CAMERA.BIN and Low WRAM buffers for compact streams")
+    p.add_argument("--tables-only", action="store_true",
+                   help="only the EXE tables: each fighter's choices and streams come from its pack")
     a = p.parse_args()
     try:
         counts = generate(a.bank, a.spline_tables, a.output, a.exe, a.layout,
-                          a.with_streams, a.second_bank, a.compact_streams, a.cold_streams)
+                          a.with_streams, a.second_bank, a.compact_streams, a.cold_streams, a.tables_only)
     except (OSError, ValueError) as e:
         p.exit(1, f"private camera embed failed: {e}\n")
     print("camera tables: %d bank choices, %d streams, %d samples" % counts)

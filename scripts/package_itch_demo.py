@@ -7,14 +7,14 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.1 - SATURN DEMO
+README = '''TEKKEN 3 V0.1.1 - SATURN DEMO
 
 Open music.cue in a Saturn emulator with a compatible Saturn BIOS, or use a
 compatible Saturn disc loader. Keep music.bin alongside music.cue. A BIOS and
 emulator are not included. Real hardware has not yet been verified.
 
 Press START at the title, then select ARCADE MODE. Connect a second Saturn
-controller before starting for VS mode. Paul faces Law in this demo.
+controller before starting for VS mode. All 21 fighters are on the select screen.
 Saturn: D-pad movement, X/Y punches, A/B kicks, L guard, R crouch, C jump.
 In OPTION MODE, DEBUG enables a performance overlay. START resets a match.
 

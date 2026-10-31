@@ -50,22 +50,31 @@ def tims(member):
         o = p + size
 
 
+def flipbook_file(arc):
+    """The T3FB002 image of a character ARC's flipbook member."""
+    frames = list(tims(arc_member(arc, 1)))
+    if len(frames) < 2:
+        sys.exit('not a flipbook')
+    # Every frame loads to one CLUT position, so the last frame's colours stay
+    # (a few sets differ in one entry of their first frame).
+    palette = frames[-1][0]
+    data = bytearray(struct.pack('<8s4H', b'T3FB002\0', len(frames), 32, 32, 16))
+    data += struct.pack('<16H', *palette)
+    for _, texels in frames:
+        data += texels
+    return bytes(data), palette
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--arc', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True, help='output file (e.g. FLIPC0.BIN)')
     a = p.parse_args()
-    frames = list(tims(arc_member(a.arc.read_bytes(), 1)))
-    if len(frames) < 2 or any([c & 0x7FFF for c in f[0]] != [c & 0x7FFF for c in frames[0][0]] for f in frames):
-        sys.exit('frames do not share one CLUT')
-    data = bytearray(struct.pack('<8s4H', b'T3FB002\0', len(frames), 32, 32, 16))
-    data += struct.pack('<16H', *frames[1][0])
-    for _, texels in frames:
-        data += texels
+    data, palette = flipbook_file(a.arc.read_bytes())
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_bytes(data)
-    print(json.dumps(dict(frames=len(frames), bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
-                          palette=[hex(v) for v in frames[1][0]])))
+    print(json.dumps(dict(frames=(len(data) - 48) // FRAME_BYTES, bytes=len(data),
+                          sha256=hashlib.sha256(data).hexdigest(), palette=[hex(v) for v in palette])))
 
 
 if __name__ == '__main__':

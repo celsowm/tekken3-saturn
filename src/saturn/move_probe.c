@@ -29,6 +29,12 @@ static uint32_t g_t3_pose_trace_tick;
 #include "psx_root.h"
 #include "psx_match.h"
 #include "t3_generated_character.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#define ACTOR_PARTS(i) (t3_fighter_pack(i)->parts)
+#else
+#define ACTOR_PARTS(i) t3_private_kmd_parts
+#endif
 
 #include "placement.h"
 
@@ -38,14 +44,23 @@ static t3_divmot_t g_common;
 /* P2's own character bank (MOTION.BIN version 2). */
 static t3_divmot_t g_second;
 #endif
+#if defined(T3_FIGHTER_PACKS)
+static uint8_t g_shared_bank;
+static uint8_t g_body_shapes[2][48];
+#endif
 #if defined(T3_BRANCH_INPUT_FILTER)
 #include "branch_input_filter.h"
 #if defined(T3_SECOND_CHARACTER)
 /* Paul and Law need 1,680 words (branch_filter_words in the probe); a bank that
  * needs more makes build_input_filter fail, so the table cannot overrun. */
-enum { BRANCH_FILTER_WORDS=1792 };
+#if defined(T3_FIGHTER_PACKS)
+enum { BRANCH_FILTER_WORDS=T3_ROSTER_FILTER_WORDS+
+    (T3_LOCAL_COMMON_BRANCH_BYTES/12u+31u)/32u*T3_BRANCH_INPUT_CLASSES };
 #else
-enum { BRANCH_FILTER_WORDS=2048 };
+enum { BRANCH_FILTER_WORDS=2112 };
+#endif
+#else
+enum { BRANCH_FILTER_WORDS=2112 };
 #endif
 static uint32_t g_branch_filter_words[BRANCH_FILTER_WORDS] T3_HOT_WRAM;
 static t3_branch_input_filter_t g_branch_filters[4] __attribute__((section(".wram_l")));
@@ -133,7 +148,12 @@ static t3_psx_local_pose_entry_t g_local_pose_entries[T3_LOCAL_POSE_CACHE_ENTRIE
     T3_HOT_WRAM;
 #endif
 #if defined(T3_ENABLE_PSX_COMBAT)
+#if defined(T3_FIGHTER_PACKS)
+/* The fighters' worst pair needs this Low WRAM for its banks. */
+static t3_psx_replay_storage_t g_replay_history;
+#else
 static t3_psx_replay_storage_t g_replay_history __attribute__((section(".wram_l")));
+#endif
 #endif
 #define VM(i) (g_owned_match.fighter[(i)].vm)
 #else
@@ -282,12 +302,33 @@ static uint32_t g_shadow_last_injected_epoch;
 #pragma GCC pop_options
 #endif
 sat_result_t t3_move_probe_init(void) {
+#if defined(T3_FIGHTER_PACKS)
+    /* Each fighter's parts, radii and scale differ; the sphere joints do not. */
+    for(unsigned i=0;i<2u;++i) {
+        __builtin_memcpy(g_body_shapes[i],t3_local_body_blob+384u,32u);
+        for(unsigned k=0;k<8u;++k) {
+            g_body_shapes[i][32u+2u*k]=(uint8_t)t3_fighter_pack(i)->radii[k];
+            g_body_shapes[i][33u+2u*k]=(uint8_t)((uint16_t)t3_fighter_pack(i)->radii[k]>>8);
+        }
+    }
+    if (!t3_divmot_open(&g_bank,t3_fighter_pack(0)->bank,t3_fighter_pack(0)->bank_bytes))
+        return SAT_ERR_INVALID_ARG;
+    g_shared_bank=(uint8_t)t3_fighter_packs_share_bank();
+    if (!g_shared_bank && !t3_divmot_open(&g_second,t3_fighter_pack(1)->bank,t3_fighter_pack(1)->bank_bytes))
+        return SAT_ERR_INVALID_ARG;
+#else
     if (!t3_divmot_open(&g_bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES))
         return SAT_ERR_INVALID_ARG;
 #if defined(T3_SECOND_CHARACTER)
     if (!t3_divmot_open(&g_second,t3_local_second_bank,T3_LOCAL_SECOND_BANK_BYTES))
         return SAT_ERR_INVALID_ARG;
+#endif
+#endif
+#if defined(T3_SECOND_CHARACTER)
 #if T3_LOCAL_COMMON_BRANCH_BYTES > 0
+#if defined(T3_FIGHTER_PACKS)
+    if (!g_shared_bank)
+#endif
     if (!t3_divmot_set_common_branches(&g_second,t3_local_common_branches,
                                        T3_LOCAL_COMMON_BRANCH_BYTES))
         return SAT_ERR_INVALID_ARG;
@@ -324,10 +365,15 @@ sat_result_t t3_move_probe_init(void) {
     if(!t3_divmot_set_input_filters(&g_bank,&g_branch_filters[0],common_filter))
         return SAT_ERR_INVALID_ARG;
 #if defined(T3_SECOND_CHARACTER)
+#if defined(T3_FIGHTER_PACKS)
+    if(!g_shared_bank)
+#endif
+    {
     if(!build_input_filter(3,g_second.data+g_second.sections[0],g_second.branch_count*12u))
         return SAT_ERR_CAPACITY;
     if(!t3_divmot_set_input_filters(&g_second,&g_branch_filters[3],common_filter))
         return SAT_ERR_INVALID_ARG;
+    }
 #endif
 #if T3_LOCAL_DIVMOT_COMMON_BYTES > 0
     if(!t3_divmot_set_input_filters(&g_common,&g_branch_filters[1],common_filter))
@@ -381,7 +427,18 @@ void t3_move_probe_reset(unsigned round) {
 #if defined(T3_ENABLE_PSX_COMBAT)
     g_owned_config.enable_combat=1;
     g_owned_config.all_attacks=1; /* docs/FIGHT_ORACLE.md */
-#if defined(T3_SECOND_CHARACTER)
+#if defined(T3_FIGHTER_PACKS)
+    g_owned_config.character[0]=(uint8_t)t3_fighter_pack(0)->id;
+    g_owned_config.character[1]=(uint8_t)t3_fighter_pack(1)->id;
+    if(g_shared_bank) {
+        g_bank.linked=&g_bank; /* the merged move index of a mirror match */
+    } else {
+        g_owned_config.actor_bank[1]=&g_second;
+        g_bank.linked=&g_second;g_second.linked=&g_bank;
+        if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)
+            g_second.builtin_attacks=t3_local_combat_attacks;
+    }
+#elif defined(T3_SECOND_CHARACTER)
     /* P2 plays the second character; the merged move index links the two. */
     g_owned_config.actor_bank[1]=&g_second;
     g_owned_config.character[1]=T3_SECOND_CHARACTER_ID;
@@ -407,9 +464,15 @@ void t3_move_probe_reset(unsigned round) {
 #endif
 #if defined(T3_LOCAL_SOUND_TABLE_BYTES) && T3_LOCAL_SOUND_TABLE_BYTES > 0
     g_owned_config.sound_tables=(t3_psx_sound_tables_t){t3_local_sound_tables,T3_LOCAL_SOUND_TABLE_BYTES};
+#if defined(T3_FIGHTER_PACKS)
+    /* Character records: the voice set is not always the id (Bryan's is 13). */
+    g_owned_config.sound_voice_set[0]=(uint8_t)t3_fighter_pack(0)->voice_set;
+    g_owned_config.sound_voice_set[1]=(uint8_t)t3_fighter_pack(1)->voice_set;
+#else
     /* The present private pair is Paul/Law; both voice sets equal base ids. */
     g_owned_config.sound_voice_set[0]=g_owned_config.character[0];
     g_owned_config.sound_voice_set[1]=g_owned_config.character[1];
+#endif
     g_owned_config.sound_sink=t3_combat_events_sound;
     t3_combat_events_connect_sound();
 #endif
@@ -424,7 +487,14 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.reversal_lists=t3_local_reversal_lists;g_owned_config.reversal_lists_size=T3_LOCAL_REVERSAL_BYTES;
 #endif
 #endif
+#if defined(T3_FIGHTER_PACKS)
+    g_owned_config.parts[0]=t3_fighter_pack(0)->parts;g_owned_config.parts[1]=t3_fighter_pack(1)->parts;
+    g_owned_config.actor_body_shapes[0]=g_body_shapes[0];g_owned_config.actor_body_shapes[1]=g_body_shapes[1];
+    g_owned_config.actor_scale_percent[0]=t3_fighter_pack(0)->scale_percent;
+    g_owned_config.actor_scale_percent[1]=t3_fighter_pack(1)->scale_percent;
+#else
     g_owned_config.parts[0]=t3_private_actor_parts[0];g_owned_config.parts[1]=t3_private_actor_parts[1];
+#endif
     g_owned_config.ik=(t3_psx_ik_tables_t){{t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     g_owned_config.body_tables=t3_local_body_blob;g_owned_config.body_tables_size=T3_LOCAL_BODY_BYTES;
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0
@@ -439,12 +509,24 @@ void t3_move_probe_reset(unsigned round) {
     g_camera_tables=t3_local_camera_tables;g_camera_tables.trig=&g_camera_trig;
     g_camera_tables.atan=t3_local_ground_blob;
     g_camera_tables.sqrt=t3_local_body_blob;g_camera_tables.sqrt_size=384u;
+#if defined(T3_FIGHTER_PACKS)
+    g_camera_config=(t3_psx_fight_camera_config_t){
+        .tables=&g_camera_tables,
+        .bank_choices=t3_fighter_pack(0)->choices,
+        .bank_choice_count=t3_fighter_pack(0)->choice_count,
+        .bank_streams=&t3_fighter_pack(0)->streams,
+        .second_bank_choices=t3_fighter_pack(1)->choices,
+        .second_bank_choice_count=t3_fighter_pack(1)->choice_count,
+        .second_bank_streams=&t3_fighter_pack(1)->streams,
+        .spline=&g_owned_config.spline};
+#else
     g_camera_config=(t3_psx_fight_camera_config_t){
         .tables=&g_camera_tables,
         .bank_choices=t3_local_camera_bank_choices,
         .bank_choice_count=T3_LOCAL_CAMERA_BANK_CHOICES,
         .bank_streams=&t3_local_camera_bank_streams,
         .spline=&g_owned_config.spline};
+#endif
 #if defined(T3_LOCAL_SECOND_CAMERA_BANK_CHOICES)
     g_camera_config.second_bank_choices=t3_local_second_camera_bank_choices;
     g_camera_config.second_bank_choice_count=T3_LOCAL_SECOND_CAMERA_BANK_CHOICES;
@@ -456,7 +538,9 @@ void t3_move_probe_reset(unsigned round) {
     if(g_cpu_mask) {
         if(!t3_psx_ai_game_init(&g_ai,t3_local_ai_tables,T3_LOCAL_AI_TABLE_BYTES,g_cpu_mask,
                                 g_cpu_difficulty,g_cpu_level)){g_active=0u;return;}
-#if defined(T3_SECOND_CHARACTER)
+#if defined(T3_FIGHTER_PACKS)
+        t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_shared_bank?g_bank.bank_type:g_second.bank_type,g_shared_bank);
+#elif defined(T3_SECOND_CHARACTER)
         t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_second.bank_type,0);
 #else
         t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_bank.bank_type,1);
@@ -535,7 +619,7 @@ static void publish_owned_pose(unsigned i) {
     g_ik_mask[i]=f->ik_mask;g_fk_root_xx[i]=f->fk_root_xx;
     for(unsigned axis=0;axis<3;++axis)g_root_pose[i][axis]=f->pose[axis];
     for(unsigned part=0;part<T3_PSX_DRAW_PARTS;++part)
-        g_world_pose[i][part]=f->world[t3_private_kmd_parts[part].slot];
+        g_world_pose[i][part]=f->world[ACTOR_PARTS(i)[part].slot];
     g_hurt_ready[i]=(uint8_t)t3_psx_hurt_from_parts(f->world,f->parts_mask,0,zones);
     g_hurt_head_y[i]=g_hurt_ready[i]?zones[0].center.y:0;
 }
@@ -682,12 +766,16 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                 heading=g_owned_match.fighter[i].ground.heading;
 #endif
                                 int root_ok=t3_psx_pose_world_root(pose,
+#if defined(T3_FIGHTER_PACKS)
+                                    t3_fighter_pack(i)->scale_percent,zero,
+#else
                                     T3_KMD_SCALE_PERCENT,zero,
+#endif
                                     facing,heading,&trig,&root_frame);
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
                                 root_frame.origin=g_owned_match.fighter[i].ground.root;
 #endif
-                                if(root_ok && t3_psx_compose_parts(t3_private_kmd_parts,
+                                if(root_ok && t3_psx_compose_parts(ACTOR_PARTS(i),
                                     slots,valid,&root_frame,world,&partmask)) {
                                     g_fk_parts[i]=partmask;
                                     if((partmask & 0x3FFFFu)==0x3FFFFu) {
@@ -697,7 +785,7 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                         /* Basis follows this mode's pose:
                                          * model-local preview or owned world.
                                          * Contact is not activated here. */
-                                        if(t3_psx_parts_to_slots(t3_private_kmd_parts,world,partmask,world,&partmask) &&
+                                        if(t3_psx_parts_to_slots(ACTOR_PARTS(i),world,partmask,world,&partmask) &&
                                            t3_psx_hurt_from_parts(world,partmask,
                                                                   0,zones)) {
                                             g_hurt_ready[i]=1u;
@@ -773,7 +861,7 @@ void t3_move_probe_tick(const t3_match_t* match) {
                                                  vm->clock.pose_frame,0,&attacks[fighter]);
                     actors[fighter].root=roots[fighter];
                     uint32_t collision_mask=0;
-                    int remapped=t3_psx_parts_to_slots(t3_private_kmd_parts,g_world_pose[fighter],
+                    int remapped=t3_psx_parts_to_slots(ACTOR_PARTS(i),g_world_pose[fighter],
                                 g_fk_parts[fighter],collision_joints[fighter],&collision_mask);
                     actors[fighter].parts=collision_joints[fighter];
                     actors[fighter].pose_available=(uint8_t)
@@ -1025,7 +1113,7 @@ int32_t t3_move_probe_owned_value(unsigned i,unsigned field) {
         case 27:case 28:case 29: {
             /* The contact point: the hitting segment's end (as the camera reads it). */
             const int seg=f->hit_gate.segment>=0 && f->hit_gate.segment<f->strike.segment_count?f->hit_gate.segment:0;
-            const t3_vec3i_t* p=&f->strike.segments[seg].end;
+            const t3_vec3i_t* p=f->projectile_hit?&f->projectile.end:&f->strike.segments[seg].end;
             return field==27?p->x:field==28?p->y:p->z;
         }
         case 30:{

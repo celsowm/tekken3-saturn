@@ -50,6 +50,9 @@ typedef struct {
     uint8_t in_throw; /* +0xC4: paired by MoveStep, kept while throw_state != 0 */
     uint8_t attack_pending; /* +0xBD: the victim was attacking or had power on throw start */
     uint16_t guard;
+    /* The rules that name a character; the match keeps these current. */
+    uint8_t character,opp_character;
+    uint8_t in_reaction; /* the move started from a clean hit */
 } t3_psx_ground_state_t;
 
 int t3_psx_atan2(const t3_psx_ground_tables_t* tables,int32_t dz,int32_t dx,uint16_t* out);

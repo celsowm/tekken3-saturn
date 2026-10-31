@@ -76,6 +76,17 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     config.spline=(t3_motion_tables_t){t3_local_spline_blob,T3_LOCAL_SPLINE_BYTES};
     config.sequences=t3_local_sequences;config.sequence_count=T3_LOCAL_SEQUENCE_COUNT;
     config.scale_percent=T3_KMD_SCALE_PERCENT;config.max_health_q16=i32(0x800A9228u+0x3F8);
+#ifdef T3_PRIVATE_ACTOR_SCALES
+    {
+        static const unsigned scales[2]=T3_PRIVATE_ACTOR_SCALES;
+        static const uint8_t radii[2][16]=T3_PRIVATE_ACTOR_RADII;
+        static uint8_t shapes[2][48];
+        for(unsigned i=0;i<2;++i) {
+            memcpy(shapes[i],t3_local_body_blob+384u,32u);memcpy(shapes[i]+32u,radii[i],16u);
+            config.actor_scale_percent[i]=scales[i];config.actor_body_shapes[i]=shapes[i];
+        }
+    }
+#endif
     config.parts[0]=t3_private_actor_parts[0];config.parts[1]=t3_private_actor_parts[1];config.ik=(t3_psx_ik_tables_t){
         {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     config.body_tables=t3_local_body_blob;config.body_tables_size=T3_LOCAL_BODY_BYTES;

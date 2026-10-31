@@ -230,9 +230,10 @@ static void tracking(t3_psx_ground_state_t* n,const t3_psx_ground_state_t* opp,
         }break;
     case 10:
         if(pose<=vm->move.length) {
-            /* Paul's step direction; Yoshimitsu's character-specific branch
-             * belongs outside this bounded character-zero runtime. */
-            delta=n->root_dx<0?-0x11C7:0x11C7;
+            /* Xiaoyu steps less from the back quadrant. Rule from Tekken3Remake
+             * tools/research/fight_sim.py; PolyForm Noncommercial, NOTICE.md. */
+            if(n->character==7u && n->facing_quadrant==2u)delta=n->root_dx<0?0x71C:-0x71C;
+            else delta=n->root_dx<0?-0x11C7:0x11C7;
             n->anchor_dirty=1;n->facing=(uint16_t)(n->aim_dir+s16(delta*pose/vm->move.length));n->heading=n->facing;
         }break;
     default:break;
@@ -260,6 +261,7 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     code=vm->current_transition;
     if(!(code<=30u || code==33u || code==34u || code==35u || code==36u || (code>=37u && code<=43u)))return 0;
     n=*state;m=&vm->move;
+    n.in_reaction=n.hit_clean;
     n.air_phase=n.slide_state=n.track_mode=n.step_kind=0u;n.track_accum=0;n.hit_cooldown=0;
     n.opponent_start=opp->root;
     n.damage=n.damage_override?n.damage_override:((m->damage_class>>14)==1u?0:(int16_t)(m->damage_class&0x3FFFu));
@@ -394,6 +396,8 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     if(anchor || (tail && reanchor)) {n.anchor.x=n.root.x;n.anchor.z=n.root.z;}
     if(code!=17u && code!=33u && code!=34u)n.throw_state=0;
     n.in_throw=n.throw_state!=0;
+    /* Gon's moves start on the ground unless they begin with a step. */
+    if(vm->bank && vm->bank->bank_type==0x13u && vm->clock.pose_frame==1 && m->air_start!=1u)n.anchor.y=0;
     *state=n;return 1;
 }
 T3_SIM_WRAP(int,t3_psx_ground_start,T3_SIM_GROUND,
@@ -456,6 +460,14 @@ int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_gr
         n.step_accum_x=w32((int64_t)n.step_accum_x+dx*256LL);
         n.step_accum_z=w32((int64_t)n.step_accum_z+dz*256LL);
     }
+    /* Gon is not thrown far while being hit, unless he is being juggled. */
+    if(n.character==17u && n.in_reaction && !n.juggle_count) {
+        if(!n.in_air)n.anchor.y=0;
+        else {
+            const int32_t y=w32((int64_t)n.root.y+0x80);
+            if(y<0)n.anchor.y=y>>1;
+        }
+    }
     if(!n.in_air)n.launch_armed=0;
     if(n.turn_frames) {
         n.turn_frames=s16(n.turn_frames-1);n.heading=(uint16_t)(n.heading+n.turn_step);
@@ -491,6 +503,7 @@ int T3_SIM_IMPL(t3_psx_ground_step)(t3_psx_ground_state_t* state,const t3_psx_gr
         if(pose>=first && pose<=m->active_first)n.about_to_hit=1u;
     }
     if(m->flags&0x400u)n.about_to_hit=1u;
+    if(n.character==17u && n.opp_character!=17u)n.about_to_hit=1u;
     if(!(m->flags&0x4000u)) {
         if(n.step_kind) {
             n.state=direction==4u?0x1052u:direction==1u?0x2829u:m->state_word;

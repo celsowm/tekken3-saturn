@@ -7,6 +7,8 @@ SECTIONS {
     .t3_sdk_hot (NOLOAD) : ALIGN(16) {
         ___t3_sdk_hot_start = .;
         *libsaturn.a:state.cpp.obj(.wram_l .wram_l.*)
+        *libsaturn.a:vdp1.cpp.obj(.wram_l .wram_l.*)
+        *libsaturn.a:asset_runtime.cpp.obj(.wram_l .wram_l.*)
         . = ALIGN(4);
         ___t3_sdk_hot_end = .;
     }

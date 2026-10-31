@@ -50,6 +50,24 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "perf.h"
 #include "sfx.h"
 #include "flipbook_burst.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "char_select.h"
+#include "fighter_pack.h"
+#include "saturn/exec.h"
+#endif
+
+/* A name's art width in texels (character record byte +5) and its sheet width
+ * padded to the VDP1's 8-texel multiple. */
+#if defined(T3_FIGHTER_PACKS)
+#define NAME_WIDTH(player) ((int)t3_fighter_pack(player)->name_width)
+#else
+#ifndef T3_ACTOR1_NAME_WIDTH
+#define T3_ACTOR1_NAME_WIDTH 26
+#endif
+#define NAME_WIDTH(player) ((player)?T3_ACTOR1_NAME_WIDTH:32)
+#endif
+#define NAME_PADDED(player) ((NAME_WIDTH(player)+7)&~7)
+#define NAME_PLATE(player) ((NAME_WIDTH(player)+8)*7/8+(((NAME_WIDTH(player)+8)*7)%8!=0))
 #include "stage_cdda.h"
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
@@ -477,7 +495,7 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1.1", W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/LibSaturn", W / 2, LOADING_CREDIT_Y));
@@ -715,8 +733,8 @@ static void floor_tiles(void) {
 static uint8_t g_arcade_stage;
 
 /* Arcade sequencing: each match the player wins against the CPU raises the
- * CPU level (4..7); a loss or a draw repeats the stage. Only two fighters
- * exist, so the opponent is always Law. */
+ * CPU level (4..7); a loss or a draw repeats the stage. The player picks each
+ * opponent. */
 static void arcade_advance(int winner) {
     if(winner==0 && g_arcade_stage<3u)++g_arcade_stage;
 }
@@ -801,7 +819,7 @@ static void title_screen(void) {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&namco_texture,160,184,63,8,7));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"(C)1994 1995 1996 1998 NAMCO LTD.",W/2,192));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"ALL RIGHTS RESERVED",W/2,203));
-            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.1",278,4));
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.1.1",264,4));
         } else {
         {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&title_texture,160,112,320,224,7));
@@ -828,7 +846,7 @@ static void title_screen(void) {
                     &g_font.glyphs[(unsigned)logo[i]-32u],64+(int)i*24,28,24,32,
                     g_hud.palette));
         }
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.1  -  PAUL VS LAW",W/2,70));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.1.1  -  PAUL VS LAW",W/2,70));
         SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,44,88,232,2,1,1,
             SAT_RGB555(22,4,3),SAT_RGB555(22,4,3)));
         if(options) {
@@ -854,14 +872,54 @@ static void title_screen(void) {
 #endif
            (pad0.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_X))) {
             if(selected) { options=1; continue; }
+#if !defined(T3_FIGHTER_PACKS)
             choose_cpu(&pad1);
 #if !defined(T3_REFERENCE_REPLAY)
             t3_move_probe_set_start_buttons(original_start_buttons(&pad0),original_start_buttons(&pad1));
 #endif
             t3_move_probe_reset(g_game.round);
+#endif
             return;
         }
     }
+}
+#endif
+
+#if defined(T3_FIGHTER_PACKS)
+/* Title and select run before anything is loaded. The fight restarts this same
+ * program with the picks, so each pairing starts on a clean machine whatever
+ * the previous one left in VRAM, CRAM and Sound RAM. */
+enum { BOOT_ARG_BYTES=5u, PHASE_SELECT='S', PHASE_FIGHT='F' };
+static uint8_t g_picks[2]={0,1};
+
+static void restart_program(uint8_t phase) {
+    sat_cdfs_volume_t* volume;
+    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)g_show_profiler};
+    SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
+    SAT_PANIC_IF_ERROR(sat_exec(volume,"0.BIN",arg,sizeof arg));
+}
+
+/* Returns only in the fight phase, with both packs open. */
+static void enter_fight_phase(void) {
+#if defined(T3_BOOT_FIGHTER_0)
+    /* Test builds name a pairing and skip the menus. */
+    g_picks[0]=T3_BOOT_FIGHTER_0;g_picks[1]=T3_BOOT_FIGHTER_1;
+#else
+    uint8_t arg[SAT_EXEC_ARG_MAX];
+    uint32_t arg_bytes=0;
+    const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
+    if(restarted) {
+        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4];
+    }
+    if(!restarted || arg[0]!=PHASE_FIGHT) {
+#if defined(T3_TITLE_SCREEN)
+        if(!restarted)title_screen();
+#endif
+        SAT_PANIC_IF_ERROR(t3_character_select(&g_hud,g_faces,sizeof g_faces,g_picks));
+        restart_program(PHASE_FIGHT);
+    }
+#endif
+    SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
 }
 #endif
 
@@ -1115,10 +1173,12 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
         SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,t3_original_hud_x(202+14*(int)mark),25));
     }
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(10),27,35));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,t3_original_hud_x(14),23,28));
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(324),27,30));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,t3_original_hud_x(322),23,28));
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(10),27,NAME_PLATE(0)));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,t3_original_hud_x(14),23,NAME_PADDED(0)*7/8));
+    /* P2's name is right-anchored at 354 (FUN_8004EB9C): the plate spans the
+     * art plus 4 texels each side and the padded sheet ends at the anchor. */
+    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(350-NAME_WIDTH(1)),27,NAME_PLATE(1)));
+    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,t3_original_hud_x(354-NAME_PADDED(1)),23,NAME_PADDED(1)*7/8));
 #else
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
 #endif
@@ -1189,7 +1249,11 @@ static void draw_hud(void) {
         .played=round_number,.max_rounds=max_rounds,.result=round_result,
         .replay_request=replay_request,.human_mask=human_mask,.winner=game->winner,
         .frame_counter=(uint32_t)frame_counter,.replay_mode=replay_entry,
+#if defined(T3_FIGHTER_PACKS)
+        .winner_name=t3_fighter_pack(game->winner==0?0u:1u)->name};
+#else
         .winner_name=game->winner==0?"PAUL":"LAW"};
+#endif
     t3_psx_hud_message_t messages[2];
     const unsigned count=t3_psx_hud_messages(&facts,messages);
     for(unsigned i=0;i<count;++i)
@@ -1635,6 +1699,9 @@ int main(void) {
         t3_memory_probe();
     }
 #endif
+#if defined(T3_FIGHTER_PACKS)
+    enter_fight_phase();
+#endif
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
 #if defined(T3_NATIVE_COMMANDS)
@@ -1686,15 +1753,18 @@ int main(void) {
 #if defined(T3_CPU_DIAGNOSTICS)
     capture_boot_cache();
 #endif
-#if defined(T3_TITLE_SCREEN)
+#if defined(T3_TITLE_SCREEN) && !defined(T3_FIGHTER_PACKS)
     title_screen();
 #endif
 #if defined(T3_VDP2_FLOOR)
-    loading_frame(BOOT_POSES, "PAUL STAGE");
+    loading_frame(BOOT_POSES, "STAGE");
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
 #endif
 #if defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(t3_original_hud_init(g_faces,sizeof g_faces));
+#if defined(T3_FIGHTER_PACKS)
+    SAT_PANIC_IF_ERROR(t3_original_hud_load_names(g_faces,sizeof g_faces));
+#endif
 #endif
 #if defined(T3_PARTICLE_PREPARE)
     SAT_PANIC_IF_ERROR(t3_particle_prepare_init());
@@ -1763,7 +1833,15 @@ int main(void) {
             SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));
             ++g_simulation_epoch;
 #endif
+#if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
+            /* A finished match goes back to the select screen. */
+            if(g_game.match_done) {
+                arcade_advance(g_game.winner);
+                restart_program(PHASE_SELECT);
+            }
+#else
             if(g_game.match_done)arcade_advance(g_game.winner);
+#endif
             t3_combat_events_reset();
             t3_match_reset(&g_game);
             choose_cpu(&pad1);

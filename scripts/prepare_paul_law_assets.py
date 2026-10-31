@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Prepare the private Paul–Law build inputs from a user-supplied USA data track."""
+"""Prepare the private whole-roster build inputs from a user-supplied USA data track."""
 import argparse
 import json
 from pathlib import Path
 import subprocess
 import sys
 
+from fighter_roster import all_records
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / 'scripts'
-RECORDS = '10,36,56,71,72,73,74,75,79,80,81,82,279'
+RECORDS = ','.join(str(record) for record in all_records())
 
 
 def prepare(source, out, music_cue=None):
@@ -33,7 +35,7 @@ def prepare(source, out, music_cue=None):
         ['extract_psx_effect_tables.py', '--exe', str(exe), '--out', str(tables / 'psx_effects.bin')],
         ['extract_psx_sequences.py', '--exe', str(exe), '--output', str(out / 'sequences.json')],
     ]
-    for record in (74, 82, 279):
+    for record in (74, 279):
         commands.append(['divmot_to_logic.py', '--bank', str(out / 'raw' / f'{record:03}.bin'),
                          '--output', str(out / 'divmot' / f'{record:03}'),
                          '--with-motion', '--with-hitboxes', '--with-events', '--with-sounds'])
@@ -46,8 +48,8 @@ def prepare(source, out, music_cue=None):
             log.write(json.dumps(command) + '\n')
             log.flush()
             subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
-    required = [exe, out / 'raw/079.bin', out / 'raw/081.bin', out / 'raw/082.bin',
-                out / 'divmot/074/bank_0.t3logic', out / 'divmot/082/bank_1.t3logic',
+    required = [exe, *(out / 'raw' / f'{record:03}.bin' for record in all_records()),
+                out / 'divmot/074/bank_0.t3logic',
                 out / 'divmot/279/bank_99.t3logic', tables / 'psx_sounds.bin',
                 tables / 'psx_effects.bin', tables / 'psx_ai.bin', out / 'sequences.json']
     if any(not path.is_file() for path in required):

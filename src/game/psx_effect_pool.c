@@ -6,6 +6,7 @@
  * The original EffectsUpdate prefetches the next node before dispatch.
  * No PS1 pointers, primitives or audio side effects. See NOTICE.md. */
 #include "psx_effect_pool.h"
+#include "psx_effect_fire.h"
 static int32_t add(int32_t a,int32_t b){return (int32_t)((uint32_t)a+(uint32_t)b);}
 static uint32_t next_random(uint32_t* r){*r=*r*0x41C64E6Du+0x3039u;return (*r>>16)&0x7FFFu;}
 static int16_t le16(const uint8_t* p){return (int16_t)(uint16_t)(p[0]|(p[1]<<8));}
@@ -36,7 +37,7 @@ static void glows(t3_psx_effect_pool_t* p) {
     for(unsigned i=0;i<8;++i){t3_psx_spark_t* o=t3_psx_effect_alloc(p,3);if(o)o->a=joints[i];}
 }
 void t3_psx_effect_pool_round(t3_psx_effect_pool_t* p) {
-    reset(p);p->replay_glows=p->end_cleared=0;p->glow_mask[0]=p->glow_mask[1]=0;glows(p);
+    reset(p);p->replay_glows=p->end_cleared=p->burn_flags=0;p->glow_mask[0]=p->glow_mask[1]=0;glows(p);
     t3_psx_flipbook_clear(&p->flipbook);
 }
 void t3_psx_effect_spray(t3_psx_effect_pool_t* p,t3_vec3i_t point,int16_t pitch,int16_t yaw,int power) {
@@ -49,7 +50,7 @@ void t3_psx_effect_spray(t3_psx_effect_pool_t* p,t3_vec3i_t point,int16_t pitch,
 static int masks(t3_psx_effect_pool_t* p,const uint8_t* t,size_t bytes,const t3_psx_effect_actor_t f[2]) {
     for(unsigned i=0;i<2;++i) {
         p->glow_mask[i]=0;if(!f[i].power_timer)continue;
-        if(!t || bytes!=440)return 0;
+        if(!t || bytes!=T3_PSX_EFFECT_TABLE_BYTES)return 0;
         unsigned sum=f[i].joints[0]+f[i].joints[1]+f[i].joints[2]+f[i].joints[3];
         if(f[i].character!=22 && sum) {
             if(f[i].pose<=f[i].active_last)for(unsigned k=0;k<4;++k) {
@@ -67,7 +68,7 @@ static int glow(t3_psx_effect_pool_t* p,t3_psx_spark_t* o,const t3_psx_effect_ac
     unsigned player=((unsigned)o->a&0x8000u)>>15,joint=(unsigned)o->a&0x7FFFu;
     uint32_t mask=p->glow_mask[player];
     if(!(mask&(1u<<(joint&31u)))){o->flags&=(uint8_t)~0x40u;return 1;}
-    if(!t || bytes!=440 || !f[player].world || f[player].character>=21)return 0;
+    if(!t || bytes!=T3_PSX_EFFECT_TABLE_BYTES || !f[player].world || f[player].character>=21)return 0;
     o->flags|=0x40;
     unsigned block=joint==6 && f[player].character==20?19:joint;
     const t3_psx_joint_t* j=&f[player].world[block];
@@ -113,7 +114,7 @@ int t3_psx_effect_pool_step(t3_psx_effect_pool_t* p,const t3_psx_trig_t* trig,
     unsigned buffer,int enabled,int replay,int phase) {
     if(!p || !trig || !rng || buffer>1)return 0;
     if(enabled){++p->counter;if(!masks(p,t,bytes,f))return 0;}
-    if(!p->replay_glows && replay){reset(p);glows(p);++p->replay_glows;}
+    if(!p->replay_glows && replay){reset(p);glows(p);p->burn_flags=0;++p->replay_glows;}
     if(!p->end_cleared && phase>=3 && phase<=7){reset(p);++p->end_cleared;}
     unsigned count=0;
     for(unsigned i=p->head;i!=80;) {
@@ -128,6 +129,9 @@ int t3_psx_effect_pool_step(t3_psx_effect_pool_t* p,const t3_psx_trig_t* trig,
             case 1:case 2:case 12:case 13:if(!t3_psx_spark_step(o,trig,rng,buffer))return 0;break;
             case 3:if(!glow(p,o,f,t,bytes,rng,buffer))return 0;break;
             case 4:case 5:rising(o,rng,buffer);break;
+            case 6:case 7:case 8:case 9:case 10:case 11:case 19:case 20:
+                if(!t3_psx_effect_fire_step(p,o,trig,t,bytes,f,rng,buffer,replay))return 0;
+                break;
             case 16:if(!o->state)o->state=1;else if(o->state==1)finish(o);break;
             case 17:
                 o->c=add(o->c,replay?-2:-1);

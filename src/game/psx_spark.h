@@ -9,6 +9,7 @@ typedef struct {
     int16_t pitch,yaw,speed;
     uint16_t clut[2];
     int32_t x,y,z,vx,vy,vz,a,b,c,d;
+    int32_t px,py,pz; /* the previous position: a projectile's hit segment start */
 } t3_psx_spark_t;
 /* Original object types 1/2/12/13. One update, including initialization on
  * state 0. Floor/age expiry changes the object to type 0, state 0, flags 0x80;

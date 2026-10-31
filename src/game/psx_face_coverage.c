@@ -156,8 +156,18 @@ int t3_face_quad_tile_coverage(const uint8_t pixels[64],int zero_is_opaque,
         int lx=triangle_edge(x[0],x[3],a,left_height),ly=y[0]+a;
         int rx=triangle_edge(x[1],x[2],b,right_height),ry=y[1]+b;
         int width=rx-lx;
-        int previous_x=lx,previous_y=ly;unsigned v=rectangle_sample(i,steps);
-        for(int j=0;j<=width;++j) {
+        /* The line and its diagonal-fill pixels stay within these bounds.
+         * Skip its per-pixel interpolation when none can reach this tile. */
+        if(rx<tile_left || lx>tile_left+7 ||
+           (ly<tile_top && ry<tile_top) || (ly>tile_top+7 && ry>tile_top+7))continue;
+        /* Include one pixel to the right: a descending diagonal may fill
+         * the previous x there. Seed the previous point exactly at j-1. */
+        int first=tile_left-lx;if(first<0)first=0;
+        int last=tile_left+8-lx;if(last>width)last=width;
+        int previous_x=first?lx+first-1:lx;
+        int previous_y=first?triangle_edge(ly,ry,first-1,width):ly;
+        unsigned v=rectangle_sample(i,steps);
+        for(int j=first;j<=last;++j) {
             int px=lx+j,py=triangle_edge(ly,ry,j,width);unsigned u=rectangle_sample(j,width);
             if(zero_is_opaque || pixels[v*8+u]) {
                 if(j && py!=previous_y) {

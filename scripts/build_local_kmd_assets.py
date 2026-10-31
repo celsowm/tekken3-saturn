@@ -39,9 +39,8 @@ def compile_mesh(model,lib_source,preview,texture_arc):
 def c_rows(values,width):
     return ['    '+','.join(str(v) for v in values[i:i+width])+',' for i in range(0,len(values),width)]
 
-def emit_projected_mesh(model, report, suffix):
-    """Emit private original vertex blocks and compiled-index mappings."""
-    name = 't3_kmd_projected' + suffix
+def projected_mesh(model, report):
+    """The original vertex blocks in draw order, the logical faces and their vertex count."""
     mapping = {}
     logical_indices = {}
     for logical, (part, row, slot, index) in enumerate(report['projected_vertex_map']):
@@ -49,20 +48,39 @@ def emit_projected_mesh(model, report, suffix):
             raise ValueError('projected logical vertex index exceeds uint16')
         mapping.setdefault((part, row), []).append((slot, index, logical))
         logical_indices[part, row, slot] = logical
-    lines = []
     blocks = []
     for part, row_index in enumerate(PART_ROWS[:18]):
         for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
             vb = model.rows[ri].vert
             if vb is None:
                 continue
+            entries = mapping.get((part, ri), [])
+            blocks.append(dict(part=part, row=ri, vert=vb, entries=entries,
+                               map=[x for slot, index, _ in entries for x in (slot, index)],
+                               logical=[x for slot, _, index in entries for x in (slot, index)]))
+    faces = []
+    for part, row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
+            for face in model.rows[ri].faces or []:
+                v = [logical_indices[part, ri, slot] for slot in face]
+                faces.append((v[0], v[1], v[2], v[2]) if len(v) == 3 else (v[0], v[1], v[3], v[2]))
+    if len(faces) != report['faces']:
+        raise ValueError('projected face count differs from compiled mesh')
+    return blocks, faces, len(logical_indices)
+
+def emit_projected_mesh(model, report, suffix):
+    """Emit private original vertex blocks and compiled-index mappings."""
+    name = 't3_kmd_projected' + suffix
+    lines = []
+    blocks = []
+    mesh, faces, vertex_count = projected_mesh(model, report)
+    for block in mesh:
+            part, ri, vb = block['part'], block['row'], block['vert']
             prefix = f'{name}_{part}_{ri}'
             arrays = [('local', 'uint8_t', vb.imports_local),
                       ('global', 'uint8_t', vb.imports_global)]
             arrays += [(f'post{i}', 'uint16_t', values) for i, values in enumerate(vb.posts)]
-            entries = mapping.get((part, ri), [])
-            arrays += [('map', 'uint16_t', [x for slot, index, _ in entries for x in (slot, index)]),
-                       ('logical', 'uint16_t', [x for slot, _, index in entries for x in (slot, index)])]
+            arrays += [('map', 'uint16_t', block['map']), ('logical', 'uint16_t', block['logical'])]
             for label, typ, values in arrays:
                 if values:
                     lines.append(f'static const {typ} {prefix}_{label}[] = {{' + ','.join(map(str, values)) + '};')
@@ -72,7 +90,7 @@ def emit_projected_mesh(model, report, suffix):
                 return f'{prefix}_{label}' if values else 'NULL'
             posts = ','.join(ref(f'post{i}', values) for i, values in enumerate(vb.posts))
             counts = ','.join(str(len(values)) for values in vb.posts)
-            map_values = mapping.get((part, ri), [])
+            map_values = block['entries']
             blocks.append('    {%d,%s,%d,%s,%d,%s,%d,{%s},{%s},%s,%s,%d},' % (
                 part, ref('local', vb.imports_local), len(vb.imports_local),
                 ref('global', vb.imports_global), len(vb.imports_global),
@@ -82,17 +100,35 @@ def emit_projected_mesh(model, report, suffix):
     lines.extend(blocks)
     lines.append('};')
     lines.append(f'const unsigned {name}_count = {len(blocks)};')
-    faces = []
-    for part, row_index in enumerate(PART_ROWS[:18]):
-        for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
-            for face in model.rows[ri].faces or []:
-                v = [logical_indices[part, ri, slot] for slot in face]
-                faces.append((v[0], v[1], v[2], v[2]) if len(v) == 3 else (v[0], v[1], v[3], v[2]))
-    if len(faces) != report['faces']:
-        raise ValueError('projected face count differs from compiled mesh')
     lines.append(f'const uint16_t {name}_faces[][4] = {{' + ','.join('{%d,%d,%d,%d}' % f for f in faces) + '};')
-    lines.append(f'const unsigned {name}_vertex_count = {len(logical_indices)};')
+    lines.append(f'const unsigned {name}_vertex_count = {vertex_count};')
     return lines
+
+def generate_roster(output):
+    """The fixed-buffer sizes of a build that loads its fighters from packs
+    (scripts/build_fighter_packs.py): no mesh is embedded, t3_roster.h holds the counts."""
+    output.mkdir(parents=True,exist_ok=True)
+    (output/"t3_generated_character.h").write_text("""#ifndef T3_GENERATED_CHARACTER_H
+#define T3_GENERATED_CHARACTER_H
+#include <stdint.h>
+#include "psx_pose.h"
+#include "t3_roster.h"
+#define T3_SECOND_MESH 1
+#define T3_ARCHIVE_BYTES T3_ROSTER_ARCHIVE_BYTES
+#define T3_VERTEX_COUNT T3_ROSTER_VERTICES
+#define T3_PROJECTED_VERTEX_COUNT T3_ROSTER_PROJECTED_VERTICES
+#define T3_FACE_COUNT T3_ROSTER_FACES
+#define T3_JOINT_COUNT 22u
+#define T3_TEXTURE_COUNT T3_ROSTER_TEXTURES
+#define T3_ORIGINAL_TEXTURES 1
+#define T3_CLIP_COUNT 1u
+#define T3_CLIP_IDLE 0u
+#define T3_LOCAL_KMD_BIND 1u
+#define T3_KMD_SCALE_PERCENT 100u
+#endif
+""",encoding='utf8')
+    (output/"t3_generated_character.c").write_text('#include "t3_generated_character.h"\n',encoding='utf8')
+    (output/"manifest.json").write_text(json.dumps(dict(fighter_packs=True),indent=2)+'\n',encoding='utf8')
 
 def generate(kmd_path, lib_source, output,texture_arc=None,actor0_kmd=None,actor1_kmd=None,
              actor1_mesh=None,actor1_arc=None):
@@ -258,8 +294,9 @@ extern const t3_psx_part_t* const t3_private_actor_parts[2];
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--kmd",type=Path,required=True)
-    p.add_argument("--libsaturn-source",type=Path,required=True)
+    p.add_argument("--kmd",type=Path)
+    p.add_argument("--libsaturn-source",type=Path)
+    p.add_argument("--fighter-packs",action="store_true",help="embed no mesh: t3_roster.h sizes the buffers")
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--textures-arc",type=Path,help="private matching character ARC textures")
     p.add_argument("--actor0-kmd",type=Path,help="private P1 skeleton override; render mesh remains --kmd")
@@ -267,6 +304,11 @@ def main():
     p.add_argument("--actor1-mesh-kmd",type=Path,help="private P2 render mesh (a second character)")
     p.add_argument("--actor1-textures-arc",type=Path,help="private texture ARC matching --actor1-mesh-kmd")
     a=p.parse_args()
+    if a.fighter_packs:
+        generate_roster(a.output)
+        return
+    if a.kmd is None or a.libsaturn_source is None:
+        p.error("--kmd and --libsaturn-source are required without --fighter-packs")
     if a.actor1_textures_arc is not None and a.actor1_mesh_kmd is None:
         p.error("--actor1-textures-arc requires --actor1-mesh-kmd")
     try:

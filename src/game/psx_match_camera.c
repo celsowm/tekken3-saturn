@@ -55,7 +55,10 @@ static void fighter(const t3_psx_match_t* m,unsigned i,t3_psx_camera_fighter_t* 
     o->close_hit=f->hit.close;o->ko=f->hit.ko_started;
     o->last_damage=f->ground.last_damage;
     /* The best hit slot holds the hitting segment's end point (HitTest). */
-    if(a->hit_gate.status==T3_HIT_GATE_ACCEPT && a->hit_gate.segment>=0 &&
+    if(a->hit_gate.status==T3_HIT_GATE_ACCEPT && a->projectile_hit) {
+        const t3_vec3i_t p=a->projectile.end;
+        o->hit_point[0]=p.x;o->hit_point[1]=p.y;o->hit_point[2]=p.z;
+    } else if(a->hit_gate.status==T3_HIT_GATE_ACCEPT && a->hit_gate.segment>=0 &&
        a->hit_gate.segment<a->strike.segment_count) {
         const t3_vec3i_t p=a->strike.segments[a->hit_gate.segment].end;
         o->hit_point[0]=p.x;o->hit_point[1]=p.y;o->hit_point[2]=p.z;

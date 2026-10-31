@@ -130,7 +130,8 @@ FONT2_WIDTH, FONT2_HEIGHT, FONT2_ADVANCE = 24, 40, 22
 # entries follow this order in HUD.BIN and on the Saturn.
 TEXT_COLOURS = (1, 2, 3, 4, 5, 6, 8, 9)
 GLYPH_FILE_NAMES = {'!': 'excl', '.': 'dot', '?': 'query'}
-MESSAGE_CHARS = 'ABCDEFIKLMNOPRSTUWY!.?123456789'
+# G, H, J and X only appear in fighter names (the winner line).
+MESSAGE_CHARS = 'ABCDEFGHIJKLMNOPRSTUWXY!.?123456789'
 REPLAY_CHARS = 'REPLAY'
 FONT_TABLE = 0x80021D64
 
@@ -201,6 +202,8 @@ def main():
                         help="player 1's costume texture ARC (the shared character archive)")
     parser.add_argument('--actor1-arc', type=Path, required=True,
                         help="player 2's costume texture ARC")
+    parser.add_argument('--actor1-name-width', type=int, default=26,
+                        help="player 2's name sprite width in texels (character record byte +5; Law 26, Hwoarang 71)")
     args = parser.parse_args()
     sys.path.insert(0, str(ROOT / 'scripts'))
     from psx_character_textures import load_character_vram
@@ -216,8 +219,9 @@ def main():
     packed = bytearray(b'T3HUD04\0' + struct.pack('<HH', len(PIECES) + len(NAMES) + len(MESSAGE_CHARS) + len(REPLAY_CHARS),
                                                   len(TEXT_COLOURS) + 1))
     args.out.mkdir(parents=True, exist_ok=True)
-    for spec in PIECES + NAMES:
-        if spec in NAMES:
+    names = (NAMES[0], NAMES[1][:2] + (args.actor1_name_width,) + NAMES[1][3:])
+    for spec in PIECES + names:
+        if spec in names:
             arc_path = getattr(args, spec[1].replace('-', '_'))
             arc = arc_path.read_bytes()
             char_vram, _ = load_character_vram(arc)

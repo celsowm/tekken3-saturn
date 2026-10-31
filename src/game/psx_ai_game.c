@@ -69,9 +69,9 @@ int t3_psx_ai_game_init(t3_psx_ai_game_t* ai,const uint8_t* tables,size_t size,u
 }
 
 void t3_psx_ai_game_place_banks(t3_psx_ai_game_t* ai,unsigned type0,unsigned type1,int shared) {
-    (void)type1;
+    (void)type0;
     ai->bank_base[0]=T3_PSX_AI_BANK_BUFFER;
-    ai->bank_base[1]=shared?ai->bank_base[0]:T3_PSX_AI_BANK_BUFFER+(type0==3u?0x5233Cu:0x62958u);
+    ai->bank_base[1]=shared?ai->bank_base[0]:T3_PSX_AI_BANK_BUFFER+(type1==3u?0x5233Cu:0x62958u);
     ai->bank_base[2]=T3_PSX_AI_BANK_BUFFER+0xB4C94u;
 }
 

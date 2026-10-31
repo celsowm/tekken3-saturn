@@ -4,13 +4,16 @@
  * Required Notice: Copyright (c) 2026 n0madic. */
 #include "original_hud.h"
 #include "disc.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#endif
 #include "saturn/cdfs.h"
 #include "saturn/vdp1.h"
 #include <stdint.h>
 
 enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY,
        MARK_WON, MARK_EMPTY, DIGIT_FIRST, DIGIT_LAST=18, PLATE, NAME_P1, NAME_P2,
-       GLYPH_FIRST, REPLAY_FIRST=53, PIECES=59, TEXT_PALETTES=9 };
+       GLYPH_FIRST, REPLAY_FIRST=57, PIECES=63, TEXT_PALETTES=9 };
 /* Immutable descriptors fit the release build's narrow Low WRAM margin.
  * Startup-only upload scratch sits in High WRAM, with its reclaimed pose
  * cache capacity in the opt-in build. The font-2 glyph descriptors and the
@@ -81,6 +84,30 @@ sat_result_t t3_original_hud_init(void* scratch,unsigned bytes) {
     return at==file.size?SAT_OK:SAT_ERR_VERSION;
 }
 
+#if defined(T3_FIGHTER_PACKS)
+sat_result_t t3_original_hud_load_names(void* scratch,unsigned bytes) {
+    for(unsigned actor=0;actor<2u;++actor) {
+        const uint32_t size=t3_fighter_pack_section_bytes(actor,T3_PACK_NAMES);
+        if(size<8u || size>bytes)return SAT_ERR_CAPACITY;
+        SAT_TRY(t3_fighter_pack_read(actor,T3_PACK_NAMES,0,scratch,size));
+        /* Big-endian width, padded width, height; then for each side a
+         * little-endian table and the LUT4 texels. P1's art sits flush left
+         * and P2's flush right, as the original draws them. */
+        const uint8_t* data=scratch;
+        const unsigned padded=(unsigned)(data[2]<<8|data[3]),height=(unsigned)(data[4]<<8|data[5]);
+        const uint32_t sheet=32u+padded*height/2u;
+        if(!padded || padded&7u || 8u+2u*sheet!=size)return SAT_ERR_VERSION;
+        const uint8_t* side=data+8u+actor*sheet;
+        for(unsigned j=0;j<16;++j)g_lut[j]=(uint16_t)u16(side+2u*j);
+        uint16_t lut;
+        SAT_TRY(sat_vdp1_upload_lut(g_lut,&lut));
+        SAT_TRY(sat_tex_upload_lut4_pixels(&g_piece[actor?NAME_P2:NAME_P1],side+32,
+                                           (uint16_t)padded,(uint16_t)height,lut));
+    }
+    return SAT_OK;
+}
+#endif
+
 static sat_result_t draw(unsigned piece,int x,int y,int width,int height,uint16_t palette) {
     if(piece>=PIECES || width<=0 || height<=0)return SAT_ERR_INVALID_ARG;
     const sat_vdp1_texture_t* texture=
@@ -141,7 +168,7 @@ sat_result_t t3_original_hud_text(const char* text,unsigned colour,unsigned font
      * from its own original x, so the positions stay exact; spaces advance
      * the pen like the original. The colour picks one of the message
      * tables, replacing the glyph's embedded palette (%c). */
-    static const char GLYPH_CHARS[]="ABCDEFIKLMNOPRSTUWY!.?123456789";
+    static const char GLYPH_CHARS[]="ABCDEFGHIJKLMNOPRSTUWXY!.?123456789";
     static const char REPLAY_CHARS[]="REPLAY";
     _Static_assert(sizeof GLYPH_CHARS-1==REPLAY_FIRST-GLYPH_FIRST,"font 2 glyph order");
     _Static_assert(sizeof REPLAY_CHARS-1==PIECES-REPLAY_FIRST,"font 1 glyph order");
@@ -185,6 +212,7 @@ static sat_result_t occlude_rect(int left,int top,int right,int bottom) {
     if(bottom>223)bottom=223;
     if(left>right || top>bottom)return SAT_OK;
     for(int ty=top>>3;ty<=bottom>>3;++ty)for(int tx=left>>3;tx<=right>>3;++tx) {
+        if(!t3_stage_particle_multi_has_cell((unsigned)tx,(unsigned)ty))continue;
         uint8_t coverage[8];
         for(int row=0;row<8;++row) {
             const int y=ty*8+row;unsigned bits=0;

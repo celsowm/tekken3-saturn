@@ -4,6 +4,7 @@
 typedef struct {
     int16_t current[4],target[4];
     uint8_t active,snap,hold;
+    uint8_t no_yaw; /* HeadLookAt leaves Gon's yaw alone. */
 } t3_psx_head_t;
 /* Normal Paul fight camera. Previous world joints are consumed before the
  * caller composes this actor's new world joints. Disabled leaves state intact. */

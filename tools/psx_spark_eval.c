@@ -13,7 +13,7 @@ int main(int argc,char** argv) {
         &seed,&steps,&buffer,&type,&flags,&state,&model,&pitch,&yaw,&speed,&clut0,&clut1,
         &x,&y,&z,&vx,&vy,&vz,&a,&b,&c,&d)==22) {
         t3_psx_spark_t s={(uint8_t)type,(uint8_t)flags,(uint8_t)state,(uint8_t)model,
-            (int16_t)pitch,(int16_t)yaw,(int16_t)speed,{(uint16_t)clut0,(uint16_t)clut1},x,y,z,vx,vy,vz,a,b,c,d};
+            (int16_t)pitch,(int16_t)yaw,(int16_t)speed,{(uint16_t)clut0,(uint16_t)clut1},x,y,z,vx,vy,vz,a,b,c,d,0,0,0};
         if(type==4 || type==5) {
             t3_psx_effect_pool_t pool={0};t3_psx_effect_actor_t actors[2]={{0}};
             t3_psx_effect_pool_round(&pool);t3_psx_spark_t* o=t3_psx_effect_alloc(&pool,type);*o=s;

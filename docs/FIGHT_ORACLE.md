@@ -96,6 +96,14 @@ equal on every frame:
 
 ### Paul against Law
 
+Any pair of the roster builds with `scripts/build_oracle_pair_evaluator.py
+--fighters P1 P2 [--banks P1 P2] --assets DIR --logic DIR --out DIR`, which
+takes the banks from a roster build (`generated/fighters/banks/NN.t3logic`) and
+produces `t3_match_replay_eval` and the owned-camera, effects-owning
+`t3_match_replay_camera_eval`. Round-start exports (`--seed-round-start`) go
+through the second with `--initialize-match --independent-camera`; that is the
+only path that checks projectiles. See [ROSTER.md](ROSTER.md) for the results.
+
 A second bank needs its own asset build and host evaluator:
 
 ```

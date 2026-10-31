@@ -9,6 +9,9 @@
 #include "saturn/vdp1.h"
 #include "saturn/vdp1_color_calc.h"
 #include "disc.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#endif
 #include "move_probe.h"
 #include "psx_particle_projection.h"
 #include "psx_viewport.h"
@@ -19,7 +22,9 @@ enum { SETS=3, MAX_FRAMES=30, FRAME_BYTES=512, HEADER_BYTES=16+32, SYSTEM_SET=2 
  * transparent entry 0 (indexed8 texels are 1 + 16 * set + colour). Banks 6 and 7 hold the stage's
  * floor and panorama palettes (stage_vdp2.c); the fighters' banks are claimed in the
  * SDK's registry, so a clash with them fails the upload at boot. */
+#if !defined(T3_FIGHTER_PACKS)
 static const char* const g_file[SETS]={"FLIPC0.BIN","FLIPC1.BIN","FLIPBOOK.BIN"};
+#endif
 /* The last ten frames of a record fade (modulation byte 0x80 - ((frame - frames + 10) * 0x9999 >> 12),
  * 119 down to 33 of 128). VDP1 colour-bank sprites cannot be shaded, so three banks approximate the
  * eleven modulation levels. The sprite picks the nearest bank; same texels, no extra VRAM. */
@@ -42,16 +47,31 @@ static int magic_ok(const uint8_t* b) {
 static uint16_t le16(const uint8_t* p) { return (uint16_t)(p[0]|(p[1]<<8)); }
 
 static sat_result_t load_set(unsigned set,void* scratch,uint32_t scratch_bytes) {
-    sat_cdfs_volume_t* volume;sat_cdfs_file_t file;uint32_t read=0;
+    sat_cdfs_volume_t* volume;sat_cdfs_file_t file;uint32_t read=0,size;
     SAT_TRY(t3_disc_volume(&volume));
-    SAT_TRY(sat_cdfs_lookup(volume,g_file[set],&file));
-    if(file.size>scratch_bytes || file.size<HEADER_BYTES)return SAT_ERR_VERSION;
-    SAT_TRY(sat_cdfs_read_at(volume,&file,0,scratch,file.size,&read));
-    if(read!=file.size)return SAT_ERR_IO;
+#if defined(T3_FIGHTER_PACKS)
+    /* A fighter's set is a section of its pack. */
+    if(set<SYSTEM_SET) {
+        size=t3_fighter_pack_section_bytes(set,T3_PACK_FLIPBOOK);
+        if(size>scratch_bytes || size<HEADER_BYTES)return SAT_ERR_VERSION;
+        SAT_TRY(t3_fighter_pack_read(set,T3_PACK_FLIPBOOK,0,scratch,size));
+    } else
+#endif
+    {
+#if defined(T3_FIGHTER_PACKS)
+        SAT_TRY(sat_cdfs_lookup(volume,"FLIPBOOK.BIN",&file));
+#else
+        SAT_TRY(sat_cdfs_lookup(volume,g_file[set],&file));
+#endif
+        size=file.size;
+        if(size>scratch_bytes || size<HEADER_BYTES)return SAT_ERR_VERSION;
+        SAT_TRY(sat_cdfs_read_at(volume,&file,0,scratch,size,&read));
+        if(read!=size)return SAT_ERR_IO;
+    }
     const uint8_t* b=scratch;
     const unsigned frames=le16(b+8);
     if(!magic_ok(b) || !frames || frames>MAX_FRAMES || le16(b+10)!=32 || le16(b+12)!=32 || le16(b+14)!=16 ||
-       file.size!=HEADER_BYTES+frames*FRAME_BYTES)return SAT_ERR_VERSION;
+       size!=HEADER_BYTES+frames*FRAME_BYTES)return SAT_ERR_VERSION;
     /* Texel 0 of an indexed8 sprite is transparent, so PS1 colour i is entry i+1;
      * black adds nothing to the image below, so the PS1's zero and STP-black
      * colours stay transparent (entry 0) and leave the VDP1 pixels under the quad alone. */

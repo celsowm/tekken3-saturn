@@ -44,12 +44,17 @@ typedef struct {
     const t3_command_sequence_t* sequences;size_t sequence_count;
     t3_psx_spawn_t spawn[2];
     unsigned scale_percent;
+    /* Each actor's model scale; zero uses scale_percent. */
+    unsigned actor_scale_percent[2];
     int32_t max_health_q16;
     /* Optional full original world pose + normal-mode body/arena integration. */
     const t3_psx_part_t* parts[2]; /* Each actor's model, even in mirror matches. */
     t3_psx_ik_tables_t ik;
     t3_psx_rsqrt_t rsqrt; /* Optional original transition blend, requires body poses. */
     const uint8_t* body_tables;size_t body_tables_size;
+    /* Each actor's 48 bytes of body joints and radii (0x80097384); NULL uses
+     * the block at body_tables+384. */
+    const uint8_t* actor_body_shapes[2];
     uint8_t enable_body,enable_combat;
     /* 1: every attack may start (matched against original-code fights,
      * docs/FIGHT_ORACLE.md); 0: only the first qualified Paul attacks
@@ -103,11 +108,14 @@ typedef struct {
     t3_psx_matrix_t limbs[8];uint8_t limbs_valid;
     t3_psx_head_t head;
     uint8_t no_look_at;
+    int16_t ogre_sway,ogre_level,ogre_target,ogre_rate; /* True Ogre's +0x1294 and level channel */
     uint8_t blend_guarded_previous,blend_in_reaction;
     int32_t ramp_step;
     uint32_t body_contacts;
     t3_vec3i_t previous_anchor;
     t3_world_attack_t strike;
+    t3_world_segment_t projectile; /* the effect object's segment that hit this tick */
+    uint8_t projectile_hit;
     uint8_t strike_joint; /* the sampled descriptor's first joint (hand below 12, foot from 12) */
     t3_psx_shadow_result_t geometry;
     t3_psx_hit_test_gate_t hit_gate;

@@ -1,5 +1,8 @@
 # Second character on the Saturn (Paul against Law)
 
+> Historical: the memory figures here describe the two-fighter build. Every
+> fighter now loads from its own pack; see [ROSTER.md](ROSTER.md).
+
 P1 plays Paul and P2 plays Law, each with their own motion bank, render
 mesh, textures and palette. The game logic is the same owned core that the
 host oracle checks: `build/oracle-law-s1` matches the original for

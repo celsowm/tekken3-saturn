@@ -27,4 +27,8 @@ sat_result_t t3_original_hud_name(unsigned player,int x,int y,int width);
 /* FUN_8004D15C: original colour/font and 384 x 480 coordinates. Font 2
  * contains the round messages; font 1 contains REPLAY in colour 7. */
 sat_result_t t3_original_hud_text(const char* text,unsigned colour,unsigned font,int x,int y);
+#if defined(T3_FIGHTER_PACKS)
+/* Replaces the two name sheets with the chosen fighters' (pack section). */
+sat_result_t t3_original_hud_load_names(void* scratch,unsigned bytes);
+#endif
 #endif

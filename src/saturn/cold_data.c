@@ -2,6 +2,9 @@
 #if defined(T3_COLD_LOW_WRAM)
 #include "disc.h"
 #include "t3_local_divmot.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "fighter_pack.h"
+#endif
 #if defined(T3_COLD_CAMERA_STREAMS)
 #include "t3_local_camera.h"
 #endif
@@ -53,14 +56,21 @@ sat_result_t t3_cold_data_load(void) {
     if(be32(header+28)!=T3_LOCAL_SECOND_BANK_BYTES || be32(header+32)!=T3_LOCAL_COLD_SECOND_OFFSET)
         return SAT_ERR_VERSION;
 #endif
+#if !defined(T3_FIGHTER_PACKS)
     if((st=read_exact(volume,&file,T3_LOCAL_COLD_BANK_OFFSET,t3_local_bank,
                       T3_LOCAL_DIVMOT_BANK_BYTES))!=SAT_OK)return st;
+#endif
     if((st=read_exact(volume,&file,T3_LOCAL_COLD_COMMON_OFFSET,t3_local_common,
                       T3_LOCAL_DIVMOT_COMMON_BYTES))!=SAT_OK)return st;
 #if defined(T3_LOCAL_COLD_SECOND_OFFSET)
     if((st=read_exact(volume,&file,T3_LOCAL_COLD_SECOND_OFFSET,t3_local_second_bank,
                       T3_LOCAL_SECOND_BANK_BYTES))!=SAT_OK)return st;
 #endif
+#if defined(T3_FIGHTER_PACKS)
+    uint32_t hash=fnv1a(2166136261u,t3_local_common,T3_LOCAL_DIVMOT_COMMON_BYTES);
+    if(hash!=T3_LOCAL_COLD_FNV1A)return SAT_ERR_IO;
+    return t3_fighter_packs_load_banks();
+#else
     uint32_t hash=fnv1a(2166136261u,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES);
     hash=fnv1a(hash,t3_local_common,T3_LOCAL_DIVMOT_COMMON_BYTES);
 #if defined(T3_LOCAL_COLD_SECOND_OFFSET)
@@ -83,8 +93,12 @@ sat_result_t t3_cold_data_load(void) {
     if(hash!=T3_LOCAL_COLD_CAMERA_FNV1A)return SAT_ERR_IO;
 #endif
     return SAT_OK;
+#endif
 }
 volatile uint32_t g_t3_cold_verify_passes __attribute__((used));
+#if defined(T3_VERIFY_COLD) && defined(T3_FIGHTER_PACKS)
+#error "T3_VERIFY_COLD covers the embedded bank layout"
+#endif
 #if defined(T3_VERIFY_COLD)
 enum { VERIFY_SLICE_BYTES=4096u };
 sat_result_t t3_cold_data_verify_slice(void) {
