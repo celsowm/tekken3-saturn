@@ -42,8 +42,8 @@ typedef struct t3_psx_ai_game {
      * as host words for the call; +0x1884 (slot, target) is copied back. */
     uint32_t high[2][9];
     t3_psx_ai_word_t word[64];const struct t3_psx_match* word_match;
-    t3_psx_ai_memo_t pick[128];uint32_t pick_index; /* the bus's picks */
-    t3_psx_ai_collect_t collect;        /* and its last collection */
+    t3_psx_ai_memo_t pick[2][128];uint32_t pick_index[2]; /* the bus's picks, per fighter */
+    t3_psx_ai_collect_t collect[2];     /* and its last collections */
     /* Linked bank reads are constant while the banks are: a direct-mapped memo
      * of (address,size) -> value, cleared when a bank or its placement changes. */
     t3_psx_ai_memo_t memo[T3_PSX_AI_MEMO];

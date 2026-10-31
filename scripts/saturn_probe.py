@@ -243,7 +243,7 @@ def run(args):
             dump_requests.append(('_g_t3_slave_sim_'+suffix,'slave-simulation-'+suffix+'.bin'))
         dump_requests.append(('_g_t3_simulation_stack','simulation-stack.bin'))
     if workload['configuration'].get('T3_LOCAL_PSX_AI_TABLES'):
-        dump_requests.extend(('_g_t3_ai_'+n,'ai-'+n.replace('_','-')+'.bin') for n in ('calls','ticks','max_ticks','reads','conditions'))
+        dump_requests.extend(('_g_t3_ai_'+n,'ai-'+n.replace('_','-')+'.bin') for n in ('calls','ticks','max_ticks','reads','conditions','pad_hash'))
     if workload['configuration'].get('T3_LOCAL_SFX'):
         dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
             'played','play_ms','play_max_ms','update_ms','ko_voices'))
@@ -317,7 +317,7 @@ def run(args):
                  'slave_sim_pose_tick','slave_sim_pose_lag','slave_sim_max_wait_ms',
                  'compiled_skin_frames','compiled_skin_fallbacks','compiled_skin_verified',
                  'native_command_frames','cached_stage_faces',
-                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','event_overflow','event_hits','event_blocks','event_swings','event_sounds','event_popped','sfx_unmapped','sfx_unmapped_count','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions'):
+                 'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','event_overflow','event_hits','event_blocks','event_swings','event_sounds','event_popped','sfx_unmapped','sfx_unmapped_count','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions','ai_pad_hash'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
     seen=dump_manifest.get('_g_t3_sfx_unmapped_seen')

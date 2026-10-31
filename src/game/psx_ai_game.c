@@ -328,7 +328,7 @@ static void bind(t3_psx_ai_game_t* ai,t3_psx_match_t* match) {
         /* Key 0 never matches: every key carries a non-zero size. */
         __builtin_memset(ai->memo,0,sizeof ai->memo);
         __builtin_memset(ai->pick,0,sizeof ai->pick);
-        ai->collect.valid=0;
+        __builtin_memset(ai->collect,0,sizeof ai->collect);
         __builtin_memcpy(ai->memo_bank,ai->bank,sizeof ai->bank);
         __builtin_memcpy(ai->memo_base,ai->bank_base,sizeof ai->bank_base);
     }
@@ -381,7 +381,7 @@ static int open_bus(t3_psx_ai_game_t* ai,t3_psx_match_t* match,t3_psx_ai_bus_t* 
                            ai->trace?0:ai->block,T3_PSX_AI_BLOCK,ai->trace?0:T3_PSX_AI_BLOCK_SIZE,
                            ai->trace?0:ai->memo,T3_PSX_AI_MEMO/2u-1u,T3_PSX_AI_BANK_BUFFER,
                            ai->trace?0:ai->word,63u,
-                           ai->trace?0:ai->pick,127u,&ai->pick_index,ai->trace?0:&ai->collect};
+                           ai->trace?0:ai->pick[0],127u,ai->pick_index,ai->trace?0:ai->collect};
     return 1;
 }
 

@@ -290,6 +290,7 @@ static uint32_t collect_walk(ctx_t* c,uint32_t start,open_fn is_open,int lookahe
  * entries written so far are the same prefix). */
 typedef struct {
     const t3_psx_ai_window_t* span;
+    t3_psx_ai_memo_t* picks;            /* this fighter's */
     uint32_t f,opp,index,sit;
     int32_t frame,self16,self18,opp16;
     uint8_t dropped[T3_PSX_AI_MAX_CANDIDATES]; /* target +4 bit 23, per entry */
@@ -341,7 +342,7 @@ static void native_put(const ctx_t* c,uint32_t a,unsigned bytes,uint32_t v) {
 }
 static inline __attribute__((always_inline)) int native_add(ctx_t* c,native_t* n,int32_t* count,uint32_t row,const uint8_t* q) {
     const uint32_t k=(uint32_t)(*count)++,e=entry((int32_t)k);
-    t3_psx_ai_memo_t* pick=c->bus->picks?c->bus->picks+((row>>2^row>>9)&c->bus->pick_mask):0;
+    t3_psx_ai_memo_t* pick=n->picks?n->picks+((row>>2^row>>9)&c->bus->pick_mask):0;
     uint32_t target,dropped;
     if(pick && pick->key==row) {target=pick->value&~1u;dropped=pick->value&1u;}
     else {
@@ -398,6 +399,20 @@ static int same_conditions(ctx_t* c,const t3_psx_ai_collect_t* m,uint32_t f,uint
         if((condition(c,m->condition[k],f,opp)!=0)!=(m->held>>k&1u))return 0;
     return 1;
 }
+/* The AI block's entries become this fighter's: the other's are kept first. */
+static void claim_entries(const ctx_t* c,t3_psx_ai_collect_t* m,t3_psx_ai_collect_t* other) {
+    if(other->present) {
+        other->present=0;
+        if(other->valid && other->count>(int32_t)T3_PSX_AI_COLLECT_ENTRIES)other->valid=0;
+        if(other->valid)
+            for(int32_t k=0;k<other->count;++k) {
+                const uint8_t* p=c->bus->ram+(entry(k)-c->bus->ram_base);
+                other->entry[k][0]=p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+                other->entry[k][1]=p[4]|(uint32_t)p[5]<<8|(uint32_t)p[6]<<16|(uint32_t)p[7]<<24;
+            }
+    }
+    m->present=1;
+}
 static int native_collect(ctx_t* c,int current_only,int32_t* out) {
     const t3_psx_ai_bus_t* b=c->bus;
     if(!b->ram || T3_PSX_AI_CANDIDATES-b->ram_base+12u*T3_PSX_AI_MAX_CANDIDATES>b->ram_size)return 0;
@@ -406,10 +421,13 @@ static int native_collect(ctx_t* c,int current_only,int32_t* out) {
     n.f=U32(T3_PSX_AI_SELF);n.opp=U32(T3_PSX_AI_OPP);
     n.index=U32(REC(0xC));n.sit=U32(REC(0x64));
     n.frame=S16(n.f+0x58);n.self16=S16(n.f+0x16);n.self18=S16(n.f+0x18);n.opp16=S16(n.opp+0x16);
-    t3_psx_ai_collect_t* m=b->picks?b->collect:0;
-    if(b->picks && *b->pick_index!=n.index) {
-        for(uint32_t k=0;k<=b->pick_mask;++k)b->picks[k].key=0;
-        *b->pick_index=n.index;
+    const unsigned side=(n.f-T3_PSX_AI_FIGHTER_BASE)/T3_PSX_AI_FIGHTER_STRIDE&1u;
+    n.picks=b->picks?b->picks+side*(b->pick_mask+1u):0;
+    t3_psx_ai_collect_t* m=b->picks&&b->collect?b->collect+side:0;
+    t3_psx_ai_collect_t* other=m?b->collect+(1u-side):0;
+    if(b->picks && b->pick_index[side]!=n.index) {
+        for(uint32_t k=0;k<=b->pick_mask;++k)n.picks[k].key=0;
+        b->pick_index[side]=n.index;
         if(m)m->valid=0;
     }
     const uint32_t start=U32(U32(REC(0x58))+0xC),move=U32(n.f+0x54);
@@ -417,19 +435,25 @@ static int native_collect(ctx_t* c,int current_only,int32_t* out) {
     if(m && m->valid && !current_only && m->f==n.f && m->start==start && m->move==move && m->index==n.index &&
        m->sit==n.sit && m->self16==n.self16 && m->self18==n.self18 && m->opp16==n.opp16 &&
        m->first<=n.frame && n.frame<=m->last && same_conditions(c,m,n.f,n.opp)) {
-        /* The same walk: its entries are still there; marks and drops again. */
+        /* The same walk: its entries (put back if the other fighter had the block); marks and drops again. */
+        const int restore=!m->present;
+        if(restore)claim_entries(c,m,other);
         for(int32_t k=0;k<m->count;++k) {
             const uint8_t* p=ram+entry(k);
+            if(restore) {
+                native_put(c,entry(k),4,m->entry[k][0]);
+                native_put(c,entry(k)+4,4,m->entry[k][1]);
+            }
             const uint32_t target=p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
             const uint32_t row=p[4]|(uint32_t)p[5]<<8|(uint32_t)p[6]<<16|(uint32_t)p[7]<<24;
-            const t3_psx_ai_memo_t* pick=b->picks+((row>>2^row>>9)&b->pick_mask);
+            const t3_psx_ai_memo_t* pick=n.picks+((row>>2^row>>9)&b->pick_mask);
             const int dropped=pick->key==row?(int)(pick->value&1u):(U32(target+4)&0x800000u)!=0;
             native_put(c,entry(k)+8,2,dropped || (c->has_stale && target==c->stale)?0xFFFFu:0u);
         }
         *out=m->count;
         return 1;
     }
-    if(m)m->valid=0;
+    if(m) {m->valid=0;claim_entries(c,m,other);}
     n.first=INT32_MIN;n.last=INT32_MAX;n.reusable=1;
     int32_t count=0;uint32_t stop;
     if(!native_walk(c,&n,start,0,&count,&stop))return 0;
@@ -447,8 +471,9 @@ static int native_collect(ctx_t* c,int current_only,int32_t* out) {
                 native_put(c,e+8,2,0xFFFFu);
         }
         if(m && n.reusable) {
-            *m=(t3_psx_ai_collect_t){1u,n.f,start,move,n.index,n.sit,n.self16,n.self18,n.opp16,n.first,n.last,count,
-                                     {0},n.conditions,n.held};
+            m->valid=1u;m->f=n.f;m->start=start;m->move=move;m->index=n.index;m->sit=n.sit;
+            m->self16=n.self16;m->self18=n.self18;m->opp16=n.opp16;m->first=n.first;m->last=n.last;m->count=count;
+            m->conditions=n.conditions;m->held=n.held;
             for(uint32_t k=0;k<n.conditions;++k)m->condition[k]=n.condition[k];
         }
     }

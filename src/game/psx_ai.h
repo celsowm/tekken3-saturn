@@ -40,25 +40,28 @@ typedef struct t3_psx_ai_bus {
     uint8_t* ram;uint32_t ram_base,ram_size;
     const t3_psx_ai_memo_t* memo;uint32_t memo_mask,memo_from;
     const t3_psx_ai_word_t* words;uint32_t word_mask;
-    /* Optional: candidate collection's picks, direct-mapped by branch row
-     * ((row>>2^row>>9)&pick_mask): key the row, value its target (the index
-     * entry) with bit 0 set when the target's +4 has bit 23. Valid for the
-     * index *pick_index; the AI empties it for another index, the bus when its
-     * banks change. */
+    /* Optional: candidate collection's picks, one table of pick_mask+1 per
+     * fighter, direct-mapped by branch row ((row>>2^row>>9)&pick_mask): key the
+     * row, value its target (the index entry) with bit 0 set when the target's
+     * +4 has bit 23. Valid for that fighter's index pick_index[i]; the AI empties
+     * it for another index, the bus when its banks change. */
     t3_psx_ai_memo_t* picks;uint32_t pick_mask;uint32_t* pick_index;
-    /* Optional, with picks: the last full candidate collection, reused while
-     * its inputs match. The bus zeroes it whenever it empties the picks. */
+    /* Optional, with picks: each fighter's last full candidate collection, reused
+     * while its inputs match. The bus zeroes them whenever it empties the picks. */
     struct t3_psx_ai_collect* collect;
 } t3_psx_ai_bus_t;
 /* What a candidate collection depends on: the walk's inputs, the frames over
  * which every window test it made has the same result, and the BranchCondition
- * rows it asked with their results (bit k of `held`). Its entries stay in the
- * AI block: only collection writes an entry's target and row. */
+ * rows it asked with their results (bit k of `held`). The fighters share the AI
+ * block's entries: `present` while they are this collection's. Before the other
+ * fighter overwrites them they are saved here, or the collection dropped if longer. */
 #define T3_PSX_AI_COLLECT_CONDITIONS 4u
+#define T3_PSX_AI_COLLECT_ENTRIES 32u
 typedef struct t3_psx_ai_collect {
-    uint32_t valid,f,start,move,index,sit;
+    uint32_t valid,present,f,start,move,index,sit;
     int32_t self16,self18,opp16,first,last,count;
     uint32_t condition[T3_PSX_AI_COLLECT_CONDITIONS],conditions,held;
+    uint32_t entry[T3_PSX_AI_COLLECT_ENTRIES][2];
 } t3_psx_ai_collect_t;
 
 #define T3_PSX_AI_RECORDS 0x8009F6C0u

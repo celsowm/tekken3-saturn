@@ -99,6 +99,8 @@ static t3_psx_fight_camera_config_t g_camera_config;
 static t3_psx_ai_game_t g_ai;
 /* AiUpdate cost on the Slave, in FRT ticks (prescaler /128: 3,728 per 60 Hz frame). */
 volatile uint32_t g_t3_ai_calls,g_t3_ai_ticks,g_t3_ai_max_ticks,g_t3_ai_reads,g_t3_ai_conditions;
+/* Hash of the pads of the first 2,000 updates: an AI speed-up must leave it unchanged. */
+volatile uint32_t g_t3_ai_pad_hash;
 static uint16_t g_ai_started;
 #if defined(T3_CAPTURE_INPUT_TAPE)
 /* tick, held, pressed of each change of the CPU's input (Slave-written). */
@@ -116,6 +118,7 @@ static void ai_clock(t3_psx_ai_game_t* ai,unsigned fighter,int after) {
     (void)fighter;
     if(!after){g_ai_started=sat_time_frc();return;}
     const uint32_t spent=(uint16_t)(sat_time_frc()-g_ai_started);
+    if(g_t3_ai_calls<2000u)g_t3_ai_pad_hash=g_t3_ai_pad_hash*31u+((uint32_t)ai->held<<16|ai->pressed);
     ++g_t3_ai_calls;g_t3_ai_ticks+=spent;
     g_t3_ai_reads=ai->reads;g_t3_ai_conditions=ai->conditions;
     if(spent>g_t3_ai_max_ticks)g_t3_ai_max_ticks=spent;

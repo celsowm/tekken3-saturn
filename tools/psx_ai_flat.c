@@ -33,7 +33,7 @@ static void flat_probe(void* user,uint32_t address,uint32_t record) {
     if(((flat_t*)user)->probe)((flat_t*)user)->probe(address,record);
 }
 static t3_psx_ai_bus_t bus_for(flat_t* flat) {
-    return (t3_psx_ai_bus_t){flat,flat_read,flat_write,flat_condition,flat_probe};
+    return (t3_psx_ai_bus_t){.user=flat,.read=flat_read,.write=flat_write,.condition=flat_condition,.probe=flat_probe};
 }
 
 uint32_t flat_ai_update(uint8_t* ram,uint32_t fighter,int has_stale,uint32_t stale,condition_fn condition,
