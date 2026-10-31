@@ -67,8 +67,10 @@ uses bank 9.
   arcade ladder, a loss repeats the stage. Either ends on a result screen (wins,
   or the time) in `MENU.BIN`. The wins and seconds travel in bytes 5-7 of the
   boot argument; bits 2-3 of byte 4 hold the run. Health does not carry over and
-  no record table is kept. Verified on Ymir: the result screen, and a survival
-  loss back to the title; the tenth Time Attack win was not run.
+  no record table is kept. The rules are `src/game/run_rules.c`, host-tested
+  (`survival_time_attack_rules`: levels, survival ends at a loss, time attack at
+  the tenth win). On Ymir: the result screen, and a survival loss back to the
+  title; a tenth win itself was not played.
 - **Not in the menus yet.** No costume choice (one costume per fighter, so a
   choice would change nothing), and Team Battle and Tekken Force are listed but
   do nothing: team needs a roster of members with swap-in, Tekken Force needs

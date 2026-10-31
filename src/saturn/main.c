@@ -32,6 +32,7 @@
 #include "saturn/vdp1.h"
 #if defined(T3_ORIGINAL_TITLE) || defined(T3_FIGHTER_PACKS)
 #include "disc.h"
+#include "run_rules.h"
 #endif
 #include "saturn/time.h"
 #if defined(T3_OVERLAP_VDP1)
@@ -745,17 +746,12 @@ static unsigned g_demo_ticks;
 static uint8_t g_practice;
 /* Run modes (modes.md): 0 arcade or VS, 1 survival, 2 time attack. The wins and the seconds fought
  * so far travel in the boot argument; the player picks every opponent. */
-enum { RUN_ARCADE, RUN_SURVIVAL, RUN_TIME_ATTACK, TIME_ATTACK_FIGHTS=10 };
+/* Survival and time attack runs (run_rules.c): wins and seconds fought travel in the boot argument. */
 static uint8_t g_run_mode,g_wins;
 static uint16_t g_run_seconds;
 static uint32_t g_run_mark;
 
-/* Survival's CPU level from the number of wins (arcade.ovl 0x800B104C): the middle of each range,
- * and level 0 on every tenth win. */
-static uint8_t survival_level(unsigned wins) {
-    if(wins && wins%10u==0)return 0u;
-    return wins<5u?2u:wins<10u?3u:wins<20u?5u:6u;
-}
+
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
     if(g_demo) {t3_move_probe_set_cpu(3u,1u,5u);return;}
@@ -766,8 +762,8 @@ static void choose_cpu(const sat_pad_state_t* pad1) {
     if(pad1->connected)g_arcade_stage=0u;
     {
         uint8_t level=(uint8_t)(4u+g_arcade_stage);
-        if(g_run_mode==RUN_SURVIVAL)level=survival_level(g_wins);
-        else if(g_run_mode==RUN_TIME_ATTACK)level=(uint8_t)(4u+(g_wins>=9u?3u:g_wins/3u));
+        if(g_run_mode==T3_RUN_SURVIVAL)level=t3_survival_level(g_wins);
+        else if(g_run_mode==T3_RUN_TIME_ATTACK)level=t3_time_attack_level(g_wins);
         t3_move_probe_set_cpu(pad1->connected?0u:2u,1u,level);
     }
 #endif
@@ -1869,9 +1865,9 @@ int main(void) {
             /* A finished match goes back to the select screen. */
             if(g_game.match_done && !g_practice && g_run_mode) {
                 g_run_seconds=(uint16_t)(g_run_seconds+(display_fields()-g_run_mark)/60u);
-                if(g_game.winner==0)++g_wins;
-                else if(g_run_mode==RUN_SURVIVAL)restart_program(PHASE_RESULT);
-                restart_program(g_run_mode==RUN_TIME_ATTACK && g_wins>=TIME_ATTACK_FIGHTS?PHASE_RESULT:PHASE_SELECT);
+                const t3_run_step_t step=t3_run_after_match(g_run_mode,g_game.winner==0,g_wins);
+                g_wins=step.wins;
+                restart_program(step.finished?PHASE_RESULT:PHASE_SELECT);
             }
             if(g_game.match_done && !g_practice) {
                 arcade_advance(g_game.winner);

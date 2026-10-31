@@ -22,7 +22,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_eff
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c)
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_bitmap.c src/game/stage_floor_center.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_local_pose.c)
@@ -1490,7 +1490,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         # The largest game code that runs once a tick: High WRAM holds both packs' stores.
         set_source_files_properties(src/game/psx_ai.c src/game/psx_camera.c src/game/psx_effect_fire.c
             src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_ground.c
-            src/game/psx_hit_transaction.c src/game/psx_ik.c src/game/select_grid.c
+            src/game/psx_hit_transaction.c src/game/psx_ik.c src/game/select_grid.c src/game/run_rules.c
             src/game/stage_backdrop.c src/saturn/fighter_pack.c src/saturn/main.c
             PROPERTIES COMPILE_OPTIONS "-Os")
         target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/roster_names.c
@@ -1646,6 +1646,10 @@ else()
         target_link_libraries(test_select_grid PRIVATE tekken3_fight)
         target_compile_options(test_select_grid PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME character_select_grid COMMAND test_select_grid)
+        add_executable(test_run_rules tests/test_run_rules.c)
+        target_link_libraries(test_run_rules PRIVATE tekken3_fight)
+        target_compile_options(test_run_rules PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME survival_time_attack_rules COMMAND test_run_rules)
         add_executable(test_psx_face_preflight tests/test_psx_face_preflight.c)
         target_link_libraries(test_psx_face_preflight PRIVATE tekken3_fight)
         target_compile_options(test_psx_face_preflight PRIVATE -Wall -Wextra -Werror -UNDEBUG)
