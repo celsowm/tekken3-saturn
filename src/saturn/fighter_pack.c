@@ -10,10 +10,6 @@ _Static_assert(sizeof(t3_psx_camera_choice_t)==8u,"pack camera choices");
 _Static_assert(sizeof(t3_psx_camera_stream_t)==16u,"pack camera streams");
 _Static_assert((T3_ROSTER_STORE_BYTES&15u)==0u,"each actor's store starts aligned");
 
-static const char* const g_names[T3_ROSTER_COUNT]={
-    "PAUL","LAW","LEI","KING","YOSHIMITSU","NINA","HWOARANG","XIAOYU","EDDY","JIN",
-    "JULIA","KUMA","BRYAN","HEIHACHI","OGRE","MOKUJIN","GUN JACK","GON","ANNA","DOCTOR B","TRUE OGRE"};
-
 typedef struct {
     sat_cdfs_file_t file;
     uint32_t section[T3_PACK_SECTIONS][2];
@@ -25,8 +21,6 @@ static uint8_t g_store[2][T3_ROSTER_STORE_BYTES] __attribute__((aligned(16)));
 static uint8_t g_arena[T3_ROSTER_ARENA_BYTES] __attribute__((section(".wram_l"),aligned(16)));
 static pack_file_t g_file[2];
 static t3_fighter_pack_t g_pack[2];
-
-const char* t3_fighter_name(unsigned id) {return id<T3_ROSTER_COUNT?g_names[id]:"";}
 
 static uint32_t fnv1a(const uint8_t* bytes,uint32_t count) {
     uint32_t hash=2166136261u;
@@ -75,7 +69,7 @@ static sat_result_t open_pack(unsigned actor,unsigned id) {
         .id=id,.bank_type=w[3],.voice_set=w[4],.scale_percent=w[5],.name_width=w[6],
         .vertices=w[7],.faces=w[8],.textures=w[9],.palettes=w[10],
         .voice_count=w[18],.compact_bytes=w[19],.bank_fnv1a=w[20],
-        .name=g_names[id],
+        .name=t3_fighter_name(id),
         .parts=(const t3_psx_part_t*)(const void*)(store+w[11]),
         .radii=(const int16_t*)(const void*)(store+w[12]),
         .choices=(const t3_psx_camera_choice_t*)(const void*)(store+w[13]),.choice_count=w[14],

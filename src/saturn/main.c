@@ -51,7 +51,6 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "sfx.h"
 #include "flipbook_burst.h"
 #if defined(T3_FIGHTER_PACKS)
-#include "char_select.h"
 #include "fighter_pack.h"
 #include "saturn/exec.h"
 #endif
@@ -760,7 +759,7 @@ static uint16_t original_start_buttons(const sat_pad_state_t* pad) {
 }
 #endif
 
-#if defined(T3_TITLE_SCREEN)
+#if defined(T3_TITLE_SCREEN) && !defined(T3_FIGHTER_PACKS)
 /* Title composition follows Tekken3Remake docs/research/code/modes.md;
  * Copyright (c) 2026 n0madic, PolyForm Noncommercial; see NOTICE.md.
  * Port 2 determines whether the playable mode is arcade or VS. */
@@ -889,14 +888,15 @@ static void title_screen(void) {
 /* Title and select run before anything is loaded. The fight restarts this same
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
-enum { BOOT_ARG_BYTES=5u, PHASE_SELECT='S', PHASE_FIGHT='F' };
+enum { BOOT_ARG_BYTES=5u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F' };
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
     const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)g_show_profiler};
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
-    SAT_PANIC_IF_ERROR(sat_exec(volume,"0.BIN",arg,sizeof arg));
+    /* The title and select are their own 704x448 program (menu_main.c). */
+    SAT_PANIC_IF_ERROR(sat_exec(volume,phase==PHASE_FIGHT?"0.BIN":"MENU.BIN",arg,sizeof arg));
 }
 
 /* Returns only in the fight phase, with both packs open. */
@@ -911,13 +911,7 @@ static void enter_fight_phase(void) {
     if(restarted) {
         g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4];
     }
-    if(!restarted || arg[0]!=PHASE_FIGHT) {
-#if defined(T3_TITLE_SCREEN)
-        if(!restarted)title_screen();
-#endif
-        SAT_PANIC_IF_ERROR(t3_character_select(&g_hud,g_faces,sizeof g_faces,g_picks));
-        restart_program(PHASE_FIGHT);
-    }
+    if(!restarted || arg[0]!=PHASE_FIGHT)restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
     SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
 }

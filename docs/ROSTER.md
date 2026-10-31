@@ -17,13 +17,32 @@ uses bank 9.
   PCM, name sheets) and `t3_roster.h`, whose largest counts size the fixed
   buffers. `src/saturn/fighter_pack.c` reads the two chosen packs. Every pack is
   402,360 to 582,664 bytes; the whole set is 21 files on a 14 MB data track.
-- **Restart per pairing.** The title and select run before anything is loaded.
-  The picks go through `sat_exec` back into `0.BIN` (`PHASE_FIGHT`), so each
-  fight starts on a clean machine whatever the last left in VRAM, CRAM and Sound
-  RAM. START on a finished match restarts into the select (`PHASE_SELECT`).
-- **Select screen.** `src/saturn/char_select.c`, with the cursor rules in
-  `src/game/select_grid.c`. Port 2 connected: each pad picks its fighter. No port
-  2: pad 1 picks both, and B takes the first pick back.
+- **Restart per pairing.** The title and select are their own program,
+  `MENU.BIN` (`src/saturn/menu_main.c`), run before anything is loaded: `0.BIN`
+  hands a cold boot to it, and it hands the picks back through `sat_exec`
+  (`PHASE_FIGHT`), so each fight starts on a clean machine whatever the last left
+  in VRAM, CRAM and Sound RAM. START on a finished match restarts into the select
+  (`PHASE_SELECT`).
+- **Title and select at 704x448.** `MENU.BIN` runs the double-density interlace
+  mode; the fight stays 320x224. Each screen is one 352x448 VDP2 bitmap
+  (`TITLEBG.BIN`, `SELBG.BIN`) shown at 2x width, baked by
+  `scripts/pack_menu_art.py` from the original title and select overlays (logo,
+  frame, face grid). Only what moves is VDP1: text, cursors, glow and the two
+  126x208 portraits (`PORTnn.BIN`, 116 colours each, streamed from the disc as
+  the cursor rests). Hi-res VDP1 draws codes of one 256-colour CRAM bank, so
+  codes are split: text and cursors 1-7, portrait slots 8-123 and 124-239, glow
+  240-247. The title follows `modes.md`: NAMCO PRESENTS, white flash, fade in
+  from white, 300 frames with the blinking prompt, then the mode list. The
+  frame counter is the original's 60 Hz clock; a hi-res picture takes two
+  fields, so each frame advances it by 2.
+- **Select rules.** Cursor rules in `src/game/select_grid.c`. Port 2 connected:
+  each pad picks its fighter. No port 2: pad 1 picks both, and B takes the
+  first pick back.
+- **Not in the menus yet.** No select music (the original streams XA 0x11 or
+  0x2B), no costume choice (one costume per fighter), no scrolling background
+  tiles or rising sparks, no attract demonstration after the title, no sounds;
+  Team Battle, Time Attack, Survival, Tekken Force and Practice are listed but
+  do nothing. Name plates use the SDK font, not the original name sheet.
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has

@@ -538,7 +538,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE T3_TITLE_SCREEN=1)
     endif()
     set(T3_LOCAL_TITLE_OVERLAY "" CACHE FILEPATH "Private USA title.ovl record for original title artwork")
-    if(T3_TITLE_SCREEN AND T3_LOCAL_TITLE_OVERLAY)
+    if(T3_TITLE_SCREEN AND T3_LOCAL_TITLE_OVERLAY AND NOT T3_FIGHTER_PACKS)
         set(_t3_title_gen "${CMAKE_BINARY_DIR}/generated/private_title")
         add_custom_command(OUTPUT "${_t3_title_gen}/TITLE.BIN"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_title_art.py"
@@ -1491,9 +1491,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         set_source_files_properties(src/game/psx_ai.c src/game/psx_camera.c src/game/psx_effect_fire.c
             src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_ground.c
             src/game/psx_hit_transaction.c src/game/psx_ik.c src/game/select_grid.c
-            src/game/stage_backdrop.c src/saturn/char_select.c src/saturn/fighter_pack.c src/saturn/main.c
+            src/game/stage_backdrop.c src/saturn/fighter_pack.c src/saturn/main.c
             PROPERTIES COMPILE_OPTIONS "-Os")
-        target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/char_select.c
+        target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/roster_names.c
             "${_t3_pack_gen}/t3_roster.h")
         target_include_directories(tekken3_saturn PRIVATE "${_t3_pack_gen}")
         target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_PACKS=1 T3_SECOND_CHARACTER=1)
@@ -1505,15 +1505,43 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 T3_BOOT_FIGHTER_0=${_t3_boot_fighter_0} T3_BOOT_FIGHTER_1=${_t3_boot_fighter_1})
         endif()
         list(APPEND _t3_stage_disc_files ${_t3_pack_files})
-        set(_t3_select_gen "${CMAKE_BINARY_DIR}/generated/private_select")
-        add_custom_command(OUTPUT "${_t3_select_gen}/SELECT.BIN"
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_select_art.py"
-                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_select_gen}/SELECT.BIN"
-            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_select_art.py"
+        # The title and select are a second program, MENU.BIN: 704x448 with baked VDP2 backdrops.
+        set(T3_LOCAL_SELECT_OVERLAY "" CACHE FILEPATH "Private USA select.ovl record (BNS id 9)")
+        if(NOT T3_LOCAL_HUD_EXE OR NOT T3_LOCAL_TITLE_OVERLAY OR NOT T3_LOCAL_SELECT_OVERLAY)
+            message(FATAL_ERROR "T3_FIGHTER_PACKS needs T3_LOCAL_HUD_EXE, T3_LOCAL_TITLE_OVERLAY and T3_LOCAL_SELECT_OVERLAY for the menus")
+        endif()
+        set(_t3_menu_gen "${CMAKE_BINARY_DIR}/generated/private_menu")
+        set(_t3_menu_files "${_t3_menu_gen}/TITLEBG.BIN" "${_t3_menu_gen}/SELBG.BIN" "${_t3_menu_gen}/menu_layout.h")
+        foreach(_i RANGE 0 20)
+            string(LENGTH "${_i}" _len)
+            if(_len EQUAL 1)
+                set(_i "0${_i}")
+            endif()
+            list(APPEND _t3_menu_files "${_t3_menu_gen}/PORT${_i}.BIN")
+        endforeach()
+        add_custom_command(OUTPUT ${_t3_menu_files}
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_menu_art.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --title "${T3_LOCAL_TITLE_OVERLAY}"
+                --select "${T3_LOCAL_SELECT_OVERLAY}" --out "${_t3_menu_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_menu_art.py"
+                "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/overlay_images.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
-                "${T3_LOCAL_HUD_EXE}" VERBATIM)
-        target_sources(tekken3_saturn PRIVATE "${_t3_select_gen}/SELECT.BIN" ${_t3_pack_files})
-        list(APPEND _t3_stage_disc_files "${_t3_select_gen}/SELECT.BIN")
+                "${T3_LOCAL_HUD_EXE}" "${T3_LOCAL_TITLE_OVERLAY}" "${T3_LOCAL_SELECT_OVERLAY}" VERBATIM)
+        add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
+            src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
+        target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
+        target_compile_options(tekken3_menu PRIVATE -Wall -Wextra -Os)
+        target_link_libraries(tekken3_menu PRIVATE LibSaturn::Saturn)
+        libsaturn_configure_executable(tekken3_menu)
+        libsaturn_add_binary(tekken3_menu MAX_BYTES 983040)
+        add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/MENU.BIN"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+            COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_menu>/tekken3_menu.app.bin"
+                "${CMAKE_BINARY_DIR}/menu/MENU.BIN"
+            DEPENDS tekken3_menu VERBATIM)
+        list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files})
+        set(_t3_disc_depends tekken3_menu)
+        target_sources(tekken3_saturn PRIVATE ${_t3_pack_files})
     endif()
     target_link_libraries(tekken3_saturn PRIVATE tekken3_fight LibSaturn::Saturn)
     target_compile_options(tekken3_saturn PRIVATE -Wall -Wextra -O2)
@@ -1528,7 +1556,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         list(APPEND _t3_boot_payload_args BOOT_PAYLOADS "${T3_BOOT_PAYLOADS}")
     endif()
     libsaturn_add_disc(tekken3_saturn NAME tekken3_saturn
-        IP_TEMPLATE_KIND native ${_t3_boot_payload_args} ROOT_FILES ${_t3_stage_disc_files} ALL)
+        IP_TEMPLATE_KIND native ${_t3_boot_payload_args} ROOT_FILES ${_t3_stage_disc_files}
+        DEPENDS ${_t3_disc_depends} ALL)
     if(T3_STAGE_CDDA)
         add_custom_command(
             OUTPUT "${CMAKE_BINARY_DIR}/disc/music.cue" "${CMAKE_BINARY_DIR}/disc/music.bin"
