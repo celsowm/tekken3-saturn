@@ -41,7 +41,7 @@ enum {
     FONT_SETS=3, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=100, GLOW_P1=192, GLOW_P2=198, GLOW_BANDS=6, CODE_BLACK=204, CODE_BAR=205, CODE_BAR_EDGE=206,
-    BOOT_ARG_BYTES=8, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
+    BOOT_ARG_BYTES=8, ARG_DEBUG=1, ARG_MUSIC_OFF=16, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
     LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
@@ -230,7 +230,7 @@ static void frame_end(void) {
     SAT_PANIC_IF_ERROR(sat_end_frame());
     if(g_sfx_ready)(void)sat_audio_update();
 #if defined(T3_SELECT_CDDA_SECTORS)
-    t3_stage_cdda_mix();
+    if(!(g_arg[4]&ARG_MUSIC_OFF))t3_stage_cdda_mix();
 #endif
 }
 
@@ -363,7 +363,7 @@ static unsigned title_flow(void) {
 menu:;
     {
         /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
-        unsigned selected=0,idle=0,option=0,leaving=0;
+        unsigned selected=0,idle=0,option=0,option_row=0,leaving=0;
         backdrop_show(1);
         fade(0);
         for(;;) {
@@ -381,8 +381,11 @@ menu:;
             rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
             if(option) {
                 text(2,"OPTION MODE",MENU_BG_W/2,330);
-                text(0,g_arg[4]?"DEBUG: ON":"DEBUG: OFF",MENU_BG_W/2,370);
-                if(pads.pad[0].pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))g_arg[4]^=1u;
+                text(option_row==0?0:1,g_arg[4]&ARG_DEBUG?"DEBUG: ON":"DEBUG: OFF",MENU_BG_W/2,362);
+                text(option_row==1?0:1,g_arg[4]&ARG_MUSIC_OFF?"MUSIC: OFF":"MUSIC: ON",MENU_BG_W/2,386);
+                if(pads.pad[0].pressed&(SAT_PAD_UP|SAT_PAD_DOWN))option_row^=1u;
+                if(pads.pad[0].pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))
+                    g_arg[4]^=option_row?ARG_MUSIC_OFF:ARG_DEBUG;
                 if(pads.pad[0].pressed&(SAT_PAD_B|SAT_PAD_START))option=0;
                 frame_end();
                 continue;
@@ -528,7 +531,7 @@ static void select_flow(uint8_t picks[2]) {
     (void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,1);
     backdrop_show(1);
 #if defined(T3_SELECT_CDDA_SECTORS)
-    if(t3_select_cdda_start()==SAT_OK)t3_stage_cdda_mix();
+    if(!(g_arg[4]&ARG_MUSIC_OFF) && t3_select_cdda_start()==SAT_OK)t3_stage_cdda_mix();
 #endif
     for(unsigned elapsed=0,t0=g_now;elapsed<SELECT_FRAMES&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
         frame_begin(&pads);
@@ -639,7 +642,7 @@ int main(void) {
     {
         /* bit 1 practice, bits 2-3 run mode (1 survival, 2 time attack); a fresh run starts at no wins. */
         const unsigned run=mode==MODE_SURVIVAL?1u:mode==MODE_TIME?2u:0u;
-        g_arg[4]=(uint8_t)((g_arg[4]&1u)|(mode==MODE_PRACTICE?2u:0u)|(run<<2));
+        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|(mode==MODE_PRACTICE?2u:0u)|(run<<2));
         g_arg[5]=g_arg[6]=g_arg[7]=0;
     }
     if(mode!=MODE_DEMO) {

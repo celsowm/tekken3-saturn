@@ -1,5 +1,8 @@
 # Building the Paul-against-Law disc
 
+Real Saturns show speed and music faults that emulators do not; see
+[REAL_HARDWARE.md](REAL_HARDWARE.md).
+
 ## Current demo checkpoint (2026-10-30)
 
 The current presentation candidate is `build/demo-title`, ELF SHA-256

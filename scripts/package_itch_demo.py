@@ -7,16 +7,26 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.1.1 - SATURN DEMO
+README = '''TEKKEN 3 V0.1.2 HW REPORT - SATURN DEMO
 
 Open music.cue in a Saturn emulator with a compatible Saturn BIOS, or use a
 compatible Saturn disc loader. Keep music.bin alongside music.cue. A BIOS and
-emulator are not included. Real hardware has not yet been verified.
+emulator are not included. On real Saturns the game is known to have speed and
+music problems; this build exists to find out why.
 
 Press START at the title, then select ARCADE MODE. Connect a second Saturn
 controller before starting for VS mode. All 21 fighters are on the select screen.
 Saturn: D-pad movement, X/Y punches, A/B kicks, L guard, R crouch, C jump.
-In OPTION MODE, DEBUG enables a performance overlay. START resets a match.
+In OPTION MODE, UP/DOWN picks a row and LEFT/RIGHT changes it: DEBUG shows a
+performance report, MUSIC turns the CD music off. START resets a match.
+
+HELP WITH A REAL SATURN TEST
+1. OPTION MODE: DEBUG ON, MUSIC ON. Play Paul against Law in ARCADE MODE. Film
+   30 seconds of the fight so that every number on screen can be read.
+2. Reset the console and repeat with DEBUG ON, MUSIC OFF.
+3. Send both clips, and say which device you used (Satiator, SAROO, Fenrir...),
+   its firmware version, your Saturn's region, whether the game felt slow, and
+   whether you heard music.
 
 Example Mednafen keyboard bindings: arrows move/step, A/S punch, Z/X kick,
 C jump, Q guard, W crouch, Return START. Set these in your emulator.

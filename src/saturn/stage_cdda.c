@@ -36,6 +36,13 @@ void t3_stage_cdda_mix(void) {
     EXTS_RIGHT=(uint16_t)((EXTS_RIGHT&0xff00u)|0x00afu);
 }
 
+sat_result_t t3_stage_cdda_status(uint16_t response[4]) {
+    sat_cd_block_t* block;
+    SAT_TRY(t3_disc_block(&block));
+    const uint16_t status[4]={0u,0u,0u,0u};
+    return sat_cd_block_command(block,status,response);
+}
+
 /* Plays the range [track start + skip, + length) of audio track 2 on repeat; length 0 is to its end. */
 static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
     sat_cd_block_t* block;

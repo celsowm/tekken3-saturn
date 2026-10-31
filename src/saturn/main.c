@@ -35,7 +35,7 @@
 #include "run_rules.h"
 #endif
 #include "saturn/time.h"
-#if defined(T3_OVERLAP_VDP1)
+#if defined(T3_OVERLAP_VDP1) || defined(T3_FIGHTER_PACKS)
 #include "saturn/irq.h"
 #endif
 #if defined(T3_NATIVE_COMMANDS)
@@ -294,7 +294,7 @@ static void draw_floor_probe(uint32_t budget) {
     }
 }
 #endif
-#if defined(T3_CPU_DIAGNOSTICS)
+#if defined(T3_CPU_DIAGNOSTICS) || defined(T3_FIGHTER_PACKS)
 #include <saturn/sh2.h>
 #include <saturn/parallel.h>
 volatile uint32_t g_t3_boot_master_entry;
@@ -326,7 +326,7 @@ static void capture_boot_cache(void) {
 #else
 #define T3_STAGE_SCENE_CAPACITY T3_SCENE_CAPACITY
 #endif
-enum { W = 320, H = 224, FACE_CAP = T3_STAGE_SCENE_CAPACITY, HUD_COMMANDS = 192,
+enum { W = 320, H = 224, FACE_CAP = T3_STAGE_SCENE_CAPACITY, HUD_COMMANDS = 192, REPORT_COMMANDS = 256,
        HUD_FRAME_Y=47,HUD_CPU_Y=3,HUD_MASTER_CACHE_X=88,HUD_SLAVE_CACHE_X=168 };
 #define FX(x) ((sat_fx16_t)((x) * SAT_FX16_ONE))
 #define Q(x)  ((sat_fx16_t)((x) * (SAT_FX16_ONE / 100)))
@@ -448,6 +448,11 @@ static uint8_t g_show_profiler=1;
 #else
 static uint8_t g_show_profiler;
 #endif
+/* OPTION MODE's music switch, and the readings of the hardware report. */
+static uint8_t g_music_off;
+static sat_result_t g_cdda_result,g_cd_status_result;
+static uint16_t g_cd_status[4];
+static uint32_t g_end_frame_ms,g_end_frame_sum_ms,g_end_frame_avg_ms,g_rate_sample_ticks,g_tick_rate_x10;
 static uint32_t g_render_work_ms, g_render_submissions;
 #if defined(T3_NATIVE_WAIT_PROBE)
 static uint32_t g_t3_submit_ticks_last, g_t3_submit_ticks_sum, g_t3_submit_ticks_count;
@@ -495,7 +500,7 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1.1", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1.2 HW REPORT", W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/LibSaturn", W / 2, LOADING_CREDIT_Y));
@@ -915,7 +920,7 @@ static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
-    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)),
+    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)|(g_music_off<<4)),
         g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds};
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
@@ -933,7 +938,7 @@ static void enter_fight_phase(void) {
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
         g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;
-        g_run_mode=(arg[4]>>2)&3u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
+        g_run_mode=(arg[4]>>2)&3u;g_music_off=(arg[4]>>4)&1u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
     }
     g_demo=restarted && arg[0]==PHASE_DEMO;
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
@@ -1335,9 +1340,9 @@ static void prepare_scene(void) {
         scene_camera.view_proj.m[j]=(sat_fx16_t)((int64_t)g_camera.view_proj.m[j]+
             (int64_t)T3_VIEWPORT_DX*g_camera.view_proj.m[12+j]/160);
     }
-    SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &scene_camera, Q(25), W, H, HUD_COMMANDS));
+    SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &scene_camera, Q(25), W, H, HUD_COMMANDS+(g_show_profiler?REPORT_COMMANDS:0)));
 #else
-    SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS));
+    SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS+(g_show_profiler?REPORT_COMMANDS:0)));
 #endif
 #if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
     SAT_PANIC_IF_ERROR(floor_capacity_selftest());
@@ -1485,6 +1490,29 @@ static void draw_profiler(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 1", t3_move_probe_slot(0), 4, 114));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "PSX SLOT 2", t3_move_probe_slot(1), 4, 126));
     }
+#if defined(T3_FIGHTER_PACKS)
+    /* The hardware report: docs/REAL_HARDWARE.md says how to read each value. */
+    {
+        enum { RIGHT_X=176,RIGHT_Y=66,LEFT_Y=138,ROW=12 };
+        const int cdda=g_cdda_result<0?-(int)g_cdda_result:(int)g_cdda_result;
+        const int status=g_cd_status_result<0?-(int)g_cd_status_result:(int)g_cd_status_result;
+        const struct {const char* label;uint32_t value;} right[]={
+            {"TICK ",g_tick_rate_x10},{"DROP ",g_t3_diagnostics.discarded_fields},
+            {"ELAP ",g_t3_diagnostics.elapsed_fields_last},{"IRQ ",(uint32_t)sat_irq_active()},
+            {"VBI ",sat_irq_count(SAT_IRQ_VBLANK_IN)},{"FRM ",sat_frame_count()},
+            {"HZ ",sat_video_refresh_hz()},{"PAL ",sat_video_is_pal()},
+            {"MCCR ",g_t3_boot_cache[0]},{"SCCR ",g_t3_boot_slave_verified?g_t3_boot_cache[1]:999u},
+            {"SLV ",g_t3_boot_slave_verified},{"END MS ",g_end_frame_avg_ms}};
+        const struct {const char* label;uint32_t value;} left[]={
+            {"MUSIC ",(uint32_t)!g_music_off},{"CD PLAY ",(uint32_t)cdda},{"CD CMD ",(uint32_t)status},
+            {"CD ST ",(uint32_t)(g_cd_status[0]>>8u)&15u},{"CD TRK ",(uint32_t)(g_cd_status[1]&255u)},
+            {"CD FAD ",(((uint32_t)g_cd_status[2]&255u)<<16u)|g_cd_status[3]}};
+        for(unsigned i=0;i<sizeof(right)/sizeof(right[0]);++i)
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,right[i].label,right[i].value,RIGHT_X,RIGHT_Y+ROW*(int)i));
+        for(unsigned i=0;i<sizeof(left)/sizeof(left[0]);++i)
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,left[i].label,left[i].value,4,LEFT_Y+ROW*(int)i));
+    }
+#endif
 #if defined(T3_STAGE_HUD)
     enum { COLUMN_X=176,FIRST_Y=66,ROW_HEIGHT=12 };
     t3_perf_sample_t completed={0};
@@ -1526,9 +1554,18 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
 
     ++g_rate_sample_frames;
+    g_end_frame_sum_ms+=g_end_frame_ms;
     if (span >= sat_video_refresh_hz()) {
         /* Work-loop throughput, NOT a count of actual presented frames. */
         g_rate_x10 = (g_rate_sample_frames * sat_video_refresh_hz() * 10u + span/2u) / span;
+        /* A match reset restarts the tick count: that sample reads zero. */
+        const uint32_t sample_ticks=g_game.total_ticks>=g_rate_sample_ticks?g_game.total_ticks-g_rate_sample_ticks:0u;
+        g_tick_rate_x10=(sample_ticks*sat_video_refresh_hz()*10u+span/2u)/span;
+        g_rate_sample_ticks=g_game.total_ticks;
+        g_end_frame_avg_ms=g_end_frame_sum_ms/g_rate_sample_frames;
+        g_end_frame_sum_ms=0;
+        /* Only while the report shows: normal play sends the CD Block nothing. */
+        if(g_show_profiler)g_cd_status_result=t3_stage_cdda_status(g_cd_status);
         g_rate_sample_vblank = now;
         g_rate_sample_frames = 0;
     }
@@ -1769,7 +1806,7 @@ int main(void) {
     loading_frame(BOOT_POSES, "FIGHTER POSES");
     SAT_PANIC_IF_ERROR(t3_characters_reset());
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
-#if defined(T3_CPU_DIAGNOSTICS)
+#if defined(T3_CPU_DIAGNOSTICS) || defined(T3_FIGHTER_PACKS)
     capture_boot_cache();
 #endif
 #if defined(T3_TITLE_SCREEN) && !defined(T3_FIGHTER_PACKS)
@@ -1797,7 +1834,8 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_coverage_probe_init());
 #endif
     loading_frame(BOOT_READY, "READY");
-    SAT_PANIC_IF_ERROR(t3_stage_cdda_start());
+    /* A failed start is shown by the report: the fight runs without music. */
+    if(!g_music_off)g_cdda_result=t3_stage_cdda_start();
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
         g_t3_simulation_stack[stack_byte]=0xA5u;
@@ -1894,7 +1932,7 @@ int main(void) {
             while(count<32u && t3_combat_events_pop(&events[count]))++count;
             t3_sfx_play_events(events,count);
             t3_sfx_round_update();
-            t3_stage_cdda_mix();
+            if(!g_music_off)t3_stage_cdda_mix();
             spark_events(events,count);
         }
         now = display_fields();
@@ -2057,6 +2095,7 @@ int main(void) {
         }
         T3_PERF_ADD(diagnostics,diagnostics_started);
         T3_PERF_START(present_started);
+        const uint32_t end_frame_started=sat_time_ms();
 #if defined(T3_VDP2_FLOOR)
         SAT_PANIC_IF_ERROR(t3_stage_vdp2_present());
 #if defined(T3_NATIVE_WAIT_PROBE)
@@ -2071,6 +2110,7 @@ int main(void) {
 #else
         SAT_PANIC_IF_ERROR(sat_end_frame());
 #endif
+        g_end_frame_ms=sat_time_ms()-end_frame_started;
 #if defined(T3_OVERLAP_VDP1)
         if(overlapping_draw)++g_t3_vdp1_overlap_frames;
 #endif
