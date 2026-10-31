@@ -363,13 +363,18 @@ static unsigned title_flow(void) {
 menu:;
     {
         /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
-        unsigned selected=0,idle=0,option=0;
+        unsigned selected=0,idle=0,option=0,leaving=0;
         backdrop_show(1);
         fade(0);
         for(;;) {
             frame_begin(&pads);
             idle+=2u;
-            if(idle>480u && !option) {
+            if(leaving) {
+                /* The transition screen: a 32-frame fade out, then the screen stays blank while loading. */
+                leaving+=2u;
+                fade(-(int)(leaving*255u/FADE_FRAMES));
+                if(leaving>=FADE_FRAMES+2u) {frame_end();return selected;}
+            } else if(idle>480u && !option) {
                 frame_end();
                 return title_flow();
             }
@@ -390,12 +395,13 @@ menu:;
                 const unsigned variant=distance==0?0u:distance==2||!mode_playable(mode,&pads)?2u:1u;
                 pic(TX_MODE0_SELECTED+mode*3u+variant,MENU_BG_W/2,350+k*26);
             }
+            if(leaving) {frame_end();continue;}
             if(pads.pad[0].pressed&SAT_PAD_UP) {selected=selected?selected-1u:MODES-1u;idle=0;sfx(SFX_UPDOWN);}
             if(pads.pad[0].pressed&SAT_PAD_DOWN) {selected=(selected+1u)%MODES;idle=0;sfx(SFX_UPDOWN);}
             if((pads.pad[0].pressed&START_BUTTONS) && mode_playable(selected,&pads)) {
                 sfx(SFX_CONFIRM);
                 if(selected==MODE_OPTION)option=1;
-                else {frame_end();return selected;}
+                else leaving=2u;
             }
             frame_end();
         }
@@ -635,6 +641,19 @@ int main(void) {
         const unsigned run=mode==MODE_SURVIVAL?1u:mode==MODE_TIME?2u:0u;
         g_arg[4]=(uint8_t)((g_arg[4]&1u)|(mode==MODE_PRACTICE?2u:0u)|(run<<2));
         g_arg[5]=g_arg[6]=g_arg[7]=0;
+    }
+    if(mode!=MODE_DEMO) {
+        /* Blank, as the original's transition screen, with the loading note its level changes use
+         * (font 0, colour 6, at 242, 422): the select's art and portraits take a few seconds to read. */
+        pads_t pads;
+        backdrop_show(0);
+        fade(0);
+        for(unsigned i=0;i<3u;++i) {
+            frame_begin(&pads);
+            rect(0,0,SCREEN_W,SCREEN_H,CODE_BLACK);
+            pic_left(TX_NOW_LOADING,MENU_BG_W-(int)g_text_size[TX_NOW_LOADING][0]-18,422*448/480);
+            frame_end();
+        }
     }
     if(mode==MODE_DEMO) {
         /* The demonstration: two CPU fighters from a rotation, ended by any button. */

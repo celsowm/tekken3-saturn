@@ -318,6 +318,7 @@ def texts(exe, out):
     add('PROMPT_BOTH', 0, 'gold', 1, 'PUSH P1 AND/OR P2 BUTTON')
     add('COPYRIGHT', 0, 'white', 0, '@1994 1995 1996 1998 NAMCO LTD.')
     add('RESERVED', 0, 'white', 0, 'ALL RIGHTS RESERVED')
+    add('NOW_LOADING', 0, 'white', 0, 'NOW LOADING...')
     for number, mode in enumerate(MODES):
         label = mode + ' MODE'
         normal = 'cyan' if mode == 'OPTION' else 'red'
