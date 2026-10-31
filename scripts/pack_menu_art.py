@@ -271,7 +271,9 @@ class Fonts:
             for y in range(height):
                 for x in range(width):
                     packed = self.word(px + (u0 + x) // 4, py + v0 + y)
-                    out[y, n * advance + x] = (packed >> (4 * ((u0 + x) & 3))) & 15
+                    index = (packed >> (4 * ((u0 + x) & 3))) & 15
+                    if index:       # glyphs are wider than their advance: never erase the last one's edge
+                        out[y, n * advance + x] = index
         cols = np.where(out.any(axis=0))[0]
         return out[:, cols.min():cols.max() + 1]
 
@@ -305,9 +307,8 @@ def texts(exe, out):
         height, width = glyphs.shape
         width8 = (width + 7) & ~7
         codes = np.zeros((height, width8), np.uint8)
-        codes[:, :width] = np.where(glyphs > 0, glyphs + code_of[(group, block)] - 1, 0)
-        # the font's index 1.. are the visible colours; index 0 is transparent
-        codes[:, :width][glyphs == 0] = 0
+        # glyph index i uses palette entry i of its block (entry 0 is transparent): code = base + i
+        codes[:, :width] = np.where(glyphs > 0, glyphs + code_of[(group, block)], 0)
         pictures.append(struct.pack('>BBHH', group, 0, width8, height) + codes.tobytes())
         names.append((name, group, width, height))
 

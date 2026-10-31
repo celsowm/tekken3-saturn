@@ -17,6 +17,7 @@
 
 enum { W=704, H=448, BANK=7, BITMAP_W=352 };
 static sat_ascii_font_t g_font;
+static sat_vdp1_texture_t g_stripes;
 
 int main(void) {
     sat_video_config_t video={W,H,SAT_VIDEO_AUTO,0};
@@ -48,6 +49,11 @@ int main(void) {
         for(unsigned i=0;i<sizeof tall;++i)if(tall[i])tall[i]=254;
         SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8(&g_font.glyphs[glyph],tall,16,16,palette,BANK));
     }
+    {   /* 16 rows alternating white and black: do the two interlace fields show different rows? */
+        uint8_t stripes[16*16];
+        for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x)stripes[y*16+x]=(y&1)?254:255;
+        SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8(&g_stripes,stripes,16,16,palette,BANK));
+    }
     for(unsigned frame=0;;++frame) {
         const int level=frame<60?255-(int)(frame*255/60):0;
         const sat_vdp2_color_offset_t offset={(int16_t)level,(int16_t)level,(int16_t)level};
@@ -57,6 +63,8 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_begin_frame());
         (void)sat_draw_rect_screen(200,150,300,120,255);
         (void)sat_ascii_font_draw_text_screen_centered_indexed8(&g_font,"SPIKE 704x448",352,200,14,0,0);
+        (void)sat_draw_sprite_scaled_screen(&g_stripes,260,230,32,16,0);    /* 1:1 rows */
+        (void)sat_draw_sprite_scaled_screen(&g_stripes,320,238,32,32,0);    /* 2x rows */
         SAT_PANIC_IF_ERROR(sat_end_frame());
     }
 }
