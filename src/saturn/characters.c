@@ -30,11 +30,9 @@
 #endif
 #if defined(T3_FACE_COVERAGE_CENSUS)
 #include "psx_face_coverage.h"
-#if defined(T3_FACE_PARTICLE_CENSUS)
-#include "psx_particle_tile.h"
-#endif
 #endif
 #if defined(T3_MIXED_OT_DIAGNOSTIC)
+#include "psx_particle_tile.h"
 #include "psx_scene_ot.h"
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 #include "particle_prepare.h"
@@ -779,6 +777,48 @@ volatile uint32_t g_t3_mixed_ot_verified,g_t3_mixed_ot_peak;
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
 volatile uint32_t g_t3_mixed_ot_empty_frames;
 #endif
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
+volatile uint32_t g_t3_compose_check_images,g_t3_compose_check_mismatch;
+#endif
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
+enum { PARTICLE_COVER_ROWS=14 }; /* 16-pixel rows; 20 columns fit each word. */
+/* Bits for columns 0..n; a table, as the SH-2 shifts a variable count slowly. */
+static const uint32_t g_cover_through[20]={
+    0x1u,0x3u,0x7u,0xfu,0x1fu,0x3fu,0x7fu,0xffu,0x1ffu,0x3ffu,
+    0x7ffu,0xfffu,0x1fffu,0x3fffu,0x7fffu,0xffffu,0x1ffffu,0x3ffffu,0x7ffffu,0xfffffu};
+static inline uint32_t cover_columns(int left,int right) {
+    const unsigned first=(unsigned)left>>4,last=(unsigned)right>>4;
+    return g_cover_through[last]&~(first?g_cover_through[first-1u]:0u);
+}
+static void particle_coverage_add(uint32_t coverage[PARTICLE_COVER_ROWS],const t3_psx_particle_quad_t* quad) {
+    t3_particle_bounds_t b;
+    if(!t3_particle_screen_bounds(quad,&b))return;
+    const uint32_t columns=cover_columns(b.left,b.right);
+    for(int row=b.top>>4;row<=b.bottom>>4;++row)coverage[row]|=columns;
+}
+/* entry is the face's index in insertion order, as in the composition. */
+static int face_reaches_particles(const uint32_t coverage[PARTICLE_COVER_ROWS],unsigned entry,unsigned split) {
+    const unsigned actor=entry<split?0u:1u,f=entry<split?entry:entry-split;
+    const actor_t* a=&g_actors[actor];const uint16_t* index=&a->original_mesh.indices[4*f];
+    const sat_projected_vertex_t* p=a->projected;
+    int left=p[index[0]].x+160,right=left,top=p[index[0]].y+112,bottom=top;
+    for(unsigned j=1;j<4;++j) {
+        const int x=p[index[j]].x+160,y=p[index[j]].y+112;
+        if(x<left)left=x;
+        else if(x>right)right=x;
+        if(y<top)top=y;
+        else if(y>bottom)bottom=y;
+    }
+    if(right<0 || bottom<0 || left>319 || top>223)return 0;
+    if(left<0)left=0;
+    if(top<0)top=0;
+    if(right>319)right=319;
+    if(bottom>223)bottom=223;
+    const uint32_t columns=cover_columns(left,right);
+    for(int row=top>>4;row<=bottom>>4;++row)if(coverage[row]&columns)return 1;
+    return 0;
+}
+#endif
 sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
     const t3_psx_particle_draw_t* particles,unsigned count) {
     if(!scene || (count && !particles) || count>T3_PSX_EFFECT_CAPACITY)return SAT_ERR_INVALID_ARG;
@@ -810,12 +850,37 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
 #endif
     t3_psx_scene_ot_entry_t* entries=(t3_psx_scene_ot_entry_t*)(void*)g_stage_world_scratch[0];
     uint16_t* order=(uint16_t*)(void*)g_stage_world_scratch[1];uint16_t* next=order+MIXED_OT_CAP;
-    unsigned n=0,visible=0,expected=0;
+    unsigned n=0,visible=0,expected=0,shared=0;
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
+    /* Faces that cannot change a particle pixel stay out of the sort: those
+     * entirely behind the farthest particle, which the composition skips, and
+     * those that overlap no particle's bounds, at 16-pixel resolution. */
+    uint32_t coverage[PARTICLE_COVER_ROWS]={0};int farthest=-1;
+    for(unsigned i=0;i<count;++i)if(particles[i].quad.visible) {
+        if(particles[i].quad.bucket>farthest)farthest=particles[i].quad.bucket;
+        particle_coverage_add(coverage,&particles[i].quad);
+    }
+    const unsigned split_at=g_fused_actors.original_after[0]-first;
+#endif
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
+    /* The reference pass lets every live face through; the second is the
+     * normal one, so what is published is unchanged by the check. */
+    uint32_t reference_sum=0;
+    for(int filter_faces=0;filter_faces<2;++filter_faces) {
+    n=0;visible=0;expected=0;
+#endif
     /* The fighter queue was reversed for the SDK; restore insertion order. */
     for(unsigned i=end;i-->first;) {
         uint32_t key=scene->faces.keys[i];
-        entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),(uint8_t)(key!=0xffffffffu),0};
-        expected+=key!=0xffffffffu;
+        uint8_t live=(uint8_t)(key!=0xffffffffu);
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
+        if(filter_faces)
+#endif
+        if(live && ((int)(key&1023u)>farthest || !face_reaches_particles(coverage,n,split_at)))live=0;
+#endif
+        entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),live,0};
+        expected+=live;
     }
     for(unsigned i=0;i<count;++i) {
         const t3_psx_particle_quad_t* q=&particles[i].quad;
@@ -824,7 +889,7 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
     }
     int sorted=t3_psx_scene_ot_order(entries,n,order,next);if(sorted<0)return SAT_ERR_INVALID_ARG;
     expected+=visible;if((unsigned)sorted!=expected)return SAT_ERR_VERIFY_FAILED;
-    unsigned shared=0;
+    shared=0;
     for(int i=1;i<sorted;++i) {
         const t3_psx_scene_ot_entry_t* a=&entries[order[i-1]],*b=&entries[order[i]];
         if(a->bucket<b->bucket || (a->bucket==b->bucket && order[i-1]<=order[i]))return SAT_ERR_VERIFY_FAILED;
@@ -832,6 +897,15 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
     }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
     SAT_TRY(ordered_particle_compose(scene,particles,count,entries,order,(unsigned)sorted,first));
+#endif
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
+    const uint32_t sum=t3_stage_particle_multi_checksum();
+    if(!filter_faces)reference_sum=sum;
+    else {
+        ++g_t3_compose_check_images;
+        if(sum!=reference_sum)++g_t3_compose_check_mismatch;
+    }
+    }
 #endif
     ++g_t3_mixed_ot_frames;g_t3_mixed_ot_particles+=visible;g_t3_mixed_ot_shared+=shared;
     g_t3_mixed_ot_last=visible;++g_t3_mixed_ot_verified;
@@ -1074,11 +1148,13 @@ static int apply_original_fighter_ot(sat_scene_t* scene,const fused_actor_contex
         const uint8_t (*meta)[2]=ACTOR_FACE_OT(actor);
         const uint16_t* indices=a->original_mesh.indices;
         for(unsigned f=0;f<a->original_mesh.face_count;++f) {
-            int32_t nclip;uint16_t bucket=t3_psx_fighter_native_indexed_bucket(raw,&indices[4*f],meta[f][1],&nclip);
+            const int32_t nclip=t3_psx_fighter_native_indexed_nclip(raw,&indices[4*f]);
             const unsigned at=context->original_first[actor]+f;
             if(!(meta[f][1]&1u) && nclip<=0) {
                 queue->keys[at]=0xffffffffu;++g_t3_original_ot_culled;
             } else {
+                const uint16_t bucket=t3_psx_fighter_ot_bucket((uint16_t)raw[indices[4*f]].z,
+                    (uint16_t)raw[indices[4*f+2]].z,(uint32_t)meta[f][1]<<24,nclip);
                 queue->keys[at]=(queue->keys[at]&0xff000000u)|bucket;
                 ++g_t3_original_ot_faces;
 #if defined(T3_FACE_COVERAGE_CENSUS) && !defined(T3_FACE_PARTICLE_CENSUS)

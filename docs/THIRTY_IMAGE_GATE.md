@@ -304,7 +304,8 @@ were three-tick images.
 
 Two changes break that loop:
 
-- **`DEFERRED_TICKS` is 3.** All of a late image's ticks run after its capture,
+- **`DEFERRED_TICKS` was 3 here; it is now 4** (`STRONG_HIT_SLOWDOWN.md`, `Fix`).
+  All of a late image's ticks run after its capture,
   alongside the Master's work. An image is now at most three ticks (50 ms)
   behind the simulation instead of two, and only late images are; the logic
   still steps 60 times a second. The release workloads accept a pose lag of 3.

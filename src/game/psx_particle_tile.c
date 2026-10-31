@@ -67,17 +67,17 @@ int t3_particle_tile_intersects(const t3_particle_tile_probe_t* out,unsigned til
                                 int left,int top,int right,int bottom) {
     if(!out || out->count>T3_PARTICLE_PROBE_MAX_TILES || tile>=out->count || left>right || top>bottom)return 0;
     const int ox=(int)out->tile_x[tile]*8,oy=(int)out->tile_y[tile]*8;
-    for(int y=0;y<8;++y) {
-        if(oy+y<top || oy+y>bottom)continue;
-        for(int x=0;x<8;++x)
-            if(ox+x>=left && ox+x<=right && out->pixels[tile][y*8+x])return 1;
-    }
+    const int x0=left>ox?left-ox:0,x1=right<ox+7?right-ox:7;
+    const int y0=top>oy?top-oy:0,y1=bottom<oy+7?bottom-oy:7;
+    for(int y=y0;y<=y1;++y)
+        for(int x=x0;x<=x1;++x)
+            if(out->pixels[tile][y*8+x])return 1;
     return 0;
 }
 int t3_particle_tile_occlude_index(t3_particle_tile_probe_t* out,unsigned tile,
                                    const uint8_t coverage[8]) {
     if(!out || !coverage || out->count>T3_PARTICLE_PROBE_MAX_TILES || tile>=out->count)return 0;
-    for(unsigned y=0;y<8;++y)for(unsigned x=0;x<8;++x)
+    for(unsigned y=0;y<8;++y)if(coverage[y])for(unsigned x=0;x<8;++x)
         if(coverage[y]&(0x80u>>x))out->pixels[tile][y*8u+x]=0;
     return 1;
 }
@@ -196,6 +196,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
             ++dest;
         }
         out->count=dest;
+        ++out->compactions;
         compacted=1;
     }
     for(int ty=ty0;ty<=ty1;++ty)for(int tx=tx0;tx<=tx1;++tx) {
@@ -209,9 +210,11 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
             for(unsigned i=0;i<64;++i)out->pixels[tile][i]=0;
             ++out->count;
         }
-        for(int y=0;y<8;++y)for(int x=0;x<8;++x) {
-            const int px=tx*8+x,py=ty*8+y;
-            if(px<x0 || px>=x1 || py<y0 || py>=y1)continue;
+        /* Only the part of the cell this sprite reaches. */
+        const int start_x=tx*8>x0?tx*8:x0,end_x=tx*8+8<x1?tx*8+8:x1;
+        const int start_y=ty*8>y0?ty*8:y0,end_y=ty*8+8<y1?ty*8+8:y1;
+        for(int py=start_y;py<end_y;++py)for(int px=start_x;px<end_x;++px) {
+            const int y=py-ty*8,x=px-tx*8;
 #if defined(T3_PARTICLE_BOX_FILTER)
             const uint16_t color=box_color(pattern,palette,u_map[px-left],map_hi(u_map,px-left,width),
                                            v_map[py-top],map_hi(v_map,py-top,height));

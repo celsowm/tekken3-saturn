@@ -1448,17 +1448,24 @@ static const uint16_t gte_reciprocal[257] = {
     257,
 };
 
+/* This file is built for size. Each fighter vertex passes through these
+ * functions while particles are live, so they are built for speed. */
+#if defined(__sh__)
+#define T3_PROJECT_HOT __attribute__((optimize("O2")))
+#else
+#define T3_PROJECT_HOT
+#endif
 /* The GTE's H / SZ3 (0.16, at most 0x1FFFF) by its unsigned Newton-Raphson
  * reciprocal. */
-static int32_t gte_divide(uint32_t h,uint32_t sz) {
-    uint32_t z=0,n,d=sz,u,i;
+T3_PROJECT_HOT static inline int32_t gte_divide(uint32_t h,uint32_t sz) {
+    uint32_t n=h,d=sz,u,i;
     if(h>=sz*2u)return 0x1FFFF;
-    /* sz is now nonzero and at most 16 bits. Normalize in four tests. */
-    if(d<0x100u){d<<=8;z+=8;}
-    if(d<0x1000u){d<<=4;z+=4;}
-    if(d<0x4000u){d<<=2;z+=2;}
-    if(d<0x8000u){d<<=1;z+=1;}
-    n=h<<z;
+    /* sz is now nonzero and at most 16 bits. Normalize in four tests, shifting
+     * in place: the SH-2 has no barrel shifter for a variable count. */
+    if(d<0x100u){d<<=8;n<<=8;}
+    if(d<0x1000u){d<<=4;n<<=4;}
+    if(d<0x4000u){d<<=2;n<<=2;}
+    if(d<0x8000u){d<<=1;n<<=1;}
     i=(d-0x7FC0u)>>7;
     u=gte_reciprocal[i];
     d=(0x2000080u-d*u)>>8;
@@ -1466,18 +1473,18 @@ static int32_t gte_divide(uint32_t h,uint32_t sz) {
     n=(uint32_t)(((uint64_t)n*d+0x8000u)>>16);
     return n>0x1FFFFu?0x1FFFF:(int32_t)n;
 }
-static int32_t sat16(int32_t v){return v<-32768?-32768:v>32767?32767:v;}
-static int32_t clamp(int32_t v,int32_t lo,int32_t hi){return v<lo?lo:v>hi?hi:v;}
+T3_PROJECT_HOT static inline int32_t sat16(int32_t v){return v<-32768?-32768:v>32767?32767:v;}
+T3_PROJECT_HOT static inline int32_t clamp(int32_t v,int32_t lo,int32_t hi){return v<lo?lo:v>hi?hi:v;}
 /* div is at most 17 bits and v is saturated signed 16-bit. Split the high
  * bit before multiplying so the remaining signed product cannot overflow. */
-static int32_t project_axis(int32_t div,int32_t v,int32_t offset) {
+T3_PROJECT_HOT static inline int32_t project_axis(int32_t div,int32_t v,int32_t offset) {
     int32_t product=(int32_t)(div&0xffff)*sat16(v);
     int32_t high=(int32_t)((((uint32_t)product>>16)^0x8000u)-0x8000u);
     return clamp(high+(div>>16)*sat16(v)+offset,-0x400,0x3ff);
 }
-static void camera_project_transformed(const t3_psx_camera_matrix_t* m,int32_t v[3],int32_t out[3]) {
+T3_PROJECT_HOT static inline void camera_project_transformed(const t3_psx_camera_matrix_t* m,int32_t v[3],int32_t out[3]) {
     int32_t sz,div;int i;
-    for(i=0;i<3;i++)v[i]=w32((int64_t)v[i]+m->t[i]);
+    for(i=0;i<3;i++)v[i]=(int32_t)((uint32_t)v[i]+(uint32_t)m->t[i]);
     sz=clamp(v[2],0,0xFFFF);
     div=gte_divide((uint32_t)m->h&0xFFFFu,(uint32_t)sz);
     out[0]=project_axis(div,v[0],SCREEN_OFFSET_X);
@@ -1510,7 +1517,7 @@ static inline int32_t project_dot16(const int16_t row[3],const int16_t point[3])
 volatile uint32_t g_t3_projection_dot_mismatch;
 #endif
 #endif
-void t3_psx_camera_project_s16(const t3_psx_camera_matrix_t* m,const int16_t p[3],int32_t out[3]) {
+T3_PROJECT_HOT void t3_psx_camera_project_s16(const t3_psx_camera_matrix_t* m,const int16_t p[3],int32_t out[3]) {
     int32_t v[3];
 #if defined(__sh__)
     for(unsigned i=0;i<3;++i)v[i]=project_dot16(m->m[i],p);

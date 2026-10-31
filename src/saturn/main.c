@@ -347,7 +347,7 @@ static t3_tick_clock_t g_tick_clock;
  * three ticks behind the simulation. With two, a late image ran its third
  * tick before the capture while the Master waited, which made the next image
  * late too (THIRTY_IMAGE_GATE.md). */
-enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=3u };
+enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=4u };
 typedef struct {
     sat_pad_state_t pads[2];
     uint32_t first,count,epoch;

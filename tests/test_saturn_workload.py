@@ -23,7 +23,7 @@ class WorkloadTests(unittest.TestCase):
                   'slave_sim_pose_lag':2,'slave_sim_stack_used':4472}
         workload.validate_optimizations(selected,'two-paul-release',counters)
         for name,value in [('slave_sim_frames',0),('slave_sim_jobs',0),
-                ('slave_sim_pose_lag',4),('slave_sim_stack_used',8192)]:
+                ('slave_sim_pose_lag',5),('slave_sim_stack_used',8192)]:
             with self.assertRaises(ValueError):
                 workload.validate_optimizations(selected,'two-paul-release',{**counters,name:value})
 

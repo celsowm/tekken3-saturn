@@ -122,7 +122,25 @@ static void check(int left,int top,int right,int bottom) {
     }
     assert(count==out.count*64u);
 }
+/* The clipped cell test against a scan of the whole cell. */
+static void check_intersects_reference(void) {
+    static t3_particle_tile_probe_t tiles;uint32_t seed=7u;
+    tiles.count=1;tiles.tile_x[0]=5;tiles.tile_y[0]=3;
+    for(unsigned round=0;round<200000u;++round) {
+        seed=seed*1103515245u+12345u;
+        if(!(round&63u))for(unsigned i=0;i<64;++i){seed=seed*1103515245u+12345u;tiles.pixels[0][i]=(seed>>27)==0?0x8001u:0;}
+        const int left=(int)((seed>>4)&127u),right=left+(int)((seed>>11)&15u);
+        const int top=(int)((seed>>15)&63u),bottom=top+(int)((seed>>21)&15u);
+        int want=0;
+        for(int y=0;y<8;++y)for(int x=0;x<8;++x) {
+            const int px=40+x,py=24+y;
+            if(px>=left && px<=right && py>=top && py<=bottom && tiles.pixels[0][y*8+x])want=1;
+        }
+        assert(t3_particle_tile_intersects(&tiles,0,left,top,right,bottom)==want);
+    }
+}
 int main(void) {
+    check_intersects_reference();
     assert(t3_psx_viewport_x(0)==0 && t3_psx_viewport_x(192)==167 && t3_psx_viewport_x(368)==320);
     assert(t3_psx_viewport_y(20)==0 && t3_psx_viewport_y(240)==110 && t3_psx_viewport_y(468)==224);
     uint8_t patch[64]={0},coverage[8]={0};patch[0]=1;patch[7]=255;patch[12]=8;

@@ -122,8 +122,14 @@ sat_result_t t3_particle_prepare_image(void) {
 sat_result_t t3_particle_prepare_add(const t3_psx_particle_draw_t* draw) {
     if(!draw || !draw->quad.visible)return SAT_ERR_INVALID_ARG;
     const uint8_t* pattern=t3_psx_particle_pattern(&g_assets,draw->pattern);
-    uint16_t palette[16];
-    if(!pattern || !t3_psx_particle_palette(&g_assets,draw->clut,palette))return SAT_ERR_VERIFY_FAILED;
+    /* An image's sparks mostly share one palette; the assets never change. */
+    static uint16_t palette[16],palette_clut;static uint8_t palette_valid;
+    if(!pattern)return SAT_ERR_VERIFY_FAILED;
+    if(!palette_valid || palette_clut!=draw->clut) {
+        palette_valid=0;
+        if(!t3_psx_particle_palette(&g_assets,draw->clut,palette))return SAT_ERR_VERIFY_FAILED;
+        palette_clut=draw->clut;palette_valid=1;
+    }
     return t3_stage_particle_multi_add(&draw->quad,pattern,palette);
 }
 #endif

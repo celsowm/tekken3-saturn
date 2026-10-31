@@ -1,6 +1,7 @@
 #include "psx_vertex_exchange.h"
 #include "psx_projected_mesh.h"
 #include "psx_scene_ot.h"
+#include "psx_fighter_ot.h"
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -26,6 +27,33 @@ int main(void) {
     mixed[3].visible=1;assert(t3_psx_scene_ot_order(mixed,4,sorted,next)==-1);
     assert(!memcmp(saved_sorted,sorted,sizeof sorted) && !memcmp(saved_next,next,sizeof next));
     assert(t3_psx_scene_ot_order(NULL,0,NULL,NULL)==0);
+    /* The bounded bucket walk against a full walk of all 1024 buckets. */
+    uint32_t seed=1u;
+    for(unsigned round=0;round<2000u;++round) {
+        enum { MAX=64 };
+        t3_psx_scene_ot_entry_t e[MAX];uint16_t got[MAX],links[MAX],want[MAX];unsigned want_count=0;
+        const unsigned count=round%(MAX+1u),spread=1u+round%1024u;
+        for(unsigned i=0;i<count;++i) {
+            seed=seed*1103515245u+12345u;
+            e[i]=(t3_psx_scene_ot_entry_t){(uint16_t)((seed>>8)%spread),(uint8_t)((seed>>4)&1u),0};
+        }
+        for(unsigned b=1024;b--;)for(unsigned i=count;i--;)
+            if(e[i].visible && e[i].bucket==b)want[want_count++]=(uint16_t)i;
+        assert(t3_psx_scene_ot_order(e,count,got,links)==(int)want_count);
+        assert(!want_count || !memcmp(got,want,want_count*sizeof want[0]));
+    }
+    /* The inline NCLIP with its bucket against the combined function. */
+    for(unsigned round=0;round<200000u;++round) {
+        t3_psx_projected_vertex_t v[3];const uint16_t indices[3]={0,1,2};
+        for(unsigned i=0;i<3;++i) {
+            seed=seed*1103515245u+12345u;v[i].xy=seed;
+            seed=seed*1103515245u+12345u;v[i].z=(int16_t)(seed>>12);
+        }
+        const uint8_t flags=(uint8_t)(seed>>24);int32_t nclip;
+        const uint16_t bucket=t3_psx_fighter_native_indexed_bucket(v,indices,flags,&nclip);
+        assert(t3_psx_fighter_native_indexed_nclip(v,indices)==nclip);
+        assert(t3_psx_fighter_ot_bucket((uint16_t)v[0].z,(uint16_t)v[2].z,(uint32_t)flags<<24,nclip)==bucket);
+    }
     for(unsigned depth=0;depth<65536u;++depth) {
         t3_psx_camera_matrix_t m={0};int32_t point[3]={0},got[3];
         m.h=(int32_t)((depth*7919u+173u)&65535u);m.t[2]=(int32_t)depth;

@@ -176,6 +176,9 @@ sat_result_t t3_stage_particle_multi_begin(uint32_t frame) {
 }
 sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,const uint8_t* pattern,const uint16_t palette[16]) {
     unsigned slot=g_probe_slot;
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    const unsigned old_count=g_probe_tiles[slot].count,old_compactions=g_probe_tiles[slot].compactions;
+#endif
     const t3_particle_tile_status_t result=t3_particle_tile_accumulate_status(&g_probe_tiles[slot],quad,pattern,palette);
     if(result!=T3_PARTICLE_TILE_OK) {
         g_t3_particle_multi_fail_tiles=g_probe_tiles[slot].count;
@@ -184,11 +187,16 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
         return result==T3_PARTICLE_TILE_CAPACITY?SAT_ERR_CAPACITY:SAT_ERR_UNSUPPORTED;
     }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
-    /* Accumulation may compact the list, so rebuild the conservative bound. */
+    /* New cells extend the map. Compaction renumbers the list and can shrink
+     * the conservative bound, so only then rebuild it from scratch. */
     const t3_particle_tile_probe_t* tiles=&g_probe_tiles[slot];
-    g_particle_left=320;g_particle_right=-1;g_particle_top=224;g_particle_bottom=-1;
-    for(unsigned i=0;i<sizeof g_particle_cell;++i)((uint8_t*)g_particle_cell)[i]=0xFFu;
-    for(unsigned i=0;i<tiles->count;++i) {
+    unsigned first_new=old_count;
+    if(tiles->compactions!=old_compactions) {
+        first_new=0;
+        g_particle_left=320;g_particle_right=-1;g_particle_top=224;g_particle_bottom=-1;
+        for(unsigned i=0;i<sizeof g_particle_cell;++i)((uint8_t*)g_particle_cell)[i]=0xFFu;
+    }
+    for(unsigned i=first_new;i<tiles->count;++i) {
         const int x=tiles->tile_x[i]*8,y=tiles->tile_y[i]*8;
         g_particle_cell[tiles->tile_y[i]][tiles->tile_x[i]]=(uint8_t)i;
         if(x<g_particle_left)g_particle_left=x;
@@ -199,6 +207,18 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
 #endif
     ++g_probe_particle_count[slot];return SAT_OK;
 }
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
+/* Diagnostic: every cell's position and pixels, in list order. */
+uint32_t t3_stage_particle_multi_checksum(void) {
+    const t3_particle_tile_probe_t* tiles=&g_probe_tiles[g_probe_slot];
+    uint32_t sum=tiles->count;
+    for(unsigned i=0;i<tiles->count;++i) {
+        sum=sum*31u+tiles->tile_x[i]+tiles->tile_y[i]*64u;
+        for(unsigned p=0;p<64;++p)sum=sum*31u+tiles->pixels[i][p];
+    }
+    return sum;
+}
+#endif
 volatile uint32_t g_t3_hud_occluded_cells;
 int t3_stage_particle_multi_has_cell(unsigned x,unsigned y) {
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)

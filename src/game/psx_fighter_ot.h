@@ -24,4 +24,13 @@ uint16_t t3_psx_fighter_native_bucket(const t3_psx_projected_vertex_t vertices[4
  * must provide three valid indices. */
 uint16_t t3_psx_fighter_native_indexed_bucket(const t3_psx_projected_vertex_t* vertices,
     const uint16_t indices[3],uint8_t flags_high,int32_t* nclip);
+/* Its NCLIP alone, so that a culled face does not pay for the bucket.
+ * Unsigned products retain the GTE MAC0 low 32 bits without signed overflow. */
+static inline int32_t t3_psx_fighter_native_indexed_nclip(const t3_psx_projected_vertex_t* v,
+    const uint16_t indices[3]) {
+    const uint32_t a=v[indices[0]].xy,b=v[indices[1]].xy,c=v[indices[2]].xy;
+    const int32_t x0=(int16_t)a,y0=(int16_t)(a>>16);
+    return (int32_t)((uint32_t)((int16_t)b-x0)*(uint32_t)((int16_t)(c>>16)-y0)-
+                     (uint32_t)((int16_t)(b>>16)-y0)*(uint32_t)((int16_t)c-x0));
+}
 #endif

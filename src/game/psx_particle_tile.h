@@ -17,6 +17,8 @@ typedef struct {
     uint16_t pixels[T3_PARTICLE_PROBE_MAX_TILES][64];
     uint8_t tile_x[T3_PARTICLE_PROBE_MAX_TILES],tile_y[T3_PARTICLE_PROBE_MAX_TILES];
     unsigned count;
+    /* Rises when accumulation compacts the list, which renumbers the cells. */
+    unsigned compactions;
 } t3_particle_tile_probe_t;
 /* Map an axis-aligned original quad to the HUD's 368x448 visible rectangle,
  * scale its 16x16 texture by integer nearest-neighbour and clip to 320x224.

@@ -133,7 +133,7 @@ def validate_optimizations(workload,profile,counters):
             'T3_SLAVE_SIMULATION') in ('ON','1','TRUE'):
         if min(counters.get('slave_sim_'+name,0) for name in ('frames','jobs','ticks','pose_tick'))<1:
             raise ValueError(profile+' rejected: selected Slave simulation never completed')
-        if not 0<=counters.get('slave_sim_pose_lag',-1)<=3 or \
+        if not 0<=counters.get('slave_sim_pose_lag',-1)<=4 or \
                 not 0<counters.get('slave_sim_stack_used',0)<=SLAVE_STACK_BYTES-256:
             raise ValueError(profile+' rejected: invalid Slave simulation lag or stack use')
     if profile == 'two-paul-release' and workload['configuration'].get(
