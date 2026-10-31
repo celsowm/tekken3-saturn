@@ -738,7 +738,12 @@ static void arcade_advance(int winner) {
     if(winner==0 && g_arcade_stage<3u)++g_arcade_stage;
 }
 
+/* The title's demonstration: both fighters are CPU, and any button or the end of the match goes back. */
+static uint8_t g_demo;
+static unsigned g_demo_ticks;
+
 static void choose_cpu(const sat_pad_state_t* pad1) {
+    if(g_demo) {t3_move_probe_set_cpu(3u,1u,5u);return;}
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
@@ -888,7 +893,7 @@ static void title_screen(void) {
 /* Title and select run before anything is loaded. The fight restarts this same
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
-enum { BOOT_ARG_BYTES=5u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F' };
+enum { BOOT_ARG_BYTES=5u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D' };
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
@@ -911,7 +916,8 @@ static void enter_fight_phase(void) {
     if(restarted) {
         g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4];
     }
-    if(!restarted || arg[0]!=PHASE_FIGHT)restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
+    g_demo=restarted && arg[0]==PHASE_DEMO;
+    if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
     SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
 }
@@ -1822,6 +1828,10 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
         T3_PERF_ADD(input,input_started);
+#if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
+        if(g_demo && (pad0.pressed || pad1.pressed || g_game.match_done || ++g_demo_ticks>5400u))
+            restart_program(PHASE_TITLE);
+#endif
         if (pad0.pressed & SAT_PAD_START) {
 #if defined(T3_SLAVE_SIMULATION)
             SAT_PANIC_IF_ERROR(t3_move_probe_simulation_sync(1));

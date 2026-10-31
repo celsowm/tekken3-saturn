@@ -39,7 +39,7 @@ enum {
     FONT_SETS=6, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=124, GLOW_P1=240, GLOW_P2=244, CODE_BLACK=248, CODE_CYAN=249, CODE_RED=250, CODE_BAR=251, CODE_BAR_EDGE=252,
-    BOOT_ARG_BYTES=5, PHASE_SELECT='S', PHASE_FIGHT='F',
+    BOOT_ARG_BYTES=5, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
     LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
@@ -47,7 +47,7 @@ enum {
 
 static sat_cdfs_volume_t* g_volume;
 /* The largest file read in one go: a backdrop. */
-static uint8_t g_io[BG_HEADER+MENU_BG_W*MENU_BG_H+16] __attribute__((aligned(4)));
+static uint8_t g_io[BG_HEADER+MENU_BG_W*512+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold, black, cyan, red */
 static sat_vdp1_texture_t g_port_tex[2];
@@ -132,7 +132,7 @@ static void init_video(void) {
     /* The scrolling steel tiles behind the select's frame. */
     sat_vdp2_layer_config_default(SAT_VDP2_NBG1,&layer);
     layer.bitmap=1;
-    layer.bitmap_size=SAT_VDP2_BITMAP_512X256;
+    layer.bitmap_size=SAT_VDP2_BITMAP_512X512;
     layer.color_mode=SAT_VDP2_COLOR_MODE_256;
     layer.palette=TILE_BANK;
     layer.priority=1;
@@ -267,6 +267,7 @@ static unsigned title_flow(void) {
             frame_begin(&pads);
             frame_end();
         }
+        return MODE_DEMO;       /* nobody pressed anything: the demonstration fight */
     }
 menu:;
     {
@@ -338,7 +339,31 @@ static void glow_palette(unsigned side,unsigned colour) {
     (void)sat_vdp2_palette_upload(out,4,(uint16_t)(SPR_BANK*256u+(side?GLOW_P2:GLOW_P1)));
 }
 
+/* The original name pictures (NAMES.BIN): a black glyph mask per fighter, 96 x 16, and its extent. */
+enum { NAME_W=96, NAME_H=16, NAME_HEAD=48 };
+static sat_vdp1_texture_t g_name[SILHOUETTE];
+static uint8_t g_name_extent[SILHOUETTE][2];
+
+static sat_result_t load_names(void) {
+    static uint8_t pixels[NAME_W*NAME_H];
+    SAT_TRY(read_file("NAMES.BIN",0,g_io,NAME_HEAD+SILHOUETTE*NAME_W*NAME_H));
+    for(unsigned id=0;id<SILHOUETTE;++id) {
+        g_name_extent[id][0]=g_io[2*id];g_name_extent[id][1]=g_io[2*id+1];
+        const uint8_t* mask=g_io+NAME_HEAD+id*NAME_W*NAME_H;
+        for(unsigned i=0;i<NAME_W*NAME_H;++i)pixels[i]=mask[i]?CODE_BLACK:0;
+        SAT_TRY(sat_tex_upload_indexed8(&g_name[id],pixels,NAME_W,NAME_H,g_pal,SPR_BANK));
+    }
+    return SAT_OK;
+}
+
+static void draw_name(unsigned id,int bg_cx,int plate_y) {
+    const int centre=NAME_W/2-(g_name_extent[id][0]+g_name_extent[id][1])/2;
+    (void)sat_draw_sprite_scaled_screen(&g_name[id],(int16_t)((bg_cx+centre)*2),
+        (int16_t)(plate_y+NAME_H/2),NAME_W*2,NAME_H,0);
+}
+
 static sat_result_t cache_portraits(void) {
+    SAT_TRY(load_names());
     for(unsigned id=0;id<=SILHOUETTE;++id) {
         char name[12]={'P','O','R','T',(char)('0'+id/10u),(char)('0'+id%10u),'.','B','I','N',0,0};
         SAT_TRY(read_file(name,0,g_port_cache[id],PORT_FILE));
@@ -375,7 +400,7 @@ static void select_flow(uint8_t picks[2]) {
     unsigned chosen[2]={0,0},shown[2]={FIGHTERS+1,FIGHTERS+1},rest[2]={0,0},fade_in[2]={0,0};
     backdrop_show(0);
     SAT_PANIC_IF_ERROR(load_backdrop("SELBG.BIN"));
-    SAT_PANIC_IF_ERROR(load_bitmap("TILEBG.BIN",TILE_BASE,TILE_BANK,512,256,256));
+    SAT_PANIC_IF_ERROR(load_bitmap("TILEBG.BIN",TILE_BASE,TILE_BANK,MENU_BG_W,512,512));
     SAT_PANIC_IF_ERROR(cache_portraits());
     (void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,1);
     backdrop_show(1);
@@ -421,7 +446,7 @@ static void select_flow(uint8_t picks[2]) {
                 (void)sat_draw_sprite_scaled_screen(&g_port_tex[side],(int16_t)((bg_x+MENU_PORT_W/2)*2),
                     (int16_t)(SEL_PORT_Y+MENU_PORT_H/2),PORT_STRIDE*2,MENU_PORT_H,0);
             }
-            if(id!=SILHOUETTE)text(3,t3_fighter_name(id),bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
+            if(id!=SILHOUETTE)draw_name(id==20u?14u:id,bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
         }
         /* Rising sparks: every 4th tick a 40-dot streak leaves a portrait, clipped above the plates. */
         if(!(elapsed&3u)) {
@@ -462,7 +487,7 @@ static void select_flow(uint8_t picks[2]) {
         }
         text(1,side_label(empty1),MENU_BG_W/2,SEL_PORT_Y-12);
         /* The steel tiles drift diagonally. */
-        (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,(int32_t)((elapsed/2u)&511u)<<16,(int32_t)((elapsed/2u)&255u)<<16);
+        (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,0,(int32_t)((elapsed*3u/2u)&511u)<<16);
         frame_end();
     }
     picks[0]=(uint8_t)t3_select_id(cursor[0]);
@@ -481,7 +506,13 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_disc_volume(&g_volume));
     if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
     else g_arg[0]=0;                                  /* cold boot: the title first */
-    if(g_arg[0]!=PHASE_SELECT)(void)title_flow();
+    if(g_arg[0]!=PHASE_SELECT && title_flow()==MODE_DEMO) {
+        /* The demonstration: two CPU fighters from a rotation, ended by any button. */
+        static const uint8_t pairs[][2]={{1,8},{0,3},{7,4},{14,15},{5,2},{9,6}};
+        const unsigned pair=(g_now/2u)%(sizeof pairs/sizeof pairs[0]);
+        g_arg[0]=PHASE_DEMO;g_arg[1]=pairs[pair][0];g_arg[2]=pairs[pair][1];
+        SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));
+    }
     select_flow(&g_arg[1]);
     g_arg[0]=PHASE_FIGHT;
     SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));

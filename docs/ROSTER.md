@@ -38,8 +38,9 @@ uses bank 9.
 - **Select rules.** Cursor rules in `src/game/select_grid.c`. Port 2 connected:
   each pad picks its fighter. No port 2: pad 1 picks both, and B takes the
   first pick back.
-- **Select details.** The steel tiles scroll diagonally on their own VDP2 layer
-  (`TILEBG.BIN`, NBG1); the panel behind a portrait takes that portrait's
+- **Select details.** The steel background is the original's 8 x 8 tile map
+  (select.ovl `0x80118BDC`, ten 48 x 64 tiles) scrolling on its own VDP2 layer
+  (`TILEBG.BIN`, NBG1); the names are the original name pictures (`NAMES.BIN`); the panel behind a portrait takes that portrait's
   dominant colour; the side with nobody yet shows the original silhouette; the
   timer is the big gold two-digit counter; sparks rise from the portraits every
   4th tick. The select music is the original XA stream 0x11, decoded by
@@ -50,12 +51,15 @@ uses bank 9.
   in PCSX-Redux and saves the original mode list and select screens
   (`build/ps1-menus/`); the mode list ring, highlight bar, colours, silhouette,
   panel glow, plates and timer follow them. `scripts/menu_flow.py` captures ours.
-- **Not in the menus yet.** No costume choice (one costume per fighter), no menu
-  sounds, no attract demonstration after the title (it loops back to NAMCO
-  PRESENTS), the steel background is one repeated tile rather than the
-  original's tile map, and the title leaves out the opening movie. Team Battle,
-  Time Attack, Survival, Tekken Force and Practice are listed but do nothing.
-  Name plates use the SDK font, not the original name sheet.
+- **Attract demonstration.** If nobody presses anything for the title's 300 ticks,
+  `MENU.BIN` fades out and starts a CPU-vs-CPU fight (`PHASE_DEMO`, a short
+  rotation of pairs); any button or the end of the match returns to the title.
+  The original's opening movie is not played.
+- **Not in the menus yet.** No costume choice (one costume per fighter, so a
+  choice would change nothing), no menu sounds (the cursor and pick sounds come
+  from the executable's own sound bank, which the Saturn build does not load),
+  and Team Battle, Time Attack, Survival, Tekken Force and Practice are listed
+  but do nothing: each needs fight rules the port does not have yet.
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has
