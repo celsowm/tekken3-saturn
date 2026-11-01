@@ -88,6 +88,9 @@ _Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the origina
 #endif
 #if defined(T3_VDP2_FLOOR)
 #include "stage_vdp2.h"
+#if defined(T3_VS_SCREEN)
+#include "vs_screen.h"
+#endif
 #endif
 #if defined(T3_CPU_DIAGNOSTICS) || defined(T3_FIGHTER_PACKS)
 #include <saturn/sh2.h>
@@ -162,9 +165,9 @@ typedef struct {
     uint32_t first,count,epoch;
 } simulation_job_t;
 static simulation_job_t g_simulation_job T3_HOT_WRAM;
-/* The Slave's deepest measured use is 4,472 bytes (slave_sim_stack_used); 8 KiB keeps
- * about 1.8x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
-uint8_t g_t3_simulation_stack[8192] __attribute__((aligned(16)));
+/* The Slave's deepest measured use is 5,328 bytes (slave_sim_stack_used); 6.5 KiB keeps
+ * about 1.25x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
+uint8_t g_t3_simulation_stack[6656] __attribute__((aligned(16)));
 static t3_match_t g_image_match T3_FRONTEND_WRAM;
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_psx_hud_bar_t g_image_hud_bars[2]
@@ -291,6 +294,10 @@ enum {
     FRAME_BACKGROUND = SAT_RGB555(2,3,8), LOADING_FILL = SAT_RGB555(28,5,4)
 };
 
+#if defined(T3_VS_SCREEN)
+/* The VS screen is up: nothing drawn with VDP1 would show. */
+#define loading_frame(completed,stage) ((void)(completed))
+#else
 static void loading_frame(unsigned completed, const char* stage) {
     sat_loading_screen_t screen;
     sat_loading_screen_default(&screen);
@@ -309,6 +316,7 @@ static void loading_frame(unsigned completed, const char* stage) {
         (uint16_t)(completed * LOADING_PERCENT_MAX / BOOT_READY)));
     SAT_PANIC_IF_ERROR(sat_end_frame());
 }
+#endif
 
 static void character_loading_progress(void* context, t3_character_load_stage_t stage) {
     (void)context;
@@ -745,6 +753,24 @@ static void enter_fight_phase(void) {
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
     SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
+}
+#endif
+
+#if defined(T3_VS_SCREEN)
+/* The caption follows the mode (modes.md). Port 2 decides arcade or VS, as choose_cpu does. */
+static void show_vs_screen(void) {
+    sat_pad_state_t pad1={0};
+    SAT_PANIC_IF_ERROR(sat_input_poll());
+    SAT_PANIC_IF_ERROR(sat_wait_vblank());
+    SAT_PANIC_IF_ERROR(sat_input_poll());
+    SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&pad1));
+    t3_vs_kind_t kind=T3_VS_ARCADE;
+    if(g_demo)kind=T3_VS_DEMO;
+    else if(g_practice)kind=T3_VS_PRACTICE;
+    else if(g_run_mode==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
+    else if(g_run_mode==T3_RUN_ARCADE && pad1.connected)kind=T3_VS_VERSUS;
+    /* The arena stays unused until the characters load. */
+    SAT_PANIC_IF_ERROR(t3_vs_screen_show(t3_fighter_pack_arena(),T3_ROSTER_ARENA_BYTES,g_picks,kind,g_demo?1u:g_wins+1u));
 }
 #endif
 
@@ -1541,6 +1567,9 @@ int main(void) {
 #if defined(T3_FIGHTER_PACKS)
     enter_fight_phase();
 #endif
+#if defined(T3_VS_SCREEN)
+    show_vs_screen();
+#endif
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));
 #if defined(T3_NATIVE_COMMANDS)
@@ -1599,8 +1628,9 @@ int main(void) {
 #if defined(T3_TITLE_SCREEN) && !defined(T3_FIGHTER_PACKS)
     title_screen();
 #endif
-#if defined(T3_VDP2_FLOOR)
+#if defined(T3_VDP2_FLOOR) && !defined(T3_VS_SCREEN)
     loading_frame(BOOT_POSES, "STAGE");
+    SAT_PANIC_IF_ERROR(t3_stage_vdp2_load());
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
 #endif
 #if defined(T3_ORIGINAL_HUD)
@@ -1619,6 +1649,16 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_faces,sizeof g_faces));
 #if defined(T3_VDP1_COVERAGE_PROBE)
     SAT_PANIC_IF_ERROR(t3_coverage_probe_init());
+#endif
+#if defined(T3_VS_SCREEN)
+#if defined(T3_VDP2_FLOOR)
+    SAT_PANIC_IF_ERROR(t3_stage_vdp2_load());
+#endif
+    /* The stage takes over the layer and the palette bank once the screen has ended. */
+    SAT_PANIC_IF_ERROR(t3_vs_screen_finish());
+#if defined(T3_VDP2_FLOOR)
+    SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
+#endif
 #endif
     loading_frame(BOOT_READY, "READY");
     /* A failed start is shown by the report: the fight runs without music. */
@@ -1696,6 +1736,8 @@ int main(void) {
             }
             if(g_game.match_done && !g_practice) {
                 arcade_advance(g_game.winner);
+                /* STAGE n counts wins, and FIGHT n in VS counts matches. */
+                if((g_game.winner==0 || pad1.connected) && g_wins<255u)++g_wins;
                 restart_program(PHASE_SELECT);
             }
 #else
@@ -1899,6 +1941,11 @@ int main(void) {
 #endif
 #else
         SAT_PANIC_IF_ERROR(sat_end_frame());
+#endif
+#if defined(T3_VS_SCREEN)
+        /* The second submit waited for the first frame to go on screen. */
+        static uint8_t frames_until_visible=2;
+        if(frames_until_visible && !--frames_until_visible)SAT_PANIC_IF_ERROR(t3_vs_screen_release());
 #endif
         g_end_frame_ms=sat_time_ms()-end_frame_started;
 #if defined(T3_OVERLAP_VDP1)

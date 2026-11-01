@@ -26,7 +26,7 @@ REQUIRED_OFF += ('T3_VERIFY_COMPILED_RENDERER',)
 
 
 # g_t3_simulation_stack in src/saturn/main.c and simulation_stack.S.
-SLAVE_STACK_BYTES=8192
+SLAVE_STACK_BYTES=6656
 
 def cache_entries(path):
     entries = {}

@@ -16,7 +16,10 @@ implementation of Tekken3Remake.
   https://github.com/n0madic/Tekken3Remake . Its current project source is
   licensed under PolyForm Noncommercial 1.0.0 and carries the required notice
   "Copyright (c) 2026 n0madic". It is pinned under `third_party/Tekken3Remake` as a separate Git submodule. The upstream license and notices still apply to its checkout and adapted code.
-- **Original engine adaptations**: `src/game/psx_fighter_sounds.c` and
+- **Original engine adaptations**: `src/saturn/vs_screen.c` and `scripts/pack_vs_art.py`
+  (the pre-fight VS screen's layout, tint and captions, from
+  `docs/research/code/modes.md` and `tools/research/draw_sim.py`);
+  `src/game/psx_fighter_sounds.c` and
   `scripts/extract_psx_sound_tables.py` (fighter sound state, scripts, voice
   selection and shared RNG from `remake/core/fighter/fighter_sounds.gd`,
   `docs/research/code/sound.md` and `tools/remake_import/tables.py`),

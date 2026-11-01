@@ -8,6 +8,9 @@
 #include "saturn/model3d.h"
 #endif
 #endif
+/* Reads the stage file, writing only VDP2 bank A. */
+sat_result_t t3_stage_vdp2_load(void);
+/* Finishes from what t3_stage_vdp2_load read, without touching the disc. */
 sat_result_t t3_stage_vdp2_init(void);
 /* `turn` is the panorama's turn (4096 a turn, t3_psx_backdrop_turn_t). */
 sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x,int32_t center_z,int32_t turn);

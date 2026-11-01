@@ -1518,6 +1518,28 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             DEPENDS tekken3_menu VERBATIM)
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files}
             "${_t3_menu_gen}/MENUSFX.BIN")
+        # The pre-fight VS screen; without its private records the fight keeps the plain loading screen.
+        set(T3_LOCAL_VS_RECORDS "" CACHE PATH "Private USA BNS records 12-35 (makuma, face_b), as extracted by psx_disc_import.py")
+        set(T3_LOCAL_ARCADE_OVERLAY "" CACHE FILEPATH "Private USA arcade.ovl record (BNS id 5)")
+        if(T3_LOCAL_VS_RECORDS AND T3_LOCAL_ARCADE_OVERLAY)
+            set(_t3_vs_gen "${CMAKE_BINARY_DIR}/generated/private_vs")
+            set(_t3_vs_files "${_t3_vs_gen}/VSBG0.BIN" "${_t3_vs_gen}/VSBG1.BIN" "${_t3_vs_gen}/VSBG2.BIN" "${_t3_vs_gen}/VSBG3.BIN"
+                "${_t3_vs_gen}/VSPANEL.BIN" "${_t3_vs_gen}/VSTEXT.BIN")
+            add_custom_command(OUTPUT ${_t3_vs_files} "${_t3_vs_gen}/vs_layout.h"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_vs_art.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --arcade "${T3_LOCAL_ARCADE_OVERLAY}"
+                    --records "${T3_LOCAL_VS_RECORDS}" --out "${_t3_vs_gen}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_vs_art.py" "${CMAKE_SOURCE_DIR}/scripts/pack_menu_art.py"
+                    "${T3_LOCAL_HUD_EXE}" "${T3_LOCAL_ARCADE_OVERLAY}" VERBATIM)
+            target_sources(tekken3_saturn PRIVATE src/saturn/vs_screen.c "${_t3_vs_gen}/vs_layout.h")
+            target_include_directories(tekken3_saturn PRIVATE "${_t3_vs_gen}")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_VS_SCREEN=1)
+            # Mostly boot-time and per-event code, in a Work RAM High that has little room left.
+            set_source_files_properties(src/saturn/vs_screen.c src/saturn/cold_data.c
+                src/saturn/disc.c src/saturn/flipbook_burst.c src/saturn/combat_events.c src/saturn/sfx.c
+                PROPERTIES COMPILE_OPTIONS "-Os")
+            list(APPEND _t3_stage_disc_files ${_t3_vs_files})
+        endif()
         set(_t3_disc_depends tekken3_menu)
         set(_t3_select_wav_args "")
         set(_t3_select_wav_deps "")
@@ -2096,6 +2118,8 @@ else()
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
         add_test(NAME saturn_release_workload_identity
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_saturn_workload.py")
+        add_test(NAME vs_screen_packer
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_pack_vs_art.py")
         add_test(NAME ps1_private_kmd_face_ot
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_kmd_face_ot.py")
         set_tests_properties(ps1_private_kmd_face_ot PROPERTIES SKIP_RETURN_CODE 77)

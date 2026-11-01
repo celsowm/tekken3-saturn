@@ -90,6 +90,38 @@ host CTest, all 26 combat cases including the throw and timeout
 checkpoints, and 3,000/3,000 reference ticks with no first difference.
 The original text font and round messages remain open.
 
+## Pre-fight VS screen (2026-11-01)
+
+The fight now loads behind the original's VS screen (`src/saturn/vs_screen.c`, art
+from `scripts/pack_vs_art.py`), a 352x448 VDP2 bitmap at 2x zoom on a 704x448
+display, in VDP2 bank B so the stage picture can stream into bank A under it. The
+stage's disc reads moved ahead of the fade (`t3_stage_vdp2_load`), and the display
+stays black until the first fight frame is on screen, because the stage layers show
+one flat colour until their first tables are published.
+
+| Demonstration, no input, leaving the title | Ymir | Mednafen |
+| --- | --- | --- |
+| Black before the screen | 5.1 s | 11.2 s |
+| Screen up, including the 16-field fade | 10.9 s | 23.2 s |
+| Black after the fade | 0.1 s | 0.1 s |
+| Total, title to first fight frame | 16.1 s | 34.5 s |
+| Same, previous build | 13.4 s | not measured |
+
+Ymir's 5.1 s splits into 1.8 s reading `0.BIN`, 0.6 s starting up, and 2.7 s reading
+the art: 0.7 s for the background, 1.3 s for portraits and names, 0.6 s for the caption.
+The load grew by that same 2.7 s.
+
+The fight is unaffected in Ymir against the previous build over 3,600 emulated frames:
+same AI pad hash (1678652096), same Slave stack peak (5,328 bytes), no discarded
+fields, and first fight frames with the same changed-pixel counts. Late swaps are 3.8%
+of fields against 3.8%, and images per field 0.538 against 0.542, over different windows
+of the same fight.
+
+Not done: a comparison with original pixels (PCSX-Redux stayed black 10 s into game state
+11, so the layout is checked only against the original's tables), a play through
+the real menus for arcade, VS, survival and practice (each was rendered with its
+caption forced), and real hardware.
+
 ## Boot loading screen (2026-10-19)
 
 The Saturn frontend presents `TEKKEN 3 / LOADING` with the shared LibSaturn

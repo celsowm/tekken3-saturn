@@ -91,7 +91,8 @@ The exact mesh shadow needs the PSSDW sections converted and projected per
 joint; it is not done.
 
 To make room in the full High Work RAM, the Slave stack went from 16 KiB to
-8 KiB (deepest measured use 4,472 bytes; `SLAVE_STACK_BYTES` in
+8 KiB and then 6.5 KiB (deepest use measured in a 31-second demonstration fight:
+5,328 bytes, the same as with 8 KiB, so about 1.25x headroom; `SLAVE_STACK_BYTES` in
 `scripts/saturn_workload.py` is checked against the probe's guard).
 
 ## Stock-memory layout

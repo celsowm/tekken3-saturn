@@ -36,7 +36,7 @@ enum {
     /* One entry (x, y, increment) per line, written in VBlank. */
     LINE_SCROLL=0x3d000,
     PALETTE=6, PICTURE_PALETTE=7,
-    PICTURE_BYTES=T3_STAGE_COLUMNS*T3_STAGE_ROWS,
+    PICTURE_BYTES=T3_STAGE_COLUMNS*T3_STAGE_ROWS, HEAD_BYTES=8192,
     LINE_WORDS=HEIGHT*6
 };
 static sat_vdp2_rotation_params_t g_params __attribute__((section(".wram_l")));
@@ -440,13 +440,16 @@ static void publish(uint32_t serial,void* user) {
 #endif
 }
 
-static sat_result_t read_part(const sat_cdfs_file_t* file,uint32_t at,uint32_t bytes) {
+static sat_result_t read_part(const sat_cdfs_file_t* file,uint32_t at,uint16_t* out,uint32_t bytes) {
     uint32_t read=0;
-    const sat_result_t st=sat_cdfs_read_at(g_volume,file,at,g_load_words,bytes,&read);
+    const sat_result_t st=sat_cdfs_read_at(g_volume,file,at,out,bytes,&read);
     return st!=SAT_OK?st:read==bytes?SAT_OK:SAT_ERR_IO;
 }
 
-sat_result_t t3_stage_vdp2_init(void) {
+/* All the file's disc reads: the picture goes straight to VDP2 bank A, and the
+ * head (header, floor tile, palettes) stays in the lower half of g_load_words
+ * for t3_stage_vdp2_init, which reads nothing. */
+sat_result_t t3_stage_vdp2_load(void) {
     sat_result_t st;
     sat_cdfs_file_t file;
     g_t3_stage_boot_step=1;
@@ -455,7 +458,7 @@ sat_result_t t3_stage_vdp2_init(void) {
     if((st=sat_cdfs_lookup(g_volume,"PAUL.STG",&file))!=SAT_OK)return st;
     if(file.size!=T3_STAGE_FILE_BYTES)return SAT_ERR_VERSION;
     g_t3_stage_boot_step=5;
-    if((st=read_part(&file,0,64))!=SAT_OK)return st;
+    if((st=read_part(&file,0,g_load_words,HEAD_BYTES))!=SAT_OK)return st;
     uint32_t header[16];
     for(unsigned i=0;i<16;++i)header[i]=((uint32_t)g_load_words[2*i]<<16)|g_load_words[2*i+1];
     /* Version 2 (scripts/build_local_paul_stage.py): the floor tile, its
@@ -463,27 +466,40 @@ sat_result_t t3_stage_vdp2_init(void) {
     if(header[0]!=0x54335354u || header[1]!=2 || header[2]!=T3_STAGE_COLUMNS || header[3]!=T3_STAGE_ROWS ||
        header[4]!=64 || header[5]!=64 || header[6]!=2048 || header[7]!=16 || header[8]!=2048 ||
        header[9]!=4096 || header[10]!=6144 || header[11]!=T3_STAGE_PICTURE_COLOURS ||
-       header[12]!=8192 || header[13]!=PICTURE_BYTES)return SAT_ERR_VERSION;
-    g_t3_stage_boot_step=6;
-    if((st=read_part(&file,2048,2048))!=SAT_OK)return st;
+       header[12]!=HEAD_BYTES || header[13]!=PICTURE_BYTES)return SAT_ERR_VERSION;
+    /* Rows 240..255 of this 1024x256 bitmap hold the rotation and coefficient
+     * tables and the line scroll table; the line scroll never shows them. */
+    uint16_t* const chunk=g_load_words+HEAD_BYTES/2;
+    for(uint32_t done=0;done<PICTURE_BYTES;) {
+        uint32_t bytes=PICTURE_BYTES-done;
+        if(bytes>HEAD_BYTES)bytes=HEAD_BYTES;
+        g_t3_stage_boot_step=11;
+        if((st=read_part(&file,HEAD_BYTES+done,chunk,bytes))!=SAT_OK)return st;
+        g_t3_stage_boot_step=12;
+        if((st=sat_vdp2_vram_write_words(done/2,chunk,bytes/2))!=SAT_OK)return st;
+        done+=bytes;
+    }
+    return SAT_OK;
+}
+
+sat_result_t t3_stage_vdp2_init(void) {
+    sat_result_t st;
+    const uint16_t* const floor_tile=g_load_words+1024;
     g_t3_stage_boot_step=7;
 #if defined(T3_STAGE_BITMAP_FLOOR)
     /* Expand the loaded cells one row at a time into B0. The scratch row
      * remains separate from the immutable source until all uploads finish. */
     uint16_t bitmap_row[128];
     for(unsigned y=0;y<256;++y) {
-        if(!t3_stage_floor_bitmap_row((const uint8_t*)g_load_words,y,(uint8_t*)bitmap_row))return SAT_ERR_VERSION;
+        if(!t3_stage_floor_bitmap_row((const uint8_t*)floor_tile,y,(uint8_t*)bitmap_row))return SAT_ERR_VERSION;
         if((st=sat_vdp2_vram_write_words(CHARS/2+y*128u,bitmap_row,128))!=SAT_OK)return st;
     }
 #else
-    if((st=sat_vdp2_vram_write_words(CHARS/2,g_load_words,1024))!=SAT_OK)return st;
+    if((st=sat_vdp2_vram_write_words(CHARS/2,floor_tile,1024))!=SAT_OK)return st;
 #endif
-    g_t3_stage_boot_step=8;
-    if((st=read_part(&file,4096,32))!=SAT_OK)return st;
     g_t3_stage_boot_step=9;
-    if((st=sat_vdp2_palette_upload(g_load_words,16,PALETTE*256))!=SAT_OK)return st;
-    if((st=read_part(&file,6144,T3_STAGE_PICTURE_COLOURS*2))!=SAT_OK)return st;
-    if((st=sat_vdp2_palette_upload(g_load_words,T3_STAGE_PICTURE_COLOURS,PICTURE_PALETTE*256))!=SAT_OK)return st;
+    if((st=sat_vdp2_palette_upload(g_load_words+2048,16,PALETTE*256))!=SAT_OK)return st;
+    if((st=sat_vdp2_palette_upload(g_load_words+3072,T3_STAGE_PICTURE_COLOURS,PICTURE_PALETTE*256))!=SAT_OK)return st;
 #if !defined(T3_STAGE_BITMAP_FLOOR)
     for(unsigned y=0;y<64;++y) {
         for(unsigned x=0;x<64;++x)g_load_words[x]=(uint16_t)((y%8)*8+x%8);
@@ -491,19 +507,6 @@ sat_result_t t3_stage_vdp2_init(void) {
         if((st=sat_vdp2_vram_write_words(NAMES/2+y*64,g_load_words,64))!=SAT_OK)return st;
     }
 #endif
-    /* Upload once at boot, keeping all picture bytes outside the resident
-     * application. Rows 240..255 of this 1024x256 bitmap hold the rotation
-     * and coefficient tables and the line scroll table; the line scroll
-     * never shows them. */
-    for(uint32_t done=0;done<PICTURE_BYTES;) {
-        uint32_t bytes=PICTURE_BYTES-done;
-        if(bytes>sizeof(g_load_words))bytes=sizeof(g_load_words);
-        g_t3_stage_boot_step=11;
-        if((st=read_part(&file,8192+done,bytes))!=SAT_OK)return st;
-        g_t3_stage_boot_step=12;
-        if((st=sat_vdp2_vram_write_words(done/2,g_load_words,bytes/2))!=SAT_OK)return st;
-        done+=bytes;
-    }
     sat_vdp2_layer_config_t background;
     sat_vdp2_layer_config_default(SAT_VDP2_NBG0,&background);
     background.bitmap=1; background.bitmap_size=SAT_VDP2_BITMAP_1024X256;

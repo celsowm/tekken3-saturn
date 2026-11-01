@@ -3,6 +3,14 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## Loading screen since 2026-11-01
+
+Private builds load the fight behind the original's VS screen, not the
+`TEKKEN 3 V0.1` screen described below; the credit moved to its bottom line.
+Timings are in `NEXT_PLAYABLE_PROGRESS.md`. It has not run on real hardware: it
+changes the display mode mid-run, which emulators are least able to vouch for. If
+it misbehaves there, the fallback is the same screen at 320x224 without the switch.
+
 ## Current demo checkpoint (2026-10-30)
 
 The current presentation candidate is `build/demo-title`, ELF SHA-256
