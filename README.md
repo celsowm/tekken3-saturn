@@ -284,6 +284,9 @@ OPTION MODE, press START, and use LEFT/RIGHT
 to change DEBUG. Press START or B to go back, then select ARCADE MODE or VS MODE.
 The script disconnects Saturn port 2 for the CPU opponent; use `--keep-port2` to preserve
 that port's existing setting. Close Mednafen before changing its configuration.
+`python3 scripts/play_mednafen.py` opens the built disc with sound and with
+`ss.correct_aspect` off: with it on, Mednafen cuts the 704-wide title and select
+screens at 660 dots, so they look shifted right and lose their right edge.
 
 ## Scope, fidelity, and legal terms
 

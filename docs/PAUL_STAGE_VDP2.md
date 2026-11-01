@@ -189,9 +189,11 @@ budget, so it is baked once into a cylinder and drawn by VDP2:
 - **Bake** (`scripts/build_local_paul_stage.py`, `scripts/panorama_raycast.py`).
   From the point 1,100 units above the midpoint, column `c` of 1,024 looks
   along yaw `-c * 4096 / 1024` and row `r` of 240 at elevation tangent
-  `0.8 - r / 200`. Each texel ray-casts the scaled box (half-width 9,608
-  units) and takes the nearest non-transparent TMD texel. The picture keeps
-  at most 255 colours (median cut beyond that) plus transparent 0.
+  `0.8 - r / 200`. Each texel averages 4 x 4 rays cast into the scaled box
+  (half-width 9,608 units), each taking the nearest non-transparent TMD texel;
+  it is transparent only if under half its rays hit. The picture keeps at most
+  255 colours (median cut beyond that) plus transparent 0. Compare two bakes in
+  the running game with `scripts/stage_bake_ab.py`.
 - **Mapping** (`src/game/stage_backdrop.c`, adapted from the remake with
   attribution, see `NOTICE.md`). On every 32nd screen line, five rays from the
   real camera, spread across the line, are followed into the turned box

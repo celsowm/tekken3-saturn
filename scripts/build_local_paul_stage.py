@@ -20,6 +20,9 @@ from psx_character_textures import upload_block
 COLUMNS, ROWS = 1024, 240
 BAKE_HEIGHT = 1100
 TAN_TOP, ROWS_PER_TAN = 0.80, 200.0
+# Rays per texel side. VDP2 magnifies the picture about 1.8 x 1.5 with nearest
+# sampling, so one ray per texel leaves stair steps and dropped source texels.
+SUPERSAMPLE = 4
 US_EXE_SHA = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
 PAUL_ARC_SHA = '7e26ca6f72af5d38164ed47a092338847aea5ec2c0e2216601dd2b5b0b2e9e56'
 PAUL_TMD_SHA = '6b0f2c413ca02c5a47182733b1f37afe4f0eec28c545a7fc0520b222351c382b'
@@ -141,15 +144,34 @@ def primitives(tmd):
     return result
 
 
-def cylinder(tmd, vram, height):
+def box_filter(colour, columns, rows, factor):
+    """RGB555 mean of each factor x factor block of samples, 0 for transparent.
+    A texel is opaque when at least half its samples are, and transparent samples
+    stay out of the mean so that no edge fades towards black."""
+    import numpy as np
+    seen = (colour != 0).reshape(rows, factor, columns, factor)
+    count = seen.sum(axis=(1, 3))
+    out = np.zeros((rows, columns), dtype=np.int64)
+    for k in range(3):
+        channel = ((colour >> (5*k)) & 31).reshape(rows, factor, columns, factor)
+        out |= np.rint((channel*seen).sum(axis=(1, 3))/np.maximum(count, 1)).astype(np.int64) << (5*k)
+    return np.where(count*2 >= factor*factor, out | 0x8000, 0).reshape(-1)
+
+
+def cylinder(tmd, vram, height, supersample=SUPERSAMPLE):
     """The panorama as seen from BAKE_HEIGHT above the midpoint, one 360-degree
     picture: column c looks along atan2(x, z) = 2 pi (c + 0.5) / COLUMNS, row r
-    at the elevation tangent TAN_TOP - (r + 0.5) / ROWS_PER_TAN."""
+    at the elevation tangent TAN_TOP - (r + 0.5) / ROWS_PER_TAN, each texel the
+    mean of supersample x supersample rays centred there."""
     import numpy as np
     from panorama_raycast import Panorama, cylinder_dirs
     scene = Panorama(tmd, vram, height)
-    dirs = cylinder_dirs(COLUMNS, ROWS, TAN_TOP, ROWS_PER_TAN)
-    _, colour, _ = scene.cast((0.0, -float(BAKE_HEIGHT), 0.0), dirs)
+    dirs = cylinder_dirs(COLUMNS*supersample, ROWS*supersample, TAN_TOP, ROWS_PER_TAN*supersample)
+    # In bands of rows: every triangle tests every ray of a cast.
+    band = COLUMNS*supersample*ROWS*supersample//24
+    colour = np.concatenate([scene.cast((0.0, -float(BAKE_HEIGHT), 0.0), dirs[at:at + band])[1]
+                             for at in range(0, len(dirs), band)])
+    colour = box_filter(colour, COLUMNS, ROWS, supersample)
     opaque = colour != 0
     distinct = sorted(set(int(c) for c in colour[opaque]))
     if len(distinct) <= 255:
@@ -158,13 +180,14 @@ def cylinder(tmd, vram, height):
         chosen = np.array([lookup[int(c)] for c in colour[opaque]])
     else:
         # One 8-bit CRAM bank: median cut with k-means refinement, no dither
-        # (the layer is magnified about 2.6 times, so patterns would show).
+        # (the layer is magnified on screen, so patterns would show).
         from PIL import Image
         rgb = np.stack([(colour[opaque] >> (5*k)) & 31 for k in range(3)], axis=1).astype(np.uint8)*8
         strip = Image.fromarray(rgb.reshape(1, -1, 3), 'RGB')
         quantized = strip.quantize(colors=255, method=Image.Quantize.MEDIANCUT, kmeans=8,
                                    dither=Image.Dither.NONE)
-        levels = np.array(quantized.getpalette()[:255*3]).reshape(-1, 3)//8
+        levels = np.array(quantized.getpalette()[:255*3]).reshape(-1, 3)
+        levels = np.minimum(31, (levels + 4)//8)
         palette = [int(0x8000 | r | g << 5 | b << 10) for r, g, b in levels]
         chosen = np.array(quantized).reshape(-1)
     indices = np.zeros(len(colour), dtype=np.uint8)
@@ -174,7 +197,7 @@ def cylinder(tmd, vram, height):
     error = max(int(np.abs(((got >> (5*k)) & 31) - ((colour[opaque] >> (5*k)) & 31)).max()) for k in range(3))
     return bytes(indices), [0] + palette, scene, dict(distinct=len(distinct), max_channel_error=error)
 
-def build(source, output):
+def build(source, output, supersample=SUPERSAMPLE):
     arc_path, tmd_path, exe_path = source/'raw/036.bin', source/'raw/056.bin', source/'SLUS_004.02'
     arc, tmd, exe = arc_path.read_bytes(), tmd_path.read_bytes(), exe_path.read_bytes()
     if hashlib.sha256(exe).hexdigest() != US_EXE_SHA:
@@ -191,7 +214,7 @@ def build(source, output):
     if len(fade) != 1024:
         raise ValueError('truncated original floor fade table')
     corrections = floor_shade_corrections(tile, palette)
-    picture, picture_palette, scene, quantization = cylinder(tmd, vram, height)
+    picture, picture_palette, scene, quantization = cylinder(tmd, vram, height, supersample)
     output.mkdir(parents=True, exist_ok=True)
     # Whole-sector sections avoid restarting unaligned CD reads for each chunk.
     sections = dict(tile=2048, floor_palette=4096, picture_palette=6144, picture=8192)
@@ -224,7 +247,7 @@ def build(source, output):
         '#endif', '']))
     manifest = dict(stage='Paul / stg_a', format_version=2, tims=tims, panorama_height=height,
                     panorama_half=half, cylinder=dict(columns=COLUMNS, rows=ROWS, bake_height=BAKE_HEIGHT,
-                                                      tan_top=TAN_TOP, rows_per_tan=ROWS_PER_TAN,
+                                                      tan_top=TAN_TOP, rows_per_tan=ROWS_PER_TAN, supersample=supersample,
                                                       colours=len(picture_palette)-1, **quantization),
                     floor_shading=struct.unpack_from('<h', descriptor, 806)[0],
                     floor='Original oriented 64x64 repeating tile; distance shading is not reproduced.',
@@ -244,4 +267,5 @@ def build(source, output):
 if __name__ == '__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    a=p.parse_args();build(a.source.resolve(),a.output.resolve())
+    p.add_argument('--supersample',type=int,default=SUPERSAMPLE)
+    a=p.parse_args();build(a.source.resolve(),a.output.resolve(),a.supersample)

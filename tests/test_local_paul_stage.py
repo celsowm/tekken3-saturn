@@ -59,5 +59,18 @@ class StageTests(unittest.TestCase):
         struct.pack_into('<7I',tmd,12,1000,2,0,0,1000,1,0)
         with self.assertRaises(ValueError):stage.primitives(tmd)
 
+    def test_box_filter_means_only_opaque_samples(self):
+        import numpy as np
+        red,blue=0x8000|31,0x8000|(31<<10)
+        # One row of two texels, 2 x 2 samples each, stored row-major.
+        samples=np.array([red,blue,red,0,
+                          red,blue,red,0])
+        got=stage.box_filter(samples,2,1,2)
+        # Half red and half blue, then red with no darkening from the 0 samples
+        # (at half coverage the second texel stays opaque).
+        self.assertEqual(int(got[0]),0x8000|16|(16<<10))
+        self.assertEqual(int(got[1]),red)
+        self.assertEqual(int(stage.box_filter(np.array([red,0,0,0]),1,1,2)[0]),0)
+
 
 if __name__=='__main__':unittest.main()
