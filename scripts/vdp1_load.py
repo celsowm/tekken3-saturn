@@ -6,6 +6,11 @@ draws a quad as lines between its left and right edges, so pixels written are
 lines times line length, including overdraw. The default costs are Mednafen
 1.32.1's model (vdp1_common.h, vdp1.cpp); the others show the margin. This is
 an estimate, not a hardware measurement.
+
+`bands` lists, for each BAND_LINES lines of the screen, the columns anything but
+the clearing polygon touches, so a smaller clear can be estimated. A frame
+buffer holds the image from two swaps back, so a clear must cover that too:
+`--pairs` adds, for each two fields in turn, the area covering both.
 """
 import argparse
 import json
@@ -19,6 +24,8 @@ VDP1_VRAM = 0x25C00000
 VRAM_BYTES = 0x80000
 MASTER_HZ = 26_846_591  # 320-wide NTSC clock
 TEXTURED_SIZE = {0: 'normal', 1: 'scaled', 2: 'distorted'}
+BAND_LINES = 16
+SCREEN = 320 * 224
 
 
 def signed(value):
@@ -33,9 +40,26 @@ def clip_visible(xs, ys, width, height):
     return not (max(xs) < 0 or max(ys) < 0 or min(xs) >= width or min(ys) >= height)
 
 
+def touch_bands(bands, xs, ys, width, height):
+    x0, x1 = max(min(xs), 0), min(max(xs), width - 1)
+    y0, y1 = max(min(ys), 0), min(max(ys), height - 1)
+    for band in range(y0 // BAND_LINES, y1 // BAND_LINES + 1):
+        low, high = bands[band]
+        bands[band] = [min(low, x0), max(high, x1)]
+
+
+def bands_pixels(bands):
+    return sum((high - low + 1) * BAND_LINES for low, high in bands if high >= low)
+
+
+def bands_union(a, b):
+    return [[min(p[0], q[0]), max(p[1], q[1])] for p, q in zip(a, b)]
+
+
 def walk(vram, width, height):
     stats = dict(commands=0, drawn=0, culled=0, lines=0, pixels=0, half_pixels=0, gouraud_pixels=0,
-                 by_kind={}, biggest=[], local=[], clip=[])
+                 by_kind={}, biggest=[], local=[], clip=[],
+                 bands=[[width, -1] for _ in range((height + BAND_LINES - 1) // BAND_LINES)])
     address, seen, ox, oy, stack = 0, set(), 0, 0, None
     while address + 32 <= len(vram) and address not in seen:
         seen.add(address)
@@ -86,6 +110,8 @@ def walk(vram, width, height):
                     stats['gouraud_pixels'] += pixels
                 stats['by_kind'][kind] = stats['by_kind'].get(kind, 0) + pixels
                 stats['biggest'].append([pixels, kind, address, pmod, min(xs), min(ys), max(xs), max(ys)])
+                if pixels != SCREEN:
+                    touch_bands(stats['bands'], xs, ys, width, height)
             else:
                 stats['culled'] += 1
         if jump & 3 == 1:
@@ -107,6 +133,7 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--fields', type=int, nargs='+', required=True)
     parser.add_argument('--cost', type=float, nargs='+', default=[1.1875, 4, 6], help='assumed VDP1 clocks per pixel')
+    parser.add_argument('--pairs', action='store_true', help='also estimate a clear covering each two fields in turn')
     parser.add_argument('--line-cost', type=float, default=4, help='assumed clocks per line')
     parser.add_argument('--command-cost', type=float, default=16, help='assumed clocks per command')
     parser.add_argument('--probe', type=Path, default=Path.home() / 'dev/lib-saturn/harness/build-macos/probe')
@@ -141,6 +168,11 @@ def main():
               f"pixels {s['pixels']} (half {s['half_pixels']}, gouraud {s['gouraud_pixels']}) {s['by_kind']}")
         print('   fields of VDP1 at ' + ', '.join(f'{c:g} clk/px = {x:.2f}' for c, x in zip(args.cost, cost)))
         print(f"   local {s['local'][:3]} clip {s['clip'][:2]} biggest {s['biggest'][:3]}")
+        print(f"   area touched by {BAND_LINES}-line bands: {bands_pixels(s['bands'])} of {SCREEN}")
+    if args.pairs:
+        for first, second in zip(args.fields, args.fields[1:]):
+            both = bands_pixels(bands_union(results[first]['bands'], results[second]['bands']))
+            print(f"fields {first}+{second}: clear {both} of {SCREEN} ({both * 100 // SCREEN}%)")
 
 
 if __name__ == '__main__':

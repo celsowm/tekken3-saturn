@@ -263,8 +263,7 @@ discards of 4,011 (0.22%), hash `0x640e32c0`. Evidence: `capstudy-*.json`. The s
 Master only, so a console whose bus is slower for both CPUs would do worse. This is not a hardware
 result, and it does not help if the fault is a field count that stops advancing (`IRQ` in the report).
 
-The per-tick cost is the next target: at 0.57 field per tick on Mednafen, it limits how far catch-up
-can go. Where that time goes inside a tick has not been measured.
+Each tick's cost limits how far catch-up can go; see "Where a tick goes" below.
 
 ### Boot state made explicit in LibSaturn (2026-10-31)
 
@@ -288,3 +287,54 @@ So a cache left off is enough to give the slow motion players reported, but noth
 loader does so: this is a possible cause, not a diagnosis. `MCCR` and `SCCR` in the report will say.
 The Slave's correction runs but could not be exercised: the test can only turn its cache off after
 start-up. Evidence: `cachestudy-*`.
+
+### Where a tick goes (2026-10-31)
+
+Ymir, cache on, arcade (one CPU), 30 fields from field 4000 (`tickprofile/`), final SDK. Simulation
+takes about 40% of the Slave, roughly 0.4 field per tick. `T3_SIM_PROFILE` could not give the same
+split: it needs simulation on the Master, and the particle options that are on by default require it
+on the Slave. As a share of the Slave:
+
+| Part | Share | Note |
+|---|---|---|
+| Waiting (`frt`, `mailbox`, `signal`) | about 19% | Idle while the Master finishes |
+| `project_q15` | 17.8% | Fighter vertices, not simulation |
+| `t3_psx_mul_rot` | 5.5% | Already trimmed |
+| `sample_one` | 4.9% | Motion sampling |
+| `memcpy` | 3.9% | Already word copies; the large pose copies are already one call each; 36 call sites |
+| `rd` (AI table reads) | 2.8% | |
+| Compose, IK, FK | 2.1–2.6% each | |
+
+The Master has no idle time (`submit_instance` 29.8%, `project_q15` 17.1%, `faces_flush` 9.4%), so it
+is the limit, while the Slave waits. The simulation has no large waste left: no part both exceeds 10%
+of a tick and has an obvious cut, so nothing was changed. `T3_MASTER_WORKER_FACES` OFF might use the
+Slave's idle time, but the default particles require it ON, so it was not tried. Evenly sharing the
+Master's face work with the Slave is the remaining idea here.
+
+### A smaller VDP1 clear: estimated, not built (2026-10-31)
+
+`scripts/vdp1_load.py --pairs`, Ymir, attract, ten images including the discard clusters: anything but
+the clear touches 25,000–39,000 of 71,680 pixels. Using a polygon per 16 lines that covers the current
+image and the one two swaps back, the clear could shrink to 35–62% of its area, saving about 25–55% of
+all VDP1 pixels depending on the image.
+
+It was not built. Finding those bounds means reading about 750 commands per image on the Master, about
+0.1–0.2 field by estimate, and the Master is the limit. Removing the whole clear gained nothing on
+Mednafen (above), so this would probably lower the image rate there, in exchange for a VDP1 saving that
+only matters if real VDP1 is many times slower than the model. Reconsider it if `END MS` is large on a
+real console. Row 208 and below was untouched in these images, but a fixed cut saves only 7% and has not
+been shown safe for every camera, so that was rejected too.
+
+### Regression check after these changes (2026-10-31)
+
+Mednafen, 120 s, final SDK, same pad hashes as before:
+
+| Fight | Images/s | Discarded | Before |
+|---|---|---|---|
+| One CPU, 4 wasted fields per image | 7.43 | 25.62% | 7.43, 25.6% |
+| One CPU | 25.70 | 0 | 25.71, 0 |
+| Attract, two CPU | 20.28 | 0.10% | 19.99, 0.22% |
+
+So the boot-state fixes cost nothing and, as expected, gain nothing when the emulator already had the
+cache on. The next hardware result to look for is `MCCR` and `SCCR` in the report. Package:
+`build/tekken3-saturn-v0.1.2-hwreport-c.zip`.
