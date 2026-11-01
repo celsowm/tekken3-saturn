@@ -1589,6 +1589,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # Whole fields wasted after each image, to stand in for a slower console.
     set(T3_SLOW_IMAGE_FIELDS "0" CACHE STRING "Fields wasted per image to imitate a slower console")
     target_compile_definitions(tekken3_saturn PRIVATE T3_SLOW_IMAGE_FIELDS=${T3_SLOW_IMAGE_FIELDS}u)
+    # Turns a CPU's cache off, to stand in for a loader that left it off:
+    # bit 0 the Master before sat_init, bit 1 the Slave once it runs.
+    set(T3_TEST_CACHE_OFF "0" CACHE STRING "CPUs whose cache a test build turns off")
+    target_compile_definitions(tekken3_saturn PRIVATE T3_TEST_CACHE_OFF=${T3_TEST_CACHE_OFF}u)
     libsaturn_configure_executable(tekken3_saturn)
     libsaturn_add_binary(tekken3_saturn MAX_BYTES 983040)
     set(T3_BOOT_PAYLOADS "" CACHE FILEPATH "Optional LibSaturn native boot payload manifest")

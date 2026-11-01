@@ -25,10 +25,10 @@ the SCSP mix writes, so both settings can be compared on one console and loader.
 | `TICK` | Simulation ticks per second, times 10 | 600 is full speed; well below that is slow motion |
 | `DROP` | Total fields discarded by the catch-up cap | Should stop rising; rising means below 15 images/s |
 | `ELAP` | Fields covered by the last image | Above 4 is past the cap (`T3_MAX_RECOVERY_FIELDS`) |
-| `IRQ` | SCU VBlank interrupts live | 0 means fields are counted by `FRM`, so speed follows the image rate |
+| `IRQ` | SCU VBlank interrupts live | 0 means fields come from `FRM` (still FRT time, so speed holds) and images no longer overlap drawing |
 | `VBI`, `FRM` | Interrupt count and `sat_frame_count` | `VBI` should rise about 60 per second |
 | `HZ`, `PAL` | Refresh rate assumed, and TVSTAT's PAL bit | A disagreement is a video-timing bug |
-| `MCCR`, `SCCR` | Master and Slave cache control at boot | Bit 0 clear means that CPU's cache is off; `SCCR` 999 means not read |
+| `MCCR`, `SCCR` | Master and Slave cache control as start-up found it | Anything but 1 means the BIOS or loader left it so and LibSaturn corrected it; `SCCR` 999 means not read |
 | `SLV` | The Slave ran a verified task at boot | 0 means the work falls back to the Master |
 | `FRAME MS` | Work in the last image, excluding `sat_end_frame` | Compare with the loop period |
 | `END MS` | Average `sat_end_frame` time | Large means VDP1 is holding the loop |
@@ -46,8 +46,9 @@ start no longer panics in the fight: it shows in `CD PLAY` instead. While DEBUG 
 
 | Reading | Meaning | Next step |
 |---|---|---|
-| `IRQ` 0 | Field counting falls back | Fix IRQ start-up in LibSaturn, or count fields independently of `sat_wait_vblank` |
-| `SLV` 0, or cache bit clear | Loader-dependent boot state | Set that state explicitly in LibSaturn start-up |
+| `IRQ` 0 | VBlank interrupts did not start | Fix IRQ start-up in LibSaturn; the image rate drops, but game time stays right unless the FRT calibration also failed |
+| `SLV` 0 | The Slave did not run | Find why it failed to start on that loader |
+| `MCCR` or `SCCR` not 1 | A loader-dependent cache state | Already corrected at start-up; compare with builds before this fix |
 | `MUSIC` 0 restores `TICK` | CD-DA contention is real | Trace which access stalls, then remove or move it |
 | `LOOP x10` below 150 whatever the switch | Real draw or CPU cost | Reduce the load using `FRAME MS` and `END MS`; raise the catch-up cap only if simulation can afford it |
 | SAROO `CD ST` 3, FAD rising, silent | Audio path, not the command | Compare SCSP set-up with a game whose CD audio works on SAROO |
@@ -264,3 +265,26 @@ result, and it does not help if the fault is a field count that stops advancing 
 
 The per-tick cost is the next target: at 0.57 field per tick on Mednafen, it limits how far catch-up
 can go. Where that time goes inside a tick has not been measured.
+
+### Boot state made explicit in LibSaturn (2026-10-31)
+
+Nothing in the SDK ever enabled the SH-2 cache: it kept whatever the BIOS or a loader left. A loader
+that left it off would make a console very slow, and no emulator run would show that. `sat_init` and
+the Slave's start-up now set the full 4 KiB cache and record what they found
+(`sat_sh2_cache_control_at_start`). They also clear the FRT's clear-on-compare-A bit, which a loader
+could have left set and which would break every time measurement.
+
+`T3_TEST_CACHE_OFF` (bit 0 Master before `sat_init`, bit 1 Slave once it runs) stands in for such a
+loader. Mednafen, 120 s, attract, cap 6, same pad hash `0x640e32c0`:
+
+| Build | Images/s | Discarded | Game speed |
+|---|---|---|---|
+| Fixed SDK, nothing forced | 20.28 | 0.10% | 99.9% |
+| Fixed SDK, Master forced off before `sat_init` | 20.22 | 0.13% | 99.9% |
+| Old SDK, Master off | 10.13 | 7.56% | 92% |
+| Old SDK, both off | 4.66 | 53.34% | 47% |
+
+So a cache left off is enough to give the slow motion players reported, but nothing shows that any
+loader does so: this is a possible cause, not a diagnosis. `MCCR` and `SCCR` in the report will say.
+The Slave's correction runs but could not be exercised: the test can only turn its cache off after
+start-up. Evidence: `cachestudy-*`.

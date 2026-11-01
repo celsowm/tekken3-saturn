@@ -304,6 +304,20 @@ static void capture_cpu_cache(void* context,uint32_t first,uint32_t last) {
     uint32_t* out=context;
     for(uint32_t i=first;i<last;++i)out[i]=sat_sh2_cache_control();
 }
+#if T3_TEST_CACHE_OFF
+static void test_cache_off(void) {
+    volatile uint8_t* const ccr=(volatile uint8_t*)0xFFFFFE92u;
+    *ccr=0x10u;*ccr=0u;
+}
+static void test_cache_off_uncached(void) {
+    /* The manual wants CCR written from the cache-through area. */
+    ((void(*)(void))((uintptr_t)test_cache_off|0x20000000u))();
+}
+static void test_cache_off_slave(void* context,uint32_t first,uint32_t last) {
+    (void)context;
+    for(uint32_t i=first;i<last;++i)if(i==1u)test_cache_off_uncached();
+}
+#endif
 static void capture_boot_cache(void) {
     g_t3_boot_cache[0]=sat_sh2_cache_control();g_t3_boot_cache[1]=UINT32_MAX;
     g_t3_boot_slave_verified=0;
@@ -1504,7 +1518,8 @@ static void draw_profiler(void) {
             {"ELAP ",g_t3_diagnostics.elapsed_fields_last},{"IRQ ",(uint32_t)sat_irq_active()},
             {"VBI ",sat_irq_count(SAT_IRQ_VBLANK_IN)},{"FRM ",sat_frame_count()},
             {"HZ ",sat_video_refresh_hz()},{"PAL ",sat_video_is_pal()},
-            {"MCCR ",g_t3_boot_cache[0]},{"SCCR ",g_t3_boot_slave_verified?g_t3_boot_cache[1]:999u},
+            {"MCCR ",sat_sh2_cache_control_at_start(0)},
+            {"SCCR ",g_t3_boot_slave_verified?sat_sh2_cache_control_at_start(1):999u},
             {"SLV ",g_t3_boot_slave_verified},{"END MS ",g_end_frame_avg_ms}};
         const struct {const char* label;uint32_t value;} left[]={
             {"MUSIC ",(uint32_t)!g_music_off},{"CD PLAY ",(uint32_t)cdda},{"CD CMD ",(uint32_t)status},
@@ -1734,6 +1749,9 @@ int main(void) {
 #if defined(T3_CPU_DIAGNOSTICS)
     g_t3_boot_master_entry=sat_sh2_cache_control();
 #endif
+#if T3_TEST_CACHE_OFF & 1u
+    test_cache_off_uncached();
+#endif
     sat_video_config_t video = {W, H, SAT_VIDEO_AUTO, 0};
     sat_vec3_t eye = {0, Q(390), -FX(9)};
     sat_vec3_t target = {0, FX(1), 0};
@@ -1811,6 +1829,10 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
 #if defined(T3_CPU_DIAGNOSTICS) || defined(T3_FIGHTER_PACKS)
     capture_boot_cache();
+#if T3_TEST_CACHE_OFF & 2u
+    SAT_PANIC_IF_ERROR(sat_parallel_for(0,2,1,test_cache_off_slave,g_t3_boot_cache,
+        g_t3_boot_cache,sizeof(g_t3_boot_cache)));
+#endif
 #endif
 #if defined(T3_TITLE_SCREEN) && !defined(T3_FIGHTER_PACKS)
     title_screen();
