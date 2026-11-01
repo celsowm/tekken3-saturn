@@ -368,6 +368,45 @@ Next is the Slave's idle time, because this waste is real but cannot be reached 
 show a smaller point for later: images on the original projection append all their faces and reject them
 afterwards, unlike the SDK path. They are too rare in these fights to change the average.
 
+### Moving fighter work between the CPUs: measured, not worth building (2026-11-01)
+
+The idea was to spend the Slave's idle 19% on the Master's face work. Two temporary builds moved work each
+way, on the same fights (pad hashes unchanged). Ymir is 6,000 fields from boot (`scripts/ymir_fight.py`);
+Mednafen is 120 s.
+
+| Fight | Current | Slave also prepares actor 1's faces | Master skins both actors |
+|---|---|---|---|
+| Ymir, one CPU | 34.65 | 33.04 (-4.6%) | 31.98 (-7.7%) |
+| Ymir, two CPU | 31.17 | 27.30 (-12.4%) | 29.87 (-4.2%) |
+| Mednafen, one CPU | 25.73 | 22.63 (-12.0%) | 25.83 (+0.4%) |
+| Mednafen, two CPU | 20.03 | 16.78 (-16.2%) | 22.50 (+12.3%) |
+
+Images per second. The Slave's faces were correct: a Master recomputation matched them byte for byte on all
+1,007 images compared in a 120 s run (23 more were skipped by the check), so the loss is timing, not a fault.
+
+Result: no change. The faces build loses everywhere. The skinning build wins only in the two-CPU attract fight
+on Mednafen and loses in arcade's one-CPU setup on Ymir, so the current split stays.
+
+Temporary FRT counters on the current build explain it, as a share of all fields:
+
+| Fight | Slave ticks | Slave skinning | Slave stage | Slave unaccounted | Master waiting at the join |
+|---|---|---|---|---|---|
+| Ymir, one CPU | 47.6% | 19.4% | 7.3% | 25.7% | 4.9% |
+| Ymir, two CPU | 54.9% | 18.0% | 4.5% | 22.5% | 7.7% |
+| Mednafen, one CPU | 56.7% | 15.2% | 4.4% | 23.7% | 10.2% |
+| Mednafen, two CPU | 65.7% | 12.3% | 2.5% | 19.4% | 19.7% |
+
+- This corrects the note above that the Master has no idle time: it also waits for the Slave, by 5% to 20%.
+- The ticks scale with image time, so work added before them is multiplied: on Mednafen's two-CPU fight, 66%
+  of each field goes to ticks, so one more field of chain costs about three (1 / (1 - 0.66)). The faces build
+  added 0.27 field per image and the image took about 0.6 field longer.
+- The Slave's unaccounted time is therefore not spare time inside the parallel part, which is why it cannot
+  absorb faces. It must fall mostly outside the Slave's task, while the Master works before dispatching it. That
+  is 0.4 to 0.6 field per image, and it was not split further. The counters leave out the executor's own
+  overhead, so this is an upper bound.
+
+Which CPU limits a real console is unknown, because the emulators disagree on the balance.
+
 ### Regression check after these changes (2026-10-31)
 
 Mednafen, 120 s, final SDK, same pad hashes as before:
