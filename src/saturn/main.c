@@ -32,8 +32,8 @@
 #include "saturn/vdp1.h"
 #if defined(T3_ORIGINAL_TITLE) || defined(T3_FIGHTER_PACKS)
 #include "disc.h"
-#include "run_rules.h"
 #endif
+#include "run_rules.h"
 #include "saturn/time.h"
 #if defined(T3_OVERLAP_VDP1) || defined(T3_FIGHTER_PACKS)
 #include "saturn/irq.h"
@@ -88,211 +88,6 @@ _Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the origina
 #endif
 #if defined(T3_VDP2_FLOOR)
 #include "stage_vdp2.h"
-#endif
-#if defined(T3_VDP1_FLOOR_PROBE)
-#include "psx_viewport.h"
-#include "stage_floor_visibility.h"
-#include "floor_command_budget.h"
-/* Grid placement follows Tekken3Remake stages.md / FloorDrawGrid.
- * Copyright (c) 2026 n0madic, PolyForm Noncommercial; see NOTICE.md. */
-static int32_t g_floor_projected[121][3];
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-static uint16_t g_floor_vertex_shade[121];
-#endif
-static int32_t floor_grid_center(int32_t position) {
-    int32_t rounded=position+900;
-    int32_t tile=rounded/1800;
-    if(rounded<0)--tile; /* Original truncates and then adjusts negatives. */
-    return tile*1800;
-}
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-/* Experimental counters: subdivided quads, single quads, capacity fallbacks,
- * and maximum command occupancy observed at diagnostics publication. */
-volatile uint32_t g_t3_floor_split_stats[4];
-static uint16_t floor_half_colour(uint16_t a,uint16_t b) {
-    unsigned r=((a&31u)+(b&31u))/2u;
-    unsigned g=(((a>>5)&31u)+((b>>5)&31u))/2u;
-    unsigned blue=(((a>>10)&31u)+((b>>10)&31u))/2u;
-    return (uint16_t)(r|(g<<5)|(blue<<10));
-}
-#if T3_VDP1_FLOOR_SPLIT_MIN_AREA > 0
-static unsigned floor_visible_bbox_area(const sat_distorted_sprite_cmd_t* cmd) {
-    int x0=cmd->x[0],x1=x0,y0=cmd->y[0],y1=y0;
-    for(unsigned i=1;i<4;++i) {
-        if(cmd->x[i]<x0)x0=cmd->x[i];
-        if(cmd->x[i]>x1)x1=cmd->x[i];
-        if(cmd->y[i]<y0)y0=cmd->y[i];
-        if(cmd->y[i]>y1)y1=cmd->y[i];
-    }
-    if(x0< -160)x0=-160;
-    if(x1>159)x1=159;
-    if(y0< -112)y0=-112;
-    if(y1>111)y1=111;
-    return x0>x1 || y0>y1?0u:(unsigned)(x1-x0+1)*(unsigned)(y1-y0+1);
-}
-#endif
-static sat_result_t floor_draw_quarters(const sat_distorted_sprite_cmd_t* full,const uint16_t colour[4]) {
-    sat_vdp1_command_checkpoint_t checkpoint;
-    sat_result_t status=sat_vdp1_command_checkpoint(&checkpoint);
-    if(status!=SAT_OK)return status;
-    /* 3x3 grid: the centre lies on the PS1 B-D triangle diagonal. */
-    int16_t x[9]={full->x[0],(full->x[0]+full->x[1])/2,full->x[1],
-        (full->x[0]+full->x[3])/2,(full->x[1]+full->x[3])/2,(full->x[1]+full->x[2])/2,
-        full->x[3],(full->x[3]+full->x[2])/2,full->x[2]};
-    int16_t y[9]={full->y[0],(full->y[0]+full->y[1])/2,full->y[1],
-        (full->y[0]+full->y[3])/2,(full->y[1]+full->y[3])/2,(full->y[1]+full->y[2])/2,
-        full->y[3],(full->y[3]+full->y[2])/2,full->y[2]};
-    uint16_t c[9]={colour[0],floor_half_colour(colour[0],colour[1]),colour[1],
-        floor_half_colour(colour[0],colour[3]),floor_half_colour(colour[1],colour[3]),floor_half_colour(colour[1],colour[2]),
-        colour[3],floor_half_colour(colour[3],colour[2]),colour[2]};
-    for(unsigned q=0;q<4;++q) {
-        unsigned start=(q>>1)*3+(q&1u),v[4]={start,start+1,start+4,start+3};
-        sat_distorted_sprite_cmd_t cmd={0};uint16_t shades[4];
-        cmd.texture=t3_stage_floor_quarter(q);cmd.flags=SAT_SPRITE_FLAG_OPAQUE;
-        for(unsigned i=0;i<4;++i){cmd.x[i]=x[v[i]];cmd.y[i]=y[v[i]];shades[i]=c[v[i]];}
-        sat_result_t st=sat_draw_sprite_distorted_gouraud(&cmd,shades);
-        if(st!=SAT_OK) {
-            sat_result_t rollback=sat_vdp1_command_rollback(&checkpoint);
-            return rollback==SAT_OK?st:rollback;
-        }
-    }
-    return SAT_OK;
-}
-#if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
-/* Executed once before any real world commands. Every artificial command and
- * Gouraud table is rolled back; nothing is sent to the VDP1. */
-volatile uint32_t g_t3_floor_capacity_selftest[4];
-static sat_result_t floor_capacity_selftest(void) {
-    if(g_t3_floor_capacity_selftest[0])return SAT_OK;
-    sat_vdp1_command_checkpoint_t original,before,after;
-    sat_vdp1_command_stats_t stats;
-    sat_result_t st=sat_vdp1_command_checkpoint(&original);
-    if(st!=SAT_OK)return st;
-    if((st=sat_vdp1_command_stats(&stats))!=SAT_OK)return st;
-    if(stats.capacity<=stats.overlay_reserved+original.used+4u)return SAT_ERR_CAPACITY;
-    const uint16_t colours[4]={SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL,SAT_GOURAUD_NEUTRAL};
-    sat_distorted_sprite_cmd_t cmd={.x={-20,20,20,-20},.y={-20,-20,20,20},
-        .texture=t3_stage_floor_texture(),.flags=SAT_SPRITE_FLAG_OPAQUE};
-    for(unsigned available=1;available<=3;++available) {
-        unsigned target=stats.capacity-stats.overlay_reserved-1u-available;
-        for(unsigned i=original.used;i<target;++i)
-            if((st=sat_draw_rect_screen(0,0,1,1,0x8000u))!=SAT_OK)return st;
-        if((st=sat_vdp1_command_checkpoint(&before))!=SAT_OK)return st;
-        st=floor_draw_quarters(&cmd,colours);
-        if(st!=SAT_ERR_CAPACITY)return SAT_ERR_VERSION;
-        if((st=sat_vdp1_command_checkpoint(&after))!=SAT_OK)return st;
-        if(before.used!=after.used || before.gouraud_tables!=after.gouraud_tables)return SAT_ERR_VERSION;
-        if((st=sat_draw_sprite_distorted_gouraud(&cmd,colours))!=SAT_OK)return st;
-        if((st=sat_vdp1_command_checkpoint(&after))!=SAT_OK)return st;
-        if(after.used!=before.used+1u || after.gouraud_tables!=before.gouraud_tables+1u)return SAT_ERR_VERSION;
-        if((st=sat_vdp1_command_rollback(&original))!=SAT_OK)return st;
-        ++g_t3_floor_capacity_selftest[available];
-    }
-    g_t3_floor_capacity_selftest[0]=1;
-    return SAT_OK;
-}
-#endif
-#endif
-/* Last frame's protected face allowance and floor allowance, plus cumulative
- * single-tile and no-tile budget fallbacks and the largest requested reserve. */
-volatile uint32_t g_t3_floor_budget_stats[5];
-static struct {
-    t3_psx_camera_matrix_t matrix;
-    int32_t origin[2];
-    uint32_t midpoint_distance;
-    uint8_t drawable;
-} g_floor_image;
-/* Capture before fused actor preparation starts deferred simulation on the
- * Slave. Drawing later must not read the mutable owned match. */
-static void floor_capture_image(void) {
-    g_floor_image.drawable=0;
-    if(!t3_move_probe_camera_matrix(&g_floor_image.matrix))return;
-    g_floor_image.origin[0]=t3_move_probe_world_center(0);
-    g_floor_image.origin[1]=t3_move_probe_world_center(2);
-    if(t3_move_probe_floor_center(g_floor_image.origin)==0)return;
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-    if(!t3_move_probe_floor_camera_distance(&g_floor_image.midpoint_distance))return;
-#endif
-    g_floor_image.drawable=1;
-}
-static void draw_floor_probe(uint32_t budget) {
-    if(!g_floor_image.drawable)return;
-    t3_psx_camera_matrix_t matrix=g_floor_image.matrix;
-    const int32_t cx=floor_grid_center(g_floor_image.origin[0]);
-    const int32_t cz=floor_grid_center(g_floor_image.origin[1]);
-    const int32_t grid_origin[3]={cx,0,cz};
-    t3_psx_camera_translate_view(&matrix,grid_origin,&matrix);
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-    const uint32_t midpoint_distance=g_floor_image.midpoint_distance;
-#endif
-    for(unsigned z=0;z<11;++z)for(unsigned x=0;x<11;++x) {
-        const int16_t point[3]={(int16_t)(-9000+(int32_t)x*1800),0,(int16_t)(-9000+(int32_t)z*1800)};
-        t3_psx_camera_project_s16(&matrix,point,g_floor_projected[z*11+x]);
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-        g_floor_vertex_shade[z*11+x]=t3_stage_floor_shade((uint32_t)g_floor_projected[z*11+x][2],midpoint_distance);
-#endif
-    }
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-    /* First reserve one command for every remaining eligible tile. Larger
-     * tiles can use their three extra commands only from the surplus. */
-    uint32_t remaining_tiles=0;
-    for(unsigned z=0;z<10;++z)for(unsigned x=0;x<10;++x) {
-        const unsigned v[4]={(z+1)*11+x,(z+1)*11+x+1,z*11+x+1,z*11+x};
-        int32_t corners[4][3];
-        for(unsigned k=0;k<4;++k)for(unsigned axis=0;axis<3;++axis)
-            corners[k][axis]=g_floor_projected[v[k]][axis];
-        if(t3_stage_floor_visible((const int32_t (*)[3])corners))++remaining_tiles;
-    }
-#endif
-    /* FloorDrawGrid prepends each Paul tile to the same PS1 OT bucket.
-     * VDP1 consumes commands in submission order, so reverse the scan. */
-    for(int z=9;z>=0;--z)for(int x=9;x>=0;--x) {
-        const unsigned v[4]={(z+1)*11+x,(z+1)*11+x+1,z*11+x+1,z*11+x};
-        sat_distorted_sprite_cmd_t cmd={0};
-        cmd.texture=t3_stage_floor_texture();cmd.flags=SAT_SPRITE_FLAG_OPAQUE;
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-        uint16_t gouraud[4];
-#endif
-        int32_t corners[4][3];
-        for(unsigned k=0;k<4;++k) {
-            const int32_t* p=g_floor_projected[v[k]];
-            for(unsigned axis=0;axis<3;++axis)corners[k][axis]=p[axis];
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-            gouraud[k]=g_floor_vertex_shade[v[k]];
-#endif
-            int sx=t3_psx_viewport_x(p[0]),sy=t3_psx_viewport_y(p[1]);
-            cmd.x[k]=(int16_t)(sx-160);cmd.y[k]=(int16_t)(sy-112);
-        }
-        if(!t3_stage_floor_visible((const int32_t (*)[3])corners))continue;
-        if(!budget){++g_t3_floor_budget_stats[3];return;}
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-        --remaining_tiles;
-#if T3_VDP1_FLOOR_SPLIT_MIN_AREA > 0
-        int split=floor_visible_bbox_area(&cmd)>=T3_VDP1_FLOOR_SPLIT_MIN_AREA;
-        if(split && budget<remaining_tiles+4u){split=0;++g_t3_floor_budget_stats[2];}
-        sat_result_t st=split?floor_draw_quarters(&cmd,gouraud):sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
-#else
-        int split=1;
-        if(budget<remaining_tiles+4u){split=0;++g_t3_floor_budget_stats[2];}
-        sat_result_t st=split?floor_draw_quarters(&cmd,gouraud):sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
-#endif
-        if(st==SAT_ERR_CAPACITY && split) {
-            ++g_t3_floor_split_stats[2];
-            st=sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
-            split=0;
-        }
-        if(st==SAT_OK){++g_t3_floor_split_stats[split?0:1];budget-=split?4u:1u;}
-#elif defined(T3_VDP1_FLOOR_SHADE_PROBE)
-        sat_result_t st=sat_draw_sprite_distorted_gouraud(&cmd,gouraud);
-        if(st==SAT_OK)--budget;
-#else
-        sat_result_t st=sat_draw_sprite_distorted(&cmd);
-        if(st==SAT_OK)--budget;
-#endif
-        if(st==SAT_ERR_CAPACITY)break;
-        SAT_PANIC_IF_ERROR(st);
-    }
-}
 #endif
 #if defined(T3_CPU_DIAGNOSTICS) || defined(T3_FIGHTER_PACKS)
 #include <saturn/sh2.h>
@@ -649,9 +444,6 @@ static void __attribute__((optimize("Os"))) drop_shadows(void) {
  * are built after the actors, while the Slave runs those ticks. */
 static int32_t g_stage_input[3];
 static void floor_tiles(void) {
-#if defined(T3_VDP1_FLOOR_PROBE)
-    floor_capture_image();
-#endif
 #if defined(T3_PSX_CAMERA)
     g_stage_input[2]=t3_move_probe_backdrop_turn();
 #else
@@ -1353,9 +1145,6 @@ static void prepare_scene(void) {
 #else
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &g_camera, Q(25), W, H, HUD_COMMANDS+(g_show_profiler?REPORT_COMMANDS:0)));
 #endif
-#if defined(T3_VDP1_FLOOR_CAPACITY_SELFTEST)
-    SAT_PANIC_IF_ERROR(floor_capacity_selftest());
-#endif
 #if defined(T3_NATIVE_COMMANDS)
     SAT_PANIC_IF_ERROR(sat_vdp1_command_batch_reserve(FACE_CAP,&g_native_commands));
     SAT_PANIC_IF_ERROR(sat_scene3d_faces_bind_native_commands(&g_scene.faces,&g_native_commands));
@@ -1366,22 +1155,6 @@ static void prepare_scene(void) {
         floor_tiles();
         T3_PERF_ADD(stage,stage_started);
         SAT_PANIC_IF_ERROR(t3_characters_render(&g_scene, &g_game));
-#if defined(T3_VDP1_FLOOR_PROBE)
-        /* Actor/shadow geometry is queued but not emitted. Budget its SDK
-         * clip/tiled worst case; HUD slots are already reserved. */
-        sat_vdp1_command_stats_t command_stats;
-        SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&command_stats));
-        uint32_t protected_faces=t3_floor_protected_commands(&g_scene.faces);
-        uint32_t occupied=(uint32_t)command_stats.used+command_stats.overlay_reserved+1u;
-        uint32_t available=command_stats.capacity>occupied?command_stats.capacity-occupied:0u;
-        uint32_t floor_budget=available>protected_faces?available-protected_faces:0u;
-#if defined(T3_VDP1_FLOOR_FORCE_BUDGET)
-        if(floor_budget>T3_VDP1_FLOOR_FORCE_BUDGET)floor_budget=T3_VDP1_FLOOR_FORCE_BUDGET;
-#endif
-        g_t3_floor_budget_stats[0]=protected_faces;g_t3_floor_budget_stats[1]=floor_budget;
-        if(protected_faces>g_t3_floor_budget_stats[4])g_t3_floor_budget_stats[4]=protected_faces;
-        draw_floor_probe(floor_budget);
-#endif
         T3_PERF_START(stage_late_started);
         stage_prepare();
         T3_PERF_ADD(stage,stage_late_started);
@@ -1558,9 +1331,6 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     for(unsigned i=0;i<4;++i)g_t3_diagnostics.local_pose_cache[i]=pose_cache[i];
     SAT_PANIC_IF_ERROR(sat_scene_stats(&g_scene, &scene));
     SAT_PANIC_IF_ERROR(sat_vdp1_command_stats(&commands));
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-    if(commands.used>g_t3_floor_split_stats[3])g_t3_floor_split_stats[3]=commands.used;
-#endif
     SAT_PANIC_IF_ERROR(sat_vdp1_frame_stats(&pacing));
 
     ++g_rate_sample_frames;

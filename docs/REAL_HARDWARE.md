@@ -326,6 +326,13 @@ only matters if real VDP1 is many times slower than the model. Reconsider it if 
 real console. Row 208 and below was untouched in these images, but a fixed cut saves only 7% and has not
 been shown safe for every camera, so that was rejected too.
 
+### VDP2 is the only fight floor (2026-11-01)
+
+The fight floor is RBG0 on VDP2, like other Saturn 3D fighters, and was already the default. The
+experimental VDP1 floor options (`T3_VDP1_FLOOR_PROBE`, `_SHADE_PROBE`, `_SUBDIVIDE_PROBE`,
+`_CAPACITY_SELFTEST`, `_FORCE_BUDGET`, `_SPLIT_MIN_AREA`) were removed, so a stage build can no longer
+draw the floor with VDP1. Their results remain in `docs/PARTICLE_RENDER_PROGRESS.md` and in git history.
+
 ### Regression check after these changes (2026-10-31)
 
 Mednafen, 120 s, final SDK, same pad hashes as before:

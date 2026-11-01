@@ -1146,33 +1146,11 @@ int32_t t3_move_probe_world_center(unsigned axis) {
  * from H directly; fov_y and aspect are the matching values. */
 #define PSX_ROW1 0x1BD2
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
-#if defined(T3_VDP1_FLOOR_PROBE)
-#include "stage_floor_center.h"
-#include "stage_vdp2.h"
-int t3_move_probe_floor_center(int32_t out[2]) {
-    if(!out || !g_active || !g_owned_match.camera.started)return -1;
-    const t3_psx_body_tables_t body={.sqrt=t3_local_body_blob,.sqrt_size=384u};
-    return t3_stage_floor_center(&g_owned_match.camera.camera.view,
-        t3_move_probe_world_center(0),t3_move_probe_world_center(2),&g_camera_trig,&body,t3_stage_floor_sqrt_before(),out);
-}
-#endif
 int t3_move_probe_camera_matrix(t3_psx_camera_matrix_t* out) {
     if(!out || !g_active || !g_owned_match.camera.started)return 0;
     *out=g_owned_match.camera.matrix;
     return 1;
 }
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-int t3_move_probe_floor_camera_distance(uint32_t* out) {
-    if(!out || !g_active || !g_owned_match.camera.started)return 0;
-    const t3_psx_camera_view_t* v=&g_owned_match.camera.camera.view;
-    int64_t dx=(int64_t)v->x-t3_move_probe_world_center(0);
-    int64_t dz=(int64_t)v->z-t3_move_probe_world_center(2);
-    int64_t squared=dx*dx+dz*dz;
-    if(squared>0x7fffffff)return 0;
-    const t3_psx_body_tables_t tables={.sqrt=t3_local_body_blob,.sqrt_size=384u};
-    return t3_psx_body_sqrt(&tables,(uint32_t)squared,out);
-}
-#endif
 #endif
 sat_result_t t3_move_probe_camera(sat_camera3d_t* camera) {
     const t3_psx_fight_camera_t* c=&g_owned_match.camera;

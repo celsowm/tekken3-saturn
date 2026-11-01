@@ -64,12 +64,6 @@ sat_result_t t3_move_probe_camera(sat_camera3d_t* camera);
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
 /* Snapshot before dispatching the worker and its deferred simulation. */
 int t3_move_probe_camera_matrix(t3_psx_camera_matrix_t* out);
-#if defined(T3_VDP1_FLOOR_PROBE)
-int t3_move_probe_floor_center(int32_t out[2]);
-#endif
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-int t3_move_probe_floor_camera_distance(uint32_t* out);
-#endif
 #endif
 /* The panorama's turn after the last frame (4096 a turn). */
 int32_t t3_move_probe_backdrop_turn(void);

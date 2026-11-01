@@ -9,16 +9,6 @@
 #endif
 #endif
 sat_result_t t3_stage_vdp2_init(void);
-#if defined(T3_VDP1_FLOOR_PROBE)
-const sat_vdp1_texture_t* t3_stage_floor_texture(void);
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-const sat_vdp1_texture_t* t3_stage_floor_quarter(unsigned index);
-#endif
-const uint8_t* t3_stage_floor_sqrt_before(void);
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-uint16_t t3_stage_floor_shade(uint32_t depth,uint32_t midpoint_distance);
-#endif
-#endif
 /* `turn` is the panorama's turn (4096 a turn, t3_psx_backdrop_turn_t). */
 sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x,int32_t center_z,int32_t turn);
 /* Call right before sat_end_frame: the mapping last prepared appears with

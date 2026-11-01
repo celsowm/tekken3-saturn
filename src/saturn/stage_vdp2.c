@@ -69,28 +69,6 @@ static volatile uint32_t g_pending[2];
 volatile uint32_t g_t3_vdp2_floor_prepared, g_t3_vdp2_floor_presented;
 
 static sat_cdfs_volume_t* g_volume;
-#if defined(T3_VDP1_FLOOR_PROBE)
-static sat_vdp1_texture_t g_floor_texture;
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-static sat_vdp1_texture_t g_floor_quarters[4];
-const sat_vdp1_texture_t* t3_stage_floor_quarter(unsigned index) {return index<4?&g_floor_quarters[index]:NULL;}
-#endif
-static uint8_t g_floor_sqrt_before[640];
-const sat_vdp1_texture_t* t3_stage_floor_texture(void) {return &g_floor_texture;}
-const uint8_t* t3_stage_floor_sqrt_before(void) {return g_floor_sqrt_before;}
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-static uint8_t g_floor_fade[1024],g_floor_correction[255*3];
-uint16_t t3_stage_floor_shade(uint32_t depth,uint32_t midpoint_distance) {
-    uint32_t delta=depth>midpoint_distance?depth-midpoint_distance:0;
-    uint32_t index=(delta*(0x4000000u/10000u))>>16;
-    if(index>1023)index=1023;
-    /* shade = -51; arithmetic right shift rounds negative values down. */
-    unsigned level=128u-((g_floor_fade[index]*51u+127u)>>7);
-    const uint8_t* c=&g_floor_correction[level*3u];
-    return sat_gouraud_rgb((int8_t)c[0],(int8_t)c[1],(int8_t)c[2]);
-}
-#endif
-#endif
 #if defined(T3_STAGE_STACK_PROBE)
 volatile uint32_t g_t3_stage_stack_min[2] __attribute__((section(".wram_l")));
 void t3_stage_stack_sample(unsigned which) {
@@ -486,22 +464,8 @@ sat_result_t t3_stage_vdp2_init(void) {
        header[4]!=64 || header[5]!=64 || header[6]!=2048 || header[7]!=16 || header[8]!=2048 ||
        header[9]!=4096 || header[10]!=6144 || header[11]!=T3_STAGE_PICTURE_COLOURS ||
        header[12]!=8192 || header[13]!=PICTURE_BYTES)return SAT_ERR_VERSION;
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-    if(header[14]!=0x46414445u)return SAT_ERR_VERSION;
-#endif
-#if defined(T3_VDP1_FLOOR_PROBE)
-    if(header[15]!=0x53515254u)return SAT_ERR_VERSION;
-#endif
     g_t3_stage_boot_step=6;
     if((st=read_part(&file,2048,2048))!=SAT_OK)return st;
-#if defined(T3_VDP1_FLOOR_PROBE)
-    /* Preserve one linear 64x64 copy while read_part replaces the source. */
-    for(unsigned y=0;y<64;++y) {
-        uint8_t row[256];
-        if(!t3_stage_floor_bitmap_row((const uint8_t*)g_load_words,y,row))return SAT_ERR_VERSION;
-        for(unsigned x=0;x<32;++x)((uint8_t*)(g_load_words+1024))[y*32+x]=row[x];
-    }
-#endif
     g_t3_stage_boot_step=7;
 #if defined(T3_STAGE_BITMAP_FLOOR)
     /* Expand the loaded cells one row at a time into B0. The scratch row
@@ -516,34 +480,10 @@ sat_result_t t3_stage_vdp2_init(void) {
 #endif
     g_t3_stage_boot_step=8;
     if((st=read_part(&file,4096,32))!=SAT_OK)return st;
-#if defined(T3_VDP1_FLOOR_PROBE)
-    uint16_t floor_lut[16],floor_lut_handle;
-    for(unsigned i=0;i<16;++i)floor_lut[i]=g_load_words[i]|0x8000u;
-    if((st=sat_vdp1_upload_lut(floor_lut,&floor_lut_handle))!=SAT_OK)return st;
-    if((st=sat_tex_upload_lut4_pixels(&g_floor_texture,(const uint8_t*)(g_load_words+1024),64,64,floor_lut_handle))!=SAT_OK)return st;
-#if defined(T3_VDP1_FLOOR_SUBDIVIDE_PROBE)
-    for(unsigned q=0;q<4;++q) {
-        uint8_t* quarter=(uint8_t*)(g_load_words+2048);
-        const uint8_t* full=(const uint8_t*)(g_load_words+1024);
-        for(unsigned y=0;y<32;++y)for(unsigned x=0;x<16;++x)
-            quarter[y*16+x]=full[(y+(q>>1)*32)*32+x+(q&1u)*16];
-        if((st=sat_tex_upload_lut4_pixels(&g_floor_quarters[q],quarter,32,32,floor_lut_handle))!=SAT_OK)return st;
-    }
-#endif
-#endif
     g_t3_stage_boot_step=9;
     if((st=sat_vdp2_palette_upload(g_load_words,16,PALETTE*256))!=SAT_OK)return st;
-#if defined(T3_VDP1_FLOOR_SHADE_PROBE)
-    if((st=read_part(&file,4128,1024+255*3))!=SAT_OK)return st;
-    for(unsigned i=0;i<1024;++i)g_floor_fade[i]=((const uint8_t*)g_load_words)[i];
-    for(unsigned i=0;i<255*3;++i)g_floor_correction[i]=((const uint8_t*)g_load_words)[1024+i];
-#endif
     if((st=read_part(&file,6144,T3_STAGE_PICTURE_COLOURS*2))!=SAT_OK)return st;
     if((st=sat_vdp2_palette_upload(g_load_words,T3_STAGE_PICTURE_COLOURS,PICTURE_PALETTE*256))!=SAT_OK)return st;
-#if defined(T3_VDP1_FLOOR_PROBE)
-    if((st=read_part(&file,T3_STAGE_FILE_BYTES-2048u,640))!=SAT_OK)return st;
-    for(unsigned i=0;i<640;++i)g_floor_sqrt_before[i]=((const uint8_t*)g_load_words)[i];
-#endif
 #if !defined(T3_STAGE_BITMAP_FLOOR)
     for(unsigned y=0;y<64;++y) {
         for(unsigned x=0;x<64;++x)g_load_words[x]=(uint16_t)((y%8)*8+x%8);
@@ -578,11 +518,7 @@ sat_result_t t3_stage_vdp2_init(void) {
 #if defined(T3_STAGE_BITMAP_FLOOR)
     const sat_vdp2_rotation_bitmap_config_t config={
         .color_mode=SAT_VDP2_COLOR_MODE_16,.height_512=0,
-#if defined(T3_VDP1_FLOOR_PROBE)
-        .priority=0,
-#else
         .priority=2,
-#endif
         .transparent=0,
         .palette=PALETTE,.over=SAT_VDP2_ROTATION_OVER_REPEAT,
         .coefficients_a={.enabled=1,.mode=SAT_VDP2_COEFFICIENT_KXKY},
