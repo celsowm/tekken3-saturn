@@ -7,7 +7,7 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.1.2 HW REPORT - SATURN DEMO
+README = '''TEKKEN 3 V0.2 HW REPORT - SATURN DEMO
 
 Open music.cue in a Saturn emulator with a compatible Saturn BIOS, or use a
 compatible Saturn disc loader. Keep music.bin alongside music.cue. A BIOS and

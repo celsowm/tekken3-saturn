@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: celsowm/libsaturn
-          ref: 4edaffe97f4c28bc184f6c737d07b645eb6cf1d5
+          ref: 795934ce35ac739912f4b61b72c5ae136ebccdb8
           path: .external/libsaturn
           persist-credentials: false
 

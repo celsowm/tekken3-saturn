@@ -12,6 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parents[1]
 STAGES = (('title', 300), ('menu', 560), ('select', 1600), ('fight', 4100))
 
@@ -24,6 +27,8 @@ def main():
     p.add_argument('--out', type=Path, default=ROOT / 'build/menu-flow')
     p.add_argument('--frames', type=int, default=4200)
     p.add_argument('--right', type=int, default=0, help='extra RIGHT presses for P1 on the select')
+    p.add_argument('--series', type=int, nargs=3, metavar=('FROM', 'TO', 'STEP'),
+                   help='also keep these fields and print each one\'s size and mean brightness, to time black gaps')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     script = ['0 NONE', '400 START', '406 NONE', '480 START', '486 NONE']
@@ -40,7 +45,14 @@ def main():
            '--pad-script', str(pad)]
     for name, frame in STAGES:
         cmd += ['--screenshot', f'{frame}:{args.out / (name + ".png")}']
-    sys.exit(subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+    series = range(*args.series) if args.series else ()
+    for frame in series:
+        cmd += ['--screenshot', f'{frame}:{args.out / f"series-{frame:05}.png"}']
+    code = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+    for frame in series:
+        picture = np.asarray(Image.open(args.out / f'series-{frame:05}.png').convert('L'))
+        print(f'{frame} {picture.shape[1]}x{picture.shape[0]} mean {picture.mean():.1f}')
+    sys.exit(code)
 
 
 if __name__ == '__main__':

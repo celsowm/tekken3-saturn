@@ -3,6 +3,13 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## V0.2: the opening movie
+
+A cold boot of a private disc plays the original's opening movie, then the title (START skips it).
+`scripts/pack_intro_video.py build` makes `INTRO.MOV` from the owner's USA disc; configure with
+`-DT3_LOCAL_INTRO_MOVIE=<path>`. Without it the disc boots straight to the title, as V0.1.2 did.
+Measurements and what is not verified are in `NEXT_PLAYABLE_PROGRESS.md`.
+
 ## Loading screen since 2026-11-01
 
 Private builds load the fight behind the original's VS screen, not the
@@ -16,7 +23,7 @@ it misbehaves there, the fallback is the same screen at 320x224 without the swit
 The current presentation candidate is `build/demo-title`, ELF SHA-256
 `0654fa4e204bc5fcd2e25f0ad447dc9e8d8b28b5cfb63e0aa7fd698447ac4106`.
 Its loading screen displays `TEKKEN 3 V0.1` and
-`MADE USING celsowm/LibSaturn`; its title screen displays the version, matchup
+`MADE USING celsowm/libsaturn`; its title screen displays the version, matchup
 and controller mode, then waits for START. Mednafen booted its mixed-mode
 disc and showed the loading credit at second 13 and title at second 19
 (`demo-title-evidence/credit-visible-cd/`; recording deleted). An image

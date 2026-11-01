@@ -308,10 +308,10 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.1.2 HW REPORT", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.2 HW REPORT", W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/LibSaturn", W / 2, LOADING_CREDIT_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/libsaturn", W / 2, LOADING_CREDIT_Y));
     SAT_PANIC_IF_ERROR(sat_loading_screen_draw_bar(&screen,
         (uint16_t)(completed * LOADING_PERCENT_MAX / BOOT_READY)));
     SAT_PANIC_IF_ERROR(sat_end_frame());
@@ -654,7 +654,7 @@ static void title_screen(void) {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&namco_texture,160,184,63,8,7));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"(C)1994 1995 1996 1998 NAMCO LTD.",W/2,192));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"ALL RIGHTS RESERVED",W/2,203));
-            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.1.1",264,4));
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.2",264,4));
         } else {
         {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&title_texture,160,112,320,224,7));
@@ -681,7 +681,7 @@ static void title_screen(void) {
                     &g_font.glyphs[(unsigned)logo[i]-32u],64+(int)i*24,28,24,32,
                     g_hud.palette));
         }
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.1.1  -  PAUL VS LAW",W/2,70));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.2  -  PAUL VS LAW",W/2,70));
         SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,44,88,232,2,1,1,
             SAT_RGB555(22,4,3),SAT_RGB555(22,4,3)));
         if(options) {
@@ -733,7 +733,13 @@ static void restart_program(uint8_t phase) {
         g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds};
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
-    SAT_PANIC_IF_ERROR(sat_exec(volume,phase==PHASE_FIGHT?"0.BIN":"MENU.BIN",arg,sizeof arg));
+    const char* program=phase==PHASE_FIGHT?"0.BIN":"MENU.BIN";
+#if defined(T3_INTRO)
+    /* A cold boot shows the opening movie first; a disc without it goes straight to the title. */
+    sat_cdfs_file_t intro;
+    if(phase==PHASE_TITLE && sat_cdfs_lookup(volume,"INTRO.BIN",&intro)==SAT_OK)program="INTRO.BIN";
+#endif
+    SAT_PANIC_IF_ERROR(sat_exec(volume,program,arg,sizeof arg));
 }
 
 /* Returns only in the fight phase, with both packs open. */
@@ -753,24 +759,6 @@ static void enter_fight_phase(void) {
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
     SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
-}
-#endif
-
-#if defined(T3_VS_SCREEN)
-/* The caption follows the mode (modes.md). Port 2 decides arcade or VS, as choose_cpu does. */
-static void show_vs_screen(void) {
-    sat_pad_state_t pad1={0};
-    SAT_PANIC_IF_ERROR(sat_input_poll());
-    SAT_PANIC_IF_ERROR(sat_wait_vblank());
-    SAT_PANIC_IF_ERROR(sat_input_poll());
-    SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&pad1));
-    t3_vs_kind_t kind=T3_VS_ARCADE;
-    if(g_demo)kind=T3_VS_DEMO;
-    else if(g_practice)kind=T3_VS_PRACTICE;
-    else if(g_run_mode==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
-    else if(g_run_mode==T3_RUN_ARCADE && pad1.connected)kind=T3_VS_VERSUS;
-    /* The arena stays unused until the characters load. */
-    SAT_PANIC_IF_ERROR(t3_vs_screen_show(t3_fighter_pack_arena(),T3_ROSTER_ARENA_BYTES,g_picks,kind,g_demo?1u:g_wins+1u));
 }
 #endif
 
@@ -1554,6 +1542,14 @@ int main(void) {
 #if defined(T3_FRAME_ON_SUBMIT)
     SAT_PANIC_IF_ERROR(sat_vdp1_set_frame_mode(SAT_VDP1_FRAME_ON_SUBMIT));
 #endif
+#if defined(T3_VS_SCREEN)
+    {
+        /* The menu only starts this program for a fight, with the screen in VRAM. A cold boot goes
+         * back to the menu from enter_fight_phase. This asks without taking the argument. */
+        uint32_t arg_bytes=0;
+        if(sat_exec_arg(NULL,0,&arg_bytes)==SAT_ERR_CAPACITY)SAT_PANIC_IF_ERROR(t3_vs_screen_resume());
+    }
+#endif
     t3_perf_init();
     t3_sim_init();
     g_font=(sat_ascii_font_t){0};
@@ -1566,9 +1562,6 @@ int main(void) {
 #endif
 #if defined(T3_FIGHTER_PACKS)
     enter_fight_phase();
-#endif
-#if defined(T3_VS_SCREEN)
-    show_vs_screen();
 #endif
     loading_frame(BOOT_MODEL, "MODEL DATA");
     SAT_PANIC_IF_ERROR(sat_scene_init(&g_scene,g_faces,g_keys,g_order,FACE_CAP));

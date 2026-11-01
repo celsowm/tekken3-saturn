@@ -16,8 +16,12 @@
 
 #include "disc.h"
 #include "menu_layout.h"
+#include "run_rules.h"
 #include "select_grid.h"
 #include "stage_cdda.h"
+#if defined(T3_VS_SCREEN)
+#include "vs_screen.h"
+#endif
 #include "menu_text.h"
 #include "saturn/app.h"
 #include "saturn/audio.h"
@@ -41,7 +45,7 @@ enum {
     FONT_SETS=3, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=100, GLOW_P1=192, GLOW_P2=198, GLOW_BANDS=6, CODE_BLACK=204, CODE_BAR=205, CODE_BAR_EDGE=206,
-    BOOT_ARG_BYTES=8, ARG_DEBUG=1, ARG_MUSIC_OFF=16, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
+    BOOT_ARG_BYTES=8, ARG_DEBUG=1, ARG_PRACTICE=2, ARG_MUSIC_OFF=16, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
     LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
@@ -207,6 +211,28 @@ static void init_sfx(void) {
 static void sfx(unsigned id) {
     const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
     if(g_sfx_ready)(void)sat_sound_play(g_sfx[id],&params,NULL);
+}
+
+/* ---- the fight ---- */
+
+#if defined(T3_VS_SCREEN)
+static void vs_compose(const uint8_t picks[2],t3_vs_kind_t kind,unsigned number) {
+    /* The portrait cache has done its job once the fighters are chosen. */
+    SAT_PANIC_IF_ERROR(t3_vs_screen_compose(g_port_cache,sizeof g_port_cache,picks,kind,number));
+}
+#endif
+
+/* Under a faded-out screen: the VS screen goes up and stays up while 0.BIN is read. */
+static void start_fight(void) {
+#if defined(T3_VS_SCREEN)
+    SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,0));
+    SAT_PANIC_IF_ERROR(t3_vs_screen_present());
+    fade(0);
+    SAT_PANIC_IF_ERROR(sat_wait_vblank());
+    SAT_PANIC_IF_ERROR(sat_exec_keep_display(g_volume,"0.BIN",g_arg,sizeof g_arg));
+#else
+    SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));
+#endif
 }
 
 /* ---- frame helpers ---- */
@@ -619,6 +645,18 @@ static void select_flow(uint8_t picks[2]) {
     }
     picks[0]=(uint8_t)t3_select_id(cursor[0]);
     picks[1]=(uint8_t)t3_select_id(cursor[1]);
+#if defined(T3_VS_SCREEN)
+    {
+        /* The caption follows the mode (modes.md). Port 2 decides arcade or VS, as choose_cpu does.
+         * The chosen fighters stay on screen for this read. */
+        const unsigned run=(g_arg[4]>>2)&3u;
+        t3_vs_kind_t kind=T3_VS_ARCADE;
+        if(g_arg[4]&ARG_PRACTICE)kind=T3_VS_PRACTICE;
+        else if(run==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
+        else if(run==T3_RUN_ARCADE && pads.pad[1].connected)kind=T3_VS_VERSUS;
+        vs_compose(picks,kind,g_arg[5]+1u);
+    }
+#endif
     for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
         fade(-(int)(f*255/FADE_FRAMES));
         frame_begin(&pads);
@@ -663,10 +701,13 @@ int main(void) {
         static const uint8_t pairs[][2]={{1,8},{0,3},{7,4},{14,15},{5,2},{9,6}};
         const unsigned pair=(g_now/2u)%(sizeof pairs/sizeof pairs[0]);
         g_arg[0]=PHASE_DEMO;g_arg[1]=pairs[pair][0];g_arg[2]=pairs[pair][1];
-        SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));
+#if defined(T3_VS_SCREEN)
+        vs_compose(&g_arg[1],T3_VS_DEMO,1u);
+#endif
+        start_fight();
     }
     select_flow(&g_arg[1]);
     g_arg[0]=PHASE_FIGHT;
-    SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));
+    start_fight();
     for(;;) {}
 }
