@@ -114,7 +114,14 @@ source 34.2 dB at q2, 33.1 at q20; four frames side by side look alike at 4x). N
 An early unit test and its decoder agreed with each other and were both wrong (chunk ids are the high byte of a 16-bit
 field): only the check against real data found it, and the first frames matched anyway, because they are black.
 
-**Player.** One CD Block play over the whole file (`sat_cd_stream_begin_ring`) into a 64-sector ring; one poll per field.
+**LibSaturn's own movie first (2026-11-01).** `INTRO.BIN` now plays `LSINTRO.MOV`, the LibSaturn logo animation, and then
+the opening. The player and the converter moved into LibSaturn (`sat_movie_play`, `tools/satmovie.py`); the logo movie
+ships with the SDK (`share/libsaturn/assets/movies/libsaturn_intro.mov`, 288x216, 24 fps, 0.7 MiB) and the CMake finds it
+there, so every private or public disc gets it, with or without the original's movie. `scripts/pack_intro_video.py` only
+cuts the movie and aligns its XA sound now; it builds the same `INTRO.MOV` byte for byte. On Ymir the whole boot plays
+(logo, opening, title), and the library example shows 192 of 192 frames with none dropped or starved. START skips both.
+
+**Player (as first built in the game; now `sat_movie_play`).** One CD Block play over the whole file (`sat_cd_stream_begin_ring`) into a 64-sector ring; one poll per field.
 Frames are decoded into a 512-wide picture in Work RAM High, one SCU DMA of the picture's rows goes to the hidden one of
 two 15-bit bitmaps (VRAM-A at 0 and VRAM-B at 0x40000), and `sat_vdp2_layer_set_pattern_name_base` flips NBG0 at the next
 `sat_vdp2_layers_commit` in VBlank. The due frame comes from the field count: a late frame is skipped. The Master does

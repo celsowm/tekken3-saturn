@@ -1504,11 +1504,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             libsaturn_configure_executable(tekken3_spike_hires)
             libsaturn_add_binary(tekken3_spike_hires MAX_BYTES 983040)
         endif()
-        # The intro movie (scripts/pack_intro_video.py build) is private game data; without it the disc has no intro.
-        set(T3_LOCAL_INTRO_MOVIE "" CACHE FILEPATH "Packed intro movie INTRO.MOV")
+        # The boot intro is its own program, so MENU.BIN does not grow; main.c starts it on a cold boot. It plays
+        # LibSaturn's own movie (installed with the SDK) and, when configured, the original's opening movie.
         set(_t3_intro_disc_target "")
+        set(_t3_intro_movies "")
+        find_file(T3_LIBSATURN_INTRO_MOVIE libsaturn_intro.mov NO_DEFAULT_PATH
+            HINTS "${LibSaturn_DIR}/../../../share/libsaturn/assets/movies" "${LIBSATURN_SOURCE_DIR}/assets/movies")
+        if(T3_LIBSATURN_INTRO_MOVIE)
+            add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/LSINTRO.MOV"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                COMMAND "${CMAKE_COMMAND}" -E copy "${T3_LIBSATURN_INTRO_MOVIE}" "${CMAKE_BINARY_DIR}/menu/LSINTRO.MOV"
+                DEPENDS "${T3_LIBSATURN_INTRO_MOVIE}" VERBATIM)
+            list(APPEND _t3_intro_movies "${CMAKE_BINARY_DIR}/menu/LSINTRO.MOV")
+        endif()
+        # The original's opening (scripts/pack_intro_video.py build) is private game data.
+        set(T3_LOCAL_INTRO_MOVIE "" CACHE FILEPATH "Packed intro movie INTRO.MOV")
         if(T3_LOCAL_INTRO_MOVIE AND EXISTS "${T3_LOCAL_INTRO_MOVIE}")
-            # The boot intro is its own program, so MENU.BIN does not grow; main.c starts it on a cold boot.
+            list(APPEND _t3_intro_movies "${T3_LOCAL_INTRO_MOVIE}")
+        endif()
+        if(_t3_intro_movies)
             add_executable(tekken3_intro src/saturn/intro_main.c src/saturn/disc.c)
             target_include_directories(tekken3_intro PRIVATE src/saturn)
             target_compile_options(tekken3_intro PRIVATE -Wall -Wextra -O2)
@@ -1520,24 +1534,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_intro>/tekken3_intro.app.bin"
                     "${CMAKE_BINARY_DIR}/menu/INTRO.BIN"
                 DEPENDS tekken3_intro VERBATIM)
-            list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/INTRO.BIN" "${T3_LOCAL_INTRO_MOVIE}")
+            list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/INTRO.BIN" ${_t3_intro_movies})
             target_compile_definitions(tekken3_saturn PRIVATE T3_INTRO=1)
-            option(T3_INTRO_STATS "Stop the intro on a screen of its timing counters" OFF)
-            if(T3_INTRO_STATS)
-                target_compile_definitions(tekken3_intro PRIVATE T3_INTRO_STATS=1)
-            endif()
             set(_t3_intro_disc_target tekken3_intro)
         endif()
-        # Gate 1 of the intro: decode and upload times of the whole movie, printed on screen.
+        # Decode and upload timing of the original's movie, on screen (tests/spike_intro_decode.c).
         option(T3_INTRO_SPIKE "Build the intro decode timing spike" OFF)
-        if(T3_INTRO_SPIKE)
+        if(T3_INTRO_SPIKE AND T3_LOCAL_INTRO_MOVIE)
             add_executable(tekken3_spike_intro tests/spike_intro_decode.c src/saturn/disc.c)
             target_include_directories(tekken3_spike_intro PRIVATE src/saturn)
             target_compile_options(tekken3_spike_intro PRIVATE -Wall -Wextra -O2)
             target_link_libraries(tekken3_spike_intro PRIVATE LibSaturn::Saturn)
             libsaturn_configure_executable(tekken3_spike_intro)
             libsaturn_add_binary(tekken3_spike_intro MAX_BYTES 983040)
-            # A disc of its own, so Mednafen can boot it.
             libsaturn_add_disc(tekken3_spike_intro NAME tekken3_spike_intro
                 IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_INTRO_MOVIE}" ALL)
         endif()

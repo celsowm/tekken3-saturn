@@ -28,7 +28,7 @@ latest verified gameplay gate and build instructions are in
 and public-distribution qualification remain open. Historical prototype and
 research descriptions below do not describe every feature of that build.
 
-A cold boot opens with the original's opening movie (START skips it) when the disc carries it,
+A cold boot opens with the LibSaturn logo movie and, when the disc carries it, the original's opening movie (START skips them),
 then the title. The fight loads behind the original's pre-fight VS screen, with the version and a
 LibSaturn credit in its bottom line. At the title, connect a second controller for two-player VS or
 leave port 2 empty to fight the CPU as Paul, then press START on controller 1.
