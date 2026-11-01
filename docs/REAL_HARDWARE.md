@@ -407,6 +407,47 @@ Temporary FRT counters on the current build explain it, as a share of all fields
 
 Which CPU limits a real console is unknown, because the emulators disagree on the balance.
 
+### A cheaper `faces_flush`: built (2026-11-01)
+
+Ymir's profile of the attract fight showed about 709 faces per image costing about 107 Master cycles
+each to emit and 77 to sort. Three LibSaturn changes, none of which changes a command word:
+
+- The hot face record stores its corners as the XY words of a VDP1 command (`xy[4]`), so emitting one
+  is one load and one store, and `submit_instance` copies one word per corner instead of two halves.
+- Emitting no longer rechecks each face's texture. The flush has already validated the queue, or the
+  caller has said it is valid (`sat_scene_flush_trusted`). The two command prefix pairs are read as
+  whole words.
+- The painter clears and sums only the counters up to the top bucket in use, not all 1,024.
+
+Master cycles per image on Ymir, two-CPU fight, 600 fields:
+
+| Function | Before | After |
+|---|---|---|
+| `faces_flush` | 75,846 | 50,488 (-33%) |
+| `paint_order_grouped_buckets` | 54,750 | 43,485 (-21%) |
+| `submit_instance` | 230,119 | 219,056 (-5%) |
+| All Master work per image | 831,837 | 790,367 (-5%) |
+
+Images per second, with the same pad hashes (`0x94e16040` one CPU, `0x640e32c0` two CPU):
+
+| Fight | Before | After | Change |
+|---|---|---|---|
+| Ymir, one CPU | 34.65 | 37.13 | +7.2% |
+| Ymir, two CPU | 31.17 | 32.62 | +4.7% |
+| Mednafen, one CPU, 120 s | 25.73 | 27.32 | +6.2% |
+| Mednafen, two CPU, 120 s | 20.03 | 20.70 | +3.3% |
+
+The gain is larger with one CPU, probably because the Master waits less for the Slave there (about
+5–10% of fields against 8–20%, measured on the old build), but this was not tested separately. Discards did not change: none with one CPU, none on Ymir with two
+CPUs, and 0.22% on Mednafen with two CPUs, as before.
+
+The picture is unchanged. `T3_RENDER_BENCH_TICK` captures from the old and new SDK at ticks 1500 and 3000
+passed `compare_saturn_presentation.py` (102 stable state fields and the model region), and the whole
+screenshots have the same hash. This covers those two frozen images, not every image of a fight.
+`test_scene_native_commands` now checks every word of an emitted program command.
+
+These are emulator timings, not hardware timings. A real console has not run this build.
+
 ### Regression check after these changes (2026-10-31)
 
 Mednafen, 120 s, final SDK, same pad hashes as before:
