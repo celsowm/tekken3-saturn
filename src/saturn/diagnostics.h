@@ -9,7 +9,7 @@
  * debugger checks it before/after reading; a paused reader rejects odd.
  * Loop rate is NOT necessarily visible screen FPS. */
 #define T3_DIAGNOSTICS_MAGIC 0x54334431u /* T3D1 */
-#define T3_DIAGNOSTICS_VERSION 23u
+#define T3_DIAGNOSTICS_VERSION 24u
 
 typedef struct {
     uint32_t magic, version;
@@ -84,6 +84,8 @@ typedef struct {
     int16_t psx_throw_state[2];
     int16_t psx_camera_throw_player, psx_camera_thrower;
     uint8_t psx_in_throw[2], psx_attack_pending[2];
+    /* Version 24: faces dropped for want of a cold record; they leave holes. */
+    uint32_t faces_skipped;
 } t3_diagnostics_t;
 
 extern volatile t3_diagnostics_t g_t3_diagnostics;

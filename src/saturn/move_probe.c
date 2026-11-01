@@ -1135,6 +1135,14 @@ int32_t t3_move_probe_owned_value(unsigned i,unsigned field) {
 #endif
     return 0;
 }
+int t3_move_probe_fighter_shown(unsigned i) {
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+    if(i<2u && g_active)return t3_psx_match_fighter_shown(&g_owned_match,i);
+#else
+    (void)i;
+#endif
+    return 1;
+}
 int32_t t3_move_probe_world_center(unsigned axis) {
     return (int32_t)(((int64_t)t3_move_probe_owned_value(0,axis+1u)+
                       t3_move_probe_owned_value(1,axis+1u))/2);

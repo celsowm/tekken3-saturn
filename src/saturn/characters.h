@@ -14,8 +14,8 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
 /* 48 floor faces, 36+ fighter body geometry; generous but bounded. */
 #define T3_SCENE_CAPACITY (T3_FACE_COUNT * 2u + 128u)
 /* With the projected queue, full scene records are needed only for faces
- * the compiled path cannot draw (near-plane clipping, uncompiled
- * materials). The measured peak is 225 per frame, in KO close-ups; a face
+ * the compiled path cannot draw (a corner past the near plane or the
+ * off-screen bound, uncompiled materials). The measured peak is 225 per frame, in KO close-ups; a face
  * beyond the bound is dropped and counted in skipped_faces. The Slave
  * batch asks for at most T3_ACTOR_COLD_FACES of them. */
 #ifndef T3_COLD_FACES

@@ -111,7 +111,7 @@ def execute(args):
         require(s.get('psx_round_flow_active')==1,'original round controller must be active')
         require(s['first_error']==0 and s['draw_timeouts']==0 and s['psx_attack_decode_errors']==[0,0],
                 name+': runtime or decode error')
-        require(s['faces_rejected']==0 and s['commands_used']<=s['commands_capacity'],
+        require(s['faces_rejected']==0 and s['faces_skipped']==0 and s['commands_used']<=s['commands_capacity'],
                 name+': scene or command capacity exceeded')
         require(s['psx_skin_preview_applied']==[1,1],name+': both original actors must render')
         return s
@@ -219,6 +219,7 @@ def execute(args):
         s=case('ko-collapse',tape,end)
         require(s['round_done']==1 and s['winner']==0 and s['wins0']==1 and not s['match_done'],
                 'KO must award P1 exactly one round')
+        collapse_faces=s['faces_submitted']
         replay=case('ko-replay',tape,end+240)
         require(replay['psx_round_state']==4 and replay['psx_replay_mode'] in (1,3)
                 and replay['wins0']==1 and replay['psx_health_q16'][1]==0,
@@ -239,6 +240,9 @@ def execute(args):
         victory=case('ko-victory',tape,victory_end)
         require(victory['psx_round_state']==6 and victory['psx_replay_mode']==5 and victory['psx_move_slot'][0] in range(3431,3435)
                 and victory['psx_move_frame'][0]>1,'victory must own an authored pose after replay')
+        # The loser is inactive for the pose, and the original does not draw it.
+        require(victory['faces_submitted']*4<collapse_faces*3,
+                'the loser must not be drawn during the winner pose')
         # Sample the hold soon after victory starts: the victory slot follows
         # frame parity (3431 + button, pose (frame & 1) + 1), and the shorter
         # pose can finish within 60 fields, ending round state 6.

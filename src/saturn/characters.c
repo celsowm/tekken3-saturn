@@ -733,6 +733,9 @@ typedef struct {
     uint16_t lead;
     volatile uint32_t lead_ready;
     sat_result_t lead_result;
+    /* Read before the worker and its deferred simulation start. A hidden actor
+     * is still skinned, but submits no faces. */
+    uint8_t shown[2];
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
     t3_psx_camera_matrix_t original_view;
     t3_psx_joint_t original_joints[2][T3_PSX_DRAW_PARTS];
@@ -1339,17 +1342,19 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
 #if defined(T3_ORIGINAL_FIGHTER_OT)
             context->original_first[0]=context->scene->faces.count;
 #endif
-            st=sat_scene_submit_instance(context->scene,&actor->instance,
-                SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
-            if(skin_to_world_after(st,context,actor))
+            if(context->shown[0]) {
                 st=sat_scene_submit_instance(context->scene,&actor->instance,
                     SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
+                if(skin_to_world_after(st,context,actor))
+                    st=sat_scene_submit_instance(context->scene,&actor->instance,
+                        SAT_SCENE3D_SLOT_INHERIT,actor->projected,actor->world_vertices);
+            }
 #if defined(T3_ORIGINAL_FIGHTER_OT)
             context->original_after[0]=context->scene->faces.count;
 #endif
         }
 #if !defined(T3_MASTER_WORKER_FACES)
-        if(st==SAT_OK && i==1) {
+        if(st==SAT_OK && i==1 && ((const fused_actor_context_t*)sat_parallel_uncached_address(context))->shown[1]) {
             sat_scene3d_prepare_batch_t worker=g_geometry_batch;
             worker.projected_faces=sat_parallel_uncached_address(worker.projected_faces);
             worker.faces=sat_parallel_uncached_address(worker.faces);
@@ -1425,6 +1430,7 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     g_fused_actors=(fused_actor_context_t){.scene=scene,
         .center_x=t3_move_probe_world_center(0),
         .center_z=t3_move_probe_world_center(2),
+        .shown={(uint8_t)t3_move_probe_fighter_shown(0),(uint8_t)t3_move_probe_fighter_shown(1)},
         .result={SAT_OK,SAT_OK},.worker_ready=0u};
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
 #if defined(T3_PARTICLE_GATED_PROJECTION)
@@ -1441,7 +1447,7 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
         g_actors[i].instance.world=NULL;
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
         original_projection_disable(&g_actors[i]);
-        if(original_view_ready && t3_move_probe_copy_world(i,g_fused_actors.original_joints[i],
+        if(original_view_ready && g_fused_actors.shown[i] && t3_move_probe_copy_world(i,g_fused_actors.original_joints[i],
                 &g_fused_actors.original_mask[i])) {
             g_actors[i].original_active=1u;
             g_actors[i].instance.mesh=&g_actors[i].original_mesh;
@@ -1502,12 +1508,14 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
 #if defined(T3_ORIGINAL_FIGHTER_OT)
     g_fused_actors.original_first[1]=scene->faces.count;
 #endif
-    st=sat_scene_submit_instance(scene,&slave->instance,SAT_SCENE3D_SLOT_INHERIT,
-        slave->projected,slave->world_vertices);
-    if(skin_to_world_after(st,&g_fused_actors,slave))
+    if(g_fused_actors.shown[1]) {
         st=sat_scene_submit_instance(scene,&slave->instance,SAT_SCENE3D_SLOT_INHERIT,
             slave->projected,slave->world_vertices);
-    if(st!=SAT_OK)return st;
+        if(skin_to_world_after(st,&g_fused_actors,slave))
+            st=sat_scene_submit_instance(scene,&slave->instance,SAT_SCENE3D_SLOT_INHERIT,
+                slave->projected,slave->world_vertices);
+        if(st!=SAT_OK)return st;
+    }
 #if defined(T3_ORIGINAL_FIGHTER_OT)
     g_fused_actors.original_after[1]=scene->faces.count;
     if(slave->original_active && (st=sat_parallel_cache_sync_range(slave->world_vertices,
@@ -1627,7 +1635,8 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
     T3_PERF_ADD(placement,placement_started);
     T3_PERF_START(geometry_started);
 #if defined(T3_PARALLEL_GEOMETRY)
-    if(T3_DRAW_ACTORS==2 && sat_parallel_slave_available()) {
+    if(T3_DRAW_ACTORS==2 && sat_parallel_slave_available() &&
+       t3_move_probe_fighter_shown(0) && t3_move_probe_fighter_shown(1)) {
         actor_t* slave=&g_actors[1];
         g_geometry_item=(sat_scene3d_prepare_item_t){
             .instance=&slave->instance,
@@ -1698,6 +1707,7 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #endif
     for(i=0;i<T3_DRAW_ACTORS;++i) {
         actor_t* a=&g_actors[i];
+        if(!t3_move_probe_fighter_shown(i))continue;
         if((st=sat_scene_submit_instance(scene,&a->instance,
             SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK)return st;
     }

@@ -74,6 +74,52 @@ static void test_attack_pending(void) {
                                (t3_move_start_facts_t){0,1,0,0},NULL,0));
     assert(victim.attack_pending==7u);
 }
+/* A KO'd fighter caught in the air stayed on screen, frozen there, through the
+ * winner's pose, and the winner walked through a loser frozen on their knees.
+ * The loser must be hidden for the pose, and back for the next round. */
+static void test_win_pose_hides_the_loser(t3_psx_match_config_t c) {
+    static t3_psx_match_t game;
+    t3_input_t neutral={0,0};
+    t3_psx_match_frame_t video={1,{0,0},{0,0}};
+    for(unsigned slot=3431;slot<=3434;++slot)p32(bytes+B2+slot*4,0);
+    c.enable_rounds=2;c.replay_storage=&history;
+    assert(t3_psx_match_init(&game,&c));
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(t3_psx_match_fighter_shown(&game,0) && t3_psx_match_fighter_shown(&game,1));
+    assert(!t3_psx_match_fighter_shown(&game,2));
+    game.fighter[1].health_q16=0;
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(game.flow.state==T3_ROUND_RESULT && game.round_actor[0].won==1);
+    for(unsigned guard=0;game.flow.state!=T3_ROUND_WIN_WAIT;++guard) {
+        assert(guard<1000);
+        assert(t3_psx_match_fighter_shown(&game,0) && t3_psx_match_fighter_shown(&game,1));
+        /* still in the air when the replay ends */
+        if(game.replay.mode==5)game.fighter[1].ground.anchor.y=-500;
+        assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    }
+    assert(game.flow.camera==5); /* the director consumes camera 3 on the same tick */
+    assert(game.fighter[0].vm.slot>=3431 && game.fighter[0].vm.slot<=3434);
+    assert(game.fighter[0].ground.anchor.y==0);
+    assert(t3_psx_match_fighter_shown(&game,0) && !t3_psx_match_fighter_shown(&game,1));
+    const t3_vec3i_t frozen=game.fighter[1].ground.anchor;
+    const int pose=game.fighter[1].vm.clock.pose_frame;
+    for(unsigned guard=0;game.flow.state==T3_ROUND_WIN_WAIT;++guard) {
+        assert(guard<300);
+        assert(t3_psx_match_fighter_shown(&game,0) && !t3_psx_match_fighter_shown(&game,1));
+        assert(game.fighter[1].ground.anchor.y==frozen.y && game.fighter[1].vm.clock.pose_frame==pose);
+        assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    }
+    assert(game.flow.state==T3_ROUND_END);
+    for(unsigned guard=0;game.flow.played!=2;++guard) {
+        assert(guard<4);
+        assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    }
+    for(unsigned i=0;i<3;++i) {
+        assert(t3_psx_match_fighter_shown(&game,0) && t3_psx_match_fighter_shown(&game,1));
+        assert(game.fighter[1].ground.anchor.y==0);
+        assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    }
+}
 int main(void) {
     t3_divmot_t bank;
     t3_psx_match_t game,before;
@@ -212,5 +258,7 @@ int main(void) {
     assert(game.fighter[0].vm.slot==21 && game.flow.timer==2399);
     test_throw_situation();
     test_attack_pending();
+    c.start_intro=0;c.start_seed=0;
+    test_win_pose_hides_the_loser(c);
     return 0;
 }

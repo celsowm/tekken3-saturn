@@ -1567,7 +1567,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         # The pre-fight VS screen; without its private records the fight keeps the plain loading screen.
         set(T3_LOCAL_VS_RECORDS "" CACHE PATH "Private USA BNS records 12-35 (makuma, face_b), as extracted by psx_disc_import.py")
         set(T3_LOCAL_ARCADE_OVERLAY "" CACHE FILEPATH "Private USA arcade.ovl record (BNS id 5)")
-        if(T3_LOCAL_VS_RECORDS AND T3_LOCAL_ARCADE_OVERLAY)
+        # A boot-fighter test build skips the menu that shows it.
+        if(T3_LOCAL_VS_RECORDS AND T3_LOCAL_ARCADE_OVERLAY AND NOT T3_BOOT_FIGHTERS)
             set(_t3_vs_gen "${CMAKE_BINARY_DIR}/generated/private_vs")
             set(_t3_vs_files "${_t3_vs_gen}/VSBG0.BIN" "${_t3_vs_gen}/VSBG1.BIN" "${_t3_vs_gen}/VSBG2.BIN" "${_t3_vs_gen}/VSBG3.BIN"
                 "${_t3_vs_gen}/VSPANEL.BIN" "${_t3_vs_gen}/VSTEXT.BIN")
@@ -2172,6 +2173,8 @@ else()
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_pack_vs_art.py")
         add_test(NAME intro_video_packer
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_pack_intro_video.py")
+        add_test(NAME fighter_draw_gate
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_fighter_draw_gate.py")
         add_test(NAME ps1_private_kmd_face_ot
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_kmd_face_ot.py")
         set_tests_properties(ps1_private_kmd_face_ot PROPERTIES SKIP_RETURN_CODE 77)

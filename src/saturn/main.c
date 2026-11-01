@@ -438,6 +438,7 @@ static void __attribute__((optimize("Os"))) drop_shadows(void) {
     m.color_calc_slot = SAT_INDEXED_SOLID_OPAQUE;
     for(unsigned k = 0; k < 4u; ++k) {
         const unsigned i = k >> 1, shape = k & 1u, r = shape ? R : S;
+        if(!t3_move_probe_fighter_shown(i))continue;
         const int32_t x = (t3_move_probe_owned_value(i,1u) - t3_move_probe_world_center(0)) * 96;
         const int32_t z = -(t3_move_probe_owned_value(i,3u) - t3_move_probe_world_center(2)) * 96;
         sat_quad3_t q;
@@ -1373,6 +1374,7 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.faces_flushed = scene.flushed_faces;
     g_t3_diagnostics.faces_culled = scene.culled_faces;
     g_t3_diagnostics.faces_rejected = scene.rejected_faces;
+    g_t3_diagnostics.faces_skipped = scene.skipped_faces;
     g_t3_diagnostics.commands_used = commands.used;
     g_t3_diagnostics.commands_capacity = commands.capacity;
     g_t3_diagnostics.late_swaps = pacing.late_swaps;

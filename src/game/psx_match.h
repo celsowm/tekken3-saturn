@@ -238,4 +238,10 @@ void t3_psx_match_fighter_view(const t3_psx_fight_camera_t* camera,t3_psx_camera
  * x; an inactive fighter or one without the part keeps it. */
 void t3_psx_match_draw_screen(const t3_psx_match_t* match,unsigned i,
                               const t3_psx_camera_matrix_t* view,int16_t* screen_x);
+/* False while RoundFlow has made the fighter inactive: the other fighter's win
+ * pose, with the camera on them alone. The original neither moves, collides nor
+ * draws an inactive fighter (Tekken3Remake fight_view.gd). */
+static inline int t3_psx_match_fighter_shown(const t3_psx_match_t* match,unsigned i) {
+    return i<2u && match->fighter[i].body.active!=0;
+}
 #endif

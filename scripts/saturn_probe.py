@@ -90,7 +90,7 @@ def decode(raw):
         raise ValueError('truncated diagnostics')
     values = list(struct.unpack_from('>' + 'I' * WORDS, raw))
     result = dict(zip(PREFIX, values[:len(PREFIX)]))
-    if result['magic'] != 0x54334431 or result['version'] not in range(12,24):
+    if result['magic'] != 0x54334431 or result['version'] not in range(12,25):
         raise ValueError('unsupported diagnostics magic/version')
     at = len(PREFIX)
     for name in PAIRS:
@@ -117,6 +117,7 @@ def decode(raw):
     extended+=SCHEDULE_FIELDS if result['version']>=21 else []
     extended+=[('local_pose_cache','I',4)] if result['version']>=22 else []
     extended+=THROW_FIELDS if result['version']>=23 else []
+    extended+=[('faces_skipped','I',1)] if result['version']>=24 else []
     for name, kind, count in extended:
         alignment = struct.calcsize('>' + kind)
         at = (at + alignment - 1) // alignment * alignment
@@ -279,6 +280,9 @@ def run(args):
         if not length:raise ValueError('dump symbol has no size: '+symbol)
         command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
         dump_manifest[symbol]=dict(file=filename,address=location,bytes=length,byte_order='big')
+    for i,span in enumerate(getattr(args,'dump_range',[])):
+        address,length=(int(part,0) for part in span.split(':'))
+        command.extend(['--dump-mem',f'{address:#x}:{length}:{out / f"range-{i}.bin"}'])
     if dump_requests:
         shutil.copyfile(build/'CMakeCache.txt',out/'capture.CMakeCache.txt')
     if args.profile or getattr(args,'debug_profile',False):
@@ -411,6 +415,7 @@ def parser():
     p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
     p.add_argument('--dump-symbol',action='append',default=[],help='dump a variable using this ELF; write a byte-order/address manifest')
     p.add_argument('--dump-vdp2-vram',action='append',default=[],help='VDP2 word offset:word count in the Ymir JSON')
+    p.add_argument('--dump-range',action='append',default=[],help='ADDRESS:BYTES of guest memory, written to range-N.bin')
     return p
 
 
