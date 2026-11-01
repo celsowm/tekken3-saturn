@@ -81,7 +81,7 @@ class ImportTests(unittest.TestCase):
                 self.assertFalse((root/"out/raw").exists())
                 for record,kind in enumerate(kinds,72):
                     data=(root/f"out/divmot/{record:03}/bank_{kind}.t3logic").read_bytes()
-                    self.assertEqual(t3.compact(data,True,True,True)[0],data)
+                    self.assertEqual(t3.compact(data,True,True,True,True)[0],data)
                 # Default import does not extract authored banks.
                 t3.import_game(source,root/"default",expected_sha=options["expected_sha"])
                 self.assertFalse((root/"default/divmot").exists())

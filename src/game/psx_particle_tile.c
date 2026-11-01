@@ -117,6 +117,7 @@ static unsigned map_hi(const uint8_t map[32],int index,int size) {
 static int tile_has_color(int tx,int ty,int x0,int y0,int x1,int y1,
                           int left,int top,int width,int height,const uint8_t u_map[32],const uint8_t v_map[32],
                           const uint8_t pattern[128],const uint16_t palette[16]) {
+    (void)width;(void)height; /* only the box filter reads them */
     int start_x=tx*8>x0?tx*8:x0,end_x=tx*8+8<x1?tx*8+8:x1;
     int start_y=ty*8>y0?ty*8:y0,end_y=ty*8+8<y1?ty*8+8:y1;
     for(int y=start_y;y<end_y;++y)for(int x=start_x;x<end_x;++x) {

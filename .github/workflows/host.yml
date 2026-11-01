@@ -163,7 +163,7 @@ jobs:
           Path("build/asset-divmot/spline.bin").write_bytes(bytes(0x660))
           Path("build/asset-divmot/trig.bin").write_bytes(bytes(0x2800))
           Path("build/asset-divmot/ik.bin").write_bytes(bytes(0x1F2))
-          Path("build/asset-divmot/ground.bin").write_bytes(bytes(1025+0x58C))
+          Path("build/asset-divmot/ground.bin").write_bytes(bytes(1025+0x58C+16+24))
           Path("build/asset-divmot/body.bin").write_bytes(bytes(432))
           PY
           python3 scripts/build_local_divmot_assets.py \

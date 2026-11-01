@@ -589,7 +589,7 @@ static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
         /* Ranges stride by the largest mesh; a smaller one ends early. */
         const uint32_t used=first>=actor->vertex_count?0u:
             count<actor->vertex_count-first?count:actor->vertex_count-first;
-        if(used)
+        if(used) {
 #if defined(T3_COMPILED_RENDERER)
         if(actor->compiled_active) {
             st=t3_compiled_deform_range(&g_compiled_renderer,&actor->compiled_pose,
@@ -598,6 +598,7 @@ static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
 #endif
         st=sat_skin_deform_range(&actor->asset->skin,actor->joints,
                 T3_JOINT_COUNT,first,used,actor->mesh.vertices,actor->mesh.vertex_cap);
+        }
         if(st!=SAT_OK) {
             ranges->range_result[range_index]=st;
             return;
