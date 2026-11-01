@@ -7,29 +7,37 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.2 HW REPORT - SATURN DEMO
+README = '''TEKKEN 3 V0.2 - SEGA SATURN FAN PORT (DEMO)
 
-Open music.cue in a Saturn emulator with a compatible Saturn BIOS, or use a
-compatible Saturn disc loader. Keep music.bin alongside music.cue. A BIOS and
-emulator are not included. On real Saturns the game is known to have speed and
-music problems; this build exists to find out why.
+HOW TO PLAY
+Open music.cue in a Saturn emulator (Mednafen, Ymir...) with a compatible Saturn
+BIOS, or use a Saturn disc loader. Keep music.bin next to music.cue. A BIOS and
+emulator are not included.
 
-Press START at the title, then select ARCADE MODE. Connect a second Saturn
-controller before starting for VS mode. All 21 fighters are on the select screen.
-Saturn: D-pad movement, X/Y punches, A/B kicks, L guard, R crouch, C jump.
+WHAT IS NEW IN V0.2
+- Boot intro: the LibSaturn logo movie, then the Tekken 3 opening movie. The
+  movies are decoded in software by the Saturn's two SH-2 CPUs. START skips them.
+- The pre-fight VS screen, shown while the fight loads, with the version and a
+  LibSaturn credit in its bottom line.
+- No black gap between the character select and the VS screen.
+
+PLAYING
+Press START at the title, then select ARCADE MODE. Connect a second controller
+before starting for two-player VS; with port 2 empty you fight the CPU. All 21
+fighters are on the select screen.
+Saturn pad: D-pad moves, X/Y punches, A/B kicks, L guard, R crouch, C jump.
 In OPTION MODE, UP/DOWN picks a row and LEFT/RIGHT changes it: DEBUG shows a
 performance report, MUSIC turns the CD music off. START resets a match.
+Example Mednafen keys: arrows move, A/S punch, Z/X kick, C jump, Q guard,
+W crouch, Return START. Set these in your emulator.
 
-HELP WITH A REAL SATURN TEST
-1. OPTION MODE: DEBUG ON, MUSIC ON. Play Paul against Law in ARCADE MODE. Film
-   30 seconds of the fight so that every number on screen can be read.
-2. Reset the console and repeat with DEBUG ON, MUSIC OFF.
-3. Send both clips, and say which device you used (Satiator, SAROO, Fenrir...),
-   its firmware version, your Saturn's region, whether the game felt slow, and
-   whether you heard music.
-
-Example Mednafen keyboard bindings: arrows move/step, A/S punch, Z/X kick,
-C jump, Q guard, W crouch, Return START. Set these in your emulator.
+REAL SATURN
+This build has run in emulators. On a real Saturn it is not verified: the movie
+streaming (CD drive speed) and the fight speed and music are untested, and
+earlier builds had speed and music problems. If you try it, please send a clip
+of the intro and 30 seconds of a fight with DEBUG ON, and say which device you
+used (Satiator, SAROO, Fenrir...), its firmware, your Saturn's region, whether
+the movies and music played and whether it felt slow.
 
 Unofficial fan project; not affiliated with Bandai Namco. Tekken 3 and its
 characters, artwork and sounds belong to their respective owners.
