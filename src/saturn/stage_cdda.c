@@ -18,67 +18,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * CD-DA range and playback adapted from LibSaturn's dino_demo/music_cdda.c.
+ * CD-DA range and playback go through LibSaturn's saturn/cdda.h.
  * SCSP external-input routing: Sega SCSP manual 4.2.7; see LibSaturn's
  * docs/SCSP_AUDIO_STREAMING_GUIDE.md. All CD data reads must finish first. */
 #include "stage_cdda.h"
 #if defined(T3_STAGE_CDDA)
 #include "disc.h"
-#include <saturn/video.h>
+#include <saturn/cdda.h>
 
-#define EXTS_LEFT (*(volatile uint16_t*)0x25B00216u)
-#define EXTS_RIGHT (*(volatile uint16_t*)0x25B00236u)
+/* -6 dB per CD channel leaves headroom for simultaneous fight sounds. */
+void t3_stage_cdda_mix(void) {sat_cdda_set_level(SAT_CDDA_LEVEL_MAX-2);}
 
-void t3_stage_cdda_mix(void) {
-    /* Sound voices can update slot 16/17 direct-send words. Preserve those
-     * high bytes while restoring the external-input return after SFX updates. */
-    EXTS_LEFT=(uint16_t)((EXTS_LEFT&0xff00u)|0x00bfu);
-    EXTS_RIGHT=(uint16_t)((EXTS_RIGHT&0xff00u)|0x00afu);
-}
-
-sat_result_t t3_stage_cdda_status(uint16_t response[4]) {
+sat_result_t t3_stage_cdda_status(sat_cd_status_t* status) {
     sat_cd_block_t* block;
     SAT_TRY(t3_disc_block(&block));
-    const uint16_t status[4]={0u,0u,0u,0u};
-    return sat_cd_block_command(block,status,response);
+    return sat_cd_get_status(block,status);
 }
 
 /* Plays the range [track start + skip, + length) of audio track 2 on repeat; length 0 is to its end. */
 static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
     sat_cd_block_t* block;
     SAT_TRY(t3_disc_block(&block));
-    const uint16_t toc[4]={0x0200u,0u,0u,0u}, end[4]={0x0600u,0u,0u,0u};
-    uint16_t response[4];
-    *(volatile uint16_t*)SAT_CD_BLOCK_HIRQ=(uint16_t)~SAT_CD_BLOCK_HIRQ_DRDY;
-    SAT_TRY(sat_cd_block_command(block,toc,response));
-    if(response[1]!=204u) { (void)sat_cd_block_command(block,end,response);return SAT_ERR_IO; }
-    unsigned field;
-    for(field=0;field<120u;++field) {
-        if((*(volatile uint16_t*)SAT_CD_BLOCK_HIRQ&SAT_CD_BLOCK_HIRQ_DRDY)!=0u)break;
-        SAT_TRY(sat_wait_vblank());
-    }
-    if(field==120u)return SAT_ERR_TIMEOUT;
-    uint32_t track=0,last=0,lead=0;
-    for(unsigned i=0;i<102u;++i) {
-        const uint32_t hi=*(volatile uint16_t*)SAT_CD_BLOCK_DTR;
-        const uint32_t lo=*(volatile uint16_t*)SAT_CD_BLOCK_DTR;
-        const uint32_t value=(hi<<16u)|lo;
-        if(i==1u)track=value;
-        if(i==100u)last=value;
-        if(i==101u)lead=value;
-    }
-    SAT_TRY(sat_cd_block_command(block,end,response));
-    if(response[1]!=204u)return SAT_ERR_IO;
-    const uint32_t start=track&0xffffffu,finish=lead&0xffffffu;
-    if((track>>24u)!=1u || ((last>>16u)&255u)!=2u || finish<=start)return SAT_ERR_INVALID_ARG;
-    if(finish-start<=skip+limit)return SAT_ERR_INVALID_ARG;
-    const uint32_t length=limit?limit:finish-start-skip;
-    const uint32_t from=start+skip;
-    const uint16_t play[4]={(uint16_t)(0x1080u|(from>>16u)),(uint16_t)from,
-                            (uint16_t)(0x0f80u|(length>>16u)),(uint16_t)length};
-    SAT_TRY(sat_cd_block_command(block,play,response));
-    if((response[0]>>8u)==0xffu)return SAT_ERR_IO;
-    /* -6 dB per CD channel leaves headroom for simultaneous fight sounds. */
+    sat_cd_toc_t toc;
+    uint32_t start,whole;
+    SAT_TRY(sat_cd_read_toc(block,&toc));
+    if(toc.last_track!=2u)return SAT_ERR_INVALID_ARG;
+    SAT_TRY(sat_cd_toc_audio_track(&toc,2u,&start,&whole));
+    if(whole<=skip+limit)return SAT_ERR_INVALID_ARG;
+    SAT_TRY(sat_cdda_play(block,start+skip,limit?limit:whole-skip));
     t3_stage_cdda_mix();
     return SAT_OK;
 }

@@ -25,8 +25,9 @@ the SCSP mix writes, so both settings can be compared on one console and loader.
 | `TICK` | Simulation ticks per second, times 10 | 600 is full speed; well below that is slow motion |
 | `DROP` | Total fields discarded by the catch-up cap | Should stop rising; rising means below 15 images/s |
 | `ELAP` | Fields covered by the last image | Above 4 is past the cap (`T3_MAX_RECOVERY_FIELDS`) |
-| `IRQ` | SCU VBlank interrupts live | 0 means fields come from `FRM` (still FRT time, so speed holds) and images no longer overlap drawing |
-| `VBI`, `FRM` | Interrupt count and `sat_frame_count` | `VBI` should rise about 60 per second |
+| `IRQ` | SCU VBlank interrupts live | 0 means fields come from FRT time (so speed holds) and images no longer overlap drawing |
+| `VBI` | VBlank interrupt count | Should rise about 60 per second |
+| `IFB` | Times VBlank interrupts stopped mid-run (`sat_irq_fallbacks`) | Above 0 is a hardware or loader clue |
 | `HZ`, `PAL` | Refresh rate assumed, and TVSTAT's PAL bit | A disagreement is a video-timing bug |
 | `MCCR`, `SCCR` | Master and Slave cache control as start-up found it | Anything but 1 means the BIOS or loader left it so and LibSaturn corrected it; `SCCR` 999 means not read |
 | `SLV` | The Slave ran a verified task at boot | 0 means the work falls back to the Master |

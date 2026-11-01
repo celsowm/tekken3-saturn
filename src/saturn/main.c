@@ -465,7 +465,7 @@ static uint8_t g_show_profiler;
 /* OPTION MODE's music switch, and the readings of the hardware report. */
 static uint8_t g_music_off;
 static sat_result_t g_cdda_result,g_cd_status_result;
-static uint16_t g_cd_status[4];
+static sat_cd_status_t g_cd_status;
 static uint32_t g_end_frame_ms,g_end_frame_sum_ms,g_end_frame_avg_ms,g_rate_sample_ticks,g_tick_rate_x10;
 static uint32_t g_render_work_ms, g_render_submissions;
 #if defined(T3_NATIVE_WAIT_PROBE)
@@ -484,14 +484,6 @@ volatile uint32_t g_t3_vdp1_overlap_frames;
 #endif
 static uint32_t g_rate_sample_vblank, g_rate_sample_frames, g_rate_x10;
 
-static uint32_t display_fields(void) {
-#if defined(T3_OVERLAP_VDP1)
-    /* sat_frame_count advances when sat_wait_vblank observes an edge. The
-     * interrupt counter keeps advancing during CPU preparation as well. */
-    if(sat_irq_active())return sat_irq_count(SAT_IRQ_VBLANK_IN);
-#endif
-    return sat_frame_count();
-}
 
 /* Read by emulator/debugger using the ELF symbol g_t3_diagnostics.
  * frame_serial is written last: it marks a complete snapshot. */
@@ -1516,15 +1508,15 @@ static void draw_profiler(void) {
         const struct {const char* label;uint32_t value;} right[]={
             {"TICK ",g_tick_rate_x10},{"DROP ",g_t3_diagnostics.discarded_fields},
             {"ELAP ",g_t3_diagnostics.elapsed_fields_last},{"IRQ ",(uint32_t)sat_irq_active()},
-            {"VBI ",sat_irq_count(SAT_IRQ_VBLANK_IN)},{"FRM ",sat_frame_count()},
+            {"VBI ",sat_irq_count(SAT_IRQ_VBLANK_IN)},{"IFB ",sat_irq_fallbacks()},
             {"HZ ",sat_video_refresh_hz()},{"PAL ",sat_video_is_pal()},
             {"MCCR ",sat_sh2_cache_control_at_start(0)},
             {"SCCR ",g_t3_boot_slave_verified?sat_sh2_cache_control_at_start(1):999u},
             {"SLV ",g_t3_boot_slave_verified},{"END MS ",g_end_frame_avg_ms}};
         const struct {const char* label;uint32_t value;} left[]={
             {"MUSIC ",(uint32_t)!g_music_off},{"CD PLAY ",(uint32_t)cdda},{"CD CMD ",(uint32_t)status},
-            {"CD ST ",(uint32_t)(g_cd_status[0]>>8u)&15u},{"CD TRK ",(uint32_t)(g_cd_status[1]&255u)},
-            {"CD FAD ",(((uint32_t)g_cd_status[2]&255u)<<16u)|g_cd_status[3]}};
+            {"CD ST ",g_cd_status.state},{"CD TRK ",g_cd_status.track},
+            {"CD FAD ",g_cd_status.fad}};
         for(unsigned i=0;i<sizeof(right)/sizeof(right[0]);++i)
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,right[i].label,right[i].value,RIGHT_X,RIGHT_Y+ROW*(int)i));
         for(unsigned i=0;i<sizeof(left)/sizeof(left[0]);++i)
@@ -1554,7 +1546,7 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     sat_scene_stats_t scene = {0};
     sat_vdp1_command_stats_t commands = {0};
     sat_vdp1_frame_stats_t pacing = {0};
-    uint32_t now = display_fields();
+    uint32_t now = sat_field_count();
     uint32_t span = now - g_rate_sample_vblank;
     ++g_t3_diagnostics.snapshot_epoch;
     g_t3_diagnostics.elapsed_fields_last=g_tick_clock.elapsed_last;
@@ -1583,7 +1575,7 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
         g_end_frame_avg_ms=g_end_frame_sum_ms/g_rate_sample_frames;
         g_end_frame_sum_ms=0;
         /* Only while the report shows: normal play sends the CD Block nothing. */
-        if(g_show_profiler)g_cd_status_result=t3_stage_cdda_status(g_cd_status);
+        if(g_show_profiler)g_cd_status_result=t3_stage_cdda_status(&g_cd_status);
         g_rate_sample_vblank = now;
         g_rate_sample_frames = 0;
     }
@@ -1870,7 +1862,7 @@ int main(void) {
     SAT_PANIC_IF_ERROR(sat_parallel_register_task(PREPARE_SIMULATION_TASK,prepare_simulation_entry));
 #endif
 #endif
-    prev_frame = display_fields();
+    prev_frame = sat_field_count();
     g_rate_sample_vblank = prev_frame;
     g_run_mark = prev_frame;
 #if defined(T3_OVERLAP_VDP1)
@@ -1927,7 +1919,7 @@ int main(void) {
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
             /* A finished match goes back to the select screen. */
             if(g_game.match_done && !g_practice && g_run_mode) {
-                g_run_seconds=(uint16_t)(g_run_seconds+(display_fields()-g_run_mark)/60u);
+                g_run_seconds=(uint16_t)(g_run_seconds+(sat_field_count()-g_run_mark)/60u);
                 const t3_run_step_t step=t3_run_after_match(g_run_mode,g_game.winner==0,g_wins);
                 g_wins=step.wins;
                 restart_program(step.finished?PHASE_RESULT:PHASE_SELECT);
@@ -1963,7 +1955,7 @@ int main(void) {
 #if defined(T3_SLOW_IMAGE_FIELDS)
         for(uint32_t slow=0;slow<T3_SLOW_IMAGE_FIELDS;++slow)SAT_PANIC_IF_ERROR(sat_wait_vblank());
 #endif
-        now = display_fields();
+        now = sat_field_count();
         elapsed = now - prev_frame;
 #if defined(T3_PERF_SAMPLES)
         g_t3_perf_current.field=now;

@@ -22,12 +22,10 @@ latency is introduced. Both actor geometry tasks retain their existing split.
 One startup wait initializes the first original pose before gameplay becomes
 visible; subsequent preparations overlap drawing.
 
-The clock must advance independently of that wait. In the pinned SDK,
-`sat_frame_count()` is updated by `sat_wait_vblank()`, rather than by every
-VBlank interrupt. With overlap enabled, the port instead reads the public
-`sat_irq_count(SAT_IRQ_VBLANK_IN)` for scheduling and diagnostics. If interrupts
-are unavailable, it retains the original wait and field counter. The completed
-overlap counter counts frames whose initial wait was actually bypassed.
+The clock must advance independently of that wait, so the port reads
+`sat_field_count()`, which is current during CPU preparation as well. If
+interrupts are unavailable, it retains the original wait. The completed overlap
+counter counts frames whose initial wait was actually bypassed.
 
 An initial diagnostic that removed the wait without replacing the clock
 completed hundreds of submissions with zero simulation ticks. It is invalid
