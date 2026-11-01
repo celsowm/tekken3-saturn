@@ -118,8 +118,12 @@ static int32_t atan4096(const tab_t* t,int64_t x64,int64_t z64) {
 }
 
 int32_t t3_psx_camera_atan4096(const tab_t* t,int32_t x,int32_t z) {return atan4096(t,x,z);}
+/* The tables are fixed for a match, which validates them when it starts. The
+ * camera's per-tick steps need that answer four times a tick, not the scan. */
+static const tab_t* g_checked_tables;
 int t3_psx_camera_valid(const tab_t* t) {
     int i,k,r;
+    g_checked_tables=NULL;
     if(!t || !t->trig || !t->trig->data || t->trig->size!=T3_PSX_TRIG_BYTES || !t->atan || !t->choices ||
        !t->sqrt || t->sqrt_size!=SQRT_BYTES)return 0;
     for(i=0;i<T3_PSX_CAMERA_HIT_ROWS;i++) {
@@ -135,8 +139,10 @@ int t3_psx_camera_valid(const tab_t* t) {
         for(k=0;k<T3_PSX_CAMERA_SHAKE_BYTES && t->shakes[i][k]!=SHAKE_END;k++){}
         if(k==T3_PSX_CAMERA_SHAKE_BYTES)return 0;
     }
+    g_checked_tables=t;
     return 1;
 }
+static int tables_ok(const tab_t* t) {return t && (t==g_checked_tables || t3_psx_camera_valid(t));}
 
 void t3_psx_camera_reset(cam_t* c) {
     c->view.pitch=c->view.yaw=0;c->view.x=c->view.z=0;c->view.y=-0x4B0;
@@ -532,7 +538,7 @@ static int32_t intro_step(cam_t* c,const tab_t* t) {
 }
 
 int t3_psx_camera_round_start(cam_t* c,const tab_t* t,const fig_t f[2],const t3_psx_camera_frame_t* fr) {
-    if(!c || !t3_psx_camera_valid(t) || !f || !fr)return 0;
+    if(!c || !tables_ok(t) || !f || !fr)return 0;
     init_sources(c,f);
     intro_start(c,t,f,fr,0);
     return 1;
@@ -880,7 +886,7 @@ static int stream_step(cam_t* c,const tab_t* t,const fig_t f[2],int32_t restart_
 }
 int t3_psx_camera_stream_update(cam_t* c,const tab_t* t,const fig_t f[2],int32_t restart_script,
                                 const t3_psx_camera_frame_t* fr,int32_t* weight) {
-    if(!c || !t3_psx_camera_valid(t) || !f || !fr || !fr->rand || !weight)return 0;
+    if(!c || !tables_ok(t) || !f || !fr || !fr->rand || !weight)return 0;
     return stream_step(c,t,f,restart_script,fr,weight);
 }
 
@@ -1229,7 +1235,7 @@ static int winner_step(cam_t* c,const tab_t* t,const fig_t f[2]) {
 }
 int t3_psx_camera_loser_start(cam_t* c,const tab_t* t,const fig_t* f,int alive,const t3_psx_camera_frame_t* fr) {
     int32_t a,reach;
-    if(!c || !t3_psx_camera_valid(t) || !f || !fr || !fr->rand || !fr->camera_rand)return 0;
+    if(!c || !tables_ok(t) || !f || !fr || !fr->rand || !fr->camera_rand)return 0;
     c->weight[0]=ONE;c->weight[1]=c->weight[2]=0;
     if(!alive) {
         c->loser_height=0;
@@ -1300,7 +1306,7 @@ static void replay_targets(cam_t* c,const fig_t f[2]) {
 }
 void t3_psx_camera_replay_step(cam_t* c,const tab_t* t,const fig_t f[2]) {
     int32_t d;
-    if(!c || !t3_psx_camera_valid(t) || !f || !c->replay_on)return;
+    if(!c || !tables_ok(t) || !f || !c->replay_on)return;
     replay_targets(c,f);
     frame_fighters(c,t,c->replay_pitch,(int32_t)c->replay_swing+c->replay_yaw,c->replay_reset,c->replay_distance,
                    T3_PSX_CAMERA_SCRIPT);
@@ -1313,7 +1319,7 @@ void t3_psx_camera_replay_step(cam_t* c,const tab_t* t,const fig_t f[2]) {
 }
 int t3_psx_camera_replay_start(cam_t* c,const tab_t* t,const fig_t f[2],const t3_psx_camera_frame_t* fr) {
     int32_t axis;
-    if(!c || !t3_psx_camera_valid(t) || !f || !fr || !fr->rand || !fr->ai_rand)return 0;
+    if(!c || !tables_ok(t) || !f || !fr || !fr->rand || !fr->ai_rand)return 0;
     t3_psx_camera_reset(c);
     init_sources(c,f);
     c->replay_track=-1;c->replay_on=1;
@@ -1341,7 +1347,7 @@ int t3_psx_camera_replay_start(cam_t* c,const tab_t* t,const fig_t f[2],const t3
 }
 
 int t3_psx_camera_step(cam_t* c,const tab_t* t,const fig_t f[2],const t3_psx_camera_frame_t* fr,int16_t* phase) {
-    if(!c || !t3_psx_camera_valid(t) || !f || !fr || !fr->rand || !phase)return 0;
+    if(!c || !tables_ok(t) || !f || !fr || !fr->rand || !phase)return 0;
     c->skip_side=-1;
     if(f[0].bank_type==BANK_YOSHIMITSU && camera_byte(&f[0])==CAMERA_BYTE_SKIP)c->skip_side=0;
     else if(f[1].bank_type==BANK_YOSHIMITSU && camera_byte(&f[1])==CAMERA_BYTE_SKIP)c->skip_side=1;
@@ -1383,7 +1389,7 @@ void t3_psx_camera_shake_start(cam_t* c,int script) {
 }
 void t3_psx_camera_shake_step(cam_t* c,const tab_t* t) {
     int32_t v;
-    if(!c || !t3_psx_camera_valid(t) || c->shake_script<0 || c->shake_script>=T3_PSX_CAMERA_SHAKES ||
+    if(!c || !tables_ok(t) || c->shake_script<0 || c->shake_script>=T3_PSX_CAMERA_SHAKES ||
        c->shake_pos<0 || c->shake_pos>=T3_PSX_CAMERA_SHAKE_BYTES)return;
     v=t->shakes[c->shake_script][c->shake_pos++];
     if(v==SHAKE_END){c->shake_script=-1;return;}
@@ -1392,7 +1398,7 @@ void t3_psx_camera_shake_step(cam_t* c,const tab_t* t) {
 
 int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out) {
     int32_t sy,cy,sx,cx,ry[9],rx[9],r[9],e[3];int i,k,col;
-    if(!v || !t3_psx_camera_valid(t) || !out || v->roll)return 0;
+    if(!v || !tables_ok(t) || !out || v->roll)return 0;
     sy=sn(t,-v->yaw&0xFFF);cy=cs(t,-v->yaw&0xFFF);
     sx=sn(t,-v->pitch&0xFFF);cx=cs(t,-v->pitch&0xFFF);
     ry[0]=cy;ry[1]=0;ry[2]=-sy;ry[3]=0;ry[4]=ONE;ry[5]=0;ry[6]=sy;ry[7]=0;ry[8]=cy;
@@ -1540,7 +1546,7 @@ void t3_psx_backdrop_setup(t3_psx_backdrop_turn_t* b,const t3_psx_camera_view_t*
  * the panorama turns by 2/3 of the camera's sideways slide, at most 0xAA. */
 int t3_psx_backdrop_step(t3_psx_backdrop_turn_t* b,const t3_psx_camera_view_t* v,const tab_t* t,int intro) {
     int32_t bearing,y,u,turned,d,turn=0;
-    if(!b || !v || !t3_psx_camera_valid(t))return 0;
+    if(!b || !v || !tables_ok(t))return 0;
     bearing=s16(atan4096(t,(int64_t)b->point_x-v->x,(int64_t)b->point_z-v->z));
     y=v->yaw&0xFFF;
     b->prev_yaw=b->yaw&0xFFF;b->yaw=y;

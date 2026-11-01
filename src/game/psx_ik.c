@@ -19,11 +19,11 @@ static int16_t signed16(uint16_t u) {
 static int32_t signed32(uint32_t u) {
     return u<0x80000000u?(int32_t)u:(int32_t)((int64_t)u-4294967296LL);
 }
-static int32_t w32(int64_t v) {return signed32((uint32_t)(uint64_t)v);}
-static int32_t asr(int64_t v,unsigned bits) {
-    return sat_floor_shift_i64(v,bits);
-}
-static int32_t trunc12(int32_t v) {return v<0?asr((int64_t)v+4095,12u):asr(v,12u);}
+/* The original's intermediates wrap at 32 bits, so every product and sum below
+ * can be taken modulo 2^32; a 64-bit form would only add a helper call per shift. */
+static inline uint32_t mul(int32_t x,int32_t y) {return (uint32_t)x*(uint32_t)y;}
+#define ASR(value,bits) sat_floor_shift_i32((int32_t)(value),(bits))
+static inline int32_t trunc12(int32_t v) {return v<0?ASR(v+4095,12u):ASR(v,12u);}
 static int16_t sat16(int64_t v) {
     return (int16_t)(v>32767?32767:(v< -32768?-32768:v));
 }
@@ -132,10 +132,9 @@ static void bend(t3_psx_matrix_t* m,int32_t sine,int32_t cosine) {
     unsigned i;
     for(i=0;i<3u;++i) {
         int32_t b=m->m[i][1];
-        m->m[i][0]=signed16((uint16_t)asr((int64_t)a[i]*cosine+
-                                                 (int64_t)b*sine,12u));
-        m->m[i][1]=signed16((uint16_t)asr(-(int64_t)a[i]*sine+
-                                                 (int64_t)b*cosine,12u));
+        /* Only bits 12..27 of each sum survive the 16-bit store. */
+        m->m[i][0]=signed16((uint16_t)ASR(mul(a[i],cosine)+mul(b,sine),12u));
+        m->m[i][1]=signed16((uint16_t)ASR(mul(b,cosine)-mul(a[i],sine),12u));
     }
 }
 /* Return 1=solved, 2=too short to bend (upper written, lower left as it was),
@@ -145,61 +144,61 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
                  const t3_psx_ik_tables_t* table,
                  t3_psx_matrix_t* upper,t3_psx_matrix_t* lower) {
     int32_t x=target[0],y=target[1],z=target[2];
-    int32_t sq=w32((int64_t)x*x+(int64_t)y*y+(int64_t)z*z);
+    int32_t sq=(int32_t)(mul(x,x)+mul(y,y)+mul(z,z));
     int32_t length,inv,ux,uy,uz,k,a,e,b,p,q,r,w,v,cos_a,cos_b,sin_a,sin_b,off,diag;
     int32_t cs,ss,d;
     if(sq<=0)return 0;
     if(!square_root0((uint32_t)sq,table,&length))return -1;
     if(length<=0)return 0;
     inv=0x400000/length;
-    ux=asr(w32((int64_t)x*inv),10u);
-    uy=asr(w32((int64_t)y*inv),10u);
-    uz=asr(w32((int64_t)z*inv),10u);
+    ux=ASR(mul(x,inv),10u);
+    uy=ASR(mul(y,inv),10u);
+    uz=ASR(mul(z,inv),10u);
     k=ux+ONE;
     if(k==0) {
         k=-0x800;
-        a=asr(w32((int64_t)y*inv),11u);
+        a=ASR(mul(y,inv),11u);
         e=-ONE;
     } else {
         if(k<0x2000) {
             k=-0x1000000/k;
-            a=asr(w32((int64_t)k*uy),12u);
+            a=ASR(mul(k,uy),12u);
         } else {
             k=-0x800;
-            a=asr(-uy,1u);
+            a=ASR(-uy,1u);
         }
         e=ONE;
     }
-    b=asr(w32((int64_t)a*uy),12u)+e;
-    k=asr(w32((int64_t)k*uz),12u);
+    b=ASR(mul(a,uy),12u)+e;
+    k=ASR(mul(k,uz),12u);
     upper->m[0][0]=signed16((uint16_t)ux);
     upper->m[1][0]=signed16((uint16_t)uy);
     upper->m[2][0]=signed16((uint16_t)uz);
     cs=trig_lookup(&table->trig,swivel,1);
     ss=trig_lookup(&table->trig,swivel,0);
-    p=asr(w32((int64_t)a*(e+ux)),12u);
-    q=asr(w32((int64_t)k*(e+ux)),12u);
-    r=asr(w32((int64_t)k*uy),12u);
-    w=asr(w32((int64_t)a*uz),12u);
-    v=asr(w32((int64_t)k*uz),12u)+ONE;
-    upper->m[0][1]=signed16((uint16_t)asr(w32((int64_t)cs*p+(int64_t)ss*q),12u));
-    upper->m[1][1]=signed16((uint16_t)asr(w32((int64_t)cs*b+(int64_t)ss*r),12u));
-    upper->m[2][1]=signed16((uint16_t)asr(w32((int64_t)cs*w+(int64_t)ss*v),12u));
-    upper->m[0][2]=signed16((uint16_t)asr(w32(-(int64_t)ss*p+(int64_t)cs*q),12u));
-    upper->m[1][2]=signed16((uint16_t)asr(w32(-(int64_t)ss*b+(int64_t)cs*r),12u));
-    upper->m[2][2]=signed16((uint16_t)asr(w32(-(int64_t)ss*w+(int64_t)cs*v),12u));
+    p=ASR(mul(a,e+ux),12u);
+    q=ASR(mul(k,e+ux),12u);
+    r=ASR(mul(k,uy),12u);
+    w=ASR(mul(a,uz),12u);
+    v=ASR(mul(k,uz),12u)+ONE;
+    upper->m[0][1]=signed16((uint16_t)ASR(mul(cs,p)+mul(ss,q),12u));
+    upper->m[1][1]=signed16((uint16_t)ASR(mul(cs,b)+mul(ss,r),12u));
+    upper->m[2][1]=signed16((uint16_t)ASR(mul(cs,w)+mul(ss,v),12u));
+    upper->m[0][2]=signed16((uint16_t)ASR(mul(cs,q)-mul(ss,p),12u));
+    upper->m[1][2]=signed16((uint16_t)ASR(mul(cs,r)-mul(ss,b),12u));
+    upper->m[2][2]=signed16((uint16_t)ASR(mul(cs,v)-mul(ss,w),12u));
     if(arm) {
         if(length>0x215){identity(lower);return 1;}
         if(length<0x47)return 2;
-        d=asr(w32((int64_t)inv*0x9204),11u);
-        cos_a=asr(w32(((int64_t)length*0x800+d)*0xD9),16u);
-        cos_b=asr(w32(((int64_t)length*0x800-d)*0x11A),16u);
+        d=ASR(mul(inv,0x9204),11u);
+        cos_a=ASR(mul(length,0x800)*0xD9u+mul(d,0xD9),16u);
+        cos_b=ASR(mul(length,0x800)*0x11Au-mul(d,0x11A),16u);
     } else {
         if(length>0x37B){identity(lower);return 1;}
         if(length<3)return 2;
-        d=asr(w32((int64_t)inv*0x6F8),11u);
-        cos_a=asr(w32(((int64_t)length*0x800+d)*0x92),16u);
-        cos_b=asr(w32(((int64_t)length*0x800-d)*0x93),16u);
+        d=ASR(mul(inv,0x6F8),11u);
+        cos_a=ASR(mul(length,0x800)*0x92u+mul(d,0x92),16u);
+        cos_b=ASR(mul(length,0x800)*0x93u-mul(d,0x93),16u);
     }
     if(cos_a>ONE){cos_a=ONE;sin_a=0;}
     else if(cos_a< -ONE){cos_a=-ONE;sin_a=0;}
@@ -211,11 +210,9 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
     bend(upper,signed16((uint16_t)sin_a),cos_a);
     if(cos_b>ONE){cos_b=ONE;sin_b=0;}
     else if(cos_b< -ONE){cos_b=-ONE;sin_b=0;}
-    else sin_b=asr(w32((int64_t)sin_a*(arm?-0x14D4:-0x1012)),12u);
-    diag=signed16((uint16_t)trunc12(w32((int64_t)cos_a*cos_b+
-                                        (int64_t)sin_a*sin_b)));
-    off=signed16((uint16_t)trunc12(w32(-(int64_t)sin_a*cos_b+
-                                       (int64_t)cos_a*sin_b)));
+    else sin_b=ASR(mul(sin_a,arm?-0x14D4:-0x1012),12u);
+    diag=signed16((uint16_t)trunc12((int32_t)(mul(cos_a,cos_b)+mul(sin_a,sin_b))));
+    off=signed16((uint16_t)trunc12((int32_t)(mul(cos_a,sin_b)-mul(sin_a,cos_b))));
     lower->m[0][0]=signed16((uint16_t)diag);
     lower->m[0][1]=signed16((uint16_t)-off);
     lower->m[0][2]=0;
@@ -236,7 +233,8 @@ int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
     t3_psx_matrix_t result[T3_PSX_ROTATION_SLOTS];
     t3_psx_matrix_t basis;
     t3_vec3i_t skeletal[4],offsets[4];
-    frame_t root,chest,right,left,hips,fr[4];
+    frame_t root,chest,right,left,hips;
+    const frame_t* const fr[4]={&right,&left,&hips,&hips};
     int32_t targets[4][3];
     uint32_t mask;
     unsigned i,j;
@@ -255,9 +253,7 @@ int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
     }
     for(i=0;i<3u;++i) {
         unsigned slot=k_bases[i];
-        t3_psx_matrix_t m;
-        if(!t3_psx_mul_rot(&result[slot],&basis,&m))return -1;
-        result[slot]=m;
+        if(!t3_psx_mul_rot(&result[slot],&basis,&result[slot]))return -1;
     }
     root.rot=result[0];
     root.t.x=pose[0];root.t.y=pose[1];root.t.z=pose[2];
@@ -266,21 +262,19 @@ int T3_SIM_IMPL(t3_psx_pose_ik)(const int16_t pose[T3_PSX_POSE_CHANNELS],
        !compose(&left,&chest,&result[7],skeletal[2]) ||
        !compose(&hips,&root,&result[11],skeletal[3]))
         return -1;
-    fr[0]=right;fr[1]=left;fr[2]=hips;fr[3]=hips;
     mask=input_mask;
     for(i=0;i<4u;++i) {
-        t3_psx_matrix_t upper,lower;
         int rc;
-        if(!limb_target(pose,k_target[i],&fr[i],offsets[i],targets[i]))
+        if(!limb_target(pose,k_target[i],fr[i],offsets[i],targets[i]))
             return -1;
-        rc=solve(targets[i],pose[k_swivel[i]],i<2u,table,&upper,&lower);
+        /* In place: a singular limb returns before it writes either matrix. */
+        rc=solve(targets[i],pose[k_swivel[i]],i<2u,table,
+                 &result[k_upper[i]],&result[k_lower[i]]);
         if(rc<0)return -1;
         if(rc==0)continue; /* singular limbs are unknown, not identity */
-        result[k_upper[i]]=upper;
         mask|=(uint32_t)1u<<k_upper[i];
         /* IkSolveLimb leaves the lower slot as it was: known only if supplied. */
         if(rc==2)continue;
-        result[k_lower[i]]=lower;
         mask|=((uint32_t)1u<<k_upper[i])|((uint32_t)1u<<k_lower[i]);
     }
     __builtin_memcpy(output,result,sizeof(result));

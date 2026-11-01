@@ -104,19 +104,23 @@ static inline int16_t dot3_12(const int16_t* a,const int16_t* b) {
 #endif
 int t3_psx_mul_rot(const t3_psx_matrix_t* a,const t3_psx_matrix_t* b,
                    t3_psx_matrix_t* out) {
-    t3_psx_matrix_t r={0};
     unsigned i,j;
     if(!a || !b || !out)return 0;
 #if defined(__sh__)
     {
         const int16_t bt[3][3]={{b->m[0][0],b->m[1][0],b->m[2][0]},
             {b->m[0][1],b->m[1][1],b->m[2][1]},{b->m[0][2],b->m[1][2],b->m[2][2]}};
+        /* b is already copied; only a left operand that is also the result
+         * needs a temporary. */
+        t3_psx_matrix_t temporary;
+        t3_psx_matrix_t* const r=out==a?&temporary:out;
         for(i=0;i<3u;++i)
-            for(j=0;j<3u;++j)r.m[i][j]=dot3_12(a->m[i],bt[j]);
-        t3_psx_matrix_copy(out,&r);
+            for(j=0;j<3u;++j)r->m[i][j]=dot3_12(a->m[i],bt[j]);
+        if(r!=out)t3_psx_matrix_copy(out,r);
         return 1;
     }
-#endif
+#else
+    t3_psx_matrix_t r={0};
     if(small_entries(a) && small_entries(b)) {
         /* |entry| <= 16384: three products sum within 32 bits. */
         for(j=0;j<3u;++j)
@@ -139,6 +143,7 @@ int t3_psx_mul_rot(const t3_psx_matrix_t* a,const t3_psx_matrix_t* b,
         }
     t3_psx_matrix_copy(out,&r);
     return 1;
+#endif
 }
 static int valid_vec(t3_vec3i_t p) {
     return p.x>=-T3_PSX_UNIT_LIMIT && p.x<=T3_PSX_UNIT_LIMIT &&
