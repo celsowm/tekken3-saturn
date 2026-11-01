@@ -1504,6 +1504,43 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             libsaturn_configure_executable(tekken3_spike_hires)
             libsaturn_add_binary(tekken3_spike_hires MAX_BYTES 983040)
         endif()
+        # The intro movie (scripts/pack_intro_video.py build) is private game data; without it the disc has no intro.
+        set(T3_LOCAL_INTRO_MOVIE "" CACHE FILEPATH "Packed intro movie INTRO.MOV")
+        set(_t3_intro_disc_target "")
+        if(T3_LOCAL_INTRO_MOVIE AND EXISTS "${T3_LOCAL_INTRO_MOVIE}")
+            # The boot intro is its own program, so MENU.BIN does not grow; main.c starts it on a cold boot.
+            add_executable(tekken3_intro src/saturn/intro_main.c src/saturn/disc.c)
+            target_include_directories(tekken3_intro PRIVATE src/saturn)
+            target_compile_options(tekken3_intro PRIVATE -Wall -Wextra -O2)
+            target_link_libraries(tekken3_intro PRIVATE LibSaturn::Saturn)
+            libsaturn_configure_executable(tekken3_intro)
+            libsaturn_add_binary(tekken3_intro MAX_BYTES 983040)
+            add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/INTRO.BIN"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_intro>/tekken3_intro.app.bin"
+                    "${CMAKE_BINARY_DIR}/menu/INTRO.BIN"
+                DEPENDS tekken3_intro VERBATIM)
+            list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/INTRO.BIN" "${T3_LOCAL_INTRO_MOVIE}")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_INTRO=1)
+            option(T3_INTRO_STATS "Stop the intro on a screen of its timing counters" OFF)
+            if(T3_INTRO_STATS)
+                target_compile_definitions(tekken3_intro PRIVATE T3_INTRO_STATS=1)
+            endif()
+            set(_t3_intro_disc_target tekken3_intro)
+        endif()
+        # Gate 1 of the intro: decode and upload times of the whole movie, printed on screen.
+        option(T3_INTRO_SPIKE "Build the intro decode timing spike" OFF)
+        if(T3_INTRO_SPIKE)
+            add_executable(tekken3_spike_intro tests/spike_intro_decode.c src/saturn/disc.c)
+            target_include_directories(tekken3_spike_intro PRIVATE src/saturn)
+            target_compile_options(tekken3_spike_intro PRIVATE -Wall -Wextra -O2)
+            target_link_libraries(tekken3_spike_intro PRIVATE LibSaturn::Saturn)
+            libsaturn_configure_executable(tekken3_spike_intro)
+            libsaturn_add_binary(tekken3_spike_intro MAX_BYTES 983040)
+            # A disc of its own, so Mednafen can boot it.
+            libsaturn_add_disc(tekken3_spike_intro NAME tekken3_spike_intro
+                IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_INTRO_MOVIE}" ALL)
+        endif()
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
@@ -1534,13 +1571,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_saturn PRIVATE src/saturn/vs_screen.c "${_t3_vs_gen}/vs_layout.h")
             target_include_directories(tekken3_saturn PRIVATE "${_t3_vs_gen}")
             target_compile_definitions(tekken3_saturn PRIVATE T3_VS_SCREEN=1)
+            # The menu composes and shows it; the fight only keeps it up.
+            target_sources(tekken3_menu PRIVATE src/saturn/vs_screen.c src/saturn/vs_screen_compose.c "${_t3_vs_gen}/vs_layout.h")
+            target_include_directories(tekken3_menu PRIVATE "${_t3_vs_gen}")
+            target_compile_definitions(tekken3_menu PRIVATE T3_VS_SCREEN=1)
             # Mostly boot-time and per-event code, in a Work RAM High that has little room left.
             set_source_files_properties(src/saturn/vs_screen.c src/saturn/cold_data.c
                 src/saturn/disc.c src/saturn/flipbook_burst.c src/saturn/combat_events.c src/saturn/sfx.c
                 PROPERTIES COMPILE_OPTIONS "-Os")
             list(APPEND _t3_stage_disc_files ${_t3_vs_files})
         endif()
-        set(_t3_disc_depends tekken3_menu)
+        set(_t3_disc_depends tekken3_menu ${_t3_intro_disc_target})
         set(_t3_select_wav_args "")
         set(_t3_select_wav_deps "")
         if(T3_STAGE_CDDA)
@@ -2120,6 +2161,8 @@ else()
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_saturn_workload.py")
         add_test(NAME vs_screen_packer
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_pack_vs_art.py")
+        add_test(NAME intro_video_packer
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_pack_intro_video.py")
         add_test(NAME ps1_private_kmd_face_ot
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_kmd_face_ot.py")
         set_tests_properties(ps1_private_kmd_face_ot PROPERTIES SKIP_RETURN_CODE 77)

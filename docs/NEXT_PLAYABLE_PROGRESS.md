@@ -90,6 +90,57 @@ host CTest, all 26 combat cases including the throw and timeout
 checkpoints, and 3,000/3,000 reference ticks with no first difference.
 The original text font and round messages remain open.
 
+## Boot intro: the opening movie (2026-11-01)
+
+A cold boot plays the original's opening movie before the title: `0.BIN` execs `INTRO.BIN` when the disc has it,
+which execs `MENU.BIN` at the end or on START. The Saturn has no MPEG card in either emulator, so the SH-2 decodes it.
+
+**The movie.** USA `TEKKEN3.XAS`, 1,950 frames over 14,625 sectors, so exactly 20 fps and 97.5 s, 256x224 with XA sound.
+`scripts/psx_movie.py` finds it (it lists the 22 movies); `scripts/pack_intro_video.py build` decodes it with ffmpeg
+(`-f psxstr`), scales it to 240x168 (the Saturn ports' habit: a smaller picture in black), encodes Cinepak with one
+strip per frame, resamples the sound to 22.05 kHz stereo IMA ADPCM, and interleaves the two into `INTRO.MOV`
+(sound 12 frames ahead of where it plays). It refuses a movie the drive could not keep up with. Private: it stays under
+`build/intro-probe`.
+
+**Rate.** The first plan counted the mean (207 KiB/s at ffmpeg's default quality, 69% of the 2x drive) and missed the
+peak: seconds 63 to 76 are fast cuts and ran at 279 KiB/s over ten seconds, 93% of the drive. Two changes, both with
+little cost in picture: codebooks stay as Cinepak's 6 bytes of YUV and the SH-2 converts them as they load (the first
+design widened them to 8 bytes of RGB555 on disc: +10%), and the encoder runs at `-q:v 20` (PSNR against the scaled
+source 34.2 dB at q2, 33.1 at q20; four frames side by side look alike at 4x). Now: mean 121 KiB/s, worst ten seconds
+219 KiB/s, worst second 244, file 11.5 MiB.
+
+**Decoder.** LibSaturn `saturn/movie.h`: `sat_movie_decode_frame`. Bit-identical to ffmpeg's decoder on frames 0, 1, 2, 100,
+300, 600, 900, 1500 and 1949 (`scripts/check_intro_decoder.py`; the sound's correlation with ffmpeg's decode is 0.998).
+An early unit test and its decoder agreed with each other and were both wrong (chunk ids are the high byte of a 16-bit
+field): only the check against real data found it, and the first frames matched anyway, because they are black.
+
+**Player.** One CD Block play over the whole file (`sat_cd_stream_begin_ring`) into a 64-sector ring; one poll per field.
+Frames are decoded into a 512-wide picture in Work RAM High, one SCU DMA of the picture's rows goes to the hidden one of
+two 15-bit bitmaps (VRAM-A at 0 and VRAM-B at 0x40000), and `sat_vdp2_layer_set_pattern_name_base` flips NBG0 at the next
+`sat_vdp2_layers_commit` in VBlank. The due frame comes from the field count: a late frame is skipped. The Master does
+everything; the Slave was not needed.
+
+**Ymir, whole movie** (`T3_INTRO_STATS` stops on a screen of counters):
+
+| | |
+|---|---|
+| frames shown | 1,950 of 1,950 |
+| skipped, starved, behind | 0, 0, 0 |
+| decode + sound + DMA, worst frame | 19.6 ms (a field is 16.7; 47 frames took longer than one field, none longer than three) |
+| decode alone, bench of the whole movie | 7.0 ms mean, 12.6 ms worst, none over 35 ms (`tests/spike_intro_decode.c`, `-DT3_INTRO_SPIKE=ON`) |
+| sound against picture | the sound is 14 ms early (`scripts/check_intro_sync.py`, from the probe's audio dump and video log) |
+| START at field 900 | the title follows within 120 fields |
+
+**Not verified.**
+
+- Mednafen: the machine was locked when I tried, so no Mednafen run exists. `hard/cdblock` warns that a Ymir-only run hid
+  a slow frame before; the decode figure above has 3x of room against the 50 ms a frame, but it is a Ymir figure.
+- Real hardware: seek time, restart time and the rate under retries are unknown. The packer keeps 10% off the 2x rate and
+  the movie is 73% of that at worst; the ring plus the drive's 200-sector buffer hold about 1.9 s. The 8-field delay
+  between starting the sound and starting the clock was tuned on Ymir.
+- The select music, VS screen and fight are unchanged, but the fight was not re-compared (AI hash, late swaps) after
+  `main.c` gained the `INTRO.BIN` lookup.
+
 ## Pre-fight VS screen (2026-11-01)
 
 The fight now loads behind the original's VS screen (`src/saturn/vs_screen.c`, art
@@ -116,6 +167,21 @@ same AI pad hash (1678652096), same Slave stack peak (5,328 bytes), no discarded
 fields, and first fight frames with the same changed-pixel counts. Late swaps are 3.8%
 of fields against 3.8%, and images per field 0.538 against 0.542, over different windows
 of the same fight.
+
+`MENU.BIN` now composes the screen and puts it up itself, and starts the fight with
+`sat_exec_keep_display`, so the picture stays on while `0.BIN` is read. `0.BIN` shows it
+again straight after `sat_init`, from what VRAM and CRAM kept. After a pick, the chosen
+fighters stay up during the art reads, then the usual fade runs. The numbers below replace
+the "Black before the screen" row above; the total load time is unchanged.
+
+| After the change | Ymir, through the select | Mednafen, demonstration |
+| --- | --- | --- |
+| Held on the select during the art reads | 2.3 s | not measured |
+| Black while the title has faded (demonstration only) | not measured | 7.6 s |
+| Black between the two programs | 2 fields | under 0.1 s (sampled at 10 per second) |
+| Screen up, including the fade | about 11 s | 26.6 s |
+
+Not measured: the select path on Mednafen, because scripted keys did not reach the game.
 
 Not done: a comparison with original pixels (PCSX-Redux stayed black 10 s into game state
 11, so the layout is checked only against the original's tables), a play through

@@ -28,7 +28,8 @@ latest verified gameplay gate and build instructions are in
 and public-distribution qualification remain open. Historical prototype and
 research descriptions below do not describe every feature of that build.
 
-The fight loads behind the original's pre-fight VS screen, with the version and a
+A cold boot opens with the original's opening movie (START skips it) when the disc carries it,
+then the title. The fight loads behind the original's pre-fight VS screen, with the version and a
 LibSaturn credit in its bottom line. At the title, connect a second controller for two-player VS or
 leave port 2 empty to fight the CPU as Paul, then press START on controller 1.
 During a match, START resets it. The mixed-mode build is launched from
@@ -50,6 +51,7 @@ Paul–Law build.
 - Two fighters, four distinct limb attacks, hit/guard stun, spacing, sidesteps, collision, health, a timer, and best-of-three rounds.
 - Controller 1 versus simple deterministic CPU; controller 2 can take over P2.
 - Sega Saturn frontend using LibSaturn's VDP1 scene-wide 3D painter, two independently skinned original low-poly fighters, a floor, and a HUD.
+- Boot intro: the opening movie decoded by the SH-2s (240x168, 20 fps, stereo sound, no MPEG card), made from the owner's disc by `scripts/pack_intro_video.py`; discs without it go straight to the title.
 - Pre-fight VS screen (portraits, names, caption) shown for the fight's whole load; builds without the private art keep the boot loading screen with LibSaturn's shared bar.
 - 24-joint SKA1 source archive, nine authored animation clips, red/blue costume palettes, and shared geometry.
 - Native host tests with no emulator, ROM, Godot, or Saturn toolchain required.
