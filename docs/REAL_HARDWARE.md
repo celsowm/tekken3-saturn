@@ -333,6 +333,41 @@ experimental VDP1 floor options (`T3_VDP1_FLOOR_PROBE`, `_SHADE_PROBE`, `_SUBDIV
 `_CAPACITY_SELFTEST`, `_FORCE_BUDGET`, `_SPLIT_MIN_AREA`) were removed, so a stage build can no longer
 draw the floor with VDP1. Their results remain in `docs/PARTICLE_RENDER_PROGRESS.md` and in git history.
 
+### Skipping work for rejected faces: measured, not worth building (2026-11-01)
+
+`submit_instance` and `project_q15` are the largest Master costs on Ymir's profile. Question: how much of
+their work serves only faces that are rejected anyway? Temporary counters in the live draw path, removed
+afterwards, compared every face and vertex in every image of two 120 s Mednafen fights. Counts do not
+depend on emulator timing, and the counters left both pad hashes unchanged.
+
+| Measure | Two CPU (`0x640e32c0`) | One CPU (`0x94e16040`) |
+|---|---|---|
+| Images | 1,166 | 1,409 |
+| Faces rejected by winding | 53.4% | 53.2% |
+| Surviving faces fully off screen | 0.53% | 1.91% |
+| Vertices used only by rejected faces | 29.2% | 28.8% |
+| The same, lowest to highest image | 22.4% to 37.2% | 21.4% to 34.9% |
+| Vertices also skipped if off-screen faces count as rejected | 0.34% | 1.22% |
+| Blended vertices used only by rejected faces | 28.6% | 30.4% |
+| Rigid vertices in joints with no vertex in use | 0.02% | 0.04% |
+
+The two face rows cover both draw paths; the vertex rows cover only the SDK path. The original projection,
+used only with live particles, ran for 4.6% and 0.7% of actor images and used about 65% of its vertices.
+
+Result: no change. The 29% needs a perfect check, and the gate was about 25% after the check's cost:
+
+- A vertex can only be skipped if its faces are known to be rejected before it is projected. A per-joint
+  check would skip 0.02% to 0.04%, because every joint nearly always has some face toward the camera.
+- A finer check would group each joint's faces by normal direction. This was not built; by geometry, a
+  group is safely rejected less often than its faces are, and each vertex needs all its groups rejected,
+  so it should land well under 25%, before paying for its tests and a per-vertex branch.
+- Even a free, perfect check would save about 29% of `project_q15`, or about 5% of the Master.
+- An off-screen test would remove too little to matter.
+
+Next is the Slave's idle time, because this waste is real but cannot be reached cheaply. The counters also
+show a smaller point for later: images on the original projection append all their faces and reject them
+afterwards, unlike the SDK path. They are too rare in these fights to change the average.
+
 ### Regression check after these changes (2026-10-31)
 
 Mednafen, 120 s, final SDK, same pad hashes as before:

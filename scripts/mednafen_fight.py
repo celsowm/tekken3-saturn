@@ -32,6 +32,7 @@ def main():
     p.add_argument('--seconds', type=float, default=90)
     p.add_argument('--bios', type=Path, default=ROOT / 'assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin')
     p.add_argument('--shot', type=float, nargs='*', default=[], help='keep a frame at these seconds')
+    p.add_argument('--symbol', action='append', default=[], help='also report this ELF symbol as words')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     run = args.out / 'run'
@@ -44,7 +45,7 @@ def main():
         subprocess.run(command, stdout=subprocess.DEVNULL, check=True)
         state = [sys.executable, str(ROOT / 'scripts/mednafen_state.py'), str(run),
                  '--elf', str(args.build / 'tekken3_saturn.elf'), '--words']
-        for symbol in SYMBOLS:
+        for symbol in SYMBOLS + args.symbol:
             state += ['--symbol', symbol]
         text = subprocess.check_output(state, text=True)
     finally:
@@ -60,7 +61,7 @@ def main():
                   discarded_percent=round(discarded * 100 / observed, 2) if observed else None, ticks=ticks,
                   ai_calls=calls, ai_mean_field=round(words['_g_t3_ai_ticks'][0] / calls / FRT_PER_FIELD, 3) if calls else 0,
                   ai_max_field=round(words['_g_t3_ai_max_ticks'][0] / FRT_PER_FIELD, 3),
-                  ai_pad_hash=f"{words['_g_t3_ai_pad_hash'][0]:#010x}")
+                  ai_pad_hash=f"{words['_g_t3_ai_pad_hash'][0]:#010x}", symbols={s: words[s] for s in args.symbol})
     (args.out / 'fight.json').write_text(json.dumps(report, indent=1) + '\n')
     print(json.dumps(report))
 
