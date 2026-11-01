@@ -181,17 +181,17 @@ The peak update is not explained. The FRT reports about 300,000 cycles, but a 12
 near the field of the peak (field 4144 attract, 4135 arcade) shows at most 28,000, and a 200-field
 trace makes the probe fail. Either the window missed it or the reading is not CPU work.
 
-### One CPU fighter on Mednafen and Ymir (arcade)
+### One CPU fighter on Mednafen and Ymir
 
-Key presses do work with `scripts/mednafen_shots.py` (new `--mednafen-arg`, for
-`-ss.input.port2 none`) and with `record_mednafen.py --input-script`, using Return at 25, 30, 36
-and 41 s after launch. The earlier failure was a timing mistake: the title appears only about
-22 s after launch. Arcade then reaches a fight against one CPU (`mednafen-arcade-frame.png`).
+**Correction.** An earlier version of this section said key presses reach the game on Mednafen and
+that a one-CPU arcade fight discards 4.2% there. Both were wrong. That run was the two-CPU attract
+fight: its AI call count (about 1.86 per tick) and pad hash `0x640e32c0` are the attract fight's,
+and a snapshot test showed Return does nothing at the title. The fight had only started because
+the attract timeout expired. Its files are now named `mednafen-attract-*`.
 
-Mednafen, 90 s, ELF `6e2826e2…`, one CPU fighter, P1 neutral: 2,214 observed fields, 93 discarded
-(4.2%), 2,121 scheduled ticks. This is about the same discard rate as the two-CPU attract fight
-(3.9%), so on Mednafen the one-CPU fight is not clearly easier. There is no control build for this
-scenario, so it says nothing about the per-fighter change.
+Mednafen still cannot reach ARCADE MODE. To measure one CPU there, configure the build with
+`-DT3_DEMO_CPU_MASK=2` (default 3): the attract fight then has P1 neutral against one CPU fighter.
+`scripts/mednafen_fight.py` runs it and keeps only the numbers.
 
 Ymir, arcade, 12 fields from field 4000 (`arcade-profile-functions.txt`): six images in 12 fields,
 each CPU about 900,000 cycles per image. The Slave is idle in `slave_wait_request` and its FRT
@@ -201,3 +201,66 @@ cost is spread over the per-vertex loop), then `t3_psx_mul_rot` (5.6%), `sample_
 `submit_instance` is 30% and `project_q15` 17%. No single routine offers a large gain; a real
 saving would have to remove work (fewer vertices or poses per image), not tune a loop.
 
+### Simulation waste removed (2026-10-31)
+
+Any cycle saved on the Slave's ticks lets it take the stage from the Master more often, so
+simulation savings reach the image rate. Three kinds of waste were removed:
+
+- `psx_ik.c`: the original's 32-bit wrapping arithmetic went through 64-bit helpers (`__ashrdi3`
+  and three more libgcc calls), 14,592 calls in 60 fields. It now uses plain modulo-2^32
+  arithmetic and inline constant shifts, and solves in place. `scripts/diff_ik_head.py` found
+  2,000,000 random cases identical to the previous code, on the host only.
+- `t3_psx_mul_rot`: no temporary, zero fill or copy unless the output aliases the first input.
+- `psx_camera.c`: the table check ran four times per tick at about 1,441 cycles each (1.3% of the
+  Slave). It now remembers the tables it has checked; the match start still does the full check.
+
+Same pad hash on each row's two sides, so the CPU's choices did not change. Host tests: 95 of 95.
+
+| Emulator, fight | Span | Images before | Images after | Discards | Pad hash |
+|---|---|---|---|---|---|
+| Ymir, attract (two CPU) | 6,000 fields | 2,097 | 2,306 (+10%) | 11 → 8 | `0x640e32c0` |
+| Ymir, arcade (one CPU) | 6,000 fields | 1,662 | 1,706 (+2.6%) | 0 → 0 | `0x4c460e70` |
+| Mednafen, mask 2 (one CPU) | 90 s | 835, 22.63/s | 946, 25.61/s (+13%) | 0 → 0 | `0x94e16040` |
+
+Mednafen attract with this code: 760 images in 2,213 fields (20.61/s), 40 discards (1.81%), against
+93 of 2,214 (4.2%) on ELF `6e2826e2…`, whose image count was not recorded. AI mean 0.075 field, peak
+0.679.
+
+So the one-CPU fight has no discards on Mednafen with or without this change. The gain is margin
+above the 15 images/s limit. Final ELF `38a4213a…`. These are emulator numbers; nothing here has
+run on a real Saturn, and the Satiator and SAROO faults remain undiagnosed.
+
+Tried and rejected: `psx_blend.c` and `psx_blend_math.c` at `-O2` instead of `-Os` gave 947 images
+against 946 on the same Mednafen run, for 336 more bytes of code.
+
+After this, `project_q15` (about 17.5% per CPU) and the `submit_instance` loop (29% of the Master,
+about 150 cycles per face) have no fat left to cut. A larger gain needs fewer vertices or faces.
+The Slave is still idle about 20% of the time in this profile, which `T3_MASTER_WORKER_FACES` OFF
+might use; that was not tried.
+
+### Catch-up cap raised from 4 to 6 fields (2026-10-31)
+
+Slow motion follows from the cap: one image may catch up only so many fields, and the rest is
+discarded. `T3_CATCH_UP_FIELDS` is now 6 (was 4), so game speed holds down to 10 images/s instead
+of 15. Earlier mentions of a 4-field cap in this file describe the builds measured then.
+
+`T3_SLOW_IMAGE_FIELDS` (default 0) wastes whole fields on the Master after each image, to stand in
+for a slower console. Mednafen, 120 s, one CPU (mask 2), 4 wasted fields, same pad hash `0x94e16040`:
+
+| Cap | Images/s | Fields per image | Game speed | Discarded |
+|---|---|---|---|---|
+| 4 | 8.58 | 7.00 | 57% | 42.7% |
+| 6 | 7.43 | 8.08 | 74% | 25.6% |
+| 8 | 6.51 | 9.22 | 86% | 13.8% |
+
+Each extra tick costs about 0.57 field here, so more catch-up also lowers the image rate. Cap 6
+gains 30% in speed for 13% fewer images. Running all ticks deferred at cap 8 (6.54 images/s) did
+not help and was reverted, though this stand-in cannot overlap ticks with its wasted fields.
+
+Without the stand-in, cap 6: one CPU 25.71 images/s with 0 discards; attract 19.99 images/s with 9
+discards of 4,011 (0.22%), hash `0x640e32c0`. Evidence: `capstudy-*.json`. The stand-in slows the
+Master only, so a console whose bus is slower for both CPUs would do worse. This is not a hardware
+result, and it does not help if the fault is a field count that stops advancing (`IRQ` in the report).
+
+The per-tick cost is the next target: at 0.57 field per tick on Mednafen, it limits how far catch-up
+can go. Where that time goes inside a tick has not been measured.

@@ -7,6 +7,9 @@ accessibility permission), and copies each new snapshot into --out under the
 step's name. It deletes nothing in Mednafen's folders, and it only types into
 the emulator's window, which it brings forward before each key.
 
+Snapshots work. Key presses have not been seen to reach the game: Return at the
+title did nothing, so check the screenshots before trusting a key step.
+
 A step is `SECONDS:ACTION[:NAME]`, seconds counted from launch:
   snap:NAME   take a screenshot, kept as NAME.png
   key:NAME    press a key: return, up, down, left, right, space, or a number (key code)

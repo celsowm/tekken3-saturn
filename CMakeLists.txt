@@ -25,6 +25,9 @@ target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c)
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_bitmap.c src/game/stage_floor_center.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
+# Most fields one image may catch up; below 60/N images/s the game plays slower.
+set(T3_CATCH_UP_FIELDS "6" CACHE STRING "Most fields of game time one image catches up")
+target_compile_definitions(tekken3_fight PUBLIC T3_CATCH_UP_FIELDS=${T3_CATCH_UP_FIELDS})
 target_sources(tekken3_fight PRIVATE src/game/psx_local_pose.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_hud_bar.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_hud_messages.c)
@@ -1579,6 +1582,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     endif()
     target_link_libraries(tekken3_saturn PRIVATE tekken3_fight LibSaturn::Saturn)
     target_compile_options(tekken3_saturn PRIVATE -Wall -Wextra -O2)
+    # Which fighters the CPU plays in the attract fight. 2 gives emulators that
+    # cannot press START a one-CPU fight to measure, with P1 neutral.
+    set(T3_DEMO_CPU_MASK "3" CACHE STRING "CPU fighter mask of the attract fight")
+    target_compile_definitions(tekken3_saturn PRIVATE T3_DEMO_CPU_MASK=${T3_DEMO_CPU_MASK}u)
+    # Whole fields wasted after each image, to stand in for a slower console.
+    set(T3_SLOW_IMAGE_FIELDS "0" CACHE STRING "Fields wasted per image to imitate a slower console")
+    target_compile_definitions(tekken3_saturn PRIVATE T3_SLOW_IMAGE_FIELDS=${T3_SLOW_IMAGE_FIELDS}u)
     libsaturn_configure_executable(tekken3_saturn)
     libsaturn_add_binary(tekken3_saturn MAX_BYTES 983040)
     set(T3_BOOT_PAYLOADS "" CACHE FILEPATH "Optional LibSaturn native boot payload manifest")

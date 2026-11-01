@@ -2,7 +2,10 @@
 #define T3_TICK_CLOCK_H
 #include <stdint.h>
 
-enum { T3_MAX_RECOVERY_FIELDS = 4 };
+#if !defined(T3_CATCH_UP_FIELDS)
+#define T3_CATCH_UP_FIELDS 6
+#endif
+enum { T3_MAX_RECOVERY_FIELDS = T3_CATCH_UP_FIELDS };
 /* Counters describe scheduling, including time discarded by the legacy clamp.
  * They do not establish that a scheduled tick was committed or displayed. */
 typedef struct {

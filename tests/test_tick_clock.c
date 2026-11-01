@@ -6,13 +6,13 @@
 
 int main(void) {
     t3_tick_clock_t c={0};
-    assert(t3_tick_clock_advance(&c,10,60,60)==4);
-    assert(c.observed_fields==10 && c.discarded_fields==6);
+    assert(t3_tick_clock_advance(&c,10,60,60)==6);
+    assert(c.observed_fields==10 && c.discarded_fields==4);
     for(unsigned i=0;i<60;++i)assert(t3_tick_clock_advance(&c,1,60,60)==1);
-    assert(c.observed_fields==70 && c.scheduled_ticks==64 && c.discarded_fields==6);
+    assert(c.observed_fields==70 && c.scheduled_ticks==66 && c.discarded_fields==4);
     c=(t3_tick_clock_t){0};
-    for(unsigned i=0;i<10;++i)assert(t3_tick_clock_advance(&c,6,60,60)==4);
-    assert(c.observed_fields==60 && c.scheduled_ticks==40 && c.discarded_fields==20);
+    for(unsigned i=0;i<10;++i)assert(t3_tick_clock_advance(&c,8,60,60)==6);
+    assert(c.observed_fields==80 && c.scheduled_ticks==60 && c.discarded_fields==20);
     c=(t3_tick_clock_t){0};
     for(unsigned i=0;i<50;++i)(void)t3_tick_clock_advance(&c,1,50,60);
     assert(c.scheduled_ticks==60 && c.remainder==0 && !c.discarded_fields);

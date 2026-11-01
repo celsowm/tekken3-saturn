@@ -759,7 +759,10 @@ static uint32_t g_run_mark;
 
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
-    if(g_demo) {t3_move_probe_set_cpu(3u,1u,5u);return;}
+#if !defined(T3_DEMO_CPU_MASK)
+#define T3_DEMO_CPU_MASK 3u
+#endif
+    if(g_demo) {t3_move_probe_set_cpu(T3_DEMO_CPU_MASK,1u,5u);return;}
     if(g_practice) {t3_move_probe_set_cpu(0u,1u,4u);return;}
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
@@ -1935,6 +1938,9 @@ int main(void) {
             if(!g_music_off)t3_stage_cdda_mix();
             spark_events(events,count);
         }
+#if defined(T3_SLOW_IMAGE_FIELDS)
+        for(uint32_t slow=0;slow<T3_SLOW_IMAGE_FIELDS;++slow)SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#endif
         now = display_fields();
         elapsed = now - prev_frame;
 #if defined(T3_PERF_SAMPLES)
