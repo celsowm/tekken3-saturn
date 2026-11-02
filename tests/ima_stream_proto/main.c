@@ -87,7 +87,11 @@ int main(void) {
         g_asset_desc.sample_rate = IMA_SAMPLE_RATE;
         g_asset_desc.sample_count = IMA_SAMPLE_COUNT;
         g_asset_desc.channels = IMA_CHANNELS;
+#if defined(IMA_FORMAT_ADX)
+        g_asset_desc.format = SAT_AUDIO_ADX_ADPCM;     /* scripts/encode_adx_stream.py */
+#else
         g_asset_desc.format = SAT_AUDIO_IMA_ADPCM;
+#endif
         g_asset_desc.kind = SAT_ASSET_STREAM;
         if (g_ima_proto.source_status == 0u) {
             g_ima_proto.asset_status = (uint32_t)(-sat_asset_register_manifest(&g_asset_desc, 1u, &g_asset));
