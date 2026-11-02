@@ -1591,6 +1591,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_menu PRIVATE src/saturn/arcade_music.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_ARCADE_MUSIC_TEST=1)
         endif()
+        # Experimental ADX stream test (docs/IMA_STREAM_EXPERIMENT.md): the output of scripts/encode_adx_stream.py
+        # (ima.bin, ima_meta.h; private, never in Git). L+R+A held and START on the title opens it.
+        set(T3_ADX_MUSIC_DIR "" CACHE PATH "Encoded ADX track for the menu's stream test (private)")
+        if(T3_ADX_MUSIC_DIR)
+            foreach(_f ima.bin ima_meta.h)
+                if(NOT EXISTS "${T3_ADX_MUSIC_DIR}/${_f}")
+                    message(FATAL_ERROR "T3_ADX_MUSIC_DIR needs ${_f} from scripts/encode_adx_stream.py")
+                endif()
+            endforeach()
+            get_filename_component(_t3_adx_dir "${T3_ADX_MUSIC_DIR}" ABSOLUTE)
+            add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/ADXMUSIC.BIN"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                COMMAND "${CMAKE_COMMAND}" -E copy "${_t3_adx_dir}/ima.bin" "${CMAKE_BINARY_DIR}/menu/ADXMUSIC.BIN"
+                DEPENDS "${_t3_adx_dir}/ima.bin" VERBATIM)
+            list(APPEND _t3_arcade_music_files "${CMAKE_BINARY_DIR}/menu/ADXMUSIC.BIN")
+            target_sources(tekken3_menu PRIVATE src/saturn/adx_music.c)
+            target_include_directories(tekken3_menu PRIVATE "${_t3_adx_dir}")
+            target_compile_definitions(tekken3_menu PRIVATE T3_ADX_MUSIC_TEST=1)
+        endif()
         target_compile_options(tekken3_menu PRIVATE -Wall -Wextra -Os)
         target_link_libraries(tekken3_menu PRIVATE LibSaturn::Saturn)
         libsaturn_configure_executable(tekken3_menu)

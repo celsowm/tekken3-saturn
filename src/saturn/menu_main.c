@@ -22,6 +22,10 @@
 #if defined(T3_ARCADE_MUSIC_TEST)
 #include "arcade_music.h"
 #endif
+#if defined(T3_ADX_MUSIC_TEST)
+#include "adx_music.h"
+#include "ima_meta.h"
+#endif
 #if defined(T3_VS_SCREEN)
 #include "vs_screen.h"
 #endif
@@ -278,11 +282,17 @@ static void frame_begin(pads_t* pads) {
 #if defined(T3_ARCADE_MUSIC_TEST)
 static int g_arcade_music_on;
 #endif
+#if defined(T3_ADX_MUSIC_TEST)
+static int g_adx_music_on;
+#endif
 
 static void frame_end(void) {
     SAT_PANIC_IF_ERROR(sat_end_frame());
 #if defined(T3_ARCADE_MUSIC_TEST)
     if(g_arcade_music_on)t3_music_service();
+#endif
+#if defined(T3_ADX_MUSIC_TEST)
+    if(g_adx_music_on)t3_adx_music_service();
 #endif
     if(g_sfx_ready){(void)sat_audio_update();diag_audio();}
     ++g_t3_menu_audio.frames;
@@ -371,11 +381,7 @@ static void copyright(void) {
     pic_left(TX_RESERVED,43,TITLE_COPY_Y1+8);
 }
 
-#if defined(T3_ARCADE_MUSIC_TEST)
-/* An isolated test of the Arcade music engine (src/saturn/arcade_music.c): the converted Paul theme plays from the
- * disc through the 68000 sequencer while the menu sounds stay available (A, B, C play them). L+R+START on the title
- * opens it; START leaves. The select's CD-DA is not running here: the engine reads the CD Block itself. The track
- * is private data (T3_ARCADE_MUSIC_DIR); no original music is replaced. */
+#if defined(T3_ARCADE_MUSIC_TEST) || defined(T3_ADX_MUSIC_TEST)
 static void number(char* out,uint32_t v) {
     char t[11];unsigned n=0;
     do {t[n++]=(char)('0'+v%10u);v/=10u;} while(v);
@@ -391,6 +397,13 @@ static void music_line(int y,const char* label,uint32_t a,int two,uint32_t b) {
     text(0,s,MENU_BG_W/2,y);
 }
 
+#endif
+
+#if defined(T3_ARCADE_MUSIC_TEST)
+/* An isolated test of the Arcade music engine (src/saturn/arcade_music.c): the converted Paul theme plays from the
+ * disc through the 68000 sequencer while the menu sounds stay available (A, B, C play them). L+R+START on the title
+ * opens it; START leaves. The select's CD-DA is not running here: the engine reads the CD Block itself. The track
+ * is private data (T3_ARCADE_MUSIC_DIR); no original music is replaced. */
 static void music_test_flow(void) {
     pads_t pads;
     /* The engine reads files through the CD Block; CD-DA must not be playing. The title never starts it, but the
@@ -431,6 +444,51 @@ static int music_test_requested(const pads_t* pads) {
 #define MUSIC_TEST_HOOK(p)
 #endif
 
+#if defined(T3_ADX_MUSIC_TEST)
+/* The same track as a CRI ADX stream (src/saturn/adx_music.c, scripts/encode_adx_stream.py): sat_music reads the file
+ * from the drive through the disc scheduler, and the menu sounds (A, B, C) play over it. L+R+A held and START on the
+ * title opens it; START leaves. No sample of the track is in Sound RAM. */
+static void adx_test_flow(void) {
+    pads_t pads;
+    sat_cd_block_t* block=NULL;
+    sat_cd_status_t cd;
+    const int cdda_playing=t3_stage_cdda_status(&cd)==SAT_OK && cd.state==SAT_CD_STATE_PLAY;
+    sat_result_t st=cdda_playing?SAT_ERR_BUSY:t3_disc_block(&block);
+    if(st==SAT_OK)st=t3_adx_music_start(g_volume,block,g_io,sizeof g_io,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES);
+    g_adx_music_on=st==SAT_OK;
+    for(;;) {
+        frame_begin(&pads);
+        rect(0,0,SCREEN_W,SCREEN_H,CODE_BLACK);
+        text(2,"ADX STREAM TEST",MENU_BG_W/2,40);
+        if(st!=SAT_OK){music_line(100,"START FAILED STEP ",g_t3_adx_music.step,0,0);music_line(130,"STATUS ",g_t3_adx_music.status,0,0);}
+        else {
+            music_line(90,"FRAMES ",g_t3_adx_music.consumed,1,IMA_SAMPLE_COUNT);
+            music_line(120,"UNDERRUNS ",g_t3_adx_music.underruns,0,0);
+            music_line(150,"REJECTED ",g_t3_adx_music.rejected_writes,0,0);
+            music_line(180,"MIN FILL ",g_t3_adx_music.min_fill,0,0);
+            music_line(210,"SEGMENTS ",g_t3_adx_music.segments,0,0);
+            music_line(240,"DISC WAITS ",g_t3_adx_music.waits,0,0);
+            music_line(270,"LOOPS ",g_t3_adx_music.music_loops,0,0);
+            text(1,"PLAYING",MENU_BG_W/2,310);
+        }
+        text(1,"START: BACK",MENU_BG_W/2,390);
+        frame_end();
+        if(pads.pad[0].pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C))sfx(SFX_MOVE);
+        if(pads.pad[0].pressed&SAT_PAD_START)break;
+    }
+    g_adx_music_on=0;
+    t3_adx_music_stop();
+}
+
+static int adx_test_requested(const pads_t* pads) {
+    return (pads->pad[0].held&(SAT_PAD_L|SAT_PAD_R|SAT_PAD_A))==(SAT_PAD_L|SAT_PAD_R|SAT_PAD_A) &&
+           (pads->pad[0].pressed&SAT_PAD_START);
+}
+#define ADX_TEST_HOOK(p) if(adx_test_requested(p)) {adx_test_flow();goto menu;}
+#else
+#define ADX_TEST_HOOK(p)
+#endif
+
 /* Returns the chosen mode; the profiler flag may change in OPTION. */
 static unsigned title_flow(void) {
     pads_t pads;
@@ -446,7 +504,7 @@ static unsigned title_flow(void) {
             pic_left(TX_NAMCO,112,MENU_BG_H/2);
             pic_left(TX_PRESENTS,112+(int)g_text_size[TX_NAMCO][0]+9,MENU_BG_H/2);
             frame_end();
-            MUSIC_TEST_HOOK(&pads)
+            MUSIC_TEST_HOOK(&pads) ADX_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         /* White flash: 25 frames up, 11 held; then the picture fades in from white over 86. */
@@ -461,7 +519,7 @@ static unsigned title_flow(void) {
             fade(255-(int)(f*255/86));
             frame_begin(&pads);
             frame_end();
-            MUSIC_TEST_HOOK(&pads)
+            MUSIC_TEST_HOOK(&pads) ADX_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         fade(0);
@@ -470,7 +528,7 @@ static unsigned title_flow(void) {
             prompt(&pads,f);
             copyright();
             frame_end();
-            MUSIC_TEST_HOOK(&pads)
+            MUSIC_TEST_HOOK(&pads) ADX_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&START_BUTTONS || pads.pad[1].pressed&START_BUTTONS) {sfx(SFX_START);goto menu;}
         }
         for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
