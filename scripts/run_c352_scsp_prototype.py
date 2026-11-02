@@ -28,7 +28,9 @@ RESULT_FIELDS = ('magic audio_status driver_status create_status score_status ch
                  'pg_published pg_played pg_underrun_ticks pg_late_events pg_max_lateness pg_bad_sequence pg_max_burst '
                  'pg_refused pg_executed pg_done pg_base_tick pg_tick_samples pg_abuse_result pg_total_pages '
                  'pg_publish_attempts pg_frame_done cd_mode cd_status cd_bank_read_ticks cd_page_reads '
-                 'cd_page_read_ticks_max cd_page_read_ticks_total cd_bank_checksum_file cd_bank_checksum_ram').split() + [f'pg_margin_ticks_{i}' for i in range(16)]
+                 'cd_page_read_ticks_max cd_page_read_ticks_total cd_bank_checksum_file cd_bank_checksum_ram '
+                 'dyn_loads dyn_done dyn_late dyn_bytes dyn_load_ticks_max dyn_checksum_errors dyn_initial dyn_initial_ticks '
+                 'dyn_margin_min_ticks').split() + [f'pg_margin_ticks_{i}' for i in range(16)]
 
 
 def sh(command, **kwargs):
@@ -55,6 +57,7 @@ def main():
     parser.add_argument('--scale', type=float, help='linear gain on every voice (see c352_scsp_convert.py)')
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64))
     parser.add_argument('--legacy-score', action='store_true', help='the 1024-event score instead of pages')
+    parser.add_argument('--bank-budget', type=int, help='dynamic bank: load samples section by section into this many bytes')
     parser.add_argument('--relative-pages', action='store_true')
     parser.add_argument('--cd', action='store_true', help='read the bank and the pages from a disc image built for the program')
     parser.add_argument('--out', type=Path, required=True)
@@ -72,7 +75,7 @@ def main():
     data = out / 'data'
     data.mkdir(parents=True, exist_ok=True)
     pcm8_base = 0x3000
-    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples)
+    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget)
     manifest = convert.summary(r, argparse.Namespace(start=args.start, end=args.end, pcm8_base=pcm8_base), args.vgm)
     if args.legacy_score and not manifest['scsp']['fits_the_driver_score']:
         sys.exit(f"{manifest['scsp']['events']} events exceed the driver score ({convert.SCORE_MAX_EVENTS}): drop --legacy-score")
@@ -92,7 +95,7 @@ def main():
         '--boot-frames', '90', '--frames', str(frames), '--out', str(out / 'ymir.json'),
         '--dump-mem', f'{address:#x}:{4 * len(RESULT_FIELDS)}:{out / "results.bin"}', '--dump-audio', str(audio)])
     values = struct.unpack(f'>{len(RESULT_FIELDS)}I', (out / 'results.bin').read_bytes())
-    values = [v - (1 << 32) if name.startswith('pg_margin') and v >= 1 << 31 else v for name, v in zip(RESULT_FIELDS, values)]
+    values = [v - (1 << 32) if (name.startswith('pg_margin') or name == 'dyn_margin_min_ticks') and v >= 1 << 31 else v for name, v in zip(RESULT_FIELDS, values)]
     results = dict(zip(RESULT_FIELDS, values))
     comparison = compare.compare(args.oracle, audio, args.end - args.start, out / 'compare', args.start)
     report = dict(manifest=manifest, run=results, binary=dict(path=str(binary), bytes=binary.stat().st_size),

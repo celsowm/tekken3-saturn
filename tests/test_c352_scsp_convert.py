@@ -136,6 +136,27 @@ class Tests(unittest.TestCase):
         finally:
             convert.set_timebase(256, 0.0)
 
+    def test_dynamic_bank_never_shares_space_and_time(self):
+        from types import SimpleNamespace
+        keys = {k: (0x3000 + 0x10000 * k, False, 30000) for k in range(4)}          # four 30,000-byte samples
+        notes = [SimpleNamespace(key=(k, 0, 0, False), t_on=t, t_off=t + 2.0, t_natural=None)
+                 for k, t in ((0, 1.0), (1, 2.0), (2, 12.0), (3, 13.0), (0, 30.0))]
+        convert.set_timebase(256, 0.0)
+        res, loads, report = convert.plan_dynamic_bank(notes, {n.key: keys[n.key[0]] for n in notes}, 0x3000, 80000)
+        self.assertEqual(report['residencies'], 4 + 1)                              # sample 0 comes back after 28 s
+        self.assertEqual(report['reloaded_samples'], 1)
+        self.assertLessEqual(report['packed_extent_bytes'], 80000)                  # 2 live at a time, not 4
+        for a in res:
+            for b in res:
+                if a is not b and a['addr'] < b['addr'] + b['bytes'] and b['addr'] < a['addr'] + a['bytes']:
+                    self.assertTrue(a['span'][1] <= b['span'][0] or b['span'][1] <= a['span'][0])
+                    later, earlier = (a, b) if a['span'][0] > b['span'][0] else (b, a)
+                    self.assertGreaterEqual(later['load_after'], earlier['span'][1])    # written only after the old one ends
+        for n in notes:
+            self.assertIsNotNone(n.address_override)
+        with self.assertRaises(ValueError):
+            convert.plan_dynamic_bank(notes, {n.key: keys[n.key[0]] for n in notes}, 0x3000, 40000)
+
 
 if __name__ == '__main__':
     unittest.main()

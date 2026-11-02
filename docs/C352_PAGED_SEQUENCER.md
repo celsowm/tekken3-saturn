@@ -173,8 +173,9 @@ python3 -m unittest tests.test_c352_scsp_convert     # LibSaturn: tests.tools.te
 
 ## 7. Limits that remain
 
-1. The pages can stream from the CD (section 8), but samples are not loaded dynamically: the whole bank is
-   resident before playback.
+1. Pages and samples stream from the CD (sections 8 and 9) in the Ymir model only; the drive's seeks and speed
+   are not measured, and a load that comes late would play a note from stale or missing sample data (counted, not
+   guarded).
 2. The 128-sample tick leaves only 10 to 30 % headroom on this window's busiest tick; a denser passage or a slower
    event could need a smaller burst limit, a spread-out slot setup or the 256-sample tick.
 3. Tick quantisation (up to 2.9 ms, or 1.45 ms at 128) and FNS pitch rounding remain; exact timing and pitch
@@ -210,9 +211,48 @@ Ymir's block model, so the read times are a measurement of that model, not of a 
 CD traffic during playback; nothing else may touch the drive then. Samples are still loaded as a whole bank
 before playback.
 
-## 9. Next
+## 9. Dynamic bank: the whole theme in the real pool
 
-- Load samples a section at a time while the pages play (dynamic bank), with the converter writing one bank per
-  section; pages already stream from the CD.
+The theme's samples are 635,190 bytes (distinct ranges), more than the 446,464-byte pool. With `--bank-budget` the
+converter plans residencies instead of one static bank (`plan_dynamic_bank`): a sample is resident from 1.5 s
+before its first use to 0.1 s after its last, uses less than 3 s apart share one residency, a longer silence
+frees the space and the sample is read again. Residencies are packed in time order at the lowest address where
+they overlap no earlier one in both space and time, and each gets a `load_after` (the old occupants have ended)
+and a `needed_by` (its first note). `LOADS.BIN` lists them; the program reserves the planned region once
+(`sat_sound_create`), then writes each residency from `BANK.BIN` with the new `sat_sound_ram_write` (LibSaturn),
+one per frame at most, only once its `load_after` tick has passed, and checks the word sum of what landed in
+Sound RAM. `tests.test_c352_scsp_convert` checks that no two residencies share space and time and that every
+write waits for the occupants it replaces.
+
+The whole 130.4 s theme (`--start 0 --end 130`, 128-sample ticks, pages and samples from the CD), Ymir:
+
+| | |
+|---|---|
+| Events executed | 36,940 of 36,940, in 73 pages |
+| Late events, underruns, pages out of order | 0, 0, 0 |
+| Sample residencies loaded | 65 (33 are re-reads of a sample that had been evicted), 1,258,168 bytes |
+| Checksum errors, loads finished after their first note | 0, 0 |
+| Smallest margin before a first note | 519 ticks (1.51 s); longest single load 99 ticks (0.29 s) |
+| Start-up: initial 15 residencies and the mount | 578 ticks (1.68 s) |
+| Sound RAM, sample region | 409,836 bytes of 446,464 (peak live 381,650) |
+| Page reads | 73, longest 0.15 s, 9.6 s of CD time in 130 s |
+| Program image | 42,460 bytes |
+| Busiest tick | 64 events (clean limit at 128 samples is about 80) |
+
+Against the oracle (scale 0.5): RMS -0.13 dB, peak +0.23 dB, no clipping, octave bands within -0.33 to +0.27 dB up
+to 16 kHz (+6.65 dB above), left/right per second within 1.7 dB, envelope correlation 0.95, spectrogram cosine
+0.78 (0.84 in the first 52 s, 0.71 to 0.74 after; not investigated), waveform correlation 0.62 to 0.73 in each
+26 s section. The block lag drifts 0.0068 +- 0.0018 ms/s, 0.9 ms over the 130 s, so the grid holds. Nothing
+degrades at the 72 page hand-overs or the 65 loads.
+
+What this does not show: the CD timing is Ymir's block model, not a drive (seeks between `BANK.BIN` and
+`PAGES.BIN` are not modelled); the SH-2 stalls for a load (up to 0.29 s) and a page read (0.15 s); the plan
+assumes the loader keeps its 1.5 s lead; recognisability was not judged by ear.
+
+## 10. Next
+
+- Time the CD on a model with seeks, or on hardware, and give the loader a deadline guard (mute a note whose
+  sample is not there).
+- Integrate into the Tekken 3 audio profile (budget for the fight effects) once the music is wanted.
 - Decide on the 128-sample tick per song section from the burst profile the converter prints.
 - Provoke an underrun (a late page) and a page-reuse race on purpose, to test the detection in isolation.

@@ -328,11 +328,92 @@ def build_bank(notes, rom, pcm8_base, align=2):
     return bytes(pcm8 + pcm16), addresses, len(pcm8), len(pcm16), pcm16_base
 
 
+def end_of(n):
+    return min(x for x in (n.t_off, n.t_natural) if x is not None)
+
+
+def plan_dynamic_bank(notes, addresses, base, budget, lead_s=1.5, tail_s=0.1, merge_gap_s=3.0):
+    """Residencies of the samples in Sound RAM over time, packed into [base, base + budget).
+
+    A sample is resident from `lead_s` before its first use to `tail_s` after its last, uses closer than
+    `merge_gap_s` sharing one residency; a longer silence frees the space and the sample is read again. Residencies
+    are placed in time order at the lowest address where they overlap no earlier one in both space and time. Each
+    carries the interval in which it may be written: after the last residency it overlaps in space has ended, and
+    before its own first use. Returns (residencies, loads, report); notes get `address_override`."""
+    by_key = {}
+    for n in sorted(notes, key=lambda n: n.t_on):
+        by_key.setdefault(n.key, []).append(n)
+    res = []
+    for key, ns in by_key.items():
+        cur = None
+        for n in ns:
+            s0, e0 = n.t_on - T0, end_of(n) - T0
+            if cur and s0 - cur['last'] < merge_gap_s:
+                cur['last'] = max(cur['last'], e0)
+                cur['notes'].append(n)
+            else:
+                cur = dict(key=key, first=s0, last=e0, notes=[n])
+                res.append(cur)
+    res.sort(key=lambda r: r['first'])
+    placed = []
+    for r in res:
+        address, is16, length = addresses[r['key']]
+        r['file_offset'] = address - base
+        r['bytes'] = length * (2 if is16 else 1) + (length * (2 if is16 else 1)) % 2
+        r['is16'], r['length'] = is16, length
+        r['span'] = (max(0.0, r['first'] - lead_s) if r['first'] > lead_s else -1e9, r['last'] + tail_s)
+        busy = sorted((p['addr'], p['addr'] + p['bytes']) for p in placed
+                      if p['span'][1] > r['span'][0] and p['span'][0] < r['span'][1])
+        cand = 0
+        for a, b in busy:
+            if cand + r['bytes'] <= a:
+                break
+            cand = max(cand, b)
+        r['addr'] = cand
+        placed.append(r)
+    extent = max((r['addr'] + r['bytes'] for r in res), default=0)
+    if extent > budget:
+        raise ValueError(f'the section samples need {extent} bytes of Sound RAM at once; budget {budget}')
+    loads = []
+    for r in res:
+        prev = [p['span'][1] for p in res if p is not r and p['span'][0] < r['span'][0] and
+                p['addr'] < r['addr'] + r['bytes'] and r['addr'] < p['addr'] + p['bytes']]
+        r['load_after'] = max(prev) if prev else -1e9
+        for n in r['notes']:
+            n.address_override = (base + r['addr'], r['is16'], r['length'])
+        loads.append(r)
+    loads.sort(key=lambda r: (r['load_after'], r['first']))
+    events = sorted([(r['span'][0], r['bytes']) for r in res] + [(r['span'][1], -r['bytes']) for r in res])
+    cur = peak = 0
+    for _, d in sorted(events, key=lambda e: (e[0], e[1])):
+        cur += d
+        peak = max(peak, cur)
+    report = dict(residencies=len(res), samples=len(by_key), reloaded_samples=len(res) - len(by_key),
+                  bytes_loaded=sum(r['bytes'] for r in res), union_bytes=sum(
+                      (addresses[k][2] * (2 if addresses[k][1] else 1)) for k in by_key),
+                  peak_live_bytes=peak, packed_extent_bytes=extent, budget_bytes=budget,
+                  lead_s=lead_s, tail_s=tail_s, merge_gap_s=merge_gap_s)
+    return res, loads, report
+
+
+def loads_bytes(loads, base, sample_file):
+    """LOADS.BIN: per residency (load_after tick, needed_by tick, Sound RAM address, BANK.BIN offset, bytes, word sum)."""
+    out = b''
+    for r in loads:
+        la = -1 if r['load_after'] < -1e8 else int(math.ceil(r['load_after'] / TICK_SECONDS))
+        nb = int(r['first'] / TICK_SECONDS)
+        data = sample_file[r['file_offset']:r['file_offset'] + r['bytes']]
+        data += b'\0' * (-len(data) % 2)
+        total = sum(struct.unpack(f'>{len(data) // 2}H', data)) & 0xFFFFFFFF
+        out += struct.pack('>iIIIII', la, nb, base + r['addr'], r['file_offset'], len(data), total)
+    return out
+
+
 def configure(notes, addresses):
     """Per-note slot configuration words (ctrl, SA low, LSA, LEA) and unsupported-feature counters."""
     issues = dict(reverse_play=0, phase_invert=0, link=0, lea_clamped=0, noise=0)
     for n in notes:
-        address, is16, length = addresses[n.key]
+        address, is16, length = getattr(n, 'address_override', None) or addresses[n.key]
         flags = n.flags
         lpctl = 0
         if flags & vgm.LOOP:
@@ -371,7 +452,7 @@ def audible(n):
     return any(c[1] == 'vol' and (c[2] or c[3]) for c in n.changes)
 
 
-def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256):
+def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256, bank_budget=None):
     set_timebase(tick_samples, t0)
     info = vgm.parse(vgm.read_vgm(vgm_path))
     rom = rom_image(info)
@@ -386,6 +467,7 @@ def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256)
     if scale is None:
         scale = 1.0 / max(1.0, peak_gain)
     bank, addresses, pcm8_len, pcm16_len, pcm16_base = build_bank(notes, rom, pcm8_base)
+    dynamic = plan_dynamic_bank(notes, addresses, pcm8_base, bank_budget) if bank_budget else None
     issues = configure(notes, addresses)
     events, placed, dropped, reuse = plan(notes, info['out_rate'], scale, t1)
     loop_ticks = tick_of(t1) + 8
@@ -394,7 +476,7 @@ def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256)
     return dict(info=info, notes=notes, silent=silent, bank=bank, addresses=addresses, score=score, events=events,
                 dropped=dropped, reuse=reuse, issues=issues, scale=scale, peak_gain=peak_gain, loop_ticks=loop_ticks,
                 pcm8_len=pcm8_len, pcm16_len=pcm16_len, pcm16_base=pcm16_base, poly=poly, placed=placed,
-                notes_all=notes_all)
+                notes_all=notes_all, dynamic=dynamic)
 
 
 PAGE_EVENTS = 512
@@ -543,6 +625,7 @@ def summary(r, args, vgm_path):
                   score_bytes=len(r['score']), score_sha256=hashlib.sha256(r['score']).hexdigest(),
                   bank_sha256=hashlib.sha256(r['bank']).hexdigest()),
         pages=page_stats(r),
+        dynamic_bank=r['dynamic'][2] if r['dynamic'] else None,
         quantisation=dict(onset_error_ms_mean=sum(quant) / max(1, len(quant)), onset_error_ms_max=max(quant, default=0),
                           pitch_error_cents_max=max(map(abs, pitch_err), default=0),
                           pitch_error_cents_mean=sum(map(abs, pitch_err)) / max(1, len(pitch_err))),
@@ -556,6 +639,8 @@ def write_outputs(out, r, manifest, start, end, pcm8_base, relative_pages=False,
     (out / 'bank.bin').write_bytes(r['bank'])
     pages = paginate(r['events'], r['loop_ticks'], relative_pages)
     (out / 'pages.bin').write_bytes(pages_bytes(pages))
+    dyn = r['dynamic']
+    (out / 'loads.bin').write_bytes(loads_bytes(dyn[1], pcm8_base, r['bank']) if dyn else bytes(24))
     fits = len(r['events']) <= SCORE_MAX_EVENTS
     if not paged and not fits:
         raise ValueError('more than 1024 events: use the paged score')
@@ -566,7 +651,8 @@ def write_outputs(out, r, manifest, start, end, pcm8_base, relative_pages=False,
               sample=list(n.key), looped=n.looped, carried=bool(n.carried)) for n in r['placed']], indent=1))
     (out / 'score_meta.h').write_text(
         '/* Generated by c352_scsp_convert.py; private, not for Git. */\n'
-        f"#define C352_BANK_BASE {pcm8_base:#x}u\n#define C352_BANK_BYTES {len(r['bank'])}u\n"
+        f"#define C352_BANK_BASE {pcm8_base:#x}u\n#define C352_BANK_BYTES {dyn[2]['packed_extent_bytes'] + dyn[2]['packed_extent_bytes'] % 2 if dyn else len(r['bank'])}u\n"
+        f"#define C352_FILE_BYTES {len(r['bank'])}u\n#define C352_DYNAMIC {1 if dyn else 0}u\n#define C352_LOADS {len(dyn[1]) if dyn else 0}u\n"
         f"#define C352_SCORE_EVENTS {len(r['events']) if fits and not paged else 0}u\n#define C352_LOOP_TICKS {r['loop_ticks']}u\n"
         f"#define C352_WINDOW_MS {round((end - start) * 1000)}u\n#define C352_TICK_SAMPLES {TICK_SAMPLES}u\n"
         f"#define C352_PAGES {len(pages)}u\n#define C352_PAGED {1 if paged else 0}u\n"
@@ -583,11 +669,12 @@ def main():
     parser.add_argument('--scale', type=float, help='linear gain applied to every voice (default: 1 / loudest voice if above 1)')
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64), help='driver tick length in samples')
     parser.add_argument('--legacy-score', action='store_true', help='write the 1024-event score instead of pages')
+    parser.add_argument('--bank-budget', type=int, help='load the samples section by section into this many bytes of Sound RAM')
     parser.add_argument('--relative-pages', action='store_true', help='page events relative to the page time base instead of absolute')
     parser.add_argument('--out', type=Path, help='write the data files here')
     parser.add_argument('--dry-run', action='store_true', help='print the manifest only')
     args = parser.parse_args()
-    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale, tick_samples=args.tick_samples)
+    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget)
     manifest = summary(r, args, args.vgm)
     if args.out and not args.dry_run:
         write_outputs(args.out, r, manifest, args.start, args.end, args.pcm8_base, args.relative_pages, not args.legacy_score)
