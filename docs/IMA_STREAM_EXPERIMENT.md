@@ -154,3 +154,26 @@ application gives or nothing.
 
 Still open for the fight itself: the fight program has not been measured, and the scheduler would own the CD Block
 while the fight runs.
+
+## ADX in the fight: the RAM the player needs is not there
+
+Measured on the built `tekken3_saturn.elf` (the fight program; `g_io` is the menu's buffer and does not exist here):
+
+| Region | Used | Limit | Free |
+| --- | --- | --- | --- |
+| Low WRAM `.wram_l` | 0x200000 + 0xffd10 | 0x2ffe00 | 240 B |
+| High WRAM (`.bss` end 0x060fbf34, stack reserve 0x4000, top 0x06100000) | | | 204 B above the reserve |
+
+`g_arena` (fighter_pack.c) is 734,672 B of Low WRAM, sized for the worst pairing. The two banks and two camera streams a
+pairing really loads leave a tail (`scripts/report_fight_arena.py`, 441 ordered pairings, 21 fighters): least 0 B
+(fighters 3 and 8), median 134,880 B, most 469,328 B. The player needs the disc scheduler (33,160 B) plus the workspace
+(`2 * ring * 2 + 17,416 B`):
+
+| Ring (frames) | Player bytes | Pairings with a tail too small |
+| --- | --- | --- |
+| 8,192 (minimum) | 83,344 | 74 of 441 |
+| 16,384 (menu) | 116,000 | 194 of 441 |
+
+So the arena tail cannot host the player for every fight, and no other region has room. Not integrated yet.
+Sound RAM, per-frame cost and the CD scheduler under fight loading were not measured: nothing to measure until the
+player has memory.
