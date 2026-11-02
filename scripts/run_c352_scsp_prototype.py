@@ -27,7 +27,8 @@ RESULT_FIELDS = ('magic audio_status driver_status create_status score_status ch
                  'score_loops max_lateness last_lateness queued active_voices_during_play sound_ram_used_during_play '
                  'pg_published pg_played pg_underrun_ticks pg_late_events pg_max_lateness pg_bad_sequence pg_max_burst '
                  'pg_refused pg_executed pg_done pg_base_tick pg_tick_samples pg_abuse_result pg_total_pages '
-                 'pg_publish_attempts pg_frame_done').split() + [f'pg_margin_ticks_{i}' for i in range(16)]
+                 'pg_publish_attempts pg_frame_done cd_mode cd_status cd_bank_read_ticks cd_page_reads '
+                 'cd_page_read_ticks_max cd_page_read_ticks_total cd_bank_checksum_file cd_bank_checksum_ram').split() + [f'pg_margin_ticks_{i}' for i in range(16)]
 
 
 def sh(command, **kwargs):
@@ -55,6 +56,7 @@ def main():
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64))
     parser.add_argument('--legacy-score', action='store_true', help='the 1024-event score instead of pages')
     parser.add_argument('--relative-pages', action='store_true')
+    parser.add_argument('--cd', action='store_true', help='read the bank and the pages from a disc image built for the program')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--prefix', type=Path, default=Path(os.environ.get('LIBSATURN_PREFIX', Path.home() / 'dev/saturn-prefix')))
     parser.add_argument('--probe', type=Path, default=Path.home() / 'dev/lib-saturn/harness/build-macos/probe')
@@ -79,13 +81,14 @@ def main():
     toolchain = args.prefix / 'share/libsaturn/toolchains/sh2eb-elf.cmake'
     sh(['cmake', '-S', str(ROOT / 'tests/c352_scsp_proto'), '-B', str(args.build), '-G', 'Ninja',
         f'-DCMAKE_TOOLCHAIN_FILE={toolchain}', f'-DCMAKE_PREFIX_PATH={args.prefix}', '-DCMAKE_BUILD_TYPE=Release',
-        f'-DC352_DATA_DIR={data}'])
+        f'-DC352_DATA_DIR={data}', f'-DC352_CD={"ON" if args.cd else "OFF"}'])
     sh(['cmake', '--build', str(args.build)])
     elf, binary = args.build / 'c352_scsp_proto.elf', args.build / 'c352_scsp_proto.app.bin'
     address = symbol(elf, 'g_c352_proto', args.nm)
     frames = args.frames or int((args.end - args.start) * 59.94 + 300)
     audio = out / 'audio.s16le'
-    sh([str(args.probe), '--iso', str(args.iso), '--bin', str(binary), '--bios', str(args.bios),
+    iso = next(args.build.glob('**/c352_scsp_proto.iso')) if args.cd else args.iso
+    sh([str(args.probe), '--iso', str(iso), '--bin', str(binary), '--bios', str(args.bios),
         '--boot-frames', '90', '--frames', str(frames), '--out', str(out / 'ymir.json'),
         '--dump-mem', f'{address:#x}:{4 * len(RESULT_FIELDS)}:{out / "results.bin"}', '--dump-audio', str(audio)])
     values = struct.unpack(f'>{len(RESULT_FIELDS)}I', (out / 'results.bin').read_bytes())

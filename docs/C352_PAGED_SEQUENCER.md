@@ -173,8 +173,8 @@ python3 -m unittest tests.test_c352_scsp_convert     # LibSaturn: tests.tools.te
 
 ## 7. Limits that remain
 
-1. Pages come from the program image. Streaming them from the CD, and loading samples dynamically, are not done;
-   the whole bank was resident for this test.
+1. The pages can stream from the CD (section 8), but samples are not loaded dynamically: the whole bank is
+   resident before playback.
 2. The 128-sample tick leaves only 10 to 30 % headroom on this window's busiest tick; a denser passage or a slower
    event could need a smaller burst limit, a spread-out slot setup or the 256-sample tick.
 3. Tick quantisation (up to 2.9 ms, or 1.45 ms at 128) and FNS pitch rounding remain; exact timing and pitch
@@ -188,8 +188,31 @@ python3 -m unittest tests.test_c352_scsp_convert     # LibSaturn: tests.tools.te
    166 underrun ticks); a page published late on purpose, and a forced reuse race, were not tested.
 8. One window of one track, Ymir only.
 
-## 8. Next
+## 8. Pages and bank from the CD
 
-- Stream the pages and the samples a section at a time from the CD (the point of the paging).
+`run_c352_scsp_prototype.py --cd` builds the program with `C352_CD=ON`: the image holds only code, and a disc
+holds `BANK.BIN` and `PAGES.BIN`. The program mounts the disc, reads the bank in 64 KiB pieces into
+`sat_sound_create`, checks it by a word checksum against Sound RAM, then reads the pages one at a time: page 0
+before the stream base is set, and each next page right after the previous one is published, so one page waits
+in RAM while the 68000 plays (128-sample tick, same 15 s to 25 s window, run on Ymir):
+
+| | From the image | From the CD |
+|---|---|---|
+| Events executed, late, underruns, out of order | 3,090, 0, 0, 0 | 3,090, 0, 0, 0 |
+| Capture against the oracle (RMS, envelope correlation) | -0.29 dB, 0.92 | -0.29 dB, 0.92 |
+| Program image (SH-2 Work RAM) | 281,392 bytes | 41,936 bytes |
+| Bank load | in the image | 219,474 bytes in 237 ticks (0.69 s), checksum equal |
+| Page reads | none | 7, longest 50 ticks (0.145 s), total 281 ticks (0.82 s) |
+| Page margin at publication | 103 to 659 ticks | 103 to 664 ticks |
+
+The SH-2 blocks for the length of a page read (a frame or nine), the 68000 does not notice. The CD runs on
+Ymir's block model, so the read times are a measurement of that model, not of a drive. Reading pages is the only
+CD traffic during playback; nothing else may touch the drive then. Samples are still loaded as a whole bank
+before playback.
+
+## 9. Next
+
+- Load samples a section at a time while the pages play (dynamic bank), with the converter writing one bank per
+  section; pages already stream from the CD.
 - Decide on the 128-sample tick per song section from the burst profile the converter prints.
 - Provoke an underrun (a late page) and a page-reuse race on purpose, to test the detection in isolation.

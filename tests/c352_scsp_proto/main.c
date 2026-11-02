@@ -14,6 +14,22 @@
 #include "saturn/video.h"
 #include "score_meta.h"
 
+#if C352_CD
+#include "saturn/cd_mount.h"
+#include "saturn/cdfs.h"
+/* Bank and pages are read from the disc (BANK.BIN, PAGES.BIN); nothing but the program is in the image. */
+static sat_cd_block_t g_cd;
+static sat_cd_device_t g_cd_device;
+static sat_cdfs_volume_t g_cd_volume;
+static sat_cdfs_file_t g_pages_file;
+static uint32_t g_pages_offset;
+static uint8_t g_record[16 + 4096] __attribute__((aligned(4)));
+static uint8_t g_record_valid;
+static uint8_t g_stage[65536] __attribute__((aligned(4)));
+static const uint8_t c352_bank[1];
+static const uint8_t c352_pages[1];
+static const sat_sound_score_event_t c352_score[1];
+#else
 __asm__(".section .rodata\n.balign 4\n"
         ".global c352_bank_asm\nc352_bank_asm:\n.incbin \"" C352_BANK_FILE "\"\n"
         ".balign 4\n.global c352_score_asm\nc352_score_asm:\n.incbin \"" C352_SCORE_FILE "\"\n"
@@ -22,6 +38,7 @@ __asm__(".section .rodata\n.balign 4\n"
 extern const uint8_t c352_bank[] __asm__("c352_bank_asm");
 extern const sat_sound_score_event_t c352_score[] __asm__("c352_score_asm");
 extern const uint8_t c352_pages[] __asm__("c352_pages_asm");
+#endif
 
 #define PROTO_MAGIC SAT_FOURCC('C', '3', 'S', '1')
 #define CHUNK_BYTES 65534u              /* sat_sound_create takes up to 65535 samples */
@@ -45,6 +62,8 @@ typedef struct c352_proto_results {
     uint32_t pg_published, pg_played, pg_underrun_ticks, pg_late_events, pg_max_lateness, pg_bad_sequence;
     uint32_t pg_max_burst, pg_refused, pg_executed, pg_done, pg_base_tick, pg_tick_samples;
     uint32_t pg_abuse_result, pg_total_pages, pg_publish_attempts, pg_frame_done;
+    uint32_t cd_mode, cd_status, cd_bank_read_ticks, cd_page_reads, cd_page_read_ticks_max, cd_page_read_ticks_total;
+    uint32_t cd_bank_checksum_file, cd_bank_checksum_ram;
     int32_t pg_margin_ticks[16];        /* per page: ticks between its publication and its first event's time */
 } c352_proto_results_t;
 
@@ -53,11 +72,41 @@ volatile c352_proto_results_t g_c352_proto;
 static sat_ascii_font_t font;
 static const uint8_t* g_page_cursor;
 static uint32_t g_page_next;
+static uint32_t g_page_fetched;
 
 /* Publishes the next page if the driver has freed a slot. Returns 1 when one went out. */
+#if C352_CD
+/* Reads the next page record (16-byte header, then count events) into g_record. */
+static void fetch_next(void) {
+    uint32_t got = 0u;
+    if (g_record_valid || g_page_fetched >= C352_PAGES) return;
+    const uint32_t t0 = sat_sound_driver_tick();
+    sat_result_t st = sat_cdfs_read_at(&g_cd_volume, &g_pages_file, g_pages_offset, g_record, 16u, &got);
+    if (st == SAT_OK && got == 16u) {
+        const uint32_t count = ((uint32_t)g_record[0] << 8) | g_record[1];
+        st = sat_cdfs_read_at(&g_cd_volume, &g_pages_file, g_pages_offset + 16u, g_record + 16, count * 8u, &got);
+        if (st == SAT_OK && got == count * 8u) {
+            g_pages_offset += 16u + count * 8u;
+            g_record_valid = 1u;
+            ++g_page_fetched;
+        }
+    }
+    g_c352_proto.cd_status |= (uint32_t)(-st);
+    const uint32_t dt = sat_sound_driver_tick() - t0;
+    ++g_c352_proto.cd_page_reads;
+    g_c352_proto.cd_page_read_ticks_total += dt;
+    if (dt > g_c352_proto.cd_page_read_ticks_max) g_c352_proto.cd_page_read_ticks_max = dt;
+}
+#endif
+
 static uint32_t publish_next(const sat_sound_pages_info_t* info) {
+#if C352_CD
+    if (g_page_next >= C352_PAGES || info->pages_free == 0u || !g_record_valid) return 0u;
+    const uint8_t* h = g_record;
+#else
     if (g_page_next >= C352_PAGES || info->pages_free == 0u) return 0u;
     const uint8_t* h = g_page_cursor;
+#endif
     const uint16_t count = (uint16_t)((h[0] << 8) | h[1]);
     const uint16_t flags = (uint16_t)((h[2] << 8) | h[3]);
     const uint32_t time_base = ((uint32_t)h[4] << 24) | ((uint32_t)h[5] << 16) | ((uint32_t)h[6] << 8) | h[7];
@@ -71,6 +120,9 @@ static uint32_t publish_next(const sat_sound_pages_info_t* info) {
     }
     g_page_cursor = h + 16 + 8u * count;
     ++g_page_next;
+#if C352_CD
+    g_record_valid = 0u;
+#endif
     return 1u;
 }
 
@@ -113,6 +165,40 @@ int main(void) {
     if (g_c352_proto.audio_status == 0u) g_c352_proto.driver_status = (uint32_t)(-sat_sound_driver_start());
     if (g_c352_proto.audio_status == 0u && g_c352_proto.driver_status == 0u) {
         slots_init();
+#if C352_CD
+        {
+            /* Mount the disc and load the bank from BANK.BIN in consecutive sounds, 64 KiB at a time. */
+            sat_cdfs_file_t bank_file;
+            uint32_t sum_file = 0u, sum_ram = 0u;
+            const uint32_t t_begin = sat_sound_driver_tick();
+            g_c352_proto.cd_mode = 1u;
+            g_c352_proto.cd_status = (uint32_t)(-sat_cd_mount_default(&g_cd, 0, 0, &g_cd_device, 0u, &g_cd_volume));
+            if (g_c352_proto.cd_status == 0u) g_c352_proto.cd_status = (uint32_t)(-sat_cdfs_lookup(&g_cd_volume, "BANK.BIN", &bank_file));
+            if (g_c352_proto.cd_status == 0u) g_c352_proto.cd_status = (uint32_t)(-sat_cdfs_lookup(&g_cd_volume, "PAGES.BIN", &g_pages_file));
+            for (uint32_t offset = 0u; g_c352_proto.cd_status == 0u && offset < C352_BANK_BYTES; offset += CHUNK_BYTES) {
+                sat_sound_t sound = {0};
+                sat_sound_desc_t desc = {0};
+                uint32_t got = 0u;
+                const uint32_t bytes = C352_BANK_BYTES - offset < CHUNK_BYTES ? C352_BANK_BYTES - offset : CHUNK_BYTES;
+                g_c352_proto.cd_status |= (uint32_t)(-sat_cdfs_read_at(&g_cd_volume, &bank_file, offset, g_stage, bytes, &got));
+                if (got != bytes) { g_c352_proto.cd_status |= 1u << 8; break; }
+                for (uint32_t w = 0u; w < bytes / 2u; ++w) sum_file += (uint32_t)((g_stage[2u * w] << 8) | g_stage[2u * w + 1u]);
+                desc.samples = g_stage;
+                desc.sample_count = bytes;
+                desc.sample_rate = 44100u;
+                desc.format = SAT_AUDIO_PCM_S8;
+                g_c352_proto.create_status |= (uint32_t)(-sat_sound_create(&sound, &desc));
+                ++created;
+            }
+            for (uint32_t w = 0u; w < C352_BANK_BYTES / 2u; ++w) sum_ram += SOUND_RAM[C352_BANK_BASE / 2u + w];
+            g_c352_proto.cd_bank_checksum_file = sum_file;
+            g_c352_proto.cd_bank_checksum_ram = sum_ram;
+            g_c352_proto.bank_mismatch_words = sum_file == sum_ram ? 0u : 1u;
+            g_c352_proto.cd_bank_read_ticks = sat_sound_driver_tick() - t_begin;
+            g_c352_proto.chunks = created;
+            if (g_c352_proto.cd_status != 0u) g_c352_proto.create_status |= 1u << 8;
+        }
+#else
         /* The bank in consecutive sounds: the first fit starts at C352_BANK_BASE and nothing is freed. */
         for (uint32_t offset = 0u; offset < C352_BANK_BYTES; offset += CHUNK_BYTES) {
             sat_sound_t sound = {0};
@@ -130,16 +216,23 @@ int main(void) {
             const uint16_t want = (uint16_t)((c352_bank[2u * w] << 8) | c352_bank[2u * w + 1u]);
             if (SOUND_RAM[C352_BANK_BASE / 2u + w] != want) ++g_c352_proto.bank_mismatch_words;
         }
+#endif
 #if C352_PAGED
         if (g_c352_proto.create_status == 0u) {
             sat_sound_pages_info_t pinfo = {0};
             g_c352_proto.pg_total_pages = C352_PAGES;
+#if C352_CD
+            fetch_next();                               /* page 0 is in hand before the stream's base is set */
+#endif
             g_c352_proto.tick_before_load = sat_sound_driver_tick();
             g_c352_proto.score_status = (uint32_t)(-sat_sound_driver_pages_start(C352_TICK_SAMPLES, C352_LEAD_TICKS));
             g_page_cursor = c352_pages;
             for (uint32_t k = 0u; k < 2u && g_c352_proto.score_status == 0u; ++k) {
                 (void)sat_sound_driver_pages_info(&pinfo);
                 (void)publish_next(&pinfo);
+#if C352_CD
+                fetch_next();
+#endif
             }
             g_c352_proto.tick_after_load = sat_sound_driver_tick();
         }
@@ -182,6 +275,9 @@ int main(void) {
             sat_sound_pages_info_t pinfo = {0};
             if (sat_sound_driver_pages_info(&pinfo) == SAT_OK) {
                 if (publish_next(&pinfo) != 0u && sat_sound_driver_pages_info(&pinfo) == SAT_OK) (void)publish_next(&pinfo);
+#if C352_CD
+                fetch_next();                           /* prefetch the next page while the 68000 plays */
+#endif
                 if (g_c352_proto.frames == 200u && pinfo.pages_free == 0u && g_page_next < C352_PAGES) {
                     /* a deliberate publish into a page still in use: it must be refused */
                     const uint8_t* h = g_page_cursor;
