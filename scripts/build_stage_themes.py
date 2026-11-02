@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Join the fighters' arranged themes into one WAV for the audio track.
 
-Each theme is decoded from the USA disc (music tracks 7..27, variant 0) and
+Each theme is decoded from the USA disc (music tracks 7..27, variant 0; the home-version
+characters share the arcade soundtrack's stream 6) and
 padded to a whole CD sector. themes.wav goes on the disc after the select music;
 t3_music.h gives each theme's first sector and length in that WAV. The output
 is retail-derived: keep it under assets/imported.
@@ -17,6 +18,11 @@ from convert_cd_audio import convert
 from extract_psx_stage_music import extract
 
 FIRST_TRACK, LAST_TRACK = 7, 27
+# The original's ARCADE soundtrack gives the characters added for the home
+# version one shared stream (6). They share it here too: one copy on the disc,
+# every one of these tracks pointing at it.
+SHARED_TRACKS = (17, 18, 19, 22, 23, 24, 25, 26)
+SHARED_SOURCE = (17, 1)                  # (track, variant) whose stream 6 is stored once
 SECTOR_BYTES = 2352
 
 
@@ -29,15 +35,19 @@ def header(themes):
 
 def build(image, out, ffmpeg):
     out.mkdir(parents=True, exist_ok=True)
-    themes, start = [], 0
+    themes, start, shared = [], 0, None
     with tempfile.TemporaryDirectory(prefix='themes-', dir=out) as temporary, \
             wave.open(str(out/'themes.wav'), 'wb') as joined:
         joined.setnchannels(2)
         joined.setsampwidth(2)
         joined.setframerate(44100)
         for track in range(FIRST_TRACK, LAST_TRACK + 1):
+            if track in SHARED_TRACKS and shared:
+                themes.append(dict(shared, track=track))
+                continue
+            source, variant = SHARED_SOURCE if track in SHARED_TRACKS else (track, 0)
             folder = Path(temporary)/f'{track:02}'
-            report = extract(image, folder, track, 0, ffmpeg)
+            report = extract(image, folder, source, variant, ffmpeg)
             cdda = folder/'theme.cdda'
             convert(folder/'stage.wav', cdda, ffmpeg)
             pcm = cdda.read_bytes()
@@ -46,6 +56,8 @@ def build(image, out, ffmpeg):
             themes.append(dict(track=track, start=start, sectors=sectors, seconds=round(sectors/75, 1),
                                loop=report['loop'], volume=report['volume']))
             start += sectors
+            if track in SHARED_TRACKS:
+                shared = themes[-1]
             shutil.rmtree(folder)
     (out/'t3_music.h').write_text(header(themes))
     (out/'themes.json').write_text(json.dumps(themes, indent=1) + '\n')
