@@ -24,7 +24,7 @@ typedef struct adx_state {
 
 #define STATE_BYTES ((sizeof(adx_state_t) + 15u) & ~15u)
 #define DISC_BYTES ((sizeof(sat_disc_stream_t) + 15u) & ~15u)
-#define WORKSPACE_BYTES SAT_MUSIC_WORKSPACE_BYTES(T3_ADX_MUSIC_RING_FRAMES, 2u)
+#define WORKSPACE_BYTES SAT_MUSIC_DISC_WORKSPACE_BYTES(T3_ADX_MUSIC_RING_FRAMES, 2u)
 
 static adx_state_t* g_state;
 static sat_disc_stream_t* g_disc;

@@ -208,3 +208,47 @@ scheduler (`test_music_api`, `test_music_disc`: a disc track without a scheduler
 tests mock the HAL, so no host test covers it; the evidence is the Ymir measurement (right channel 0 samples late, was
 3). `ctest --preset host-tests` only runs 3 header tests and is not the suite. The cross-built `dino_demo` and
 `cd_streaming_jukebox` examples link with the new rules.
+
+## Fight memory after the library changes (WRAM-H, WRAM-L, Sound RAM, per component)
+
+Library changes (lib-saturn, uncommitted until validated): the stream upload reads the caller's ring directly in at
+most two pieces (no 8 KiB staging per slot); a disc-scheduler track needs no read buffer
+(`SAT_MUSIC_DISC_WORKSPACE_BYTES`); the music, scheduler and stream-API units build with `-Os`. Host test: wrap-around
+of an odd PCM8 and a PCM16 half, and a failed second piece consumes nothing; `gmake test` rc=0.
+
+Ymir, menu ADX stream (90 s, after the change): 0 underruns, 0 rejected writes, minimum fill 2,048, 1,287 segments, 0
+waits; right channel 0 samples late (was 0 before).
+
+Fight program (`tekken3_saturn`), production build and the build with the player (`T3_FIGHT_ADX_MUSIC=ON`):
+
+| Region | Production | With the player, before | With the player, now | Limit |
+| --- | --- | --- | --- | --- |
+| WRAM-H `.bss` end | 0x060fbf34 | the same code, before the library changes:, 26,604 B over the stack reserve (ld: 10,220 past the region) | 0x06101d3c (+23,868 B) | 0x060fc000 |
+| WRAM-L `.wram_l` end | 0x002ffd10 | 32,432 B over | 0x002ffeb0 (+176 B) | 0x002ffe00 |
+
+The whole WRAM-H excess is the player's code and tables (22.8 KB after `-Os`; 25.4 KB before): `sat_music` and
+the disc scheduler 12.1 KB (api, disc_stream, disc_feed, open, player), stream API 4.0 KB, ADPCM decoders 4.7 KB (IMA
+tables 2.1 KB are linked though the fight plays ADX), asset lookup and cache 3.2 KB, CD file system and block 0.7 KB,
+SCSP 0.6 KB. The WRAM-L excess is `g_audio_streams` (4 slots, now 416 B).
+
+Player memory in the arena (stereo ADX, ring 16,384):
+
+| Component | Bytes |
+| --- | --- |
+| Scheduler `sat_disc_stream_t` (2 segment buffers of 16 KiB + state) | 33,160 |
+| Two PCM rings (2 x 16,384 frames x 2 B) | 65,536 |
+| Split and carry scratch | 9,224 |
+| State (source, descriptors, handles) | 96 |
+| Total (was 116,216 with the read buffer) | 108,024 |
+
+Sound RAM: 0 B from the sample pool; the two stream slots use 32 KB of the 64 KiB stream area the profile already
+reserves (pool 446,464 B; worst pair NINA vs OGRE leaves 10,308 B).
+
+Arena tail per pairing (`report_fight_arena.py`): 108,024 B fit 269 of 441 pairings, 172 do not; the worst pair
+(3 vs 8) has 0 B.
+
+Residual deficit for the worst pairing: WRAM-H 23,868 B, WRAM-L 176 B + 108,024 B. Structures: the player's code in
+WRAM-H (no dead code of that size was found in the fight: `g_replay_history`, `g_store`, `g_actors` and the
+render buffers are in use during a fight), and for WRAM-L the arena, which holds the two animation banks (260-370 KB
+each) and camera streams of the worst pair. Not done, and why: a ring smaller than 16,384 underruns; moving the
+player's code to WRAM-L is not possible (`.wram_l` is not loaded from the image).
