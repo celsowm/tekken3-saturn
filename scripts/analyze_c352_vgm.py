@@ -77,9 +77,33 @@ def analyze(info):
         n['end'] = t / 44100
         notes.append(n)
 
+    def sweep(t):
+        """Close one-shot notes whose sample has run out by time t (seconds)."""
+        for v in list(active):
+            n = active[v]
+            if n['flags'] & LOOP:
+                continue
+            length = ((n['wave_end'] - n['wave_start']) & 0xFFFF) + 1
+            if n['rate_hz'] <= 0:
+                continue
+            done = n['consumed'] + n['rate_hz'] * (t - n['mark'])
+            if done >= length:
+                n['end'] = n['mark'] + (length - n['consumed']) / n['rate_hz']
+                notes.append(active.pop(v))
+
     for t, reg, val in info['events']:
+        sweep(t / 44100)
+        if reg < 0x100 and reg % 8 == 2 and reg // 8 in active:
+            n = active[reg // 8]
+            now = t / 44100
+            n['consumed'] += n['rate_hz'] * (now - n['mark'])
+            n['mark'] = now
+            n['rate_hz'] = rate * val / 65536
+            n['freq'] = val
         if reg < 0x100:
             regs[reg // 8][reg % 8] = val
+            if reg % 8 < 2 and reg // 8 in active and (regs[reg // 8][0] or regs[reg // 8][1]):
+                active[reg // 8]['audible'] = True
         elif reg == 0x202:
             for v in range(32):
                 r = regs[v]
@@ -89,7 +113,7 @@ def analyze(info):
                         close(v, t)
                     active[v] = dict(voice=v, start=t / 44100, bank=r[4] & 0xFF, wave_start=r[5], wave_end=r[6],
                                      wave_loop=r[7], flags=r[3] & 0xFF, freq=r[2], vol_f=r[0], vol_r=r[1],
-                                     rate_hz=rate * r[2] / 65536)
+                                     rate_hz=rate * r[2] / 65536, audible=bool(r[0] or r[1]), consumed=0.0, mark=t / 44100)
                     poly = len(active)
                     if poly > poly_max:
                         poly_max, poly_t = poly, t / 44100
@@ -97,6 +121,7 @@ def analyze(info):
                     r[3] &= ~KEYOFF
                     if v in active:
                         close(v, t)
+    sweep(info['total'] / 44100)
     for v in list(active):
         close(v, info['total'])
     samples = {}
