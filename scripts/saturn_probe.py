@@ -252,7 +252,7 @@ def run(args):
         dump_requests.extend(('_g_t3_event_'+n,'event-'+n.replace('_','-')+'.bin') for n in (
             'overflow','hits','blocks','swings','sounds','popped'))
         dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
-            'unmapped','unmapped_count','unmapped_seen'))
+            'unmapped','unmapped_count','unmapped_seen','shared_plays','voice_plays'))
     if workload['configuration'].get('T3_COMPACT_CAMERA_SKIN') in ('ON','1','TRUE'):
         dump_requests.extend([('_g_t3_camera_skin_frames','camera-skin-frames.bin'),
                               ('_g_t3_camera_skin_fallbacks','camera-skin-fallbacks.bin')])
@@ -325,6 +325,11 @@ def run(args):
                  'vdp2_floor_prepared','vdp2_floor_presented','vdp2_floor_updates','sfx_played','sfx_play_ms','sfx_play_max_ms','sfx_update_ms','sfx_ko_voices','sfx_ram_used','sfx_ram_capacity','sfx_ram_high_water','sfx_resident_sounds','sfx_voice_steals','sfx_failed_plays','event_overflow','event_hits','event_blocks','event_swings','event_sounds','event_popped','sfx_unmapped','sfx_unmapped_count','ai_calls','ai_ticks','ai_max_ticks','ai_reads','ai_conditions','ai_pad_hash'):
         entry=dump_manifest.get('_g_t3_'+name)
         if entry:optimizations[name]=struct.unpack('>I',(out/entry['file']).read_bytes())[0]
+    for name in ('shared_plays','voice_plays'):
+        entry=dump_manifest.get('_g_t3_sfx_'+name)
+        if entry:
+            raw=(out/entry['file']).read_bytes()
+            optimizations['sfx_'+name]=list(struct.unpack('>%dI'%(len(raw)//4),raw))
     seen=dump_manifest.get('_g_t3_sfx_unmapped_seen')
     if seen:
         raw=(out/seen['file']).read_bytes()

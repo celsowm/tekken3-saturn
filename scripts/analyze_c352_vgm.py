@@ -63,7 +63,11 @@ def parse(data):
             p += 5
         else:
             raise ValueError(f'unknown command {c:#x} at {p:#x}')
-    return dict(clock=clock, out_rate=out_rate, total=t, loop_start=u32(0x1C), events=events, rom=rom, rom_size=rom_size)
+    # 0x18 is the total sample count and 0x20 the loop length; 0x1C is a byte offset, not a time.
+    loop_samples = u32(0x20)
+    loop_start = u32(0x18) - loop_samples if loop_samples else t
+    return dict(clock=clock, out_rate=out_rate, total=t, loop_start=loop_start, loop_samples=loop_samples,
+                events=events, rom=rom, rom_size=rom_size)
 
 
 def analyze(info):

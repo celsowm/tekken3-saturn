@@ -27,7 +27,7 @@ needed. No prototype was built, as the task asks when the direct conversion does
 
 | Item | Value |
 |---|---|
-| Length | 130.44 s, loop starts at 15.98 s (the looped part is 114.5 s) |
+| Length | 130.44 s, loop starts at 54.8 s (the looped part is 75.6 s) |
 | C352 output rate | 25,401,600 Hz / 288 = 88,200 Hz; VGM waits count 44,100 Hz |
 | Register writes | 44,973 (mean 345/s, peak 667/s) |
 | Key-on triggers (0x202 executions) | 10,638 writes; 3,061 notes started |
@@ -74,7 +74,7 @@ Estimates:
 9. Swapping: required (see 6), sections loaded behind the playing one; samples are reused across the loop, so each
    pass reloads them.
 10. CD traffic: one-time load 0.6 MB (about 291 sectors); with per-pass reloads at most about 5 KB/s over the
-    114.5 s loop, against 44 KB/s for a 22.05 kHz stereo PCM8 stream. Sequence from the CD: about 1 KB/s.
+    75.6 s loop, against 44 KB/s for a 22.05 kHz stereo PCM8 stream. Sequence from the CD: about 1 KB/s.
 
 ## Alternatives (not built)
 

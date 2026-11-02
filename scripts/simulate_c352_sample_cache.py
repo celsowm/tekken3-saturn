@@ -70,6 +70,22 @@ class FirstFit:
         self.blocks = [b for b in self.blocks if b[0] != addr]
 
 
+def offline_extent(res, sizes):
+    """Extent when the whole plan is known in advance (the VGM is fixed): place residencies largest first at the
+    lowest address that is free for their whole lifetime. Ignores that the loop seam must reuse addresses."""
+    placed = []                                   # (start, end, address, size)
+    for key, begin, _, end in sorted(res, key=lambda r: -sizes[r[0]]):
+        size = (sizes[key] + 1) & ~1
+        busy = sorted((a, a + z) for b, e, a, z in placed if b < end and begin < e)
+        addr = 0
+        for a, z in busy:
+            if a - addr >= size:
+                break
+            addr = max(addr, z)
+        placed.append((begin, end, addr, size))
+    return max((a + z for _, _, a, z in placed), default=0)
+
+
 def simulate(path, gap, bandwidth, seek, mulaw16, skip_silent):
     notes, sizes, total, loop_start = build_uses(path, mulaw16, skip_silent)
     lead = lambda size: seek + size / bandwidth
@@ -91,7 +107,7 @@ def simulate(path, gap, bandwidth, seek, mulaw16, skip_silent):
     steady = [r for r in res if r[2] >= pass2_from]
     first = [r for r in res if r[2] < pass2_from]
     steady_bytes = sum(sizes[r[0]] for r in steady)
-    return dict(gap_s=gap, peak_live_bytes=peak_live, peak_live_at_s=peak_t, first_fit_extent_bytes=mem.extent,
+    return dict(gap_s=gap, peak_live_bytes=peak_live, peak_live_at_s=peak_t, first_fit_extent_bytes=mem.extent, offline_extent_bytes=offline_extent(res, sizes),
                 loads_first_pass=len(first), bytes_first_pass=sum(sizes[r[0]] for r in first),
                 loads_per_loop=len(steady), bytes_per_loop=steady_bytes,
                 cd_bytes_per_s=steady_bytes / (total - loop_start),

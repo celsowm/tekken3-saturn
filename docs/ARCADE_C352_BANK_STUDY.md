@@ -49,23 +49,27 @@ CD model (**estimates**): 614,400 B/s (2x) and 0.4 s per transfer for the lead t
 
 | Eviction gap | Peak live | Extent with fragmentation | Loads per loop | CD bytes per loop | Average CD rate |
 |---|---|---|---|---|---|
-| 0 s (load per use) | 350,354 | 440,316 | 371 | 4.67 MB | 40.8 KB/s |
-| 2 s | 350,354 | 433,312 | 75 | 1.50 MB | 13.1 KB/s |
-| 5 s | 350,354 | 429,792 | 58 | 1.04 MB | 9.1 KB/s |
-| 20 s | 371,756 | 416,882 | 30 | 0.50 MB | 4.4 KB/s |
-| 60 s | 494,989 | 509,502 | 19 | 0.25 MB | 2.2 KB/s |
+| 0 s (load per use) | 350,354 | 438,694 | 285 | 3.49 MB | 46.1 KB/s |
+| 2 s | 350,354 | 433,312 | 52 | 0.93 MB | 12.4 KB/s |
+| 5 s | 350,354 | 388,192 | 41 | 0.65 MB | 8.7 KB/s |
+| 20 s | 371,756 | 416,882 | 24 | 0.35 MB | 4.6 KB/s |
+| 60 s | 461,956 | 474,722 | 14 | 0.15 MB | 2.0 KB/s |
 
-- Lower bound with instant loads: **330,872 bytes** (323 KiB) live at once, 400,210 with fragmentation. This is
+**Correction (2 Nov):** the first version of this table placed the loop start at 15.98 s because the tool read the
+VGM header field at 0x1C (a byte offset) as a time. The loop actually starts at 54.8 s (the loop is 75.6 s). Peak live
+sizes for gaps up to 20 s are unchanged; loads, CD bytes and the 60 s row changed, and are the numbers above.
+
+- Lower bound with instant loads: **319,795 bytes** (312 KiB) live at once with silent notes dropped (354,575 with them; the earlier text said 330,872, which this tool no longer reproduces), 400,210 with fragmentation. This is
   what the music itself needs; no cache policy goes below it without removing audible data.
 - With the 5 mu-law samples expanded to PCM16 the bounds rise by about 10 KB (peak 360,243).
 - Preloading before the fight costs nothing at run time but needs the full set; the 20 s row loads
-  about 0.5 MB per loop once the first pass is in.
+  about 0.35 MB per loop once the first pass is in.
 
 ## 3. Verdict on music plus fight effects
 
-Music needs at least 331,640 bytes and realistically 372,000 to 440,000 with fragmentation and load lead.
+Music needs at least about 320,000 bytes (355,000 with the silent notes) and realistically 372,000 to 440,000 with fragmentation and load lead.
 The fight effects need 245,672 to 442,932. Together they need about 580,000 to 880,000 bytes, against 446,464 (current)
-or 512,000 (no streaming). **Even the lightest fight (a mirror match) does not fit in either profile (free 200,792 / 266,328 against a music minimum of 330,872), and the no-streaming profile
+or 512,000 (no streaming). **Even the lightest fight (a mirror match) does not fit in either profile (free 200,792 / 266,328 against a music minimum of about 320,000), and the no-streaming profile
 only moves the free space from 46 KB to 111 KB (Paul vs Law) against a music need above 331 KB.**
 
 Voices: music peaks at 21; this leaves 7 (current) or 11 (no streaming) for the fight effects. This is the

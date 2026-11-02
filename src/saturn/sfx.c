@@ -33,6 +33,12 @@ volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_ms,g_t3_sfx_play_max_ms,g_t3_sfx
 /* LibSaturn's audio statistics, refreshed each update: Sound RAM and voice pressure of a real fight. */
 volatile uint32_t g_t3_sfx_ram_used,g_t3_sfx_ram_capacity,g_t3_sfx_ram_high_water,g_t3_sfx_resident_sounds,
                   g_t3_sfx_voice_steals,g_t3_sfx_failed_plays;
+/* Play requests per sound: shared sounds by table index, voices by [actor][pack voice row]. The residency
+ * study (docs/SFX_RESIDENCY_STUDY.md) reads them through scripts/saturn_probe.py. */
+volatile uint32_t g_t3_sfx_shared_plays[T3_SFX_COUNT];
+#if defined(T3_FIGHTER_PACKS)
+volatile uint32_t g_t3_sfx_voice_plays[2][T3_ROSTER_VOICES];
+#endif
 
 #if defined(T3_FIGHTER_PACKS)
 _Static_assert(T3_ROSTER_MAX_VOICE_SAMPLES>0u,"voices");
@@ -102,6 +108,7 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
 static void play(unsigned id) {
     const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
     const uint32_t started=sat_time_ms();
+    ++g_t3_sfx_shared_plays[id];
     if(sat_sound_play(g_sound[id],&params,NULL)==SAT_OK)++g_t3_sfx_played;
     const uint32_t spent=sat_time_ms()-started;
     g_t3_sfx_play_ms+=spent;
@@ -126,6 +133,7 @@ static void play_request(const t3_combat_event_t* e) {
         for(unsigned i=0;i<g_voice_count[e->fighter];++i)
             if(g_voice_code[e->fighter][i]==e->code) {
                 const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
+                ++g_t3_sfx_voice_plays[e->fighter][i];
                 if(sat_sound_play(g_voice[e->fighter][i],&params,NULL)==SAT_OK)++g_t3_sfx_played;
                 return;
             }
