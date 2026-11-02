@@ -40,10 +40,11 @@ Size and codec (software only, no Saturn in the path):
 - Codec SNR against the oracle: 32.4 dB. Against the oracle after the same 44.1 kHz conversion, the software decode
   reaches zero-lag correlation 0.99983, spectrogram cosine 0.9938, envelope error mean 0.0 dB (std 0.012 dB).
 
-On Ymir (CD → disc scheduler → `sat_music` → SCSP):
+On Ymir (CD → disc scheduler → `sat_music` → SCSP), LibSaturn 38410b44:
 
-- Starts at display frame 39 and runs for all 12,643 frames of the probe, past the 206 s end of the file.
-- `underruns` 0, `rejected_write_count` 0, `disc_waits` 0, 1,149 disc segments.
+- Starts at display frame 21 and runs for all 12,644 frames of the probe, past the 206 s end of the file. The same
+  test on LibSaturn 771b9af6 (before the audio split) started at frame 39.
+- `underruns` 0, `rejected_write_count` 0, `disc_waits` 0, 1,148 disc segments.
 - Lowest ring fill 1,024 frames (about 23 ms). It never ran dry, but the margin is thin.
 - `sound_ram_used` reads 0: the stream rings are outside the sample pool. LibSaturn's documentation gives 2 × 8 KB per
   stream (32 KB for the stereo pair); this was not measured in Sound RAM.
@@ -54,19 +55,27 @@ Capture against the oracle:
 - **Drift:** the lag against the oracle is a straight line, 22.7 ms at the start, −2.3 ms at the end. Slope
   −0.122 ms/s (about 122 ppm), residual 0.01 ms. A constant clock ratio, not steps. (`analyze_ima_stream_lag.py`
   with a ±60 ms window; compare's ±8 ms window could not follow it and read it as a correlation loss.)
-- After removing the drift with a fractional warp: level −0.07 dB, zero-lag correlation **0.9904**, spectrogram
-  cosine **0.913**, envelope error std 0.32 dB.
+- After removing the drift with a fractional warp: level −0.07 dB, zero-lag correlation **0.979**, spectrogram
+  cosine **0.808**, envelope error std 2.87 dB. On LibSaturn 771b9af6 the same measurement gave 0.9904, 0.913 and
+  0.32 dB; the drift itself is unchanged (see below).
 
 Against the exact decode (the stream should reproduce it sample for sample):
 
-- Overall SNR **11.5 dB** (per second: min 1.9 dB, median 11.3 dB, max 22.4 dB).
-- By band: 0–1 kHz 29.0 dB, 1–4 kHz 5.3 dB, 4–8 kHz 0.2 dB, 8–16 kHz −0.8 dB, 16–22 kHz 0.9 dB.
-- A single gain fits the capture best at 0.957 (−0.38 dB), and the SNR after that gain is 11.6 dB.
-- The error is flat across the position inside a 1024-frame block (11.3–11.7 dB) and across a disc segment
-  (11.4–11.6 dB). It is not a block-start or segment-boundary effect.
+- Overall SNR **10.8 dB** (per second: min 0.5 dB, median 10.5 dB; 201 of 206 seconds below 20 dB). On LibSaturn
+  771b9af6 it was 11.5 dB (min 1.9, median 11.3).
+- By band: 0–1 kHz 28.3 dB, 1–4 kHz 4.3 dB, 4–8 kHz 0.0 dB, 8–16 kHz −0.2 dB, 16–22 kHz 0.3 dB.
+- A single gain fits the capture best at 0.951 (−0.44 dB), and the SNR after that gain is 11.0 dB.
+- The error is flat across the position inside a 1024-frame block (10.7–10.9 dB) and across a disc segment
+  (10.7–11.0 dB). It is not a block-start or segment-boundary effect.
 - The warp has its own floor. `--warp-check` puts the measured drift on the exact decode and takes it off again:
-  **22.4 dB** over the full track. The stream error is therefore larger than the method's, and the stream-only
-  figure is roughly 12 dB (the two errors add in energy; the method's part is small against the 11.5 dB).
+  **23.9 dB** over the full track (22.4 dB before the audio split). The stream-only figure is roughly 11 dB.
+
+**LibSaturn audio split (771b9af6 → 38410b44).** The music path moved (`src/audio/music/`) and
+`sat_music_use_disc_stream` was removed in favour of `sat_music_open` with `disc` in `sat_music_desc_t`. The
+prototype was adapted to that call. The drift (−0.122 ms/s, intercept 22.67 ms) is the same, the stream runs
+with no underruns or rejected writes, and the first played frame moved from 39 to 21. The fidelity numbers got
+worse (above). The cause is not determined: the first suspect is the new music path, and a bisect (building
+771b9af6 in place, one SDK prefix) would settle whether the library caused it.
 
 **Not determined.** The loss above 1 kHz is real in this measurement, and its cause is open. Candidates: the
 SCSP stream path (sub-sample timing, or a gain or filter in playback), or Ymir's audio capture path (the 122 ppm

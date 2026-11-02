@@ -12,6 +12,7 @@
 #include "saturn/cd_mount.h"
 #include "saturn/cdfs.h"
 #include "saturn/disc_stream.h"
+#include "saturn/music.h"
 #include "saturn/time.h"
 #include "ima_meta.h"
 
@@ -49,6 +50,8 @@ static sat_asset_desc_t g_asset_desc;
 static sat_asset_t g_asset;
 static sat_disc_stream_t g_disc;
 static sat_music_t g_music;
+/* sat_music's workspace for two channels at the default ring: 4-byte aligned by its word type */
+static uint32_t g_music_workspace[SAT_MUSIC_WORKSPACE_BYTES(SAT_MUSIC_DEFAULT_RING_FRAMES, 2u) / 4u];
 
 static void note_error(sat_result_t status) {
     if (status != SAT_OK && g_ima_proto.first_error == 0u) g_ima_proto.first_error = (uint32_t)(-status);
@@ -73,7 +76,6 @@ int main(void) {
     if (g_ima_proto.audio_status == 0u && g_ima_proto.cd_status == 0u) {
         /* The drive is the scheduler's: the track is read in segments while the frames run. Set before the open. */
         g_ima_proto.stream_status = (uint32_t)(-sat_disc_stream_init(&g_disc, &g_cd));
-        if (g_ima_proto.stream_status == 0u) g_ima_proto.stream_status = (uint32_t)(-sat_music_use_disc_stream(&g_disc));
     }
     if (g_ima_proto.audio_status == 0u && g_ima_proto.cd_status == 0u && g_ima_proto.stream_status == 0u) {
         g_source_desc = (sat_cdfs_source_desc_t){TRACK_DISC, TRACK_SOURCE, IMA_BYTES};
@@ -90,7 +92,12 @@ int main(void) {
         if (g_ima_proto.source_status == 0u) {
             g_ima_proto.asset_status = (uint32_t)(-sat_asset_register_manifest(&g_asset_desc, 1u, &g_asset));
         }
-        if (g_ima_proto.asset_status == 0u) g_ima_proto.open_status = (uint32_t)(-sat_music_open(&g_music, TRACK_LOGICAL));
+        if (g_ima_proto.asset_status == 0u) {
+            /* The descriptor's disc is the scheduler: sat_music_open installs it, so the track reads from the drive. */
+            sat_music_desc_t music = {TRACK_LOGICAL, &g_disc, g_music_workspace, sizeof(g_music_workspace),
+                                      SAT_MUSIC_DEFAULT_RING_FRAMES};
+            g_ima_proto.open_status = (uint32_t)(-sat_music_open(&g_music, &music));
+        }
         if (g_ima_proto.open_status == 0u) g_ima_proto.play_status = (uint32_t)(-sat_music_play(g_music));
     }
 
