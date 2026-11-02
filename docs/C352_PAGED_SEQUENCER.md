@@ -274,3 +274,19 @@ load plus a page read, and keep it under the page margin. A real drive's seeks a
 - Integrate into the Tekken 3 audio profile (budget for the fight effects) once the music is wanted.
 - Decide on the 128-sample tick per song section from the burst profile the converter prints.
 - Provoke an underrun (a late page) and a page-reuse race on purpose, to test the detection in isolation.
+
+## 11. Does the dynamic bank fit next to the fight effects? (no)
+
+`python3 scripts/sweep_c352_bank_extent.py assets/imported/arcade-vgm/paul.vgz --end 131` sweeps the planner's lead
+time and merge gap (host only). The live peak, which no placement can beat, is **360,248 B** for every lead from
+1.0 s down to 0.25 s and 381,650 B at the default 1.5 s; the packed extent is 401,600 to 471,456 B. Merging
+nothing (gap 0) multiplies the extent by 2 to 3. So the theme needs about 360 KB of samples at one moment whatever
+the policy, which matches the 350 KB of `docs/ARCADE_C352_BANK_STUDY.md`.
+
+Against the current profile (446,464 B of pool; `scripts/report_fight_sound_budget.py` today: Paul vs Law 418,348 B
+of effects and voices, 28,116 B free; Nina vs Ogre 460,684 B, already 14,220 B over): the music does not fit beside
+the fight sounds. Dynamic loading removes the cost of the *whole* bank (1.26 MB to 0.41 MB) but not the cost of the
+densest section. Only three things change the answer, none done here: keep the music to screens without combat,
+load the fighters' voices in groups, or shrink the music's densest samples (a lossy change that needs its own
+fidelity measurement). The CD-DA path stays untouched.
+
