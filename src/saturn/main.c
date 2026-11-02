@@ -765,6 +765,8 @@ static void title_screen(void) {
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
 enum { BOOT_ARG_BYTES=8u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R' };
+/* Highest VDP1 commands and flushed scene faces in any frame since boot: sizes the program's VDP1 tables from a measured fight. */
+uint32_t g_t3_vdp1_peak[2];
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
@@ -1464,6 +1466,8 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.faces_rejected = scene.rejected_faces;
     g_t3_diagnostics.faces_skipped = scene.skipped_faces;
     g_t3_diagnostics.commands_used = commands.used;
+    if (commands.used > g_t3_vdp1_peak[0]) g_t3_vdp1_peak[0] = commands.used;
+    if (scene.flushed_faces > g_t3_vdp1_peak[1]) g_t3_vdp1_peak[1] = scene.flushed_faces;
     g_t3_diagnostics.commands_capacity = commands.capacity;
     g_t3_diagnostics.late_swaps = pacing.late_swaps;
     g_t3_diagnostics.draw_waits = pacing.draw_waits;
