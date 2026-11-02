@@ -110,3 +110,11 @@ after steps 1-2 plus the shout and damage voices) with the rest loaded from the 
 
 Other fighter pairs' voice use (the build runs Paul vs Law), throws, victory quotes and result screens, polyphony
 and voice pressure under mashing beyond 0 steals here, real CD seek times, SCSP-vs-C352 sound.
+
+## Update: the three unmapped requests are resolved
+
+`0x1051` is the same VAB sample as `0x104F` (already resident); `0x1057` (5,796 bytes) and `0x7056` (2,716) are new.
+`extract_psx_sfx.py` now extracts them and stores identical sounds once, and `t3_sfx_init` makes one Sound RAM copy
+for rows that share an offset and size. Result on a 7,200-field Ymir run (mash and rush): 0 unmapped requests,
+Sound RAM used 393,820 bytes (was 400,596: +8,512 for the new sounds, -15,288 for the duplicates), 0 failed plays.
+`SFX.BIN` shrank from 188,888 to 182,112 bytes. Step 1 of section 4 is therefore done; the table baseline is 393,820.

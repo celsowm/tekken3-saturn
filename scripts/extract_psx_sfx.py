@@ -25,7 +25,7 @@ SOUNDS = {
 }
 # Codes FighterSounds requests (psx_fighter_sounds.c): impacts by joint, landing
 # and air sounds and the other effect tones seen in live Paul-Law runs.
-for _code in (0x7041, 0x7042, 0x7043, 0x7044, 0x7045, 0x7046, 0x7047, 0x7048, 0x7059, 0x7064, 0x6049, 0x104F, 0x1053, 0x1054, 0x105A):
+for _code in (0x7041, 0x7042, 0x7043, 0x7044, 0x7045, 0x7046, 0x7047, 0x7048, 0x7059, 0x7064, 0x6049, 0x104F, 0x1051, 0x1053, 0x1054, 0x1057, 0x105A, 0x7056):
     SOUNDS['fx_%04x' % _code] = _code
 # The system bank (VAB 1, VH at 0x17270, body at 0x10081c): the round announcer.
 SYS_VH, SYS_VB, SYS_BYTES = 0x17270, 0x10081C, 103552
@@ -176,10 +176,16 @@ def main():
     pcm, rows = bytearray(), []
     for name, job_vh, body, code, bank, slot, tone_code in jobs:
         vag, hz, samples = vab_sound(job_vh, body, tone_code)
+        data = bytes((v >> 8) & 255 for v in samples)
+        same = [r for r in rows if r[6] == bank and r[5] == len(data) and r[3] == hz
+                and bytes(pcm[r[4]:r[4] + r[5]]) == data]
+        if same:                    # identical sound: share the bytes; the loader makes one Sound RAM copy
+            rows.append((name, code, vag, hz, same[0][4], len(samples), bank, slot))
+            continue
         while len(pcm) & 3:
             pcm.append(0)
         rows.append((name, code, vag, hz, len(pcm), len(samples), bank, slot))
-        pcm += bytes((v >> 8) & 255 for v in samples)
+        pcm += data
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / 'psx_sfx.bin').write_bytes(pcm)
     (args.out / 'psx_sfx.tsv').write_text(''.join('\t'.join(map(str, r)) + '\n' for r in rows))

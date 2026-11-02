@@ -79,6 +79,11 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
     if(file.size!=T3_SFX_FILE_BYTES)return SAT_ERR_VERSION;
     if((st=sat_audio_init())!=SAT_OK)return st;
     for(unsigned i=0;i<T3_SFX_COUNT;++i) {
+        /* Rows with the same offset and size are one sample: share its Sound RAM copy. */
+        unsigned same=i;
+        for(unsigned j=0;j<i;++j)
+            if(g_table[j].offset==g_table[i].offset && g_table[j].samples==g_table[i].samples){same=j;break;}
+        if(same!=i){g_sound[i]=g_sound[same];continue;}
         /* The samples are stored in order: one large read serves several. */
         if(!window_bytes || g_table[i].offset<window ||
            g_table[i].offset+g_table[i].samples>window+window_bytes) {
