@@ -59,13 +59,14 @@ def inspect(build):
             inputs[name] = hashlib.sha256(Path(value).read_bytes()).hexdigest()
     stage=None
     if cache.get('T3_VDP2_FLOOR') in ('ON','1','TRUE'):
-        stage_root=build/'generated/private_stage'
-        stage=json.loads((stage_root/'manifest.json').read_text())
-        digest=hashlib.sha256((stage_root/'PAUL.STG').read_bytes()).hexdigest()
-        if digest!=stage.get('output_sha256'):
-            raise ValueError('private stage asset does not match its manifest')
-        stage=dict(name=stage['stage'],asset_sha256=digest,bytes=stage['output_bytes'],
-                   format_version=stage['format_version'],cylinder=stage['cylinder'],floor=stage['floor'])
+        stage=[]
+        for path in sorted((build/'generated/private_stage').glob('STG*.json')):
+            manifest=json.loads(path.read_text())
+            digest=hashlib.sha256(path.with_suffix('.BIN').read_bytes()).hexdigest()
+            if digest!=manifest.get('output_sha256'):
+                raise ValueError('private stage asset does not match its manifest')
+            stage.append(dict(number=manifest['stage'],asset_sha256=digest,bytes=manifest['output_bytes'],
+                              cylinder=manifest['cylinder'],floor_kind=manifest['floor_kind']))
     sdk_archive = Path(cache.get('LibSaturn_DIR', '.')).parent.parent/'libsaturn.a'
     return dict(schema=1, kind='original-kmd' if original else 'procedural',
                 shape=shape, original_textures=defines.get('T3_ORIGINAL_TEXTURES') == '1',

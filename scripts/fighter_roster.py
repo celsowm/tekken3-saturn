@@ -12,7 +12,9 @@ Fighter = namedtuple('Fighter', 'id name slot voice_set bank_type name_width')
 FIRST_RECORD = 71
 SLOTS = 52
 COMMON_RECORD = FIRST_RECORD + 4 * SLOTS
-EXTRA_RECORDS = (10, 36, 56)
+# Stage 7 is only chosen by costumes the game does not have.
+STAGE_NUMBERS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14)
+EXTRA_RECORDS = (9, 10, *(36 + stage for stage in STAGE_NUMBERS), *(56 + stage for stage in STAGE_NUMBERS))
 
 ROSTER = tuple(Fighter(*row) for row in (
     (0, 'PAUL', 0, 0, 0, 32),

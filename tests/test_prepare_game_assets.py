@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import prepare_paul_law_assets as prepare
-import build_paul_law_demo as demo
+import prepare_game_assets as prepare
+import build_game_disc as demo
 import check_demo_sdk
 import fighter_roster
 

@@ -44,16 +44,26 @@ static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
     SAT_TRY(sat_cd_read_toc(block,&toc));
     if(toc.last_track!=2u)return SAT_ERR_INVALID_ARG;
     SAT_TRY(sat_cd_toc_audio_track(&toc,2u,&start,&whole));
-    if(whole<=skip+limit)return SAT_ERR_INVALID_ARG;
+    if(whole<skip+limit || whole==skip)return SAT_ERR_INVALID_ARG;
     SAT_TRY(sat_cdda_play(block,start+skip,limit?limit:whole-skip));
     t3_stage_cdda_mix();
     return SAT_OK;
 }
 #if defined(T3_SELECT_CDDA_SECTORS)
-/* The stage theme follows the select music on the same track. */
-sat_result_t t3_stage_cdda_start(void) {return cdda_play(T3_SELECT_CDDA_SECTORS,0);}
+/* The fighter themes follow the select music on the same track. */
+#if defined(T3_MUSIC_TABLE)
+#include "t3_music.h"
+sat_result_t t3_stage_cdda_start(unsigned track) {
+    static const struct {uint32_t start,sectors;} themes[]=T3_MUSIC_THEMES;
+    const unsigned theme=track-T3_MUSIC_FIRST_TRACK;
+    if(theme>=sizeof themes/sizeof themes[0])return SAT_ERR_INVALID_ARG;
+    return cdda_play(T3_SELECT_CDDA_SECTORS+themes[theme].start,themes[theme].sectors);
+}
+#else
+sat_result_t t3_stage_cdda_start(unsigned track) {(void)track;return cdda_play(T3_SELECT_CDDA_SECTORS,0);}
+#endif
 sat_result_t t3_select_cdda_start(void) {return cdda_play(0,T3_SELECT_CDDA_SECTORS);}
 #else
-sat_result_t t3_stage_cdda_start(void) {return cdda_play(0,0);}
+sat_result_t t3_stage_cdda_start(unsigned track) {(void)track;return cdda_play(0,0);}
 #endif
 #endif

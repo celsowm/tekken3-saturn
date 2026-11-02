@@ -10,20 +10,20 @@ ordering-table bucket in reverse order).
 """
 import numpy as np
 
-from build_local_paul_stage import primitives
+from build_stage_packs import primitives
 
 SCALE = 8
 TIE = 0.005
+FLAT = -1
 
 
 class Panorama:
     def __init__(self, tmd, vram, height):
         tris, uvs, pages, cluts, rgbs, order = [], [], [], [], [], []
         for index, (rgb, material, corners) in enumerate(primitives(tmd)):
-            if material is None:
-                raise ValueError('untextured panorama packets are not supported')
-            page, clut = material
-            if (page >> 7) & 3 or page & ~0x1ff or clut & 0x8000:
+            # An untextured packet's bytes are the colour itself (POLY_F4).
+            page, clut = material if material else (FLAT, 0)
+            if material and ((page >> 7) & 3 or page & ~0x1ff or clut & 0x8000):
                 raise ValueError('invalid 4-bit stage material')
             points = [(SCALE*x, SCALE*y + height, SCALE*z) for (x, y, z), _ in corners]
             for ids in ([(0, 1, 2)] if len(corners) == 3 else [(0, 1, 2), (1, 3, 2)]):
@@ -45,6 +45,9 @@ class Panorama:
     def _texels(self, k, u, v):
         """RGB555 colours (0 transparent) of triangle k at texel coordinates u, v."""
         page, clut = self.pages[k], self.cluts[k]
+        if page == FLAT:
+            r, g, b = (int(c) >> 3 for c in self.rgbs[k])
+            return np.full(u.shape, 0x8000 | r | g << 5 | b << 10, dtype=np.int64)
         u, v = u.astype(np.int64) & 255, v.astype(np.int64) & 255
         word = self.vram[(((page >> 4) & 1)*256 + v)*1024 + (page & 15)*64 + u//4]
         index = (word >> ((u & 3)*4)) & 15

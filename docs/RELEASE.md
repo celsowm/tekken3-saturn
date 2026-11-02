@@ -315,11 +315,11 @@ Tekken 3 import (`scripts/psx_disc_import.py`, then the `build_local_*` and
 The new preparation helpers consolidate that local workflow:
 
 ```sh
-python3 scripts/prepare_paul_law_assets.py \
+python3 scripts/prepare_game_assets.py \
   --source '/path/to/Tekken 3 (USA) (Track 1).bin' \
   --music-cue '/path/to/Tekken 3 (USA).cue' \
   --out assets/imported/my-paul-law
-python3 scripts/build_paul_law_demo.py \
+python3 scripts/build_game_disc.py \
   --assets assets/imported/my-paul-law --build build/my-paul-law \
   --prefix /path/to/saturn-prefix --libsaturn /path/to/lib-saturn --music
 ```
@@ -349,7 +349,7 @@ above were run with, so an older SDK no longer builds the game. The local patche
 this section used to describe are gone from `patches/`.
 
 Install that SDK into its existing prefix before building the game.
-`scripts/build_paul_law_demo.py` checks the installed archive for the bitmap
+`scripts/build_game_disc.py` checks the installed archive for the bitmap
 symbol and the sound registry size before configuring. To run this separately:
 
 ```sh
@@ -370,13 +370,13 @@ By default, LibSaturn derives the native security and region payloads from
 its installed YAUL template and marks those inputs as not cleared for
 redistribution. If appropriately licensed payloads become available, pass a
 LibSaturn-compatible manifest with `--boot-payloads /path/to/payloads.json`
-to `build_paul_law_demo.py`, or set `T3_BOOT_PAYLOADS` when configuring CMake.
+to `build_game_disc.py`, or set `T3_BOOT_PAYLOADS` when configuring CMake.
 The explicit manifest was verified to reach the disc-build command using the
 existing local manifest; that test does not establish rights for it or make
 the retail-derived game assets redistributable.
 
 To make a source-only archive of the current worktree and pinned research
-submodule, run `python3 scripts/package_paul_law_source.py --out
+submodule, run `python3 scripts/package_game_source.py --out
 build/paul-law-source.zip`. The archive includes a file-hash manifest and
 excludes private imports, disc images, SDK builds and research work data. It
 requires a separate toolchain and SDK plus the user's own compatible disc;

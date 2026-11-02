@@ -11,7 +11,7 @@ The 60-tick/30-image performance target remains unmet.
 The existing installed SDK `6302bec` provides every API used here. This
 integration changes no SDK source and does not complete its advanced VDP2 plan.
 
-Pass `T3_LOCAL_PAUL_STAGE` the existing private USA import directory, containing
+Pass `T3_LOCAL_STAGES` the existing private USA import directory, containing
 `raw/036.bin`, `raw/056.bin` and `SLUS_004.02`. A fresh configuration with this
 path enables `T3_VDP2_FLOOR`; explicitly setting that option OFF retains the
 checkerboard control. The stage requires the original owned encounter.
@@ -23,7 +23,7 @@ For example, replicate an existing optimized private encounter:
 python3 scripts/build_saturn_variant.py \
   --baseline build/command-pipeline-restored-control \
   --out build/my-paul-stage \
-  --cmake-option=-DT3_LOCAL_PAUL_STAGE=/absolute/path/to/private/tekken3-usa \
+  --cmake-option=-DT3_LOCAL_STAGES=/absolute/path/to/private/tekken3-usa \
   --cmake-option=-DT3_VDP2_FLOOR=ON \
   --workload two-paul-release
 ```

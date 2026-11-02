@@ -18,10 +18,7 @@
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION) && !defined(T3_STAGE_NO_VIEWPORT_SHIFT)
 #include "psx_viewport.h"
 #endif
-#if defined(T3_STAGE_BITMAP_FLOOR)
-#include "stage_floor_bitmap.h"
-#endif
-#include "t3_local_stage.h"
+#include "stage_format.h"
 #if defined(T3_PARTICLE_POSITION_PROBE)
 #include "psx_particle_tile.h"
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
@@ -31,12 +28,12 @@
 
 enum {
     WIDTH=320, HEIGHT=224,
-    CHARS=0x40000, NAMES=0x60000,
+    FLOOR_BITMAP=0x40000,
     PARAM_A=0x3c000, COEFFICIENT_A=0x3c200,
     /* One entry (x, y, increment) per line, written in VBlank. */
     LINE_SCROLL=0x3d000,
     PALETTE=6, PICTURE_PALETTE=7,
-    PICTURE_BYTES=T3_STAGE_COLUMNS*T3_STAGE_ROWS, HEAD_BYTES=8192,
+    CHUNK_BYTES=8192,
     LINE_WORDS=HEIGHT*6
 };
 static sat_vdp2_rotation_params_t g_params __attribute__((section(".wram_l")));
@@ -359,8 +356,10 @@ sat_result_t t3_stage_particle_probe_prepare(const uint8_t* pattern,const uint16
 }
 #endif
 
-static const t3_stage_backdrop_t g_cylinder={T3_STAGE_BOX_HALF,T3_STAGE_BAKE_HEIGHT,T3_STAGE_TAN_TOP,
+static t3_stage_backdrop_t g_cylinder={0,T3_STAGE_BAKE_HEIGHT,T3_STAGE_TAN_TOP,
     T3_STAGE_ROWS_PER_TAN,T3_STAGE_COLUMNS,T3_STAGE_ROWS,WIDTH,HEIGHT};
+static sat_cdfs_file_t g_file;
+static uint16_t g_back,g_shadow,g_floor_level=128;
 
 static void copy_vram(uint32_t address,const void* source,uint32_t bytes) {
     volatile uint32_t* to=(volatile uint32_t*)(0x25E00000u+address);
@@ -446,67 +445,72 @@ static sat_result_t read_part(const sat_cdfs_file_t* file,uint32_t at,uint16_t* 
     return st!=SAT_OK?st:read==bytes?SAT_OK:SAT_ERR_IO;
 }
 
-/* All the file's disc reads: the picture goes straight to VDP2 bank A, and the
- * head (header, floor tile, palettes) stays in the lower half of g_load_words
- * for t3_stage_vdp2_init, which reads nothing. */
-sat_result_t t3_stage_vdp2_load(void) {
-    sat_result_t st;
-    sat_cdfs_file_t file;
-    g_t3_stage_boot_step=1;
-    if((st=t3_disc_volume(&g_volume))!=SAT_OK)return st;
-    g_t3_stage_boot_step=4;
-    if((st=sat_cdfs_lookup(g_volume,"PAUL.STG",&file))!=SAT_OK)return st;
-    if(file.size!=T3_STAGE_FILE_BYTES)return SAT_ERR_VERSION;
-    g_t3_stage_boot_step=5;
-    if((st=read_part(&file,0,g_load_words,HEAD_BYTES))!=SAT_OK)return st;
-    uint32_t header[16];
-    for(unsigned i=0;i<16;++i)header[i]=((uint32_t)g_load_words[2*i]<<16)|g_load_words[2*i+1];
-    /* Version 2 (scripts/build_local_paul_stage.py): the floor tile, its
-     * palette, and the panorama as one 8-bit cylinder with its palette. */
-    if(header[0]!=0x54335354u || header[1]!=2 || header[2]!=T3_STAGE_COLUMNS || header[3]!=T3_STAGE_ROWS ||
-       header[4]!=64 || header[5]!=64 || header[6]!=2048 || header[7]!=16 || header[8]!=2048 ||
-       header[9]!=4096 || header[10]!=6144 || header[11]!=T3_STAGE_PICTURE_COLOURS ||
-       header[12]!=HEAD_BYTES || header[13]!=PICTURE_BYTES)return SAT_ERR_VERSION;
-    /* Rows 240..255 of this 1024x256 bitmap hold the rotation and coefficient
-     * tables and the line scroll table; the line scroll never shows them. */
-    uint16_t* const chunk=g_load_words+HEAD_BYTES/2;
-    for(uint32_t done=0;done<PICTURE_BYTES;) {
-        uint32_t bytes=PICTURE_BYTES-done;
-        if(bytes>HEAD_BYTES)bytes=HEAD_BYTES;
+static uint32_t head_word(unsigned word) {
+    return ((uint32_t)g_load_words[2*word]<<16)|g_load_words[2*word+1];
+}
+
+/* Streams one section of the file to VDP2 VRAM through the upper half of g_load_words. */
+static sat_result_t stream_to_vram(uint32_t at,uint32_t bytes,uint32_t address) {
+    uint16_t* const chunk=g_load_words+CHUNK_BYTES/2;
+    for(uint32_t done=0;done<bytes;) {
+        uint32_t part=bytes-done;
+        if(part>CHUNK_BYTES)part=CHUNK_BYTES;
         g_t3_stage_boot_step=11;
-        if((st=read_part(&file,HEAD_BYTES+done,chunk,bytes))!=SAT_OK)return st;
+        SAT_TRY(read_part(&g_file,at+done,chunk,part));
         g_t3_stage_boot_step=12;
-        if((st=sat_vdp2_vram_write_words(done/2,chunk,bytes/2))!=SAT_OK)return st;
-        done+=bytes;
+        SAT_TRY(sat_vdp2_vram_write_words((address+done)/2,chunk,part/2));
+        done+=part;
     }
     return SAT_OK;
 }
 
+/* The head stays in g_load_words for t3_stage_vdp2_init, and the picture goes
+ * straight to VDP2 bank A. In a True Ogre fight there is no panorama: its
+ * colours stay black, and the floor takes the spotlight's brightness. */
+sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre) {
+    sat_result_t st;
+    char name[]="STG00.BIN";
+    name[3]=(char)('0'+stage/10u);name[4]=(char)('0'+stage%10u);
+    g_t3_stage_boot_step=1;
+    if((st=t3_disc_volume(&g_volume))!=SAT_OK)return st;
+    g_t3_stage_boot_step=4;
+    if((st=sat_cdfs_lookup(g_volume,name,&g_file))!=SAT_OK)return st;
+    if(g_file.size!=T3_STAGE_FILE_BYTES)return SAT_ERR_VERSION;
+    g_t3_stage_boot_step=5;
+    if((st=read_part(&g_file,0,g_load_words,T3_STAGE_HEAD_BYTES))!=SAT_OK)return st;
+    if(head_word(T3_STAGE_WORD_MAGIC)!=T3_STAGE_MAGIC || head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_VERSION ||
+       head_word(T3_STAGE_WORD_NUMBER)!=stage)return SAT_ERR_VERSION;
+    g_cylinder.box_half=(int32_t)head_word(T3_STAGE_WORD_BOX_HALF);
+    g_back=(uint16_t)head_word(T3_STAGE_WORD_BACK);
+    g_shadow=(uint16_t)head_word(T3_STAGE_WORD_SHADOW);
+    if(true_ogre) {
+        g_back=SAT_RGB555(0,0,0);
+        g_floor_level=(uint16_t)head_word(T3_STAGE_WORD_OGRE_LEVEL);
+        for(unsigned i=0;i<256u;++i)g_load_words[T3_STAGE_PICTURE_PALETTE_AT/2+i]=0;
+    }
+    /* Rows 240..255 of this 1024x256 bitmap hold the rotation and coefficient
+     * tables and the line scroll table; the line scroll never shows them. */
+    return stream_to_vram(T3_STAGE_PICTURE_AT,T3_STAGE_PICTURE_BYTES,0);
+}
+
+uint16_t t3_stage_vdp2_shadow(void) {return g_shadow;}
+uint16_t t3_stage_vdp2_back(void) {return g_back;}
+
 sat_result_t t3_stage_vdp2_init(void) {
     sat_result_t st;
-    const uint16_t* const floor_tile=g_load_words+1024;
-    g_t3_stage_boot_step=7;
-#if defined(T3_STAGE_BITMAP_FLOOR)
-    /* Expand the loaded cells one row at a time into B0. The scratch row
-     * remains separate from the immutable source until all uploads finish. */
-    uint16_t bitmap_row[128];
-    for(unsigned y=0;y<256;++y) {
-        if(!t3_stage_floor_bitmap_row((const uint8_t*)floor_tile,y,(uint8_t*)bitmap_row))return SAT_ERR_VERSION;
-        if((st=sat_vdp2_vram_write_words(CHARS/2+y*128u,bitmap_row,128))!=SAT_OK)return st;
+    uint16_t* const floor_palette=g_load_words+T3_STAGE_FLOOR_PALETTE_AT/2;
+    for(unsigned i=0;g_floor_level!=128u && i<256u;++i) {
+        const uint32_t c=floor_palette[i];
+        floor_palette[i]=(uint16_t)((c&0x8000u)|(((c&0x1Fu)*g_floor_level/128u)&0x1Fu)|
+            (((((c>>5)&0x1Fu)*g_floor_level/128u)&0x1Fu)<<5)|(((((c>>10)&0x1Fu)*g_floor_level/128u)&0x1Fu)<<10));
     }
-#else
-    if((st=sat_vdp2_vram_write_words(CHARS/2,floor_tile,1024))!=SAT_OK)return st;
-#endif
     g_t3_stage_boot_step=9;
-    if((st=sat_vdp2_palette_upload(g_load_words+2048,16,PALETTE*256))!=SAT_OK)return st;
-    if((st=sat_vdp2_palette_upload(g_load_words+3072,T3_STAGE_PICTURE_COLOURS,PICTURE_PALETTE*256))!=SAT_OK)return st;
-#if !defined(T3_STAGE_BITMAP_FLOOR)
-    for(unsigned y=0;y<64;++y) {
-        for(unsigned x=0;x<64;++x)g_load_words[x]=(uint16_t)((y%8)*8+x%8);
-        g_t3_stage_boot_step=10;
-        if((st=sat_vdp2_vram_write_words(NAMES/2+y*64,g_load_words,64))!=SAT_OK)return st;
-    }
-#endif
+    if((st=sat_vdp2_palette_upload(floor_palette,256,PALETTE*256))!=SAT_OK)return st;
+    if((st=sat_vdp2_palette_upload(g_load_words+T3_STAGE_PICTURE_PALETTE_AT/2,256,PICTURE_PALETTE*256))!=SAT_OK)return st;
+    if((st=sat_vdp2_back_color_set(g_back))!=SAT_OK)return st;
+    /* Bank B belongs to the VS screen until now, so the floor is read here. */
+    g_t3_stage_boot_step=7;
+    if((st=stream_to_vram(T3_STAGE_FLOOR_AT,T3_STAGE_FLOOR_BYTES,FLOOR_BITMAP))!=SAT_OK)return st;
     sat_vdp2_layer_config_t background;
     sat_vdp2_layer_config_default(SAT_VDP2_NBG0,&background);
     background.bitmap=1; background.bitmap_size=SAT_VDP2_BITMAP_1024X256;
@@ -518,32 +522,16 @@ sat_result_t t3_stage_vdp2_init(void) {
     if((st=sat_vdp2_layer_configure(&background))!=SAT_OK)return st;
     const sat_vdp2_line_scroll_config_t lines={SAT_VDP2_NBG0,1,1,1,0,0,0,LINE_SCROLL};
     if((st=sat_vdp2_layer_line_scroll_enable(&lines))!=SAT_OK)return st;
-#if defined(T3_STAGE_BITMAP_FLOOR)
+    /* Index 0 is a floor texel the original leaves undrawn: stage 11's grates. */
     const sat_vdp2_rotation_bitmap_config_t config={
-        .color_mode=SAT_VDP2_COLOR_MODE_16,.height_512=0,
+        .color_mode=SAT_VDP2_COLOR_MODE_256,.height_512=0,
         .priority=2,
-        .transparent=0,
+        .transparent=1,
         .palette=PALETTE,.over=SAT_VDP2_ROTATION_OVER_REPEAT,
         .coefficients_a={.enabled=1,.mode=SAT_VDP2_COEFFICIENT_KXKY},
-        .bitmap_address=CHARS,.table_address=PARAM_A};
+        .bitmap_address=FLOOR_BITMAP,.table_address=PARAM_A};
     g_t3_stage_boot_step=14;
     if((st=sat_vdp2_rotation_bitmap_configure(&config))!=SAT_OK)return st;
-#else
-    sat_vdp2_rotation_config_t config;
-    sat_vdp2_rotation_config_default(&config);
-    config.color_mode=SAT_VDP2_COLOR_MODE_16;
-    config.char_bank_mask=SAT_VDP2_BANK_B0;
-    config.name_bank_mask=SAT_VDP2_BANK_B1;
-    config.char_base_address=CHARS;
-    config.table_address=PARAM_A;
-    config.coefficients_a.enabled=1; config.transparent=0;
-    config.palette=PALETTE;
-    config.over=SAT_VDP2_ROTATION_OVER_REPEAT;
-    config.priority=2;
-    for(unsigned p=0;p<16;++p)config.plane_address[p]=NAMES;
-    g_t3_stage_boot_step=14;
-    if((st=sat_vdp2_rotation_configure(&config))!=SAT_OK)return st;
-#endif
 #if defined(T3_STAGE_ADD_PROBE)
     /* Controlled RGB tests in B1, available with the bitmap floor. Cell 0
      * is transparent. Either a fixed additive rectangle or four cells of
@@ -636,11 +624,12 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
 #endif
         g_lines[y]=(sat_vdp2_line_scroll_entry_t){column,g_backdrop[y].y,g_backdrop[y].zoom};
     }
-    /* The floor map repeats every 1,800 PS1 units in 64 dots. The skin's
-     * world is 96 fx16 per PS1 unit around the fighters' centre, x and -z. */
+    /* A floor tile is 64 dots and 1,800 PS1 units. The skin's world is 96 fx16
+     * per PS1 unit around the fighters' centre, x and -z. The bitmap's repeat
+     * differs per axis, so the map position wraps below, not through `period`. */
     sat_vdp2_floor_t floor={WIDTH,HEIGHT,0,(int32_t)((int64_t)64*65536*65536/(1800*96)),
-        (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE)),
-        -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(64*SAT_FX16_ONE)),64*SAT_FX16_ONE,
+        (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_W*SAT_FX16_ONE)),
+        -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_H*SAT_FX16_ONE)),0,
         g_wall_depth,1};
     tables_t* tables=&g_tables[g_slot];
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
@@ -665,6 +654,8 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         camera->near_z,camera->far_z,&g_params,tables->coefficients);
     if(st!=SAT_OK)return st;
 #endif
+    g_params.mx&=(int32_t)(T3_STAGE_FLOOR_W*SAT_FX16_ONE-1);
+    g_params.my&=(int32_t)(T3_STAGE_FLOOR_H*SAT_FX16_ONE-1);
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION) && !defined(T3_STAGE_NO_VIEWPORT_SHIFT)
     g_params.xst-=(t3_psx_viewport_x(192)-WIDTH/2)*SAT_FX16_ONE;
 #endif

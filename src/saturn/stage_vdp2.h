@@ -8,10 +8,14 @@
 #include "saturn/model3d.h"
 #endif
 #endif
-/* Reads the stage file, writing only VDP2 bank A. */
-sat_result_t t3_stage_vdp2_load(void);
-/* Finishes from what t3_stage_vdp2_load read, without touching the disc. */
+/* Reads stage `stage`'s head and panorama, writing only VDP2 bank A. A True Ogre
+ * fight shows no panorama and a spotlight floor. */
+sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre);
+/* Reads the floor into bank B and sets up the layers. */
 sat_result_t t3_stage_vdp2_init(void);
+/* The stage's drop shadow and backdrop colours (RGB555), once loaded. */
+uint16_t t3_stage_vdp2_shadow(void);
+uint16_t t3_stage_vdp2_back(void);
 /* `turn` is the panorama's turn (4096 a turn, t3_psx_backdrop_turn_t). */
 sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x,int32_t center_z,int32_t turn);
 /* Call right before sat_end_frame: the mapping last prepared appears with

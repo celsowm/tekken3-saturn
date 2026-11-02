@@ -23,7 +23,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blen
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c)
-target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_bitmap.c src/game/stage_floor_center.c)
+target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 # Most fields one image may catch up; below 60/N images/s the game plays slower.
 set(T3_CATCH_UP_FIELDS "6" CACHE STRING "Most fields of game time one image catches up")
@@ -307,7 +307,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # needs (the private HUD, stage and fighter data and the original renderer
     # options); public builds without private assets keep it OFF. Pass
     # -DT3_PARTICLES=OFF to keep the plain SDK fighters and the unshifted stage.
-    if(T3_ORIGINAL_HUD AND T3_ORIGINAL_HUD_BARS AND T3_LOCAL_HUD_EXE AND T3_LOCAL_PAUL_STAGE AND
+    if(T3_ORIGINAL_HUD AND T3_ORIGINAL_HUD_BARS AND T3_LOCAL_HUD_EXE AND T3_LOCAL_STAGES AND
        T3_VDP2_FLOOR AND T3_PSX_CAMERA AND T3_ENABLE_PSX_OWNED_MATCH AND T3_ENABLE_PSX_COMBAT AND
        T3_SKIN_TO_SCREEN AND T3_MASTER_WORKER_FACES AND T3_FUSED_ACTOR_PREPARATION AND
        T3_SLAVE_SIMULATION AND T3_FRAME_ON_SUBMIT AND T3_PROJECTED_FACE_QUEUE)
@@ -317,7 +317,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     endif()
     option(T3_PARTICLES "Draw the original hit particles (see PARTICLE_INTEGRATION_PLAN.md)" ${_t3_particles_default})
     if(T3_PARTICLES)
-        foreach(_t3_option T3_STAGE_BITMAP_FLOOR T3_PARTICLE_FIGHTER_OT T3_PARTICLE_IMAGE_SNAPSHOT
+        foreach(_t3_option T3_PARTICLE_FIGHTER_OT T3_PARTICLE_IMAGE_SNAPSHOT
                 T3_PARTICLE_PREPARE T3_PARTICLE_TEXTURE_PROBE T3_PARTICLE_SWAP_PROBE
                 T3_PARTICLE_POSITION_PROBE T3_PARTICLE_MULTI_PROBE T3_STAGE_ADD_PROBE
                 T3_ORIGINAL_FIGHTER_PROJECTION T3_ORIGINAL_FIGHTER_OT T3_MIXED_OT_DIAGNOSTIC
@@ -425,7 +425,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_saturn PRIVATE T3_RENDER_BENCH_TICK=${T3_RENDER_BENCH_TICK})
     endif()
     target_include_directories(tekken3_saturn PRIVATE
-        "${_t3_gen}" "${CMAKE_SOURCE_DIR}/src/saturn")
+        "${_t3_gen}" "${CMAKE_SOURCE_DIR}/src/saturn" "${CMAKE_SOURCE_DIR}/src/game")
     # Deliberate local-only diagnostic: embeds copyrighted authored bank data
     # ONLY when a developer passes a local filename. Public CI never sets it.
     set(T3_LOCAL_DIVMOT "" CACHE FILEPATH
@@ -481,7 +481,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             T3_ENABLE_PSX_SHADOW_CONTACT=1)
     endif()
     option(T3_ENABLE_PSX_SKIN_PREVIEW
-        "Private visual preview of fully decoded original PS1 pose matrices" OFF)
+        "Private visual preview of fully decoded original PS1 pose matrices" ON)
     if(T3_ENABLE_PSX_SKIN_PREVIEW)
         if(NOT T3_LOCAL_KMD OR NOT T3_LOCAL_DIVMOT OR
            NOT T3_LOCAL_PSX_TRIG_TABLE OR NOT T3_LOCAL_PSX_IK_TABLES)
@@ -495,7 +495,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     if(T3_COMPILED_RENDERER AND NOT T3_ENABLE_PSX_SKIN_PREVIEW)
         message(FATAL_ERROR "T3_COMPILED_RENDERER requires T3_ENABLE_PSX_SKIN_PREVIEW")
     endif()
-    option(T3_ENABLE_PSX_OWNED_MATCH "Experimental original owned movement state (damage not enabled)" OFF)
+    option(T3_ENABLE_PSX_OWNED_MATCH "Experimental original owned movement state (damage not enabled)" ON)
     option(T3_FRAME_ON_SUBMIT "Show completed VDP1 lists rather than automatic redraws" ON)
     set(_t3_overlap_default OFF)
     if(T3_LOCAL_KMD AND T3_ENABLE_PSX_OWNED_MATCH AND T3_FRAME_ON_SUBMIT)
@@ -531,9 +531,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_SHARE_ACTOR_RESOURCES=1)
     endif()
-    set(T3_LOCAL_PAUL_STAGE "" CACHE PATH "Private USA import containing raw/036.bin, raw/056.bin and SLUS_004.02")
+    set(T3_LOCAL_STAGES "" CACHE PATH "Private USA import containing the stage records in raw/ and SLUS_004.02")
     set(_t3_stage_default OFF)
-    if(T3_LOCAL_PAUL_STAGE)
+    if(T3_LOCAL_STAGES)
         set(_t3_stage_default ON)
     endif()
     option(T3_TITLE_SCREEN "Show a title screen and wait for START before the first fight" OFF)
@@ -560,6 +560,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_sources(tekken3_saturn PRIVATE src/saturn/stage_cdda.c)
         target_compile_definitions(tekken3_saturn PRIVATE T3_STAGE_CDDA=1)
+        # build_stage_themes.py leaves this table beside the joined themes.
+        get_filename_component(_t3_music_dir "${T3_STAGE_CDDA_WAV}" DIRECTORY)
+        if(EXISTS "${_t3_music_dir}/t3_music.h")
+            target_include_directories(tekken3_saturn PRIVATE "${_t3_music_dir}")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_MUSIC_TABLE=1)
+        endif()
     endif()
     set(T3_LOCAL_ACTOR1_VAB "${T3_LOCAL_SFX}/raw/080.bin" CACHE FILEPATH "Private P2 voice header (BNS 72+4n; 80 Law, 120 Hwoarang)")
     set(T3_ACTOR1_NAME_WIDTH "26" CACHE STRING "P2 name sprite width in texels (26 Law, 71 Hwoarang)")
@@ -624,29 +630,46 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD_BARS=1)
         endif()
     endif()
-    option(T3_VDP2_FLOOR "Draw the private Paul stage with NBG0 and RBG0" ${_t3_stage_default})
+    option(T3_VDP2_FLOOR "Draw the private stages with NBG0 and RBG0" ${_t3_stage_default})
     if(T3_VDP2_FLOOR)
-        if(NOT T3_LOCAL_PAUL_STAGE)
-            message(FATAL_ERROR "T3_VDP2_FLOOR requires T3_LOCAL_PAUL_STAGE")
+        if(NOT T3_LOCAL_STAGES)
+            message(FATAL_ERROR "T3_VDP2_FLOOR requires T3_LOCAL_STAGES")
         endif()
         if(NOT T3_LOCAL_KMD OR NOT T3_ENABLE_PSX_OWNED_MATCH OR NOT T3_FRAME_ON_SUBMIT)
-            message(FATAL_ERROR "Private Paul stage requires the original owned encounter and frame-on-submit presentation")
+            message(FATAL_ERROR "Private stages require the original owned encounter and frame-on-submit presentation")
         endif()
         set(_t3_stage_gen "${CMAKE_BINARY_DIR}/generated/private_stage")
-        add_custom_command(OUTPUT "${_t3_stage_gen}/PAUL.STG" "${_t3_stage_gen}/t3_local_stage.h"
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_local_paul_stage.py"
-                --source "${T3_LOCAL_PAUL_STAGE}" --output "${_t3_stage_gen}"
-            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_local_paul_stage.py"
-                "${CMAKE_SOURCE_DIR}/scripts/panorama_raycast.py"
-                "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
-                "${T3_LOCAL_PAUL_STAGE}/raw/036.bin" "${T3_LOCAL_PAUL_STAGE}/raw/056.bin"
-                "${T3_LOCAL_PAUL_STAGE}/SLUS_004.02" VERBATIM)
-        target_sources(tekken3_saturn PRIVATE "${_t3_stage_gen}/t3_local_stage.h")
-        target_sources(tekken3_saturn PRIVATE src/saturn/stage_vdp2.c)
-        option(T3_STAGE_BITMAP_FLOOR "Use the experimental one-bank RBG0 bitmap floor" OFF)
-        if(T3_STAGE_BITMAP_FLOOR)
-            target_compile_definitions(tekken3_saturn PRIVATE T3_STAGE_BITMAP_FLOOR=1)
+        # Stages on the disc. Each bake takes about two minutes, so each is its own build step.
+        # A roster build takes every stage a fighter can choose (scripts/fighter_roster.py);
+        # the fixed-pair test builds have no selection and use the first.
+        set(_t3_stages_default "0")
+        if(T3_FIGHTER_PACKS)
+            file(STRINGS "${CMAKE_SOURCE_DIR}/scripts/fighter_roster.py" _t3_stages_line REGEX "^STAGE_NUMBERS = ")
+            string(REGEX MATCHALL "[0-9]+" _t3_stages_default "${_t3_stages_line}")
         endif()
+        set(T3_STAGES "${_t3_stages_default}" CACHE STRING "Stage numbers baked onto the disc")
+        set(_t3_stage_files "")
+        foreach(_t3_stage IN LISTS T3_STAGES)
+            math(EXPR _t3_stage_arc "36+${_t3_stage}")
+            math(EXPR _t3_stage_tmd "56+${_t3_stage}")
+            string(LENGTH "${_t3_stage}" _t3_stage_digits)
+            set(_t3_stage_name "${_t3_stage}")
+            if(_t3_stage_digits EQUAL 1)
+                set(_t3_stage_name "0${_t3_stage}")
+            endif()
+            add_custom_command(OUTPUT "${_t3_stage_gen}/STG${_t3_stage_name}.BIN"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_stage_packs.py"
+                    --source "${T3_LOCAL_STAGES}" --output "${_t3_stage_gen}"
+                    --stages "${_t3_stage}" --jobs 1
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_stage_packs.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/panorama_raycast.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
+                    "${CMAKE_SOURCE_DIR}/src/game/stage_format.h"
+                    "${T3_LOCAL_STAGES}/raw/0${_t3_stage_arc}.bin" "${T3_LOCAL_STAGES}/raw/0${_t3_stage_tmd}.bin"
+                    "${T3_LOCAL_STAGES}/SLUS_004.02" VERBATIM)
+            list(APPEND _t3_stage_files "${_t3_stage_gen}/STG${_t3_stage_name}.BIN")
+        endforeach()
+        target_sources(tekken3_saturn PRIVATE src/saturn/stage_vdp2.c)
         option(T3_PARTICLE_FIGHTER_OT "Experimental: preserve original fighter face OT metadata" OFF)
         if(T3_PARTICLE_FIGHTER_OT)
             if(NOT T3_LOCAL_KMD)
@@ -710,13 +733,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         option(T3_STAGE_ADD_PROBE "Diagnostic: fixed RGB additive VDP2 rectangle" OFF)
         if(T3_STAGE_ADD_PROBE)
-            if(NOT T3_STAGE_BITMAP_FLOOR)
-                message(FATAL_ERROR "T3_STAGE_ADD_PROBE requires T3_STAGE_BITMAP_FLOOR")
-            endif()
             target_compile_definitions(tekken3_saturn PRIVATE T3_STAGE_ADD_PROBE=1)
         endif()
         target_include_directories(tekken3_saturn PRIVATE "${_t3_stage_gen}")
-        list(APPEND _t3_stage_disc_files "${_t3_stage_gen}/PAUL.STG")
+        list(APPEND _t3_stage_disc_files ${_t3_stage_files})
         target_compile_definitions(tekken3_saturn PRIVATE T3_VDP2_FLOOR=1)
         option(T3_STAGE_BENCH_EVERY_FRAME "Profiling only: remap the stage layers every frame" OFF)
         if(T3_STAGE_BENCH_EVERY_FRAME)
@@ -918,8 +938,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_ENABLE_PSX_COMBAT=1)
     endif()
-    option(T3_PSX_CAMERA "Original fight camera from private tables (T3_LOCAL_CAMERA_BANK)" OFF)
-    option(T3_ORIGINAL_FIGHTER_PROJECTION "Experimental: submit original projected fighter vertices" OFF)
+    option(T3_PSX_CAMERA "Original fight camera from private tables (T3_LOCAL_CAMERA_BANK)" ON)
+    option(T3_ORIGINAL_FIGHTER_PROJECTION "Experimental: submit original projected fighter vertices" ON)
     option(T3_OVERLAY_RESERVATION_SELFTEST "Diagnostic: fill the world command quota before entering HUD overlay" OFF)
     if(T3_OVERLAY_RESERVATION_SELFTEST)
         target_compile_definitions(tekken3_saturn PRIVATE T3_OVERLAY_RESERVATION_SELFTEST=1)
@@ -1083,7 +1103,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_PARTICLE_GATED_PROJECTION=1)
     endif()
-    option(T3_ORIGINAL_FIGHTER_OT "Experimental: use original fighter face visibility and OT buckets" OFF)
+    option(T3_ORIGINAL_FIGHTER_OT "Experimental: use original fighter face visibility and OT buckets" ON)
     option(T3_FACE_COVERAGE_CENSUS "Diagnostic: count supported fighter screen-face shapes" OFF)
     if(T3_FACE_COVERAGE_CENSUS)
         if(NOT T3_ORIGINAL_FIGHTER_OT)
@@ -1712,11 +1732,6 @@ else()
         target_link_libraries(test_psx_face_preflight PRIVATE tekken3_fight)
         target_compile_options(test_psx_face_preflight PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME saturn_face_preflight_equivalence COMMAND test_psx_face_preflight)
-        add_executable(test_stage_floor_bitmap tests/test_stage_floor_bitmap.c)
-        target_link_libraries(test_stage_floor_bitmap PRIVATE tekken3_fight)
-        target_compile_options(test_stage_floor_bitmap PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-        add_test(NAME stage_floor_bitmap_exact COMMAND test_stage_floor_bitmap
-            "${CMAKE_SOURCE_DIR}/build/parity-reversal/generated/private_stage/PAUL.STG")
         add_executable(test_psx_particle_snapshot tests/test_psx_particle_snapshot.c)
         target_link_libraries(test_psx_particle_snapshot PRIVATE tekken3_fight)
         target_compile_options(test_psx_particle_snapshot PRIVATE -Wall -Wextra -Werror -UNDEBUG)
@@ -2159,6 +2174,10 @@ else()
         target_link_libraries(test_stage_backdrop PRIVATE tekken3_fight m)
         target_compile_options(test_stage_backdrop PRIVATE -Wall -Wextra -Werror)
         add_test(NAME stage_backdrop_line_mapping COMMAND test_stage_backdrop)
+        add_executable(test_stage_rules tests/test_stage_rules.c)
+        target_link_libraries(test_stage_rules PRIVATE tekken3_fight)
+        target_compile_options(test_stage_rules PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME stage_rules COMMAND test_stage_rules)
         # Line mapping on given cameras, for scripts/check_backdrop_mapping.py.
         add_executable(t3_stage_backdrop_eval tools/stage_backdrop_eval.c)
         target_link_libraries(t3_stage_backdrop_eval PRIVATE tekken3_fight)
@@ -2179,7 +2198,7 @@ else()
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_kmd_face_ot.py")
         set_tests_properties(ps1_private_kmd_face_ot PROPERTIES SKIP_RETURN_CODE 77)
         add_test(NAME private_stage_converter
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_local_paul_stage.py")
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_stage_packs.py")
         add_test(NAME cold_motion_file_layout
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cold_motion_file.py")
         add_test(NAME simulation_profile_accounting

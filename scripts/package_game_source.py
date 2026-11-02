@@ -15,7 +15,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SUBMODULE = Path('third_party/Tekken3Remake')
 EXTRA = (
-    'scripts/build_paul_law_demo.py', 'scripts/build_stage_cdda_disc.py',
+    'scripts/build_game_disc.py', 'scripts/build_stage_cdda_disc.py', 'scripts/build_stage_packs.py', 'scripts/build_stage_themes.py',
     'scripts/build_cd_audio.py', 'scripts/convert_cd_audio.py',
     'scripts/check_demo_sdk.py',
     'scripts/analyze_loading_capture.py',
@@ -26,12 +26,12 @@ EXTRA = (
     'scripts/configure_mednafen_controls.py',
     'scripts/package_private_demo.py',
     'scripts/check_cdda_capture.py', 'scripts/extract_psx_stage_music.py',
-    'scripts/inspect_psx_sound_ids.py', 'scripts/prepare_paul_law_assets.py',
-    'scripts/package_paul_law_source.py', 'src/saturn/stage_cdda.c', 'src/saturn/stage_cdda.h',
+    'scripts/inspect_psx_sound_ids.py', 'scripts/prepare_game_assets.py',
+    'scripts/package_game_source.py', 'src/saturn/stage_cdda.c', 'src/saturn/stage_cdda.h',
     'tests/test_build_stage_cdda_disc.py', 'tests/test_check_cdda_capture.py',
     'tests/test_configure_mednafen_controls.py',
     'tests/test_package_private_demo.py',
-    'tests/test_extract_psx_stage_music.py', 'tests/test_prepare_paul_law_assets.py',
+    'tests/test_extract_psx_stage_music.py', 'tests/test_prepare_game_assets.py',
     'tests/test_print_release_configure.py', 'tests/test_saturn_regression_disc.py',
 )
 FORBIDDEN = ('.git/', 'build/', 'roms/', 'assets/imported/',

@@ -86,6 +86,10 @@ volatile uint32_t g_t3_particle_tick_audit_count;
 #include <saturn/parallel.h>
 _Static_assert(T3_CLIP_COUNT==1,"Slave simulation currently requires the original single-clip bridge");
 #endif
+#include "stage_rules.h"
+#if defined(T3_FIGHTER_PACKS)
+#include "t3_roster.h"
+#endif
 #if defined(T3_VDP2_FLOOR)
 #include "stage_vdp2.h"
 #if defined(T3_VS_SCREEN)
@@ -428,13 +432,13 @@ static void draw_sparks(void) {}
 /* Drop shadows. The original flattens each fighter's PSSDW mesh onto the floor
  * with the stage light's shear (FighterBuildShadowPrims, opaque POLY_F3/F4, the
  * stage record's shadow colour); here an octagon of two quads sits under the
- * root at floor height instead, in the same colour (stage 0: 54, 24, 16).
+ * root at floor height instead, in the same colour.
  * World units match t3_move_probe_camera: PS1 units * 96. */
 static void __attribute__((optimize("Os"))) drop_shadows(void) {
     const int32_t R = 420 * 96, S = R * 8 / 10;
     static const int8_t ring[2][4][2] = {{{-1,-1},{1,-1},{1,1},{-1,1}},{{0,-1},{1,0},{0,1},{-1,0}}};
     sat_scene3d_material_t m = {0};
-    m.kind = SAT_SCENE3D_RGB;m.rgb555 = SAT_RGB555(54 >> 3, 24 >> 3, 16 >> 3);
+    m.kind = SAT_SCENE3D_RGB;m.rgb555 = t3_stage_vdp2_shadow();
     m.color_calc_slot = SAT_INDEXED_SOLID_OPAQUE;
     for(unsigned k = 0; k < 4u; ++k) {
         const unsigned i = k >> 1, shape = k & 1u, r = shape ? R : S;
@@ -760,6 +764,26 @@ static void enter_fight_phase(void) {
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
     SAT_PANIC_IF_ERROR(t3_fighter_packs_open(g_picks[0],g_picks[1]));
+}
+#endif
+
+static sat_result_t start_fight_theme(void) {
+#if defined(T3_FIGHTER_PACKS)
+    static const uint8_t home_track[]=T3_ROSTER_TRACKS;
+    return t3_stage_cdda_start(home_track[g_picks[t3_stage_side(g_demo)]]);
+#else
+    return t3_stage_cdda_start(7u);
+#endif
+}
+
+#if defined(T3_VDP2_FLOOR)
+static sat_result_t load_fight_stage(void) {
+#if defined(T3_FIGHTER_PACKS)
+    static const uint8_t home_stage[]=T3_ROSTER_STAGES;
+    return t3_stage_vdp2_load(home_stage[g_picks[t3_stage_side(g_demo)]],t3_stage_true_ogre(g_picks));
+#else
+    return t3_stage_vdp2_load(0u,0);
+#endif
 }
 #endif
 
@@ -1625,7 +1649,7 @@ int main(void) {
 #endif
 #if defined(T3_VDP2_FLOOR) && !defined(T3_VS_SCREEN)
     loading_frame(BOOT_POSES, "STAGE");
-    SAT_PANIC_IF_ERROR(t3_stage_vdp2_load());
+    SAT_PANIC_IF_ERROR(load_fight_stage());
     SAT_PANIC_IF_ERROR(t3_stage_vdp2_init());
 #endif
 #if defined(T3_ORIGINAL_HUD)
@@ -1647,7 +1671,7 @@ int main(void) {
 #endif
 #if defined(T3_VS_SCREEN)
 #if defined(T3_VDP2_FLOOR)
-    SAT_PANIC_IF_ERROR(t3_stage_vdp2_load());
+    SAT_PANIC_IF_ERROR(load_fight_stage());
 #endif
     /* The stage takes over the layer and the palette bank once the screen has ended. */
     SAT_PANIC_IF_ERROR(t3_vs_screen_finish());
@@ -1657,7 +1681,7 @@ int main(void) {
 #endif
     loading_frame(BOOT_READY, "READY");
     /* A failed start is shown by the report: the fight runs without music. */
-    if(!g_music_off)g_cdda_result=t3_stage_cdda_start();
+    if(!g_music_off)g_cdda_result=start_fight_theme();
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
         g_t3_simulation_stack[stack_byte]=0xA5u;
@@ -1694,10 +1718,11 @@ int main(void) {
         const int overlapping_draw=sat_irq_active();
         if(!overlapping_draw)SAT_PANIC_IF_ERROR(sat_wait_vblank());
 #endif
-        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
 #if defined(T3_VDP2_FLOOR)
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(t3_stage_vdp2_back()));
         SAT_PANIC_IF_ERROR(sat_vdp1_set_erase_transparent());
 #else
+        SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(FRAME_BACKGROUND));
         SAT_PANIC_IF_ERROR(sat_set_clear_color(FRAME_BACKGROUND));
 #endif
         SAT_PANIC_IF_ERROR(sat_begin_frame());

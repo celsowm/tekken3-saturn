@@ -21,7 +21,8 @@ from divmot_to_logic import sections_of
 from extract_psx_char_flipbook import flipbook_file
 from extract_psx_hud import extract_name, system_textures
 from extract_psx_sfx import all_voice_codes, arc_member, vab_sound
-from fighter_roster import COMMON_RECORD, ROSTER, bank_record, body_radii, filter_words, records
+from build_stage_packs import fighter_home
+from fighter_roster import COMMON_RECORD, ROSTER, STAGE_NUMBERS, bank_record, body_radii, filter_words, records
 from kmd_to_ska import parse_kmd
 from psx_character_textures import load_character_vram
 
@@ -199,7 +200,7 @@ def branch_rows(bank):
     return (second - first) // 12
 
 
-def header(rows, common_rows):
+def header(rows, common_rows, homes):
     def most(key):
         return max(row[key] for row in rows)
     pairs = [(a, b) for a in rows for b in rows]
@@ -222,6 +223,9 @@ def header(rows, common_rows):
              f'#define T3_ROSTER_ARENA_BYTES {arena}u',
              f'#define T3_ROSTER_STORE_BYTES {store}u',
              f'#define T3_ROSTER_FILTER_WORDS {filters}u',
+             '/* Home stage and music track, by character id. */',
+             f"#define T3_ROSTER_STAGES {{{','.join(str(home[0]) for home in homes)}}}",
+             f"#define T3_ROSTER_TRACKS {{{','.join(str(home[1]) for home in homes)}}}",
              '#endif', '']
     return '\n'.join(lines)
 
@@ -253,7 +257,10 @@ def main():
         parser.exit(1, f'fighter pack failed: {error}\n')
     with tempfile.TemporaryDirectory() as scratch:
         common = logic_bank(args.raw / f'{COMMON_RECORD:03}.bin', Path(scratch) / 'logic')
-    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common)))
+    homes = [fighter_home(exe, character) for character in range(max(f.id for f in ROSTER) + 1)]
+    if {f.id for f in ROSTER} != set(range(len(homes))) or not {home[0] for home in homes} <= set(STAGE_NUMBERS):
+        raise ValueError(f'a character has no baked home stage: {homes}')
+    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common), homes))
     (args.out / 'roster.json').write_text(json.dumps(rows, indent=1) + '\n')
     print(json.dumps(dict(packs=len(rows), bytes=sum(r['bytes'] for r in rows)), indent=1))
 

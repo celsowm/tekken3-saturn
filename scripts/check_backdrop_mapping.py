@@ -24,7 +24,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_local_paul_stage import read_arc  # noqa: E402
+from build_stage_packs import BAKE_HEIGHT, COLUMNS, PICTURE_PALETTE_AT, ROWS, ROWS_PER_TAN, TAN_TOP, read_arc  # noqa: E402
 from panorama_raycast import Panorama  # noqa: E402
 
 WIDTH, HEIGHT = 320, 224
@@ -62,11 +62,11 @@ def to_local(v, turn):
     return np.stack([x*c + z*s, y, -x*s + z*c], axis=1)
 
 
-def bake_view(points, bake):
+def bake_view(points):
     """Cylinder column and row the bake point sees at local points."""
-    column = (np.arctan2(points[:, 0], points[:, 2])/(2*np.pi) % 1.0)*bake['columns']
-    tan = (-points[:, 1] - bake['bake_height'])/np.hypot(points[:, 0], points[:, 2])
-    return column, (bake['tan_top'] - tan)*bake['rows_per_tan']
+    column = (np.arctan2(points[:, 0], points[:, 2])/(2*np.pi) % 1.0)*COLUMNS
+    tan = (-points[:, 1] - BAKE_HEIGHT)/np.hypot(points[:, 0], points[:, 2])
+    return column, (TAN_TOP - tan)*ROWS_PER_TAN
 
 
 def rgb(colour):
@@ -76,7 +76,8 @@ def rgb(colour):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--source', type=Path, required=True, help='private import (tekken3-usa)')
-    p.add_argument('--stage', type=Path, required=True, help='build_local_paul_stage.py output')
+    p.add_argument('--stage', type=Path, required=True, help='build_stage_packs.py output')
+    p.add_argument('--number', type=int, default=0, help='stage number')
     p.add_argument('--cameras', type=Path, required=True, help='t3_match_camera_eval dump')
     p.add_argument('--eval', type=Path, required=True, help='t3_stage_backdrop_eval')
     p.add_argument('--count', type=int, default=8, help='cameras, spread over the dump')
@@ -84,22 +85,20 @@ def main():
     p.add_argument('--compare', type=Path, help='an earlier report: print the change of each figure to stderr')
     a = p.parse_args()
 
-    manifest = json.loads((a.stage/'manifest.json').read_text())
-    bake = manifest['cylinder']
-    stg = (a.stage/'PAUL.STG').read_bytes()
-    header = struct.unpack_from('>16I', stg)
-    columns, rows = header[2], header[3]
-    palette = np.array(struct.unpack_from(f'>{header[11]}H', stg, header[10]), dtype=np.int64)
-    picture = np.frombuffer(stg, np.uint8, header[13], header[12]).reshape(rows, columns)
+    manifest = json.loads((a.stage/f'STG{a.number:02}.json').read_text())
+    stg = (a.stage/f'STG{a.number:02}.BIN').read_bytes()
+    columns, rows = COLUMNS, ROWS
+    palette = np.array(struct.unpack_from('>256H', stg, PICTURE_PALETTE_AT), dtype=np.int64)
+    picture = np.frombuffer(stg, np.uint8, columns*rows, len(stg)-columns*rows).reshape(rows, columns)
     half = manifest['panorama_half']
 
-    vram, _, _ = read_arc((a.source/'raw/036.bin').read_bytes())
-    scene = Panorama((a.source/'raw/056.bin').read_bytes(), vram, manifest['panorama_height'])
+    vram, _, _ = read_arc((a.source/f'raw/{36 + a.number:03}.bin').read_bytes())
+    scene = Panorama((a.source/f'raw/{56 + a.number:03}.bin').read_bytes(), vram, manifest['panorama_height'])
 
     cameras = [json.loads(line) for line in a.cameras.read_text().splitlines() if line.strip()]
     picks = [cameras[round(i*(len(cameras)-1)/max(1, a.count-1))] for i in range(a.count)]
     built = [saturn_camera(cam) for cam in picks]
-    query = [f"{half} {bake['bake_height']} {round(bake['tan_top']*ONE)} {round(bake['rows_per_tan']*ONE)} "
+    query = [f"{half} {BAKE_HEIGHT} {round(TAN_TOP*ONE)} {round(ROWS_PER_TAN*ONE)} "
              f"{columns} {rows} {WIDTH} {HEIGHT} 1"]
     for cam, (m, eye, _) in zip(picks, built):
         query.append(' '.join(str(int(v)) for v in [cam['turn'], *eye, *m]))
@@ -129,7 +128,7 @@ def main():
         with np.errstate(divide='ignore', invalid='ignore'):
             floor = np.where(dirs[:, 1] > 0, -origin[1]/dirs[:, 1], np.inf)
         visible = np.isfinite(t) & (t < floor) & (colour != 0)
-        true_column, true_row = bake_view(points, bake)
+        true_column, true_row = bake_view(points)
         # What the scrolled layer shows: column x + dot * zoom and, as each
         # entry replaces the vertical coordinate (one entry a line), row y.
         sx = (entries[:, 0][:, None] + np.arange(WIDTH)[None, :]*entries[:, 2][:, None]).reshape(-1)

@@ -54,7 +54,7 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
     missing = [str(assets / rel) for rel in inputs.values() if not (assets / rel).is_file()]
     missing += [str(assets / rel) for rel in ('pose-tables/psx_sounds.bin', 'pose-tables/psx_effects.bin',
                                               *roster_inputs()) if not (assets / rel).is_file()]
-    wav = assets / 'stage-music/stage.wav'
+    wav = assets / 'stage-music/themes.wav'
     if music and not wav.is_file():missing.append(str(wav))
     toolchain = prefix / 'share/libsaturn/toolchains/sh2eb-elf.cmake'
     if not toolchain.is_file():missing.append(str(toolchain))
@@ -66,7 +66,7 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
                '-DCMAKE_PREFIX_PATH=' + str(prefix), '-DLIBSATURN_SOURCE_DIR=' + str(libsaturn)]
     command += ['-DT3_' + name + '=ON' for name in ENABLED]
     command += ['-DT3_' + name + '=' + str(assets / rel) for name, rel in inputs.items()]
-    command += ['-DT3_LOCAL_PAUL_STAGE=' + str(assets), '-DT3_LOCAL_SFX=' + str(assets),
+    command += ['-DT3_LOCAL_STAGES=' + str(assets), '-DT3_LOCAL_SFX=' + str(assets),
                 '-DT3_LOCAL_ACTOR1_KMD=', '-DT3_SHARE_ACTOR_RESOURCES=OFF',
                 '-DT3_WORLD_POSE_CACHE_ENTRIES=0',
                 '-DT3_VIEWPORT_DX=6', '-DT3_VIEWPORT_SIGN=2', '-DT3_STAGE_CDDA=' + ('ON' if music else 'OFF')]
@@ -74,6 +74,8 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
         command.append('-DT3_BOOT_FIGHTERS=%d;%d' % tuple(boot_fighters))
     if (assets / 'raw/010.bin').is_file():
         command.append('-DT3_LOCAL_TITLE_OVERLAY=' + str(assets / 'raw/010.bin'))
+    if (assets / 'raw/009.bin').is_file():
+        command.append('-DT3_LOCAL_SELECT_OVERLAY=' + str(assets / 'raw/009.bin'))
     if music:command.append('-DT3_STAGE_CDDA_WAV=' + str(wav))
     if boot_payloads is not None:
         boot_payloads = boot_payloads.resolve()
@@ -84,7 +86,7 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--assets', type=Path, required=True, help='output of prepare_paul_law_assets.py')
+    parser.add_argument('--assets', type=Path, required=True, help='output of prepare_game_assets.py')
     parser.add_argument('--build', type=Path, required=True, help='fresh build directory')
     parser.add_argument('--prefix', type=Path, required=True, help='installed LibSaturn prefix')
     parser.add_argument('--libsaturn', type=Path, required=True, help='LibSaturn source checkout')

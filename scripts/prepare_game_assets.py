@@ -40,7 +40,7 @@ def prepare(source, out, music_cue=None):
                          '--output', str(out / 'divmot' / f'{record:03}'),
                          '--with-motion', '--with-hitboxes', '--with-events', '--with-sounds'])
     if music_cue is not None:
-        commands.append(['extract_psx_stage_music.py', '--image', str(music_cue.resolve()),
+        commands.append(['build_stage_themes.py', '--image', str(music_cue.resolve()),
                          '--out', str(out / 'stage-music')])
     with (out / 'prepare.log').open('w') as log:
         for args in commands:
@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True, help='USA disc data-track BIN or ISO')
     parser.add_argument('--out', type=Path, required=True, help='new directory under assets/imported')
-    parser.add_argument('--music-cue', type=Path, help='USA CUE for optional Paul stage music')
+    parser.add_argument('--music-cue', type=Path, help='USA CUE for the optional fighter themes')
     args = parser.parse_args()
     try:
         print(json.dumps(prepare(args.source, args.out, args.music_cue), indent=2))
