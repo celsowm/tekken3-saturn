@@ -30,6 +30,9 @@ static uint8_t g_ready;
  * (kind<<24 | player<<16 | code). Dumped by scripts/saturn_probe.py. */
 volatile uint32_t g_t3_sfx_unmapped,g_t3_sfx_unmapped_count,g_t3_sfx_unmapped_seen[16];
 volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_ms,g_t3_sfx_play_max_ms,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
+/* LibSaturn's audio statistics, refreshed each update: Sound RAM and voice pressure of a real fight. */
+volatile uint32_t g_t3_sfx_ram_used,g_t3_sfx_ram_capacity,g_t3_sfx_ram_high_water,g_t3_sfx_resident_sounds,
+                  g_t3_sfx_voice_steals,g_t3_sfx_failed_plays;
 
 #if defined(T3_FIGHTER_PACKS)
 _Static_assert(T3_ROSTER_MAX_VOICE_SAMPLES>0u,"voices");
@@ -175,6 +178,12 @@ void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
     const uint32_t updated=sat_time_ms();
     (void)sat_audio_update();
     g_t3_sfx_update_ms+=sat_time_ms()-updated;
+    sat_audio_stats_t stats;
+    if(sat_audio_get_stats(&stats)==SAT_OK) {
+        g_t3_sfx_ram_used=stats.sound_ram_used;g_t3_sfx_ram_capacity=stats.sound_ram_capacity;
+        g_t3_sfx_ram_high_water=stats.sound_ram_high_water;g_t3_sfx_resident_sounds=stats.resident_sounds;
+        g_t3_sfx_voice_steals=stats.voice_steals;g_t3_sfx_failed_plays=stats.failed_play_requests;
+    }
 }
 
 /* The round announcer (FUN_8003DCE0): "round" or "final round" at frame 61 of the

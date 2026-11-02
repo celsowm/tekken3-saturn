@@ -35,8 +35,10 @@ minus 64 KiB for the stream area.
 | Current (4 stream slots reserved) | 446,464 (436 KiB) | 45,868 | 200,792 | 28 resident |
 | No streaming (not implemented) | 512,000 (500 KiB) | 111,404 | 266,328 | 32 |
 
-The fight already fills 90% of the current Sound RAM; the heaviest pair leaves 3.5 KB. This was computed from
-the allocator rules, not read from a running fight: no emulator run was made.
+The fight already fills 90% of the current Sound RAM; the heaviest pair leaves 3.5 KB. Confirmed on a running
+build: Ymir, 900 frames, Paul vs Law, LibSaturn's `sat_audio_get_stats` read through `saturn_probe.py`:
+`sound_ram_used` 400,596, high water 400,596, capacity 446,464, 59 resident sounds, 0 voice steals, 0 failed plays
+(only 2 sounds were played in that short run, so the voice figures say nothing about a busy fight).
 
 ## 2. The music's working set (simulation over the real VGM events)
 
@@ -102,5 +104,5 @@ not attempted. The existing CD-DA path is untouched.
 
 ## Not measured
 
-A real fight's allocator state, the CD drive's actual seek times, the audibility of the 5.8 ms tick, the SCSP's
+The CD drive's actual seek times, voice pressure in a busy fight, the audibility of the 5.8 ms tick, the SCSP's
 interpolation compared with the C352, and the 68000 cycle counts.
