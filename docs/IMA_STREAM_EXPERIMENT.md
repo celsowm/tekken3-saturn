@@ -252,3 +252,17 @@ WRAM-H (no dead code of that size was found in the fight: `g_replay_history`, `g
 render buffers are in use during a fight), and for WRAM-L the arena, which holds the two animation banks (260-370 KB
 each) and camera streams of the worst pair. Not done, and why: a ring smaller than 16,384 underruns; moving the
 player's code to WRAM-L is not possible (`.wram_l` is not loaded from the image).
+
+## ADX ring at 12288 frames with waiting segments (menu, Ymir, 90 s)
+
+The disc scheduler now keeps an ADX segment in its drive buffer when the ring has no room, instead of dropping it
+(lib-saturn 2319fcc2). Same menu run, ring per channel set by `T3_ADX_MUSIC_RING_FRAMES` (now overridable):
+
+| Ring (frames) | Underruns | Rejected writes | Min fill | Segments | Consumed | Right-channel skew (60 s) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 16384 (control) | 0 | 0 | 2048 | 323 | 4669440 | 0 samples, corr 0.869 |
+| 12288 (candidate) | 0 | 0 | 2048 | 323 | 4673536 | 0 samples, corr 0.869 |
+
+Before the change, 12288 gave 106 underruns in the same test. The menu is the only program that links with the
+player: the fight still does not link (WRAM-H 23,868 B over), so the fight run and the 441-pair arena check remain
+open. Mednafen recordings were not made; the Ymir videos were deleted after reading the audio.

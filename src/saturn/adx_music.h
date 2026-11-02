@@ -18,7 +18,9 @@ typedef struct t3_adx_music_diag {
 extern volatile t3_adx_music_diag_t g_t3_adx_music;
 
 /* The ring the player keeps per channel, in frames (LibSaturn needs 12288 at least; Ymir: 12288 gave 106 underruns, 16384 none). */
+#ifndef T3_ADX_MUSIC_RING_FRAMES
 #define T3_ADX_MUSIC_RING_FRAMES 16384u
+#endif
 
 /* Bytes of memory the player needs for as long as the track plays: its state, the disc scheduler and the music
  * workspace. The caller lends them (4-byte aligned) to t3_adx_music_start(); the program carries no resident buffer. */
