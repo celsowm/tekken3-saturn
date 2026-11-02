@@ -1,5 +1,5 @@
-/* T3_COLD_LOW_WRAM: LibSaturn defines its runtime state, including the VDP1
- * command staging buffer, in .wram_l. Inserted before the SDK script's .bss,
+/* T3_COLD_LOW_WRAM: LibSaturn defines its runtime state (the frame state, the
+ * Gouraud and asset counters and the audio stream slots) in .wram_l. Inserted before the SDK script's .bss,
  * this rule claims that input section first and keeps it in High WRAM. The
  * section is NOLOAD and outside crt0's clear ranges: main() zeroes it before
  * sat_init. The SDK script's .bss and stack-reserve checks still apply. */
@@ -9,6 +9,7 @@ SECTIONS {
         *libsaturn.a:state.cpp.obj(.wram_l .wram_l.*)
         *libsaturn.a:vdp1.cpp.obj(.wram_l .wram_l.*)
         *libsaturn.a:asset_runtime.cpp.obj(.wram_l .wram_l.*)
+        *libsaturn.a:runtime.cpp.obj(.wram_l .wram_l.*)
         . = ALIGN(4);
         ___t3_sdk_hot_end = .;
     }

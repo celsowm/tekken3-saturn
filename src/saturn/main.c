@@ -29,6 +29,9 @@
 #include "saturn/scene.h"
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
+#include "saturn/video_memory.h"
+#include "saturn/asset_memory.h"
+#include "saturn/texture_memory.h"
 #include "saturn/vdp1.h"
 #if defined(T3_ORIGINAL_TITLE) || defined(T3_FIGHTER_PACKS)
 #include "disc.h"
@@ -242,6 +245,31 @@ static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
 #else
 static uint16_t g_order[FACE_CAP] T3_HOT_WRAM;
 #endif
+/* The fight stages at most FACE_CAP scene faces, the HUD and the report overlay, plus three setup commands, and one
+ * Gouraud table per face: LibSaturn's default 2048 + 2048 slots (80 KiB) are more than this program can fill, so it
+ * lends the library storage of its own size (saturn/video_memory.h; docs/MEMORY_LIFETIMES.md, proposal A). */
+enum { VDP1_COMMAND_WANTED = FACE_CAP + HUD_COMMANDS + REPORT_COMMANDS + 3,
+       VDP1_COMMAND_CAP = VDP1_COMMAND_WANTED < 2048 ? VDP1_COMMAND_WANTED : 2048,    /* the VRAM command area */
+       VDP1_GOURAUD_CAP = FACE_CAP + 128 };
+static uint32_t g_vdp1_commands[VDP1_COMMAND_CAP * SAT_VDP1_COMMAND_WORDS] T3_HOT_WRAM;
+static uint16_t g_vdp1_gouraud[VDP1_GOURAUD_CAP * SAT_VDP1_GOURAUD_WORDS] T3_HOT_WRAM;
+SAT_VIDEO_MEMORY(g_vdp1_commands, VDP1_COMMAND_CAP, g_vdp1_gouraud, VDP1_GOURAUD_CAP);
+/* The fight registers at most one disc source and one asset (the music track, adx_music.c) and keeps no file open or
+ * cache block: LibSaturn's default registry (32 mounts, 16 handles, 32 assets, 32 cache blocks, 4 prefetch requests,
+ * 13 KiB) is more than it can fill. Two slots of each leave room for a second track. */
+static sat_file_mount_slot_t g_asset_mounts[2] T3_HOT_WRAM;
+static sat_file_handle_slot_t g_asset_handles[2] T3_HOT_WRAM;
+static sat_asset_slot_t g_asset_entries[2] T3_HOT_WRAM;
+static sat_asset_cache_slot_t g_asset_cache[1] T3_HOT_WRAM;
+static sat_asset_prefetch_slot_t g_asset_prefetch[1] T3_HOT_WRAM;
+SAT_ASSET_MEMORY(g_asset_mounts, g_asset_handles, g_asset_entries, g_asset_cache, g_asset_prefetch);
+/* The fight registers no texture through sat_texture_create (the fighters' textures go to VDP1 through the texture
+ * arena; a fight sampled on Ymir had every one of LibSaturn's 64 slots unused): the default registry (64 textures,
+ * 64 regions, 128 buckets, 5 KiB) is dead weight. Four of each keep the API usable. */
+static sat_texture_slot_t g_texture_slots[4] T3_HOT_WRAM;
+static sat_texture_region_slot_t g_texture_regions[4] T3_HOT_WRAM;
+static uint16_t g_texture_buckets[4] T3_HOT_WRAM;
+SAT_TEXTURE_MEMORY(g_texture_slots, g_texture_regions, g_texture_buckets);
 /* Explicitly cleared and uploaded by HUD initialization before its first use. */
 static sat_ascii_font_t g_font __attribute__((section(".wram_l")));
 static sat_hud_t g_hud;
