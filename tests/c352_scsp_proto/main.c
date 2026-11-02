@@ -109,6 +109,22 @@ static sat_cdfs_file_t g_bank_file;
 static void do_load(const load_record_t* r, int32_t stream_tick) {
     uint32_t sum = 0u, done = 0u;
     const uint32_t t0 = sat_sound_driver_tick();
+#if C352_GUARD
+    /* Guard: the old sample must not be heard under a new note if this load comes late. Silence the region
+     * first (64 KiB of zeros at a time); a note that starts before its data lands then plays silence. */
+    for (uint32_t i = 0u; i < sizeof g_stage; ++i) g_stage[i] = 0u;
+    for (uint32_t z = 0u; z < r->bytes; z += 65536u) {
+        const uint32_t n = r->bytes - z < 65536u ? r->bytes - z : 65536u;
+        (void)sat_sound_ram_write(r->address + z, g_stage, n);
+    }
+#endif
+#if C352_LOAD_DELAY_TICKS
+    /* Test only: a slow disc, simulated by holding every fourth load back. */
+    if ((g_c352_proto.dyn_done & 3u) == 3u && stream_tick > -1000) {
+        const uint32_t hold = sat_sound_driver_tick();
+        while (sat_sound_driver_tick() - hold < C352_LOAD_DELAY_TICKS) {}
+    }
+#endif
     while (done < r->bytes) {
         uint32_t got = 0u;
         const uint32_t n = r->bytes - done < 65536u ? r->bytes - done : 65536u;

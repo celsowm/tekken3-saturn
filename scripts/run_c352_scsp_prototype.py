@@ -58,6 +58,9 @@ def main():
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64))
     parser.add_argument('--legacy-score', action='store_true', help='the 1024-event score instead of pages')
     parser.add_argument('--bank-budget', type=int, help='dynamic bank: load samples section by section into this many bytes')
+    parser.add_argument('--bank-lead', type=float, default=1.5, help='seconds a sample is loaded ahead of its first note')
+    parser.add_argument('--guard', action='store_true', help='silence a sample region before its load')
+    parser.add_argument('--load-delay-ticks', type=int, default=0, help='test only: hold every fourth load back')
     parser.add_argument('--relative-pages', action='store_true')
     parser.add_argument('--cd', action='store_true', help='read the bank and the pages from a disc image built for the program')
     parser.add_argument('--out', type=Path, required=True)
@@ -75,7 +78,7 @@ def main():
     data = out / 'data'
     data.mkdir(parents=True, exist_ok=True)
     pcm8_base = 0x3000
-    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget)
+    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget, bank_lead_s=args.bank_lead)
     manifest = convert.summary(r, argparse.Namespace(start=args.start, end=args.end, pcm8_base=pcm8_base), args.vgm)
     if args.legacy_score and not manifest['scsp']['fits_the_driver_score']:
         sys.exit(f"{manifest['scsp']['events']} events exceed the driver score ({convert.SCORE_MAX_EVENTS}): drop --legacy-score")
@@ -84,7 +87,8 @@ def main():
     toolchain = args.prefix / 'share/libsaturn/toolchains/sh2eb-elf.cmake'
     sh(['cmake', '-S', str(ROOT / 'tests/c352_scsp_proto'), '-B', str(args.build), '-G', 'Ninja',
         f'-DCMAKE_TOOLCHAIN_FILE={toolchain}', f'-DCMAKE_PREFIX_PATH={args.prefix}', '-DCMAKE_BUILD_TYPE=Release',
-        f'-DC352_DATA_DIR={data}', f'-DC352_CD={"ON" if args.cd else "OFF"}'])
+        f'-DC352_DATA_DIR={data}', f'-DC352_CD={"ON" if args.cd else "OFF"}', f'-DC352_GUARD={"ON" if args.guard else "OFF"}',
+        f'-DC352_LOAD_DELAY_TICKS={args.load_delay_ticks}'])
     sh(['cmake', '--build', str(args.build)])
     elf, binary = args.build / 'c352_scsp_proto.elf', args.build / 'c352_scsp_proto.app.bin'
     address = symbol(elf, 'g_c352_proto', args.nm)

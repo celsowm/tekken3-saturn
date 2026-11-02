@@ -249,10 +249,28 @@ What this does not show: the CD timing is Ymir's block model, not a drive (seeks
 `PAGES.BIN` are not modelled); the SH-2 stalls for a load (up to 0.29 s) and a page read (0.15 s); the plan
 assumes the loader keeps its 1.5 s lead; recognisability was not judged by ear.
 
+### Late loads and the guard
+
+Two knobs test what a slow disc does (`--load-delay-ticks` holds every fourth load back; `--guard` silences a
+region before it is loaded; `--bank-lead` shortens the planned lead). With a 0.1 s lead (packed extent 401,600
+bytes) and a 200-tick (0.58 s) hold, 4 of the 65 loads finish 0.1 to 0.7 s after their first note:
+
+| Whole theme, 128-sample tick | No hold | Hold, no guard | Hold, guard |
+|---|---|---|---|
+| Loads finished after their first note | 0 | 4 | 4 |
+| Late events, underruns | 0, 0 | 0, 0 | 0, 0 |
+| Seconds (of 131) differing by more than 5 % from the no-hold capture | 0 | 4 | 4 |
+| RMS difference from the no-hold capture | 0 | 122.1 | 118.0 (signal RMS 3,686) |
+
+So a late sample costs a few seconds with up to 23 % error, not a failure, and silencing the region first helps
+by about 3 %: the guard is kept as an option, off by default. What matters is the lead: the loader blocks the SH-2,
+so a load longer than the page margin also starves the pages (a 1.74 s hold gave 675 underrun ticks and 892 late
+events), and the 1.5 s lead gives a 1.51 s smallest margin. Rule: plan the lead as at least twice the longest
+load plus a page read, and keep it under the page margin. A real drive's seeks are not in this model.
+
 ## 10. Next
 
-- Time the CD on a model with seeks, or on hardware, and give the loader a deadline guard (mute a note whose
-  sample is not there).
+- Time the CD on a model with seeks, or on hardware, and size the lead from the measured load times.
 - Integrate into the Tekken 3 audio profile (budget for the fight effects) once the music is wanted.
 - Decide on the 128-sample tick per song section from the burst profile the converter prints.
 - Provoke an underrun (a late page) and a page-reuse race on purpose, to test the detection in isolation.

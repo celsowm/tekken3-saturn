@@ -452,7 +452,7 @@ def audible(n):
     return any(c[1] == 'vol' and (c[2] or c[3]) for c in n.changes)
 
 
-def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256, bank_budget=None):
+def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256, bank_budget=None, bank_lead_s=1.5):
     set_timebase(tick_samples, t0)
     info = vgm.parse(vgm.read_vgm(vgm_path))
     rom = rom_image(info)
@@ -467,7 +467,7 @@ def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256,
     if scale is None:
         scale = 1.0 / max(1.0, peak_gain)
     bank, addresses, pcm8_len, pcm16_len, pcm16_base = build_bank(notes, rom, pcm8_base)
-    dynamic = plan_dynamic_bank(notes, addresses, pcm8_base, bank_budget) if bank_budget else None
+    dynamic = plan_dynamic_bank(notes, addresses, pcm8_base, bank_budget, lead_s=bank_lead_s) if bank_budget else None
     issues = configure(notes, addresses)
     events, placed, dropped, reuse = plan(notes, info['out_rate'], scale, t1)
     loop_ticks = tick_of(t1) + 8
