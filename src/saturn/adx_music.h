@@ -29,6 +29,9 @@ uint32_t t3_adx_music_arena_bytes(void);
 /* Registers ADXMUSIC.BIN (`frames` frames at `rate` Hz, stereo, `bytes` long) and starts it. Needs sat_audio_init. */
 sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block, void* arena,
                                 uint32_t arena_bytes, uint32_t frames, uint32_t rate, uint32_t bytes);
+/* The caller did not start the track: step 0x100|why (1 arena too small, 2 disc volume, 3 CD block), status = the bytes
+ * the arena had (why 1) or the error code. Lets a measured fight say why it fell back to CD-DA. */
+void t3_adx_music_skipped(uint32_t why, uint32_t value);
 void t3_adx_music_service(void);
 /* Stops the track, detaches the scheduler (waits for a segment in flight) and releases the arena. */
 void t3_adx_music_stop(void);

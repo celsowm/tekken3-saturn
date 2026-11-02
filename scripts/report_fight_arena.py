@@ -28,6 +28,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--iso-root', type=Path, required=True)
     ap.add_argument('--need', type=int, default=0, help='bytes a feature wants from the arena tail')
+    ap.add_argument('--pair', type=int, nargs=2, action='append', metavar=('A', 'B'),
+                    help='also print the tail of this pairing (repeatable)')
     args = ap.parse_args()
     packs = [read_pack(p) for p in sorted(args.iso_root.glob('F[0-9][0-9].BIN'))]
 
@@ -44,6 +46,8 @@ def main():
     print(f'pairings leaving less than {args.need} bytes: {len(short)} of {len(pairs)}')
     for f, i, j in short[:12]:
         print(f'  {i:2d} vs {j:2d}: {f} bytes')
+    for a, b in args.pair or []:
+        print(f'pair {a},{b}: tail {arena - used(packs[a], packs[b])} bytes')
 
 
 if __name__ == '__main__':

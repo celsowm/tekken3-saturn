@@ -822,8 +822,11 @@ static sat_result_t start_fight_music(void) {
     uint8_t* const tail=t3_fighter_pack_arena_tail(&room);
     sat_cdfs_volume_t* volume;
     sat_cd_block_t* block;
-    if(room>=t3_adx_music_arena_bytes() && t3_disc_volume(&volume)==SAT_OK && t3_disc_block(&block)==SAT_OK &&
-       t3_adx_music_start(volume,block,tail,room,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES)==SAT_OK) {
+    sat_result_t st;
+    if(room<t3_adx_music_arena_bytes()) t3_adx_music_skipped(1u,room);
+    else if((st=t3_disc_volume(&volume))!=SAT_OK) t3_adx_music_skipped(2u,(uint32_t)-st);
+    else if((st=t3_disc_block(&block))!=SAT_OK) t3_adx_music_skipped(3u,(uint32_t)-st);
+    else if(t3_adx_music_start(volume,block,tail,room,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES)==SAT_OK) {
         g_adx_on=1;
         return SAT_OK;
     }

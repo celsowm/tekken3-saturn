@@ -41,6 +41,11 @@ static sat_result_t fail(uint32_t step, sat_result_t status) {
     return status;
 }
 
+void t3_adx_music_skipped(uint32_t why, uint32_t value) {
+    g_t3_adx_music.step = 0x100u | why;
+    g_t3_adx_music.status = value;
+}
+
 uint32_t t3_adx_music_arena_bytes(void) { return STATE_BYTES + DISC_BYTES + WORKSPACE_BYTES; }
 
 sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block, void* arena,
