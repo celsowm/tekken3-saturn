@@ -24,7 +24,14 @@ from pathlib import Path
 
 import analyze_c352_vgm as vgm
 
-TICK_SECONDS = 256 / 44100                  # SCSP timer A: one driver tick
+TICK_SAMPLES = 256                          # SCSP timer A period: one driver tick (256, 128 or 64 samples)
+TICK_SECONDS = TICK_SAMPLES / 44100
+T0 = 0.0                                    # window start (s): stream time 0
+
+
+def set_timebase(tick_samples=256, t0=0.0):
+    global TICK_SAMPLES, TICK_SECONDS, T0
+    TICK_SAMPLES, TICK_SECONDS, T0 = tick_samples, tick_samples / 44100, t0
 KYONEX, KYONB = 0x1000, 0x0800
 PCM8B, LPCTL_SHIFT = 0x0010, 5
 SCORE_MAX_EVENTS = 1024
@@ -190,7 +197,8 @@ def pitch_word(rate_hz):
 
 
 def tick_of(t):
-    return round(t / TICK_SECONDS)
+    """Driver tick of a VGM time, counted from the window start."""
+    return round((t - T0) / TICK_SECONDS)
 
 
 def plan(notes, rate_hz_base, scale, t1):
@@ -363,7 +371,8 @@ def audible(n):
     return any(c[1] == 'vol' and (c[2] or c[3]) for c in n.changes)
 
 
-def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None):
+def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256):
+    set_timebase(tick_samples, t0)
     info = vgm.parse(vgm.read_vgm(vgm_path))
     rom = rom_image(info)
     notes_all = timeline(info, t0, t1)
@@ -386,6 +395,41 @@ def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None):
                 dropped=dropped, reuse=reuse, issues=issues, scale=scale, peak_gain=peak_gain, loop_ticks=loop_ticks,
                 pcm8_len=pcm8_len, pcm16_len=pcm16_len, pcm16_base=pcm16_base, poly=poly, placed=placed,
                 notes_all=notes_all)
+
+
+PAGE_EVENTS = 512
+PAGE_HEADER = 16
+
+
+def paginate(events, end_tick, relative=False):
+    """Split sorted (tick, register, value) events into driver pages of at most 512, cutting between ticks when
+    it can. Page time: absolute (time base 0) or relative to the page's first event."""
+    pages, i = [], 0
+    while i < len(events):
+        chunk = events[i:i + PAGE_EVENTS]
+        if i + PAGE_EVENTS < len(events) and chunk[-1][0] == events[i + PAGE_EVENTS][0]:
+            k = len(chunk)
+            while k > 1 and chunk[k - 1][0] == chunk[-1][0]:
+                k -= 1
+            if k > 1:
+                chunk = chunk[:k]
+        j = i + len(chunk)
+        end = events[j][0] if j < len(events) else end_tick
+        base = chunk[0][0] if relative else 0
+        pages.append(dict(count=len(chunk), time_base=base, end=end - base, last=j >= len(events),
+                          events=[(t - base, r, v) for t, r, v in chunk]))
+        i = j
+    return pages
+
+
+def pages_bytes(pages):
+    """pages.bin: per page a 16-byte header (count, flags bit 15 = last, time base, end, 0) then count x 8-byte events."""
+    out = bytearray()
+    for pg in pages:
+        out += struct.pack('>HHIII', pg['count'], 0x8000 if pg['last'] else 0, pg['time_base'], pg['end'], 0)
+        for t, r, v in pg['events']:
+            out += struct.pack('>IHH', t, r, v)
+    return bytes(out)
 
 
 def peak_polyphony(notes):
@@ -444,6 +488,17 @@ def change_stats(notes, out_rate):
     return dict(volume_changes=vol, pan_changes=pan, pitch_changes=pitch, volume_ramp_ms_max=ramp)
 
 
+def page_stats(r):
+    per_tick = {}
+    for t, _, _ in r['events']:
+        per_tick[t] = per_tick.get(t, 0) + 1
+    pages = paginate(r['events'], r['loop_ticks'])
+    return dict(tick_samples=TICK_SAMPLES, events=len(r['events']), pages=len(pages), page_events=PAGE_EVENTS,
+                ticks_with_events=len(per_tick), max_events_in_one_tick=max(per_tick.values(), default=0),
+                mean_events_per_tick=len(r['events']) / max(1, r['loop_ticks']),
+                window_ticks=r['loop_ticks'], pages_bytes=len(pages_bytes(pages)))
+
+
 def summary(r, args, vgm_path):
     notes = r['notes']
     kinds = {}
@@ -452,7 +507,7 @@ def summary(r, args, vgm_path):
         kinds[f'{field:#04x}'] = kinds.get(f'{field:#04x}', 0) + 1
     raw_changes = sum(len(n.changes) for n in notes)
     window_events = [e for e in r['info']['events'] if args.start <= e[0] / 44100 < args.end]
-    quant = [abs(n.on_tick * TICK_SECONDS - n.t_on) * 1000 for n in r['placed']]
+    quant = [abs(n.on_tick * TICK_SECONDS + T0 - n.t_on) * 1000 for n in r['placed']]
     pitch_err = []
     for n in r['placed']:
         if n.freq:
@@ -487,6 +542,7 @@ def summary(r, args, vgm_path):
                   gain_scale=r['scale'], peak_c352_gain=r['peak_gain'],
                   score_bytes=len(r['score']), score_sha256=hashlib.sha256(r['score']).hexdigest(),
                   bank_sha256=hashlib.sha256(r['bank']).hexdigest()),
+        pages=page_stats(r),
         quantisation=dict(onset_error_ms_mean=sum(quant) / max(1, len(quant)), onset_error_ms_max=max(quant, default=0),
                           pitch_error_cents_max=max(map(abs, pitch_err), default=0),
                           pitch_error_cents_mean=sum(map(abs, pitch_err)) / max(1, len(pitch_err))),
@@ -494,33 +550,47 @@ def summary(r, args, vgm_path):
         samples=sample_rows)
 
 
+def write_outputs(out, r, manifest, start, end, pcm8_base, relative_pages=False, paged=True):
+    """bank.bin, score.bin (1024-event form, only if it fits), pages.bin, manifest.json, notes.json, score_meta.h."""
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'bank.bin').write_bytes(r['bank'])
+    pages = paginate(r['events'], r['loop_ticks'], relative_pages)
+    (out / 'pages.bin').write_bytes(pages_bytes(pages))
+    fits = len(r['events']) <= SCORE_MAX_EVENTS
+    if not paged and not fits:
+        raise ValueError('more than 1024 events: use the paged score')
+    (out / 'score.bin').write_bytes(r['score'] if fits and not paged else b'')
+    (out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+    (out / 'notes.json').write_text(json.dumps(
+        [dict(t_on=n.t_on, voice=n.voice, slot=n.slot, intended_ms=(n.on_tick * TICK_SECONDS + T0 - n.t_on) * 1000,
+              sample=list(n.key), looped=n.looped, carried=bool(n.carried)) for n in r['placed']], indent=1))
+    (out / 'score_meta.h').write_text(
+        '/* Generated by c352_scsp_convert.py; private, not for Git. */\n'
+        f"#define C352_BANK_BASE {pcm8_base:#x}u\n#define C352_BANK_BYTES {len(r['bank'])}u\n"
+        f"#define C352_SCORE_EVENTS {len(r['events']) if fits and not paged else 0}u\n#define C352_LOOP_TICKS {r['loop_ticks']}u\n"
+        f"#define C352_WINDOW_MS {round((end - start) * 1000)}u\n#define C352_TICK_SAMPLES {TICK_SAMPLES}u\n"
+        f"#define C352_PAGES {len(pages)}u\n#define C352_PAGED {1 if paged else 0}u\n"
+        f"#define C352_LEAD_TICKS {round(0.3 * 44100 / TICK_SAMPLES)}u\n")
+    return pages
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('vgm')
-    parser.add_argument('--start', type=float, default=0.0, help='window start (s); notes already sounding are not carried')
+    parser.add_argument('--start', type=float, default=0.0, help='window start (s); a note already sounding enters at its sample position')
     parser.add_argument('--end', type=float, required=True, help='window end (s)')
     parser.add_argument('--pcm8-base', type=lambda s: int(s, 0), default=0x3000, help='Sound RAM address of the bank')
     parser.add_argument('--scale', type=float, help='linear gain applied to every voice (default: 1 / loudest voice if above 1)')
-    parser.add_argument('--out', type=Path, help='write bank.bin, score.bin, manifest.json here')
+    parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64), help='driver tick length in samples')
+    parser.add_argument('--legacy-score', action='store_true', help='write the 1024-event score instead of pages')
+    parser.add_argument('--relative-pages', action='store_true', help='page events relative to the page time base instead of absolute')
+    parser.add_argument('--out', type=Path, help='write the data files here')
     parser.add_argument('--dry-run', action='store_true', help='print the manifest only')
     args = parser.parse_args()
-    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale)
+    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale, tick_samples=args.tick_samples)
     manifest = summary(r, args, args.vgm)
     if args.out and not args.dry_run:
-        args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / 'bank.bin').write_bytes(r['bank'])
-        (args.out / 'score.bin').write_bytes(r['score'])
-        (args.out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
-        (args.out / 'notes.json').write_text(json.dumps(
-            [dict(t_on=n.t_on, voice=n.voice, slot=n.slot, intended_ms=(n.on_tick * TICK_SECONDS - n.t_on) * 1000,
-                  sample=list(n.key), looped=n.looped, carried=bool(n.carried)) for n in r['placed']], indent=1))
-        (args.out / 'score_meta.h').write_text(
-            '/* Generated by c352_scsp_convert.py; private, not for Git. */\n'
-            f"#define C352_BANK_BASE {args.pcm8_base:#x}u\n"
-            f"#define C352_BANK_BYTES {len(r['bank'])}u\n"
-            f"#define C352_SCORE_EVENTS {len(r['events'])}u\n"
-            f"#define C352_LOOP_TICKS {r['loop_ticks']}u\n"
-            f"#define C352_WINDOW_MS {round((args.end - args.start) * 1000)}u\n")
+        write_outputs(args.out, r, manifest, args.start, args.end, args.pcm8_base, args.relative_pages, not args.legacy_score)
     json.dump({k: v for k, v in manifest.items() if k != 'samples'}, sys.stdout, indent=2)
     print()
 

@@ -103,6 +103,39 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(on_ticks), 2)
         self.assertTrue(any(on_ticks[0] < t < on_ticks[1] for t in off_ticks))   # keyed off strictly before the retrigger
 
+    def test_pages_split_between_ticks_and_keep_every_event(self):
+        events = [(t, 0x10, t) for t in range(0, 1300) for _ in range(1)]
+        events += [(700, 0x12, 0)] * 5                   # a tick with several events
+        events.sort(key=lambda e: e[0])
+        pages = convert.paginate(events, 1400)
+        self.assertEqual(sum(p['count'] for p in pages), len(events))
+        self.assertTrue(all(p['count'] <= 512 for p in pages))
+        self.assertTrue(pages[-1]['last'] and not any(p['last'] for p in pages[:-1]))
+        for a, b in zip(pages, pages[1:]):
+            self.assertEqual(a['end'] + a['time_base'], b['events'][0][0] + b['time_base'])   # no gap between pages
+        self.assertEqual(pages[-1]['end'] + pages[-1]['time_base'], 1400)
+
+    def test_relative_pages_rebase_times(self):
+        events = [(1000 + i, 0x10, i) for i in range(600)]
+        pages = convert.paginate(events, 1700, relative=True)
+        self.assertEqual(pages[0]['time_base'], 1000)
+        self.assertEqual(pages[0]['events'][0][0], 0)
+        self.assertEqual(pages[1]['time_base'] + pages[1]['events'][0][0], events[pages[0]['count']][0])
+        blob = convert.pages_bytes(pages)
+        count, flags, base, end, _ = struct.unpack_from('>HHIII', blob, 0)
+        self.assertEqual((count, flags, base), (pages[0]['count'], 0, 1000))
+        self.assertEqual(len(blob), sum(16 + 8 * p['count'] for p in pages))
+
+    def test_a_128_sample_tick_halves_the_quantisation(self):
+        try:
+            convert.set_timebase(128, 0.0)
+            self.assertEqual(convert.tick_of(0.01), round(0.01 * 44100 / 128))
+            self.assertAlmostEqual(convert.TICK_SECONDS, 128 / 44100)
+            convert.set_timebase(256, 10.0)
+            self.assertEqual(convert.tick_of(10.0), 0)       # stream time 0 is the window start
+        finally:
+            convert.set_timebase(256, 0.0)
+
 
 if __name__ == '__main__':
     unittest.main()

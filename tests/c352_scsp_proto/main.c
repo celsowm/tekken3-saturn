@@ -1,7 +1,9 @@
 /* Experimental: plays a converted window of a Namco C352 song on the SCSP.
- * The sample bank is loaded into Sound RAM first, then the 68000 sound driver runs a register score
- * (sat_sound_driver_score_load). After that the SH-2 only draws the status lines: it decodes nothing, keys
- * nothing and does not call sat_audio_update. Data comes from scripts/c352_scsp_convert.py (private).
+ * The sample bank is loaded into Sound RAM first, then the 68000 sound driver runs a register score: either the
+ * 1024-event looping score (sat_sound_driver_score_load) or, with C352_PAGED, a long score in pages of 512
+ * events that the SH-2 publishes whenever the driver has freed one (sat_sound_driver_page_publish). The SH-2
+ * moves pages; it decodes nothing, keys nothing and does not call sat_audio_update. Data comes from
+ * scripts/c352_scsp_convert.py (private).
  * g_c352_proto holds what scripts/run_c352_scsp_prototype.py reads back. */
 #include <stdint.h>
 #include "saturn/app.h"
@@ -15,9 +17,11 @@
 __asm__(".section .rodata\n.balign 4\n"
         ".global c352_bank_asm\nc352_bank_asm:\n.incbin \"" C352_BANK_FILE "\"\n"
         ".balign 4\n.global c352_score_asm\nc352_score_asm:\n.incbin \"" C352_SCORE_FILE "\"\n"
+        ".balign 4\n.global c352_pages_asm\nc352_pages_asm:\n.incbin \"" C352_PAGES_FILE "\"\n"
         ".previous\n");
 extern const uint8_t c352_bank[] __asm__("c352_bank_asm");
 extern const sat_sound_score_event_t c352_score[] __asm__("c352_score_asm");
+extern const uint8_t c352_pages[] __asm__("c352_pages_asm");
 
 #define PROTO_MAGIC SAT_FOURCC('C', '3', 'S', '1')
 #define CHUNK_BYTES 65534u              /* sat_sound_create takes up to 65535 samples */
@@ -37,11 +41,38 @@ typedef struct c352_proto_results {
     uint32_t tick_at_frame_a, frame_a, tick_at_frame_b, frame_b;
     uint32_t heartbeat, executed, score_executed, score_loops, max_lateness, last_lateness, queued;
     uint32_t active_voices_during_play, sound_ram_used_during_play;
+    /* paged score */
+    uint32_t pg_published, pg_played, pg_underrun_ticks, pg_late_events, pg_max_lateness, pg_bad_sequence;
+    uint32_t pg_max_burst, pg_refused, pg_executed, pg_done, pg_base_tick, pg_tick_samples;
+    uint32_t pg_abuse_result, pg_total_pages, pg_publish_attempts, pg_frame_done;
+    int32_t pg_margin_ticks[16];        /* per page: ticks between its publication and its first event's time */
 } c352_proto_results_t;
 
 volatile c352_proto_results_t g_c352_proto;
 
 static sat_ascii_font_t font;
+static const uint8_t* g_page_cursor;
+static uint32_t g_page_next;
+
+/* Publishes the next page if the driver has freed a slot. Returns 1 when one went out. */
+static uint32_t publish_next(const sat_sound_pages_info_t* info) {
+    if (g_page_next >= C352_PAGES || info->pages_free == 0u) return 0u;
+    const uint8_t* h = g_page_cursor;
+    const uint16_t count = (uint16_t)((h[0] << 8) | h[1]);
+    const uint16_t flags = (uint16_t)((h[2] << 8) | h[3]);
+    const uint32_t time_base = ((uint32_t)h[4] << 24) | ((uint32_t)h[5] << 16) | ((uint32_t)h[6] << 8) | h[7];
+    const uint32_t end = ((uint32_t)h[8] << 24) | ((uint32_t)h[9] << 16) | ((uint32_t)h[10] << 8) | h[11];
+    const sat_sound_score_event_t* events = (const sat_sound_score_event_t*)(h + 16);
+    ++g_c352_proto.pg_publish_attempts;
+    if (sat_sound_driver_page_publish(events, count, time_base, end, (flags & 0x8000u) != 0u) != SAT_OK) return 0u;
+    if (g_page_next < 16u) {
+        g_c352_proto.pg_margin_ticks[g_page_next] =
+            (int32_t)(info->base_tick + time_base + events[0].tick) - (int32_t)sat_sound_driver_tick();
+    }
+    g_page_cursor = h + 16 + 8u * count;
+    ++g_page_next;
+    return 1u;
+}
 
 static void line(const char* label, uint32_t value, int y) {
     (void)sat_ascii_font_draw_label_u32(&font, label, value, 8, y, 8, 0u, 0u);
@@ -99,11 +130,26 @@ int main(void) {
             const uint16_t want = (uint16_t)((c352_bank[2u * w] << 8) | c352_bank[2u * w + 1u]);
             if (SOUND_RAM[C352_BANK_BASE / 2u + w] != want) ++g_c352_proto.bank_mismatch_words;
         }
+#if C352_PAGED
+        if (g_c352_proto.create_status == 0u) {
+            sat_sound_pages_info_t pinfo = {0};
+            g_c352_proto.pg_total_pages = C352_PAGES;
+            g_c352_proto.tick_before_load = sat_sound_driver_tick();
+            g_c352_proto.score_status = (uint32_t)(-sat_sound_driver_pages_start(C352_TICK_SAMPLES, C352_LEAD_TICKS));
+            g_page_cursor = c352_pages;
+            for (uint32_t k = 0u; k < 2u && g_c352_proto.score_status == 0u; ++k) {
+                (void)sat_sound_driver_pages_info(&pinfo);
+                (void)publish_next(&pinfo);
+            }
+            g_c352_proto.tick_after_load = sat_sound_driver_tick();
+        }
+#else
         if (g_c352_proto.create_status == 0u) {
             g_c352_proto.tick_before_load = sat_sound_driver_tick();
             g_c352_proto.score_status = (uint32_t)(-sat_sound_driver_score_load(c352_score, C352_SCORE_EVENTS, C352_LOOP_TICKS));
             g_c352_proto.tick_after_load = sat_sound_driver_tick();
         }
+#endif
         if (sat_audio_get_stats(&stats) == SAT_OK) {
             g_c352_proto.sound_ram_used = stats.sound_ram_used;
             g_c352_proto.sound_ram_capacity = stats.sound_ram_capacity;
@@ -131,6 +177,35 @@ int main(void) {
             g_c352_proto.tick_at_frame_b = sat_sound_driver_tick();
             g_c352_proto.frame_b = g_c352_proto.frames;
         }
+#if C352_PAGED
+        {
+            sat_sound_pages_info_t pinfo = {0};
+            if (sat_sound_driver_pages_info(&pinfo) == SAT_OK) {
+                if (publish_next(&pinfo) != 0u && sat_sound_driver_pages_info(&pinfo) == SAT_OK) (void)publish_next(&pinfo);
+                if (g_c352_proto.frames == 200u && pinfo.pages_free == 0u && g_page_next < C352_PAGES) {
+                    /* a deliberate publish into a page still in use: it must be refused */
+                    const uint8_t* h = g_page_cursor;
+                    g_c352_proto.pg_abuse_result = (uint32_t)(-sat_sound_driver_page_publish(
+                        (const sat_sound_score_event_t*)(h + 16), 1u, 0u, 1u, 0u));
+                }
+                g_c352_proto.pg_published = pinfo.pages_published;
+                g_c352_proto.pg_played = pinfo.pages_played;
+                g_c352_proto.pg_underrun_ticks = pinfo.underrun_ticks;
+                g_c352_proto.pg_late_events = pinfo.late_events;
+                g_c352_proto.pg_max_lateness = pinfo.max_lateness_ticks;
+                g_c352_proto.pg_bad_sequence = pinfo.bad_sequence;
+                g_c352_proto.pg_max_burst = pinfo.max_burst;
+                g_c352_proto.pg_refused = pinfo.refused;
+                g_c352_proto.pg_executed = pinfo.executed;
+                g_c352_proto.pg_base_tick = pinfo.base_tick;
+                g_c352_proto.pg_tick_samples = pinfo.tick_samples;
+                if (pinfo.done && g_c352_proto.pg_done == 0u) {
+                    g_c352_proto.pg_done = 1u;
+                    g_c352_proto.pg_frame_done = g_c352_proto.frames;
+                }
+            }
+        }
+#endif
         if ((g_c352_proto.frames % 30u) == 0u && sat_sound_driver_info(&info) == SAT_OK) {
             g_c352_proto.heartbeat = info.heartbeat;
             g_c352_proto.executed = info.executed;

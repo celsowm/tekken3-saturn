@@ -21,10 +21,11 @@ from scipy import signal, stats
 RATE = 44100
 
 
-def read_wav(path, seconds):
+def read_wav(path, seconds, start=0.0):
     with wave.open(str(path), 'rb') as w:
         assert w.getsampwidth() == 2 and w.getnchannels() == 2, 'stereo 16-bit expected'
         rate = w.getframerate()
+        w.setpos(int(start * rate))
         frames = w.readframes(int(seconds * rate))
     x = np.frombuffer(frames, dtype='<i2').reshape(-1, 2).astype(np.float64)
     return x, rate
@@ -129,8 +130,8 @@ def envelope(x, hop):
     return np.sqrt(np.mean(x[:n * hop].reshape(n, hop) ** 2, axis=1))
 
 
-def compare(oracle, capture, seconds, out):
-    ref88, rate = read_wav(oracle, seconds + 1.0)
+def compare(oracle, capture, seconds, out, start=0.0):
+    ref88, rate = read_wav(oracle, seconds + 1.0, start)
     ref = signal.resample_poly(ref88, 1, rate // RATE, axis=0)
     raw = np.frombuffer(Path(capture).read_bytes(), dtype='<i2').reshape(-1, 2).astype(np.float64)
     n_ref = int(seconds * RATE)
@@ -196,7 +197,7 @@ def compare(oracle, capture, seconds, out):
                     drift_over_window_ms=slope * seconds,
                     note='1 s blocks, lag searched within +-8 ms of the start alignment; tick resolution is 5.805 ms'),
         level=dict(rms_scsp=[rms_l, rms_r], rms_oracle=[ref_l, ref_r], rms_ratio_db=db(rms(cap_w), rms(ref_w)),
-                   peak_scsp=float(np.max(np.abs(cap_w))), peak_oracle=float(np.max(np.abs(ref_w))),
+                   clipped_samples_scsp=int(np.sum(np.abs(cap_w) >= 32767)), peak_scsp=float(np.max(np.abs(cap_w))), peak_oracle=float(np.max(np.abs(ref_w))),
                    peak_ratio_db=db(float(np.max(np.abs(cap_w))), float(np.max(np.abs(ref_w))))),
         correlation=dict(zero_lag_mono=zero_lag, zero_lag_per_second=waveform_by_block(ref_m, cap_m),
                          spectrogram_cosine=spec_sim, spectrogram_cosine_per_second=spec_sim_s, envelope_10ms=env_corr,
@@ -220,9 +221,10 @@ def main():
     parser.add_argument('--oracle', type=Path, required=True)
     parser.add_argument('--capture', type=Path, required=True, help='Ymir --dump-audio output (stereo s16le, 44100 Hz)')
     parser.add_argument('--seconds', type=float, default=10.0)
+    parser.add_argument('--start', type=float, default=0.0, help='where the window starts in the oracle (s)')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
-    r = compare(args.oracle, args.capture, args.seconds, args.out)
+    r = compare(args.oracle, args.capture, args.seconds, args.out, args.start)
     print(json.dumps({k: v for k, v in r.items() if k != 'stereo'}, indent=2))
 
 
