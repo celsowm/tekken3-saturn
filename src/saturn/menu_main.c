@@ -19,6 +19,9 @@
 #include "run_rules.h"
 #include "select_grid.h"
 #include "stage_cdda.h"
+#if defined(T3_ARCADE_MUSIC_TEST)
+#include "arcade_music.h"
+#endif
 #if defined(T3_VS_SCREEN)
 #include "vs_screen.h"
 #endif
@@ -194,6 +197,26 @@ enum { SFX_MOVE, SFX_PICK, SFX_UPDOWN, SFX_CONFIRM, SFX_START, SFX_COUNT, SFX_HE
 static sat_sound_t g_sfx[SFX_COUNT];
 static int g_sfx_ready;
 
+/* Read back by scripts/measure_menu_sound_ram.py through the probe. Counts only; written by the menu. */
+typedef struct {
+    uint32_t magic, sfx_ready, sound_ram_used, sound_ram_capacity, sound_ram_high_water;
+    uint32_t resident_sounds, resident_capacity, voice_capacity, active_voices_max, voice_steals, failed_plays;
+    uint32_t frames, sfx_plays;
+} menu_audio_diag_t;
+volatile menu_audio_diag_t g_t3_menu_audio={.magic=0x4D415544u};
+
+static void diag_audio(void) {
+    sat_audio_stats_t st;
+    if(sat_audio_get_stats(&st)!=SAT_OK)return;
+    g_t3_menu_audio.sfx_ready=(uint32_t)g_sfx_ready;
+    g_t3_menu_audio.sound_ram_used=st.sound_ram_used;g_t3_menu_audio.sound_ram_capacity=st.sound_ram_capacity;
+    g_t3_menu_audio.sound_ram_high_water=st.sound_ram_high_water;
+    g_t3_menu_audio.resident_sounds=st.resident_sounds;g_t3_menu_audio.resident_capacity=st.resident_sound_capacity;
+    g_t3_menu_audio.voice_capacity=st.voice_capacity;
+    if(st.active_voices>g_t3_menu_audio.active_voices_max)g_t3_menu_audio.active_voices_max=st.active_voices;
+    g_t3_menu_audio.voice_steals=st.voice_steals;g_t3_menu_audio.failed_plays=st.failed_play_requests;
+}
+
 /* MENUSFX.BIN: the original menu sounds (scripts/extract_menu_sfx.py). Silent if they are absent. */
 static void init_sfx(void) {
     uint8_t* const data=g_io;
@@ -210,7 +233,7 @@ static void init_sfx(void) {
 
 static void sfx(unsigned id) {
     const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
-    if(g_sfx_ready)(void)sat_sound_play(g_sfx[id],&params,NULL);
+    if(g_sfx_ready){(void)sat_sound_play(g_sfx[id],&params,NULL);++g_t3_menu_audio.sfx_plays;}
 }
 
 /* ---- the fight ---- */
@@ -252,9 +275,17 @@ static void frame_begin(pads_t* pads) {
     SAT_PANIC_IF_ERROR(sat_begin_frame());
 }
 
+#if defined(T3_ARCADE_MUSIC_TEST)
+static int g_arcade_music_on;
+#endif
+
 static void frame_end(void) {
     SAT_PANIC_IF_ERROR(sat_end_frame());
-    if(g_sfx_ready)(void)sat_audio_update();
+#if defined(T3_ARCADE_MUSIC_TEST)
+    if(g_arcade_music_on)t3_music_service();
+#endif
+    if(g_sfx_ready){(void)sat_audio_update();diag_audio();}
+    ++g_t3_menu_audio.frames;
 #if defined(T3_SELECT_CDDA_SECTORS)
     if(!(g_arg[4]&ARG_MUSIC_OFF))t3_stage_cdda_mix();
 #endif
@@ -340,6 +371,66 @@ static void copyright(void) {
     pic_left(TX_RESERVED,43,TITLE_COPY_Y1+8);
 }
 
+#if defined(T3_ARCADE_MUSIC_TEST)
+/* An isolated test of the Arcade music engine (src/saturn/arcade_music.c): the converted Paul theme plays from the
+ * disc through the 68000 sequencer while the menu sounds stay available (A, B, C play them). L+R+START on the title
+ * opens it; START leaves. The select's CD-DA is not running here: the engine reads the CD Block itself. The track
+ * is private data (T3_ARCADE_MUSIC_DIR); no original music is replaced. */
+static void number(char* out,uint32_t v) {
+    char t[11];unsigned n=0;
+    do {t[n++]=(char)('0'+v%10u);v/=10u;} while(v);
+    while(n)*out++=t[--n];
+    *out=0;
+}
+
+static void music_line(int y,const char* label,uint32_t a,int two,uint32_t b) {
+    char s[48],*p=s;
+    for(const char* q=label;*q;)*p++=*q++;
+    number(p,a);while(*p)++p;
+    if(two){*p++='/';number(p,b);}
+    text(0,s,MENU_BG_W/2,y);
+}
+
+static void music_test_flow(void) {
+    pads_t pads;
+    /* The engine reads files through the CD Block; CD-DA must not be playing. The title never starts it, but the
+     * rule is checked rather than assumed. */
+    sat_cd_status_t cd;
+    const int cdda_playing=t3_stage_cdda_status(&cd)==SAT_OK && cd.state==SAT_CD_STATE_PLAY;
+    const sat_result_t st=cdda_playing?SAT_ERR_BUSY:t3_music_start(g_volume,26u);
+    g_arcade_music_on=st==SAT_OK;
+    for(;;) {
+        frame_begin(&pads);
+        rect(0,0,SCREEN_W,SCREEN_H,CODE_BLACK);
+        text(2,"ARCADE MUSIC TEST",MENU_BG_W/2,40);
+        if(st!=SAT_OK){music_line(100,"START FAILED STEP ",g_t3_music.step,0,0);music_line(130,"STATUS ",g_t3_music.status,0,0);}
+        else {
+            music_line(90,"PAGE ",g_t3_music.page_played,1,g_t3_music.meta.pages);
+            music_line(120,"EVENTS ",g_t3_music.events_executed,0,0);
+            music_line(150,"LATE EVENTS ",g_t3_music.late_events,0,0);
+            music_line(180,"LOADS ",g_t3_music.loads_done,1,g_t3_music.loads_total);
+            music_line(210,"LATE LOADS ",g_t3_music.loads_late,0,0);
+            music_line(240,"SOUND RAM ",g_t3_music.sram_used,1,g_t3_music.sram_capacity);
+            music_line(270,"STREAM TICK ",g_t3_music.stream_tick,0,0);
+            text(1,g_t3_music.state==T3_MUSIC_DONE?"DONE":"PLAYING",MENU_BG_W/2,310);
+        }
+        text(1,"START: BACK",MENU_BG_W/2,390);
+        frame_end();
+        if(pads.pad[0].pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C))sfx(SFX_MOVE);
+        if(pads.pad[0].pressed&SAT_PAD_START)break;
+    }
+    g_arcade_music_on=0;
+    t3_music_stop();
+}
+
+static int music_test_requested(const pads_t* pads) {
+    return (pads->pad[0].held&(SAT_PAD_L|SAT_PAD_R))==(SAT_PAD_L|SAT_PAD_R) && (pads->pad[0].pressed&SAT_PAD_START);
+}
+#define MUSIC_TEST_HOOK(p) if(music_test_requested(p)) {music_test_flow();goto menu;}
+#else
+#define MUSIC_TEST_HOOK(p)
+#endif
+
 /* Returns the chosen mode; the profiler flag may change in OPTION. */
 static unsigned title_flow(void) {
     pads_t pads;
@@ -355,6 +446,7 @@ static unsigned title_flow(void) {
             pic_left(TX_NAMCO,112,MENU_BG_H/2);
             pic_left(TX_PRESENTS,112+(int)g_text_size[TX_NAMCO][0]+9,MENU_BG_H/2);
             frame_end();
+            MUSIC_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         /* White flash: 25 frames up, 11 held; then the picture fades in from white over 86. */
@@ -369,6 +461,7 @@ static unsigned title_flow(void) {
             fade(255-(int)(f*255/86));
             frame_begin(&pads);
             frame_end();
+            MUSIC_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&SAT_PAD_START) {sfx(SFX_START);goto menu;}
         }
         fade(0);
@@ -377,6 +470,7 @@ static unsigned title_flow(void) {
             prompt(&pads,f);
             copyright();
             frame_end();
+            MUSIC_TEST_HOOK(&pads)
             if(pads.pad[0].pressed&START_BUTTONS || pads.pad[1].pressed&START_BUTTONS) {sfx(SFX_START);goto menu;}
         }
         for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {

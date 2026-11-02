@@ -201,9 +201,9 @@ def tick_of(t):
     return round((t - T0) / TICK_SECONDS)
 
 
-def plan(notes, rate_hz_base, scale, t1):
+def plan(notes, rate_hz_base, scale, t1, max_slots=SLOTS):
     """Slot allocation and the per-tick register writes. Returns (events, slot_of_note, stats)."""
-    slots = [dict(free_after=-1, cfg=None, tl=None, pan=None, pitch=None, off_pending=False, note=None) for _ in range(SLOTS)]
+    slots = [dict(free_after=-1, cfg=None, tl=None, pan=None, pitch=None, off_pending=False, note=None) for _ in range(max_slots)]
     by_tick = {}
 
     def add(tick, order, reg, val):
@@ -332,6 +332,41 @@ def end_of(n):
     return min(x for x in (n.t_off, n.t_natural) if x is not None)
 
 
+PACK_ORDERS = {
+    'time': lambda r: r['first'],
+    'size': lambda r: (-r['bytes'], r['first']),
+    'area': lambda r: (-r['bytes'] * (min(r['span'][1], 1e6) - max(r['span'][0], -1e3)), r['first']),
+    'long': lambda r: (-(min(r['span'][1], 1e6) - max(r['span'][0], -1e3)), -r['bytes']),
+}
+
+
+def place(res, order):
+    """Assign r['addr'] first-fit in the given order; two residencies may share space only if their spans are disjoint."""
+    placed = []
+    for r in sorted(res, key=PACK_ORDERS[order]):
+        busy = sorted((p['addr'], p['addr'] + p['bytes']) for p in placed
+                      if p['span'][1] > r['span'][0] and p['span'][0] < r['span'][1])
+        cand = 0
+        for a, b in busy:
+            if cand + r['bytes'] <= a:
+                break
+            cand = max(cand, b)
+        r['addr'] = cand
+        placed.append(r)
+    return max((r['addr'] + r['bytes'] for r in res), default=0)
+
+
+def pack_residencies(res):
+    """Try every placement order and keep the one with the smallest extent (the live peak is the lower bound)."""
+    best = None
+    for order in PACK_ORDERS:
+        extent = place(res, order)
+        if best is None or extent < best[0]:
+            best = (extent, order)
+    place(res, best[1])
+    return best[1]
+
+
 def plan_dynamic_bank(notes, addresses, base, budget, lead_s=1.5, tail_s=0.1, merge_gap_s=3.0):
     """Residencies of the samples in Sound RAM over time, packed into [base, base + budget).
 
@@ -355,22 +390,13 @@ def plan_dynamic_bank(notes, addresses, base, budget, lead_s=1.5, tail_s=0.1, me
                 cur = dict(key=key, first=s0, last=e0, notes=[n])
                 res.append(cur)
     res.sort(key=lambda r: r['first'])
-    placed = []
     for r in res:
         address, is16, length = addresses[r['key']]
         r['file_offset'] = address - base
         r['bytes'] = length * (2 if is16 else 1) + (length * (2 if is16 else 1)) % 2
         r['is16'], r['length'] = is16, length
         r['span'] = (max(0.0, r['first'] - lead_s) if r['first'] > lead_s else -1e9, r['last'] + tail_s)
-        busy = sorted((p['addr'], p['addr'] + p['bytes']) for p in placed
-                      if p['span'][1] > r['span'][0] and p['span'][0] < r['span'][1])
-        cand = 0
-        for a, b in busy:
-            if cand + r['bytes'] <= a:
-                break
-            cand = max(cand, b)
-        r['addr'] = cand
-        placed.append(r)
+    pack_residencies(res)
     extent = max((r['addr'] + r['bytes'] for r in res), default=0)
     if extent > budget:
         raise ValueError(f'the section samples need {extent} bytes of Sound RAM at once; budget {budget}')
@@ -452,9 +478,23 @@ def audible(n):
     return any(c[1] == 'vol' and (c[2] or c[3]) for c in n.changes)
 
 
-def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256, bank_budget=None, bank_lead_s=1.5):
+def unroll_loop(info, passes):
+    """The VGM's command stream with its loop played `passes` times in all (the intro, then the loop `passes` times,
+    as libvgm renders it). Chip state carries over the seam: only the writes are repeated, in order."""
+    if passes <= 1 or not info['loop_samples']:
+        return info
+    start, length = info['loop_start'], info['loop_samples']
+    body = [e for e in info['events'] if e[0] >= start]
+    events = list(info['events'])
+    for k in range(1, passes):
+        events += [(tick + k * length, reg, val) for tick, reg, val in body]
+    return dict(info, events=events, total=info['total'] + (passes - 1) * length)
+
+
+def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256, bank_budget=None, bank_lead_s=1.5,
+            loop_passes=1, max_slots=SLOTS):
     set_timebase(tick_samples, t0)
-    info = vgm.parse(vgm.read_vgm(vgm_path))
+    info = unroll_loop(vgm.parse(vgm.read_vgm(vgm_path)), loop_passes)
     rom = rom_image(info)
     notes_all = timeline(info, t0, t1)
     silent = [n for n in notes_all if not audible(n)]
@@ -469,7 +509,7 @@ def convert(vgm_path, t0, t1, pcm8_base, scale=None, out=None, tick_samples=256,
     bank, addresses, pcm8_len, pcm16_len, pcm16_base = build_bank(notes, rom, pcm8_base)
     dynamic = plan_dynamic_bank(notes, addresses, pcm8_base, bank_budget, lead_s=bank_lead_s) if bank_budget else None
     issues = configure(notes, addresses)
-    events, placed, dropped, reuse = plan(notes, info['out_rate'], scale, t1)
+    events, placed, dropped, reuse = plan(notes, info['out_rate'], scale, t1, max_slots)
     loop_ticks = tick_of(t1) + 8
     score = b''.join(struct.pack('>IHH', t, r, v) for t, r, v in events)
     poly = peak_polyphony(notes)
@@ -633,6 +673,9 @@ def summary(r, args, vgm_path):
         samples=sample_rows)
 
 
+META_MAGIC = 0x43334D31   # 'C3M1'
+
+
 def write_outputs(out, r, manifest, start, end, pcm8_base, relative_pages=False, paged=True):
     """bank.bin, score.bin (1024-event form, only if it fits), pages.bin, manifest.json, notes.json, score_meta.h."""
     out.mkdir(parents=True, exist_ok=True)
@@ -641,6 +684,14 @@ def write_outputs(out, r, manifest, start, end, pcm8_base, relative_pages=False,
     (out / 'pages.bin').write_bytes(pages_bytes(pages))
     dyn = r['dynamic']
     (out / 'loads.bin').write_bytes(loads_bytes(dyn[1], pcm8_base, r['bank']) if dyn else bytes(24))
+    info = r['info']
+    region = dyn[2]['packed_extent_bytes'] + dyn[2]['packed_extent_bytes'] % 2 if dyn else len(r['bank'])
+    # META.BIN for src/saturn/arcade_music.c: big-endian words, in the order of its t3_music_meta_t.
+    (out / 'meta.bin').write_bytes(struct.pack(
+        '>16I', META_MAGIC, 1, len(pages), len(dyn[1]) if dyn else 0, TICK_SAMPLES, round(0.3 * 44100 / TICK_SAMPLES),
+        pcm8_base, region, len(r['bank']), len(r['events']), r['loop_ticks'], round((end - start) * 1000),
+        round(info['loop_start'] / 44.1) if info['loop_samples'] else 0, round(info['loop_samples'] / 44.1),
+        round((info['total'] - info['loop_start']) / info['loop_samples']) if info['loop_samples'] else 0, 0))
     fits = len(r['events']) <= SCORE_MAX_EVENTS
     if not paged and not fits:
         raise ValueError('more than 1024 events: use the paged score')
@@ -665,16 +716,21 @@ def main():
     parser.add_argument('vgm')
     parser.add_argument('--start', type=float, default=0.0, help='window start (s); a note already sounding enters at its sample position')
     parser.add_argument('--end', type=float, required=True, help='window end (s)')
+    parser.add_argument('--loop-passes', type=int, default=1, help='play the VGM loop this many times (unrolled)')
     parser.add_argument('--pcm8-base', type=lambda s: int(s, 0), default=0x3000, help='Sound RAM address of the bank')
     parser.add_argument('--scale', type=float, help='linear gain applied to every voice (default: 1 / loudest voice if above 1)')
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64), help='driver tick length in samples')
     parser.add_argument('--legacy-score', action='store_true', help='write the 1024-event score instead of pages')
     parser.add_argument('--bank-budget', type=int, help='load the samples section by section into this many bytes of Sound RAM')
+    parser.add_argument('--bank-lead', type=float, default=1.5, help='seconds a sample is loaded ahead of its first note')
+    parser.add_argument('--max-slots', type=int, default=SLOTS, help='use SCSP slots 0..N-1 only, leaving the rest to the SH-2')
     parser.add_argument('--relative-pages', action='store_true', help='page events relative to the page time base instead of absolute')
     parser.add_argument('--out', type=Path, help='write the data files here')
     parser.add_argument('--dry-run', action='store_true', help='print the manifest only')
     args = parser.parse_args()
-    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget)
+    r = convert(args.vgm, args.start, args.end, args.pcm8_base, args.scale, tick_samples=args.tick_samples,
+                bank_budget=args.bank_budget, bank_lead_s=args.bank_lead, loop_passes=args.loop_passes,
+                max_slots=args.max_slots)
     manifest = summary(r, args, args.vgm)
     if args.out and not args.dry_run:
         write_outputs(args.out, r, manifest, args.start, args.end, args.pcm8_base, args.relative_pages, not args.legacy_score)

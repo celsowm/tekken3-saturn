@@ -12,6 +12,11 @@ note count, sample count and polyphony (21) are unchanged.
 Reproduce: `python3 -I scripts/report_fight_sound_budget.py [--pair PAUL LAW]`,
 `scripts/analyze_c352_vgm.py --silent`, `scripts/check_arcade_rom.py <dir> --vgm <vgm>`.
 
+> **Correction (2 Nov, later):** the tables below are from an earlier shared-effect table and counted every row.
+> The game gives rows with the same offset and size one sound, so today's table is 25 sounds and 182,112 bytes
+> (28 rows and 206,640 counted before). Current figures, `scripts/report_fight_sound_budget.py` and the Ymir run in
+> `docs/NINA_OGRE_SOUND_RAM.md`: Paul vs Law 393,820 bytes, Nina vs Ogre 436,156 (measured), mirror match 238,896.
+
 ## 1. Real Sound RAM budget of a fight (measured from the sources)
 
 The game creates every fight sound resident with `sat_sound_create` (`src/saturn/sfx.c`): the 25 shared sounds in

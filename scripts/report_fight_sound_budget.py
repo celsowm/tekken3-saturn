@@ -23,10 +23,14 @@ def aligned(n):
 
 
 def shared(header):
+    """(sounds created, bytes). t3_sfx_init gives rows with the same offset and size one sound and one Sound RAM
+    copy, so the table's 28 rows are 25 sounds; counting every row overstated Nina vs Ogre by 24,528 bytes
+    (docs/NINA_OGRE_SOUND_RAM.md)."""
     text = header.read_text()
     table = re.search(r'define T3_SFX_TABLE\s+(.*?)(?=\n#define|\Z)', text, re.S).group(1)
     rows = re.findall(r'\{\s*(\d+)u?,\s*(\d+)u?,\s*(\d+)u?\s*\}', table)
-    return len(rows), sum(aligned(int(r[1])) for r in rows)
+    unique = {(int(r[0]), int(r[1])) for r in rows}
+    return len(unique), sum(aligned(size) for _, size in unique)
 
 
 def main():

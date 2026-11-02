@@ -1573,6 +1573,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
+        # Experimental Arcade music test (docs/ARCADE_MUSIC_ENGINE.md): the converter's output directory
+        # (meta.bin, bank.bin, loads.bin, pages.bin; private, never in Git). L+R+START on the title opens it.
+        set(T3_ARCADE_MUSIC_DIR "" CACHE PATH "Converted Arcade song for the menu's music test (private)")
+        if(T3_ARCADE_MUSIC_DIR)
+            foreach(_n meta bank loads pages)
+                if(NOT EXISTS "${T3_ARCADE_MUSIC_DIR}/${_n}.bin")
+                    message(FATAL_ERROR "T3_ARCADE_MUSIC_DIR needs ${_n}.bin from scripts/c352_scsp_convert.py")
+                endif()
+                string(TOUPPER ${_n} _N)
+                add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/ARC${_N}.BIN"
+                    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                    COMMAND "${CMAKE_COMMAND}" -E copy "${T3_ARCADE_MUSIC_DIR}/${_n}.bin" "${CMAKE_BINARY_DIR}/menu/ARC${_N}.BIN"
+                    DEPENDS "${T3_ARCADE_MUSIC_DIR}/${_n}.bin" VERBATIM)
+                list(APPEND _t3_arcade_music_files "${CMAKE_BINARY_DIR}/menu/ARC${_N}.BIN")
+            endforeach()
+            target_sources(tekken3_menu PRIVATE src/saturn/arcade_music.c)
+            target_compile_definitions(tekken3_menu PRIVATE T3_ARCADE_MUSIC_TEST=1)
+        endif()
         target_compile_options(tekken3_menu PRIVATE -Wall -Wextra -Os)
         target_link_libraries(tekken3_menu PRIVATE LibSaturn::Saturn)
         libsaturn_configure_executable(tekken3_menu)
@@ -1583,7 +1601,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${CMAKE_BINARY_DIR}/menu/MENU.BIN"
             DEPENDS tekken3_menu VERBATIM)
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/MENU.BIN" ${_t3_menu_files}
-            "${_t3_menu_gen}/MENUSFX.BIN")
+            "${_t3_menu_gen}/MENUSFX.BIN" ${_t3_arcade_music_files})
         # The pre-fight VS screen; without its private records the fight keeps the plain loading screen.
         set(T3_LOCAL_VS_RECORDS "" CACHE PATH "Private USA BNS records 12-35 (makuma, face_b), as extracted by psx_disc_import.py")
         set(T3_LOCAL_ARCADE_OVERLAY "" CACHE FILEPATH "Private USA arcade.ovl record (BNS id 5)")

@@ -58,6 +58,7 @@ def main():
     parser.add_argument('--tick-samples', type=int, default=256, choices=(256, 128, 64))
     parser.add_argument('--legacy-score', action='store_true', help='the 1024-event score instead of pages')
     parser.add_argument('--bank-budget', type=int, help='dynamic bank: load samples section by section into this many bytes')
+    parser.add_argument('--loop-passes', type=int, default=1, help='unroll the VGM loop this many times')
     parser.add_argument('--bank-lead', type=float, default=1.5, help='seconds a sample is loaded ahead of its first note')
     parser.add_argument('--guard', action='store_true', help='silence a sample region before its load')
     parser.add_argument('--load-delay-ticks', type=int, default=0, help='test only: hold every fourth load back')
@@ -78,7 +79,7 @@ def main():
     data = out / 'data'
     data.mkdir(parents=True, exist_ok=True)
     pcm8_base = 0x3000
-    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget, bank_lead_s=args.bank_lead)
+    r = convert.convert(args.vgm, args.start, args.end, pcm8_base, args.scale, tick_samples=args.tick_samples, bank_budget=args.bank_budget, bank_lead_s=args.bank_lead, loop_passes=args.loop_passes)
     manifest = convert.summary(r, argparse.Namespace(start=args.start, end=args.end, pcm8_base=pcm8_base), args.vgm)
     if args.legacy_score and not manifest['scsp']['fits_the_driver_score']:
         sys.exit(f"{manifest['scsp']['events']} events exceed the driver score ({convert.SCORE_MAX_EVENTS}): drop --legacy-score")

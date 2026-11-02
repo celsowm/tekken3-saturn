@@ -6,6 +6,9 @@ overwritten event. Not integrated into the Tekken 3 build; no push. The driver p
 (`lib-saturn` commit `8a838779`: `sat_sound_driver_pages_*`, `examples/sound_driver_pages_demo`), so it stays
 useful whatever happens to the Tekken 3 music.
 
+The whole theme inside the real `MENU.BIN`, the menu budget and the seams are in `docs/ARCADE_MUSIC_ENGINE.md`; the
+heaviest-pair Sound RAM question is in `docs/NINA_OGRE_SOUND_RAM.md`.
+
 Private data (ROM-derived bank, pages, captures, WAVs) is under the git-ignored `assets/imported/c352-proto/`.
 
 ## 1. Toolchain

@@ -157,6 +157,73 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             convert.plan_dynamic_bank(notes, {n.key: keys[n.key[0]] for n in notes}, 0x3000, 40000)
 
+    def test_the_packer_reaches_the_live_peak_when_first_fit_does_not(self):
+        # A long-lived small sample placed first would force first-fit by start time to leave a hole; the best of the
+        # orders is never worse than time order and never below the live peak.
+        from types import SimpleNamespace
+        convert.set_timebase(256, 0.0)
+        sizes = {0: 20000, 1: 40000, 2: 40000, 3: 20000}
+        keys = {k: (0x3000 + 0x20000 * k, False, sizes[k]) for k in sizes}
+        notes = [SimpleNamespace(key=(k, 0, 0, False), t_on=t, t_off=t + d, t_natural=None)
+                 for k, t, d in ((0, 0.0, 9.0), (1, 1.0, 2.0), (2, 4.0, 2.0), (3, 5.0, 8.0))]
+        addresses = {n.key: keys[n.key[0]] for n in notes}
+        _, _, report = convert.plan_dynamic_bank(notes, addresses, 0x3000, 1 << 20, lead_s=0.5, merge_gap_s=0.0)
+        self.assertGreaterEqual(report['packed_extent_bytes'], report['peak_live_bytes'])
+        self.assertLessEqual(report['packed_extent_bytes'], report['peak_live_bytes'] + 20000)
+        def residencies():
+            return [dict(bytes=sizes[k], first=k, span=(k - 0.5, k + 9.0)) for k in sizes]
+        by_order = {order: convert.place(residencies(), order) for order in convert.PACK_ORDERS}
+        res = residencies()
+        convert.pack_residencies(res)
+        self.assertEqual(max(r['addr'] + r['bytes'] for r in res), min(by_order.values()))
+
+    def test_the_loop_is_unrolled_in_order_and_the_total_grows(self):
+        info = dict(events=[(0, 1, 1), (100, 2, 2), (250, 3, 3)], total=300, loop_start=200, loop_samples=100)
+        same = convert.unroll_loop(info, 1)
+        self.assertEqual(same['events'], info['events'])
+        two = convert.unroll_loop(info, 2)
+        self.assertEqual(two['total'], 400)
+        self.assertEqual(two['events'][-1], (350, 3, 3))                            # the loop's event again, one length later
+        self.assertEqual([e[0] for e in two['events']], sorted(e[0] for e in two['events']))
+        three = convert.unroll_loop(info, 3)
+        self.assertEqual(len([e for e in three['events'] if e[1:] == (3, 3)]), 3)
+        flat = dict(events=[(0, 1, 1)], total=10, loop_start=10, loop_samples=0)
+        self.assertEqual(convert.unroll_loop(flat, 5)['events'], flat['events'])  # a song without a loop plays once
+
+    def test_max_slots_keeps_the_score_off_the_slots_left_for_the_sh2(self):
+        rom = bytes(range(64)) * 8
+        writes = []
+        for v in range(8):
+            writes += voice(v, 0x80, 0x4000, 0x0000, 0, 0, 100, 0)
+        writes += [(10, 0x202, 0)]
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'a.vgm.gz'
+            path.write_bytes(gzip.compress(vgm(writes, rom)))
+            for limit in (8, 4):
+                r = convert.convert(path, 0.0, 1.0, 0x3000, 0.5, max_slots=limit)
+                used = {n.slot for n in r['placed']}
+                self.assertTrue(all(slot < limit for slot in used))
+
+    def test_meta_bin_matches_the_game_module_layout(self):
+        # src/saturn/arcade_music.h t3_music_meta_t: sixteen big-endian words, magic first.
+        import tempfile
+        rom = bytes(range(64)) * 8
+        writes = voice(0, 0x80, 0x4000, 0x0000, 0, 0, 100, 0) + [(10, 0x202, 0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'a.vgm.gz'
+            path.write_bytes(gzip.compress(vgm(writes, rom)))
+            r = convert.convert(path, 0.0, 1.0, 0x3000, 0.5, tick_samples=128, bank_budget=100000)
+            manifest = convert.summary(r, type('A', (), dict(start=0.0, end=1.0, pcm8_base=0x3000))(), path)
+            out = Path(tmp) / 'o'
+            convert.write_outputs(out, r, manifest, 0.0, 1.0, 0x3000)
+            meta = struct.unpack('>16I', (out / 'meta.bin').read_bytes())
+        self.assertEqual(meta[0], convert.META_MAGIC)
+        self.assertEqual(meta[1], 1)
+        self.assertEqual(meta[4], 128)                                              # tick_samples
+        self.assertEqual(meta[6], 0x3000)                                           # base
+        self.assertEqual(meta[11], 1000)                                            # window_ms
+
 
 if __name__ == '__main__':
     unittest.main()

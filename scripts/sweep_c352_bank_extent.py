@@ -22,9 +22,11 @@ def main():
     p.add_argument('--gaps', type=float, nargs='+', default=[3.0, 1.0, 0.3, 0.0])
     p.add_argument('--tail', type=float, default=0.1)
     p.add_argument('--tick-samples', type=int, default=128)
+    p.add_argument('--loop-passes', type=int, default=1)
     p.add_argument('--json', action='store_true')
     args = p.parse_args()
-    r = convert.convert(args.vgm, args.start, args.end, 0x3000, 0.5, tick_samples=args.tick_samples)
+    r = convert.convert(args.vgm, args.start, args.end, 0x3000, 0.5, tick_samples=args.tick_samples,
+                        loop_passes=args.loop_passes)
     rows = []
     for lead, gap in itertools.product(args.leads, args.gaps):
         _, _, rep = convert.plan_dynamic_bank(r['notes'], r['addresses'], 0x3000, 1 << 30, lead_s=lead,
