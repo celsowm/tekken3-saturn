@@ -130,3 +130,27 @@ The earlier result, that fights did not fit, is therefore resolved by moving the
 - **Hardware.** Ymir's CD model is not a real drive. The 44 KB/s average is well under single speed, but seek and
   latency were not measured.
 - **Listening.** Nothing was heard. The numbers above are the only evidence.
+
+## ADX in the Tekken 3 menu
+
+The same track as CRI ADX (`scripts/encode_adx_stream.py`: 10,223,608 bytes, 4.5 bits per sample, codec SNR 35.8 dB
+against 32.4 dB for IMA) plays in the real menu program: `T3_ADX_MUSIC_DIR` adds `ADXMUSIC.BIN` to the disc and the
+test opens from the title with L+R+A held and START (`src/saturn/adx_music.c`, run by `scripts/run_menu_adx_music.py`).
+
+Ymir, whole track plus the wrap (10,133,504 frames consumed): `underruns` 0, `rejected_write_count` 0, minimum ring
+fill 2,048 frames, 0 disc waits, 2,787 segments, three menu sounds played over the stream (menu `sfx_plays` 3, no voice
+steal, no failed play), right channel 0 samples late, drift -0.122 ms/s as before, SNR against the exact decode 11.1 dB
+overall and 12.1 dB median (the sounds lower the seconds they play in; the stream alone is 12.2 dB).
+
+Memory. The menu did not link with the test: Work RAM Low overflowed by 95,496 bytes, because any `sat_asset_*` call
+linked LibSaturn's built-in asset cache (4 x 64 KiB in `.wram_l`). LibSaturn c81a68ff removes it; the cache is memory the
+application gives or nothing.
+
+| Menu with the ADX test | Before | After |
+| --- | --- | --- |
+| `asset_cache.cpp` `.wram_l` | 262,144 B | 0 B (`g_asset_cache_blocks` is not in the map) |
+| `.wram_l` total | 1,143,560 B (does not link; limit 1,048,064) | 882,952 B (165,112 B free) |
+| High WRAM, test arena | 0 | 0 (the 116 KB workspace and scheduler borrow the menu's `g_io` buffer) |
+
+Still open for the fight itself: the fight program has not been measured, and the scheduler would own the CD Block
+while the fight runs.
