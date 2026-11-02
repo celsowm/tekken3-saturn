@@ -73,9 +73,17 @@ Against the exact decode (the stream should reproduce it sample for sample):
 **LibSaturn audio split (771b9af6 → 38410b44).** The music path moved (`src/audio/music/`) and
 `sat_music_use_disc_stream` was removed in favour of `sat_music_open` with `disc` in `sat_music_desc_t`. The
 prototype was adapted to that call. The drift (−0.122 ms/s, intercept 22.67 ms) is the same, the stream runs
-with no underruns or rejected writes, and the first played frame moved from 39 to 21. The fidelity numbers got
-worse (above). The cause is not determined: the first suspect is the new music path, and a bisect (building
-771b9af6 in place, one SDK prefix) would settle whether the library caused it.
+with no underruns or rejected writes, and the first played frame moved from 39 to 21.
+
+Bisect: the old prototype (`dedada3`) built against 771b9af6, the current one against 38410b44, one SDK prefix
+rebuilt in place, one Ymir run each, both captures kept and compared on the same aligned timeline. The
+decoder did not change (`ima.cpp` only moved), the ring is 16,384 frames in both, both write through
+`sat_audio_stream_write`, and the captured signal is the same. The fidelity gap is a fixed sub-sample phase.
+Measured per 2 s block against the exact decode: 771b9af6 sits **+0.36** samples late and 38410b44 **−0.20**
+early (standard deviation 0.03 for each, no trend). That phase is the whole difference in the figures above
+(zero-lag 0.9904 → 0.9788, spectrogram 0.913 → 0.808, SNR 11.5 → 10.8 dB). No functional fault was found, so
+libsaturn was not changed. The phase is fixed at start (the start moved 18 frames). Its mechanism was not
+traced, so the two columns compare two start phases, not two qualities of playback.
 
 **Not determined.** The loss above 1 kHz is real in this measurement, and its cause is open. Candidates: the
 SCSP stream path (sub-sample timing, or a gain or filter in playback), or Ymir's audio capture path (the 122 ppm
