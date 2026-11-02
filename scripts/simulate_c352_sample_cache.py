@@ -86,6 +86,29 @@ def offline_extent(res, sizes):
     return max((a + z for _, _, a, z in placed), default=0)
 
 
+def circular_extent(res, sizes, period):
+    """Offline packing of one steady-state loop period on a circle: a residency that crosses the loop seam must keep
+    its address, and every live one at the seam has to be where the next period expects it.
+    Returns (extent, peak live bytes of the period)."""
+    arcs = [(sizes[k] + 1 & ~1, b % period, min(e - b, period)) for k, b, e in res]
+    shifts = (-period, 0, period)
+    def clash(a, b):
+        return any(a[1] < b[1] + k + b[2] and b[1] + k < a[1] + a[2] for k in shifts)
+    placed = []
+    for size, b, length in sorted(arcs, key=lambda x: -x[0]):
+        arc = (size, b, length)
+        busy = sorted((a, a + z) for z, o, l, a in placed if clash(arc, (z, o, l)))
+        addr = 0
+        for lo, hi in busy:
+            if lo - addr >= size:
+                break
+            addr = max(addr, hi)
+        placed.append((size, b, length, addr))
+    marks = sorted({x for _, b, l in arcs for x in (b, (b + l) % period)})
+    peak = max((sum(z for z, b, l in arcs if (t - b) % period < l) for t in marks), default=0)
+    return max((a + z for z, _, _, a in placed), default=0), peak
+
+
 def simulate(path, gap, bandwidth, seek, mulaw16, skip_silent):
     notes, sizes, total, loop_start = build_uses(path, mulaw16, skip_silent)
     lead = lambda size: seek + size / bandwidth
@@ -107,7 +130,21 @@ def simulate(path, gap, bandwidth, seek, mulaw16, skip_silent):
     steady = [r for r in res if r[2] >= pass2_from]
     first = [r for r in res if r[2] < pass2_from]
     steady_bytes = sum(sizes[r[0]] for r in steady)
-    return dict(gap_s=gap, peak_live_bytes=peak_live, peak_live_at_s=peak_t, first_fit_extent_bytes=mem.extent, offline_extent_bytes=offline_extent(res, sizes),
+    period = total - loop_start
+    window = [(k, max(b, total), min(e, total + period)) for k, b, _, e in res if b < total + period and e > total]
+    # a sample alive at the window start and again at its end is one residency that crosses the seam
+    head = {k: (b, e) for k, b, e in window if b == total}
+    tail = {k: (b, e) for k, b, e in window if e == total + period}
+    arcs, joined = [], set()
+    for k, b, e in window:
+        if k in head and k in tail and b == total and head[k][0] != tail[k][0] and (k, 'x') not in joined:
+            joined.add((k, 'x'))
+            arcs.append((k, tail[k][0], tail[k][1] + (head[k][1] - total)))
+        elif not (k in head and k in tail and e == total + period and head[k][0] != tail[k][0]):
+            arcs.append((k, b, e))
+    ext, cpeak = circular_extent(arcs, sizes, period)
+    return dict(gap_s=gap, circular_extent_bytes=ext, circular_peak_live_bytes=cpeak,
+                seam_residencies=len(joined), peak_live_bytes=peak_live, peak_live_at_s=peak_t, first_fit_extent_bytes=mem.extent, offline_extent_bytes=offline_extent(res, sizes),
                 loads_first_pass=len(first), bytes_first_pass=sum(sizes[r[0]] for r in first),
                 loads_per_loop=len(steady), bytes_per_loop=steady_bytes,
                 cd_bytes_per_s=steady_bytes / (total - loop_start),

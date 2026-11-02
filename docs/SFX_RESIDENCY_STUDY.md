@@ -118,3 +118,21 @@ and voice pressure under mashing beyond 0 steals here, real CD seek times, SCSP-
 for rows that share an offset and size. Result on a 7,200-field Ymir run (mash and rush): 0 unmapped requests,
 Sound RAM used 393,820 bytes (was 400,596: +8,512 for the new sounds, -15,288 for the duplicates), 0 failed plays.
 `SFX.BIN` shrank from 188,888 to 182,112 bytes. Step 1 of section 4 is therefore done; the table baseline is 393,820.
+
+## Update: the loop seam (offline plan, steady state)
+
+`simulate_c352_sample_cache.py` now packs one steady-state loop period on a circle (`circular_extent_bytes`): a sample
+alive across the loop restart keeps one address, and samples live at the seam sit where the next period expects them.
+Silent notes dropped.
+
+| Eviction gap, loads | Peak live in the loop | Circular extent (seam-consistent) | Two-pass peak (intro + loop) |
+|---|---|---|---|
+| 0 s, instant | 311,220 | 315,030 | 321,006 |
+| 2-5 s, CD lead 0.4 s + 2x | 311,506 | 325,206 | 350,360 |
+| 20 s, CD lead | 344,800 | 353,080 | 381,548 |
+
+The seam costs 3,810 to 13,700 bytes (about 1-4%) over the live peak, and 4-6 samples cross it. The overall peak
+is not at the loop restart: it is at 54.3 s, just before the intro hands over to the loop, so the music needs
+`max(first pass, loop)` = 350,360 bytes with CD lead (321,006 instant). The joint-budget table in section 5 keeps
+these numbers. Not simulated: the first-pass plan and the steady-state plan sharing one address map for the
+samples that outlive the intro.
