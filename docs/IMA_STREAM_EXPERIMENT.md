@@ -88,12 +88,16 @@ capture without the oracle (correlation of L with R shifted by k):
 - 38410b44: right **3** samples late (corr 0.922)
 
 Against the exact decode, per channel at the 38410b44 alignment: left SNR 23.4 dB, right **7.9 dB**. So the
-right channel carries most of the loss in the overall figure. The skew is older than the audio split (2 samples
-on 771b9af6). The one-sample change comes with the start. The left channel's phase also moves with the start
-(+0.36 samples on 771b9af6, −0.20 on 38410b44, each steady to 0.03). Neither the decode nor the streaming code
-changed, so the cause of the skew is in key-on and playback start (`start_streams`, `arm_key_on`) or in the
-emulator's SCSP model. Not determined; the fix, if it is in libsaturn, is in the start path, and it was not
-made.
+right channel carried most of the loss in the overall figure.
+
+**Cause and fix (LibSaturn 58e5d149).** `scsp::configure_slot` ends with a key-off, which writes KYONEX, and a
+KYONEX applies the KYONB of every slot. The stream start arms the left slot (KYONB written), then configures the right
+slot, whose key-off KYONEX keys the left slot on at that moment. The right slot is keyed by the service's final
+KYONEX, after its own configuration and a `wait_one_sample`. The gap is the 2 to 3 samples, and it changes with the
+start. The intent in `step_seamless_start` ("keyed on by the single KYONEX") was defeated by the HAL. `arm_key_on` now
+only records the slot, and `execute_key_transitions` writes every armed KYONB right before the one KYONEX.
+Measured on Ymir with the fix (`scripts/measure_stereo_skew.py`): right channel **0** samples late (was 3), overall
+SNR against the exact decode 12.2 dB (was 10.8). The remaining distance to the warp floor (23.9 dB) is not explained.
 
 **Not determined.** The loss above 1 kHz is real in this measurement, and its cause is open. Candidates: the
 SCSP stream path (sub-sample timing, or a gain or filter in playback), or Ymir's audio capture path (the 122 ppm
