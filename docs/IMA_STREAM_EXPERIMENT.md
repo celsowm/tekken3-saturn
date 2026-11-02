@@ -76,14 +76,24 @@ prototype was adapted to that call. The drift (−0.122 ms/s, intercept 22.67 ms
 with no underruns or rejected writes, and the first played frame moved from 39 to 21.
 
 Bisect: the old prototype (`dedada3`) built against 771b9af6, the current one against 38410b44, one SDK prefix
-rebuilt in place, one Ymir run each, both captures kept and compared on the same aligned timeline. The
-decoder did not change (`ima.cpp` only moved), the ring is 16,384 frames in both, both write through
-`sat_audio_stream_write`, and the captured signal is the same. The fidelity gap is a fixed sub-sample phase.
-Measured per 2 s block against the exact decode: 771b9af6 sits **+0.36** samples late and 38410b44 **−0.20**
-early (standard deviation 0.03 for each, no trend). That phase is the whole difference in the figures above
-(zero-lag 0.9904 → 0.9788, spectrogram 0.913 → 0.808, SNR 11.5 → 10.8 dB). No functional fault was found, so
-libsaturn was not changed. The phase is fixed at start (the start moved 18 frames). Its mechanism was not
-traced, so the two columns compare two start phases, not two qualities of playback.
+rebuilt in place, one Ymir run each, captures kept. The decoder did not change (`ima.cpp` only moved), the
+ring is 16,384 frames in both, both write through `sat_audio_stream_write` (all or nothing, no partial loss),
+and the streaming and HAL code is identical between the two commits. The drift is the same.
+
+The figures above compare two start phases of the same signal. The mono sums that the metrics use hide a
+stereo skew: the right channel is later than the left by a whole number of samples, measured in the raw
+capture without the oracle (correlation of L with R shifted by k):
+
+- 771b9af6: right **2** samples late (corr 0.922)
+- 38410b44: right **3** samples late (corr 0.922)
+
+Against the exact decode, per channel at the 38410b44 alignment: left SNR 23.4 dB, right **7.9 dB**. So the
+right channel carries most of the loss in the overall figure. The skew is older than the audio split (2 samples
+on 771b9af6). The one-sample change comes with the start. The left channel's phase also moves with the start
+(+0.36 samples on 771b9af6, −0.20 on 38410b44, each steady to 0.03). Neither the decode nor the streaming code
+changed, so the cause of the skew is in key-on and playback start (`start_streams`, `arm_key_on`) or in the
+emulator's SCSP model. Not determined; the fix, if it is in libsaturn, is in the start path, and it was not
+made.
 
 **Not determined.** The loss above 1 kHz is real in this measurement, and its cause is open. Candidates: the
 SCSP stream path (sub-sample timing, or a gain or filter in playback), or Ymir's audio capture path (the 122 ppm
