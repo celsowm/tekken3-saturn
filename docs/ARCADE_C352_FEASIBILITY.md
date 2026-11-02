@@ -12,7 +12,7 @@ of 8-bit PCM (581.6 KiB), more than all of Sound RAM (512 KiB) and 149 KiB more 
 free for resident samples. Loading samples by section lowers the peak to 374.7 KiB, which fits but leaves about
 61 KiB for the sequence, the fighter effects and any growth. The existing score facility
 (1,024 raw register writes) is about two orders of magnitude too small, so a new 68000 sequencer is also
-needed. No prototype was built, as the task asks when the direct conversion does not fit.
+needed. A 10 s excerpt was built afterwards: `docs/ARCADE_C352_SCSP_PROTOTYPE.md`.
 
 ## Phase 1: ROM (measured)
 
