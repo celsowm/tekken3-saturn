@@ -266,3 +266,41 @@ The disc scheduler now keeps an ADX segment in its drive buffer when the ring ha
 Before the change, 12288 gave 106 underruns in the same test. The menu is the only program that links with the
 player: the fight still does not link (WRAM-H 23,868 B over), so the fight run and the 441-pair arena check remain
 open. Mednafen recordings were not made; the Ymir videos were deleted after reading the audio.
+
+## WRAM-H audit of the player, and what the library no longer links (fight, `T3_FIGHT_ADX_MUSIC=ON`)
+
+`scripts/map_section_diff.py BASELINE.map ADX.map` lists the input sections the ADX fight has and the production
+fight lacks (`.text`/`.rodata`/`.bss` in WRAM-H, by function section, largest first). Before the change the player
+added 24,152 B of sections. Classified by what the ADX-from-disc path reaches:
+
+| Class | Bytes | What |
+| --- | --- | --- |
+| Needed for ADX from the disc | 17,396 | `sat_music_open` 1.8 KB, player 2.0, disc feed (ADX deliver and decode, `next`, `started`) 2.0, disc scheduler 3.0, stream API (SCSP ring upload) 3.4, asset registry and mount (the track is registered as an asset) 2.5, cdfs/block/scsp 1.4, `adx_music.c` 0.8 |
+| Not reached by ADX from the disc: IMA | 3,410 | decode tables 2,136, `decode_block` 488, `feed_adpcm` 436, `async_deliver_adpcm` 324, `block_bytes` 26 |
+| Not reached: PCM | ~410 | `async_deliver_pcm` 208, `deinterleave_stereo` 180, `bytes_per_sample` 24 |
+| Not reached: RAM and asset-reader feeds | ~1,400 | `feed_adx` 744, `feed` 544, helpers |
+| Not reached: asset read and cache | ~1,800 | `asset_cache_fill` 808, `asset_cache_read_at` 760, `sat_asset_read_at` 292 (and the 384 B path normalizer is still needed by `sat_asset_open`) |
+
+Why it was linked: `feed()` and `async_deliver()` chose the format with a branch, so the linker had to keep every
+branch's code, and `sat_music_open` read the ADX header through `sat_asset_read_at`. The decoders, the tables and the
+asset cache are reached only through the function pointers in one table now (`sat_music_codecs`,
+`src/audio/music/codecs.cpp`); a program that streams ADX from the disc only defines that table with
+`SAT_MUSIC_CODECS_ADX_FROM_DISC_ONLY` (`saturn/music_codecs.h`), and the linker leaves the library's out. Nothing else
+in the program changes, the API is the same, and a program that never includes the header gets all formats as before.
+`sat_music_open` reads the 4-byte header from the file's own reader.
+
+Measured (lib-saturn e6663d2b; the fight program with the player, ring 16,384):
+
+| Region | Before | After | Limit |
+| --- | --- | --- | --- |
+| WRAM-H `__bss_end` | 0x06101d3c (+23,868 B over) | 0x0610031c (**+17,180 B** over 0x060fc000) | 0x060fc000 (16 KiB stack kept) |
+| Sections the player adds | 24,152 B | 17,396 B | |
+| WRAM-L `.wram_l` end | 0x002ffeb0 (+176 B) | 0x002ffeb0 (+176 B) | 0x002ffe00 |
+
+The fight still does not link. Menu, Ymir, 90 s, ring 16,384, with the narrowed table and the header read from the
+file reader: 0 underruns, 0 rejected writes, min fill 2,048, 323 segments, consumed 4,669,440 (the same as before).
+`gmake test` rc=0; `test_music_lean` plays ADX from the disc through the narrowed table and gets
+`SAT_ERR_UNSUPPORTED` for S16, S8, IMA, a RAM track and another reader.
+
+What is left in WRAM-H is the player: 17.2 KB of code is a measured floor for this architecture, with the pieces
+above; no more is dead for ADX from the disc. It is not recovered from the fight's data by this change.

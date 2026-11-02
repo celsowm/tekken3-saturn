@@ -4,6 +4,11 @@
 #include "saturn/audio.h"
 #include "saturn/disc_stream.h"
 #include "saturn/music.h"
+#include "saturn/music_codecs.h"
+
+/* The only track this program streams is ADX from the disc: the library leaves PCM, IMA and the RAM and asset-reader
+ * feeds (about 10 KB of the fight's Work RAM High) out of the link. */
+SAT_MUSIC_CODECS_ADX_FROM_DISC_ONLY;
 
 #define ADX_LOGICAL "music/adx"
 #define ADX_DISC "ADXMUSIC.BIN"
