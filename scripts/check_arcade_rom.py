@@ -5,6 +5,7 @@ The wave ROM hashes are MAME's for the tekken3 set (C352 sample ROMs). Nothing i
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 WAVE = {'tet1wave0.5': 'fe9434dcf0fb232c85efaaae1b4b13d36099620a',
@@ -32,10 +33,24 @@ def check(directory):
     return report
 
 
+def vgm_blocks_match(directory, vgm):
+    """How many of a C352 VGM's ROM data blocks equal wave0 + wave1 at their own addresses."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import analyze_c352_vgm
+    rom = (directory / 'tet1wave0.5').read_bytes() + (directory / 'tet1wave1.4').read_bytes()
+    blocks = analyze_c352_vgm.parse(analyze_c352_vgm.read_vgm(vgm))['rom']
+    return dict(blocks=len(blocks), matching=sum(1 for a, b in blocks.items() if rom[a:a + len(b)] == b))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
-    print(json.dumps(check(parser.parse_args().directory), indent=2))
+    parser.add_argument('--vgm', type=Path, help='also check that this VGM carries the ROM bytes of this set')
+    args = parser.parse_args()
+    report = check(args.directory)
+    if args.vgm:
+        report['vgm_blocks'] = vgm_blocks_match(args.directory, args.vgm)
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':

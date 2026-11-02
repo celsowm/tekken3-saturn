@@ -164,10 +164,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('vgm')
     parser.add_argument('--samples', action='store_true', help='also list every unique sample')
+    parser.add_argument('--silent', action='store_true', help='list the longest notes that never have volume')
     args = parser.parse_args()
     summary, notes, samples = report(args.vgm)
     if args.samples:
         summary['samples'] = sorted(samples.values(), key=lambda s: -s['uses'])
+    if args.silent:
+        silent = [n for n in notes if not n['audible']]
+        summary['silent_notes'] = len(silent)
+        summary['silent_longest'] = [dict(voice=n['voice'], bank=n['bank'], seconds=round(n['end'] - n['start'], 1),
+                                          length=((n['wave_end'] - n['wave_start']) & 0xFFFF) + 1)
+                                     for n in sorted(silent, key=lambda n: n['start'] - n['end'])[:8]]
     json.dump(summary, sys.stdout, indent=2)
     print()
 
