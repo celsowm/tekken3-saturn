@@ -19,6 +19,9 @@ typedef struct {
  * them every image, so they live in High WRAM. */
 static uint8_t g_store[2][T3_ROSTER_STORE_BYTES] __attribute__((aligned(16)));
 static uint8_t g_arena[T3_ROSTER_ARENA_BYTES] __attribute__((section(".wram_l"),aligned(16)));
+#if defined(T3_ADX_MUSIC)
+static uint32_t g_arena_used=T3_ROSTER_ARENA_BYTES;
+#endif
 static pack_file_t g_file[2];
 static t3_fighter_pack_t g_pack[2];
 
@@ -119,6 +122,13 @@ sat_result_t t3_fighter_pack_read(unsigned actor,unsigned section,uint32_t at,vo
 
 uint8_t* t3_fighter_pack_arena(void) {return g_arena;}
 
+#if defined(T3_ADX_MUSIC)
+uint8_t* t3_fighter_pack_arena_tail(uint32_t* bytes) {
+    *bytes=T3_ROSTER_ARENA_BYTES-g_arena_used;
+    return g_arena+g_arena_used;
+}
+#endif
+
 void* t3_fighter_pack_asset_storage(unsigned actor,uint32_t* capacity) {
     const uint32_t hot=(t3_fighter_pack_section_bytes(actor,T3_PACK_HOT)+15u)&~15u;
     *capacity=T3_ROSTER_STORE_BYTES-hot;
@@ -149,5 +159,8 @@ sat_result_t t3_fighter_packs_load_banks(void) {
         pack->streams.encoded_size=bytes;
         at=(at+bytes+15u)&~15u;
     }
+#if defined(T3_ADX_MUSIC)
+    g_arena_used=at;
+#endif
     return SAT_OK;
 }

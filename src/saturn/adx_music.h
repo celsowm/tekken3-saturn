@@ -17,12 +17,17 @@ typedef struct t3_adx_music_diag {
 
 extern volatile t3_adx_music_diag_t g_t3_adx_music;
 
-/* Registers ADXMUSIC.BIN (`frames` frames at `rate` Hz, stereo, `bytes` long) and starts it. Needs sat_audio_init.
- * `arena` (4-byte aligned, ADX_MUSIC_ARENA_BYTES) holds the disc scheduler and the music workspace: about 116 KB that
- * the caller lends for as long as the track plays, so the program carries no resident buffer for a test. */
-#define T3_ADX_MUSIC_ARENA_BYTES (36000u + 2u * 16384u * 2u + 2u * 8192u + 1032u)
+/* The ring the player keeps per channel, in frames (LibSaturn needs 12288 at least; Ymir: 12288 gave 106 underruns, 16384 none). */
+#define T3_ADX_MUSIC_RING_FRAMES 16384u
+
+/* Bytes of memory the player needs for as long as the track plays: its state, the disc scheduler and the music
+ * workspace. The caller lends them (4-byte aligned) to t3_adx_music_start(); the program carries no resident buffer. */
+uint32_t t3_adx_music_arena_bytes(void);
+
+/* Registers ADXMUSIC.BIN (`frames` frames at `rate` Hz, stereo, `bytes` long) and starts it. Needs sat_audio_init. */
 sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block, void* arena,
                                 uint32_t arena_bytes, uint32_t frames, uint32_t rate, uint32_t bytes);
 void t3_adx_music_service(void);
+/* Stops the track, detaches the scheduler (waits for a segment in flight) and releases the arena. */
 void t3_adx_music_stop(void);
 #endif

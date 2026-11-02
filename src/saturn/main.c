@@ -69,6 +69,10 @@ volatile uint32_t g_t3_cached_stage_faces;
 #define NAME_PADDED(player) ((NAME_WIDTH(player)+7)&~7)
 #define NAME_PLATE(player) ((NAME_WIDTH(player)+8)*7/8+(((NAME_WIDTH(player)+8)*7)%8!=0))
 #include "stage_cdda.h"
+#if defined(T3_ADX_MUSIC)
+#include "adx_music.h"
+#include "ima_meta.h"
+#endif
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
 #include "psx_hud_messages.h"
@@ -268,6 +272,9 @@ static uint8_t g_show_profiler;
 static uint8_t g_music_off;
 static sat_result_t g_cdda_result,g_cd_status_result;
 static sat_cd_status_t g_cd_status;
+#if defined(T3_ADX_MUSIC)
+static uint8_t g_adx_on;   /* the ADX stream owns the drive and the music */
+#endif
 static uint32_t g_end_frame_ms,g_end_frame_sum_ms,g_end_frame_avg_ms,g_rate_sample_ticks,g_tick_rate_x10;
 static uint32_t g_render_work_ms, g_render_submissions;
 #if defined(T3_NATIVE_WAIT_PROBE)
@@ -736,6 +743,9 @@ static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
     const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)|(g_music_off<<4)),
         g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds};
+#if defined(T3_ADX_MUSIC)
+    if(g_adx_on)t3_adx_music_stop();   /* the next program reads the drive through its own scheduler-free path */
+#endif
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
     const char* program=phase==PHASE_FIGHT?"0.BIN":"MENU.BIN";
@@ -775,6 +785,25 @@ static sat_result_t start_fight_theme(void) {
     return t3_stage_cdda_start(7u);
 #endif
 }
+
+#if defined(T3_ADX_MUSIC)
+/* The ADX stream borrows the arena bytes this pairing's banks leave free; a pairing that leaves too few plays the
+ * CD-DA theme as before. The drive is the scheduler's while the stream plays. */
+static sat_result_t start_fight_music(void) {
+    uint32_t room;
+    uint8_t* const tail=t3_fighter_pack_arena_tail(&room);
+    sat_cdfs_volume_t* volume;
+    sat_cd_block_t* block;
+    if(room>=t3_adx_music_arena_bytes() && t3_disc_volume(&volume)==SAT_OK && t3_disc_block(&block)==SAT_OK &&
+       t3_adx_music_start(volume,block,tail,room,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES)==SAT_OK) {
+        g_adx_on=1;
+        return SAT_OK;
+    }
+    return start_fight_theme();
+}
+#else
+#define start_fight_music start_fight_theme
+#endif
 
 #if defined(T3_VDP2_FLOOR)
 static sat_result_t load_fight_stage(void) {
@@ -1384,7 +1413,11 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
         g_end_frame_avg_ms=g_end_frame_sum_ms/g_rate_sample_frames;
         g_end_frame_sum_ms=0;
         /* Only while the report shows: normal play sends the CD Block nothing. */
-        if(g_show_profiler)g_cd_status_result=t3_stage_cdda_status(&g_cd_status);
+        if(g_show_profiler
+#if defined(T3_ADX_MUSIC)
+           && !g_adx_on
+#endif
+          )g_cd_status_result=t3_stage_cdda_status(&g_cd_status);
         g_rate_sample_vblank = now;
         g_rate_sample_frames = 0;
     }
@@ -1681,7 +1714,7 @@ int main(void) {
 #endif
     loading_frame(BOOT_READY, "READY");
     /* A failed start is shown by the report: the fight runs without music. */
-    if(!g_music_off)g_cdda_result=start_fight_theme();
+    if(!g_music_off)g_cdda_result=start_fight_music();
 #if defined(T3_SLAVE_SIMULATION)
     for(unsigned stack_byte=0;stack_byte<sizeof(g_t3_simulation_stack);++stack_byte)
         g_t3_simulation_stack[stack_byte]=0xA5u;
@@ -1780,8 +1813,12 @@ int main(void) {
             unsigned count=0;
             while(count<32u && t3_combat_events_pop(&events[count]))++count;
             t3_sfx_play_events(events,count);
-            t3_sfx_round_update();
+#if defined(T3_ADX_MUSIC)
+            if(g_adx_on)t3_adx_music_service();
+            else
+#endif
             if(!g_music_off)t3_stage_cdda_mix();
+            t3_sfx_round_update();
             spark_events(events,count);
         }
 #if defined(T3_SLOW_IMAGE_FIELDS)

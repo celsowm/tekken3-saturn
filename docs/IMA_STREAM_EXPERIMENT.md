@@ -121,8 +121,9 @@ The earlier result, that fights did not fit, is therefore resolved by moving the
 
 ## Open points before any fight integration
 
-- **Slots.** The stream takes SCSP slots 28–31 (LibSaturn's stream reservation). The effects path uses 26–31. A
-  fight audio change has to renumber one of them. Not done here.
+- **Slots.** The stream takes SCSP slots 28-31 (`kAudioStreamScspSlotBase`). Resident sound voices are limited to
+  `kVoiceCapacity - kAudioStreamCapacity` = 28 (slots 0-27), so the two do not overlap in LibSaturn; the earlier
+  "26-31" worry was wrong. Checked in the source, and on Ymir in the menu (3 sounds over the stream, no steal).
 - **Loop.** The track wraps at 206.07 s. The scheduler's `music_loops` counter stayed 0 across the run, so the
   wrap is not confirmed by the counter. The capture was not inspected at the wrap.
 - **Time.** `ticks_per_second` read as 0 (the frequency was requested before the timer was set up), so the
@@ -155,25 +156,55 @@ application gives or nothing.
 Still open for the fight itself: the fight program has not been measured, and the scheduler would own the CD Block
 while the fight runs.
 
-## ADX in the fight: the RAM the player needs is not there
+## ADX in the fight: not integrated, the fight program has no room
 
-Measured on the built `tekken3_saturn.elf` (the fight program; `g_io` is the menu's buffer and does not exist here):
+Measured on the built `tekken3_saturn.elf` (the fight program; `g_io` is the menu's buffer and does not exist here).
 
 | Region | Used | Limit | Free |
 | --- | --- | --- | --- |
 | Low WRAM `.wram_l` | 0x200000 + 0xffd10 | 0x2ffe00 | 240 B |
 | High WRAM (`.bss` end 0x060fbf34, stack reserve 0x4000, top 0x06100000) | | | 204 B above the reserve |
 
-`g_arena` (fighter_pack.c) is 734,672 B of Low WRAM, sized for the worst pairing. The two banks and two camera streams a
-pairing really loads leave a tail (`scripts/report_fight_arena.py`, 441 ordered pairings, 21 fighters): least 0 B
-(fighters 3 and 8), median 134,880 B, most 469,328 B. The player needs the disc scheduler (33,160 B) plus the workspace
-(`2 * ring * 2 + 17,416 B`):
+Linking the player into the fight (`T3_FIGHT_ADX_MUSIC=ON`, ring 16,384) fails:
 
-| Ring (frames) | Player bytes | Pairings with a tail too small |
+| Region | Overflow | Cause |
 | --- | --- | --- |
-| 8,192 (minimum) | 83,344 | 74 of 441 |
-| 16,384 (menu) | 116,000 | 194 of 441 |
+| High WRAM `.bss` | 9,916 B | code and tables of `sat_music`, the disc scheduler, the stream runtime and the ADX/IMA decoders |
+| Low WRAM `.wram_l` | 32,432 B | `g_audio_streams`: 4 SCSP stream slots, each with an 8 KiB upload staging buffer (33,184 B), linked as soon as any stream is opened |
 
-So the arena tail cannot host the player for every fight, and no other region has room. Not integrated yet.
-Sound RAM, per-frame cost and the CD scheduler under fight loading were not measured: nothing to measure until the
-player has memory.
+That is before the player's own memory. `g_arena` (fighter_pack.c) is 734,672 B, sized for the worst pairing; the
+tail a pairing leaves unused (`scripts/report_fight_arena.py`, 441 ordered pairings) is 0 B at the least (fighters 3
+and 8), 134,880 B at the median. The player needs 116,000 B (scheduler 33,160 + workspace `2 * 16,384 * 2 + 17,416` +
+its state) and leaves 194 of 441 pairings without room.
+
+The ring cannot shrink. LibSaturn accepted 8,192 frames and stayed silent (`consumed` 0 for 235 s): the SCSP stream
+starts when both its 4,096-frame halves are written, and the feed starts it only when no further whole segment fits.
+`sat_music_open` now refuses a disc ring under 2 halves + one segment (12,288 frames for ADX). On Ymir, 12,288 plays but
+underruns 106 times (minimum fill 885 of 12,288); 16,384 plays with none (minimum fill 2,048).
+
+What the fight does with the drive: every disc read (packs, banks, stage, HUD, particles, flipbook, sounds) finishes
+before `start_fight_theme()` ("READY"). A rematch or the next screen restarts the program through `sat_exec`
+(`restart_program`), which now stops the stream first. Nothing reads the disc while a fight runs, so the scheduler would
+own an idle drive; asset loading concurrent with music does not occur in the fight. It does in the menu, where the
+select screen reads portraits into `g_io` (the test's arena), so `g_io` cannot host the player past the title.
+
+The integration is written (`start_fight_music()` in main.c lends the arena tail, falls back to CD-DA when it is too
+small, services the stream once a frame, stops it before `sat_exec`), off by default, and cannot be run:
+the fight does not link with it. Sound RAM, per-frame cost and the transitions were therefore not measured in a fight.
+
+To make it fit, memory has to leave the fight program or the library. Candidates, with sizes:
+- `g_audio_streams` staging (33,184 B Low WRAM): the upload could read the ring directly in two pieces (the ring wraps
+  once); no behaviour change, but it touches the stream path.
+- 9.9 KB of High WRAM for the player's code and tables: something in the fight program has to give it up.
+- 116,000 B for the player: free for 247 of 441 pairings; the other 194 would need CD-DA, or a fight-side change.
+
+## Tests
+
+`gmake test` in LibSaturn at the end of this work: exit 0, 60 host test programs report PASS plus the tool tests
+(Python). It covers the asset cache and VFS reads without a cache (`test_file_asset_logic`: stats zero, EOF, partial
+reads, chunked and stalling backends, prefetch `UNSUPPORTED`, a configured 4-block cache), the music API and disc
+scheduler (`test_music_api`, `test_music_disc`: a disc track without a scheduler is `UNSUPPORTED`, a disc ring under
+12,288 frames is `INVALID_ARG`), and the audio stream API. The SCSP key-on fix (58e5d149) is register-level: the host
+tests mock the HAL, so no host test covers it; the evidence is the Ymir measurement (right channel 0 samples late, was
+3). `ctest --preset host-tests` only runs 3 header tests and is not the suite. The cross-built `dino_demo` and
+`cd_streaming_jukebox` examples link with the new rules.
