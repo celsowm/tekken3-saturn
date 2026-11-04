@@ -27,6 +27,9 @@ def summary(report):
                 observed_fields=state['observed_fields'],
                 pose_status=state['psx_pose_status'], event_status=state['psx_event_status'],
                 combat=state['psx_combat_active'], faces=state['faces_submitted'],
+                faces_rejected=state['faces_rejected'], commands_used=state['commands_used'],
+                commands_capacity=state['commands_capacity'], draw_waits=state['draw_waits'],
+                draw_timeouts=state['draw_timeouts'], late_swaps=state['late_swaps'],
                 sfx_played=optimizations.get('sfx_played'),
                 event_overflow=optimizations.get('event_overflow'),
                 slave_stack_used=optimizations.get('slave_sim_stack_used'))

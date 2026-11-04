@@ -1,7 +1,11 @@
 # Fight memory by phase: what is live when, and three ways to fit the ADX player
 
-Measured on the production fight program (`build/tekken3_saturn.elf`, ring-16k tree for the ADX numbers). Nothing in
-this document is implemented; it is the analysis that decides what to implement. Tool: `scripts/memory_phases.py
+The inventory and proposals below are a historical snapshot of the production fight program
+(`build/tekken3_saturn.elf`, ring-16k tree for the ADX numbers). Since that snapshot, the VDP1 candidate
+has removed the Work RAM command and Gouraud staging buffers and builds into alternating VRAM banks.
+The clean paired menu-driven fight builds measured 78,668 fewer bytes of WRAM-H in the candidate, with 79,840 bytes
+before the reserved stack. Validation details and remaining limits are in `docs/VDP1_BANK_VALIDATION.md`. Other proposals below
+are analysis, not a claim that the ADX workspace was implemented. Tool: `scripts/memory_phases.py
 ELF main.c` (static: ELF disassembly plus the identifiers `main.c` uses in each phase's source lines).
 
 ## Method and its limits
