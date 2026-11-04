@@ -38,6 +38,13 @@ the SCSP mix writes, so both settings can be compared on one console and loader.
 | `CD CMD` | Magnitude of the last status command's result | Non-zero: `CD ST`, `CD TRK`, `CD FAD` are stale |
 | `CD ST` | CD Block status: 1 pause, 2 standby, 3 play, 4 seek | 3 with music on |
 | `CD TRK`, `CD FAD` | Current track and sector | Track 2 and a rising FAD mean audio is being played |
+| `ADX UND` | ADX builds: SCSP halves that played before they were rewritten, or a ring that ran short | 0; each rise is a click or a repeat |
+| `ADX MIN` | ADX builds: lowest fill of the Work RAM rings, frames | 2,048 in emulators; 0 means the decoder fell behind |
+| `ADX SEC` | ADX builds: seconds of the track played | Rises about 1 a second; the track wraps at 206 |
+| `ADX STEP` | ADX builds: 6 once a music update failed, else 0 | Non-zero: the stream stopped being fed |
+
+While the ADX stream plays it owns the CD Block, so `CD ST`, `CD TRK` and `CD FAD` are not read and the four ADX rows
+take their place. If the stream could not start, the fight plays the stage's CD-DA track and shows the CD rows.
 
 The CD status is read about once a second, only while DEBUG is on. A failed music
 start no longer panics in the fight: it shows in `CD PLAY` instead. While DEBUG is on,
@@ -447,6 +454,39 @@ screenshots have the same hash. This covers those two frozen images, not every i
 `test_scene_native_commands` now checks every word of an emitted program command.
 
 These are emulator timings, not hardware timings. A real console has not run this build.
+
+### Console test images (2026-11-04)
+
+Two images in `build/hw-test-*` (git-ignored, about 0.5 GB each), from game 36b04a5 plus the report change that
+follows it and lib-saturn 485effc8. Load `music.cue` with its `music.bin`.
+
+| Image | Music | ELF SHA-256 (first 16) | `music.bin` SHA-256 (first 16) |
+| --- | --- | --- | --- |
+| `build/hw-test-cdda` | CD-DA per stage (the default) | `9fc047a9469e0d52` | `62dabac4ed0d658e` |
+| `build/hw-test-adx` | One ADX theme streamed from the disc, 22.05 kHz | `3daad129e930e552` | `0c845a08169e1bcf` |
+
+Emulator readings for comparison (the hardware is the question): the CD-DA image runs the attract fight at 22.19
+images/s on Mednafen (pad hash `0x640e32c0`, `LOOP x10` about 222); the ADX build at 19.95 on Mednafen and 30.68 on
+Ymir with 0 underruns. A one-CPU arcade fight runs faster than the attract fight on both.
+
+Checklist. Note the device (Satiator, SAROO, Fenrir...), its firmware and the console's region first.
+
+1. CD-DA image. Boot: the LibSaturn logo and the opening movie should play with sound (START skips them).
+2. Title, START, UP to OPTION MODE, set DEBUG to ON with LEFT/RIGHT, B back, DOWN to ARCADE MODE, pick two
+   fighters. Port 2 empty: you fight the CPU.
+3. 30 seconds into round 1, photograph the screen twice, 30 seconds apart. Write down `LOOP x10`, `TICK`, `DROP`
+   (both photos), `IRQ`, `SLV`, `MCCR`, `SCCR`, `END MS`, `CD ST`, `CD TRK`, `CD FAD`. Expected: `TICK` near 600,
+   `DROP` not rising, `IRQ`, `SLV`, `MCCR`, `SCCR` all 1, `CD ST` 3, `CD FAD` rising, the stage's music audible.
+4. Same fight with MUSIC OFF in OPTION MODE: write down `LOOP x10` again. A clear rise means CD-DA costs time.
+5. ADX image, steps 1 to 3 again. The left column should show `ADX UND`, `ADX MIN`, `ADX SEC`, `ADX STEP`; CD rows
+   there mean the stream did not start (note that). Expected: `ADX STEP` 0, `ADX UND` 0 and not rising, `ADX SEC`
+   rising. Every stage plays the same theme; that is expected. Listen for clicks, pops, stutter or a repeated
+   fragment, and note `ADX UND` when one is heard.
+   Compare `LOOP x10` with step 3: the emulators lose 7 to 10%.
+6. Track wrap: PRACTICE MODE (two UP from ARCADE MODE) has no round timer. Stay in it until `ADX SEC` passes 206
+   (about 3 min 30 s) and listen at the wrap for a gap or a click. `ADX UND` should still be 0.
+
+A short video of steps 3, 5 and 6, with sound, answers all of it.
 
 ### Longword CD reads broke Mednafen boot (2026-11-04)
 

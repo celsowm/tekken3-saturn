@@ -1384,13 +1384,27 @@ static void draw_profiler(void) {
             {"MCCR ",sat_sh2_cache_control_at_start(0)},
             {"SCCR ",g_t3_boot_slave_verified?sat_sh2_cache_control_at_start(1):999u},
             {"SLV ",g_t3_boot_slave_verified},{"END MS ",g_end_frame_avg_ms}};
-        const struct {const char* label;uint32_t value;} left[]={
+        typedef struct {const char* label;uint32_t value;} row_t;
+        const row_t cd_rows[]={
             {"MUSIC ",(uint32_t)!g_music_off},{"CD PLAY ",(uint32_t)cdda},{"CD CMD ",(uint32_t)status},
             {"CD ST ",g_cd_status.state},{"CD TRK ",g_cd_status.track},
             {"CD FAD ",g_cd_status.fad}};
+        const row_t* left=cd_rows;
+        unsigned left_rows=sizeof(cd_rows)/sizeof(cd_rows[0]);
+#if defined(T3_ADX_MUSIC)
+        /* The stream owns the CD Block, which is then not asked for its status: its own counters instead. */
+        const row_t adx_rows[]={
+            {"MUSIC ",(uint32_t)!g_music_off},{"ADX UND ",g_t3_adx_music.underruns},
+            {"ADX MIN ",g_t3_adx_music.min_fill},{"ADX SEC ",g_t3_adx_music.consumed/IMA_SAMPLE_RATE},
+            {"ADX STEP ",g_t3_adx_music.step}};
+        if(g_adx_on) {
+            left=adx_rows;
+            left_rows=sizeof(adx_rows)/sizeof(adx_rows[0]);
+        }
+#endif
         for(unsigned i=0;i<sizeof(right)/sizeof(right[0]);++i)
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,right[i].label,right[i].value,RIGHT_X,RIGHT_Y+ROW*(int)i));
-        for(unsigned i=0;i<sizeof(left)/sizeof(left[0]);++i)
+        for(unsigned i=0;i<left_rows;++i)
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,left[i].label,left[i].value,4,LEFT_Y+ROW*(int)i));
     }
 #endif
