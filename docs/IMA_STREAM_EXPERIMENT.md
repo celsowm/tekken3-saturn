@@ -356,7 +356,14 @@ steps table and forced inlining in lib-saturn:
 | --- | --- | --- | --- |
 | 44.1 kHz, Master decodes in `simulation_join` | 24.95 | 86 | 1,344 |
 | 44.1 kHz, decode offloaded to the Slave (rejected) | 24.40 | 184 | 1,344 |
-| **22.05 kHz, Master decodes in `simulation_join`** | **28.21** | **0** | **2,048** |
+| 22.05 kHz, Master decodes in `simulation_join` | 28.21 | 0 | 2,048 |
+| 44.1 kHz, SH-2 assembly decoder (lib-saturn 9f87743f) | 26.29 | 32 | 1,344 |
+| **22.05 kHz, SH-2 assembly decoder** | **29.35** | **0** | **2,048** |
+
+The assembly decoder (`sat_adx_decode_channel_s16be`) keeps the coefficients, history and clamp bounds in
+registers and multiplies with MULS.W: about 23 instructions a sample against GCC's 38. A temporary boot self-test
+in the fight compared it with the C arithmetic on 3,000 random frames on Ymir (clamping scales, extreme
+coefficients and history): no mismatch. `.bss` ends at 0x060fb494 (2,924 B above the stack reserve).
 
 At 44.1 kHz an update decodes at most 2,048 frames (one delivery per scheduler visit), so any stretch below about
 21.5 images/s drains the ring; at 22.05 kHz that limit is 10.8 images/s. `encode_adx_stream.py` now encodes at
