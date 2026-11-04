@@ -26,3 +26,29 @@ _t3_simulation_task_entry:
 .Lsimulation_body:
     .long _t3_simulation_task_body
     .size _t3_simulation_task_entry,.-_t3_simulation_task_entry
+
+/* Preparation finishes before the simulation callback begins, so both can
+ * use the same caller-owned stack without consuming the BIOS vector area. */
+    .section .text.t3_prepare_worker_entry,"ax"
+    .align 2
+    .global _t3_prepare_worker_entry
+    .type _t3_prepare_worker_entry,@function
+_t3_prepare_worker_entry:
+    mov.l r8,@-r15
+    sts.l pr,@-r15
+    mov r15,r8
+    mov.l .Lprepare_stack_top,r15
+    mov.l .Lprepare_worker,r0
+    jsr @r0
+    nop
+    mov r8,r15
+    lds.l @r15+,pr
+    mov.l @r15+,r8
+    rts
+    nop
+    .align 2
+.Lprepare_stack_top:
+    .long _g_t3_simulation_stack+6656
+.Lprepare_worker:
+    .long _t3_characters_prepare_worker
+    .size _t3_prepare_worker_entry,.-_t3_prepare_worker_entry

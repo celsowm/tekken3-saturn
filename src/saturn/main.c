@@ -176,8 +176,8 @@ typedef struct {
     uint32_t first,count,epoch;
 } simulation_job_t;
 static simulation_job_t g_simulation_job T3_HOT_WRAM;
-/* The Slave's deepest measured use is 5,328 bytes (slave_sim_stack_used); 6.5 KiB keeps
- * about 1.25x headroom and frees room in the full High Work RAM. Keep simulation_stack.S in step. */
+/* Simulation and fused actor preparation run sequentially on this stack.
+ * Keep its size in step with simulation_stack.S. */
 uint8_t g_t3_simulation_stack[6656] __attribute__((aligned(16)));
 static t3_match_t g_image_match T3_FRONTEND_WRAM;
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
@@ -999,11 +999,12 @@ enum { PREPARE_SIMULATION_TASK=0x102u };
 static simulation_job_t g_prepare_job;
 static sat_parallel_handle_t g_prepare_handle;
 
+extern void t3_prepare_worker_entry(void);
 static sat_result_t prepare_simulation_entry(const void* input,uint32_t bytes,void* output,
         uint32_t capacity,uint32_t* written) {
     sat_parallel_purge_cache(); /* the worker reads the Master's cached data */
     SLAVE_FRT_START(prep_started);
-    t3_characters_prepare_worker();
+    t3_prepare_worker_entry();
     SLAVE_FRT_ADD(1,prep_started);
     const sat_result_t st=t3_simulation_task_entry(input,bytes,output,capacity,written);
     /* The Master is still drawing; its camera and stage inputs are final. */
