@@ -12,6 +12,8 @@ order is taken from the one that matches the ELF's .text section.
         --symbol _g_t3_ai_ticks --symbol _g_local_pose_cache [--words]
 
 Each symbol prints its address, size and big-endian 32-bit words (or hex).
+--cpus prints each SH-2's PC and PR (sections SH2-M and SH2-S: R is R0-R15,
+CtrlRegs SR, GBR, VBR and SysRegs MACH, MACL, PR), with the ELF function around each.
 """
 import argparse
 import gzip
@@ -58,6 +60,29 @@ def work_ram(state_path):
             ram = dict(entries(body))
             return ram['WorkRAML'], ram['WorkRAMH']
     raise ValueError(f'{state_path}: no MAIN section')
+
+
+def cpus(state_path):
+    """{'SH2-M': (pc, pr, sp), 'SH2-S': ...} from the state's CPU sections (host-order 32-bit words)."""
+    data = gzip.decompress(Path(state_path).read_bytes())
+    out = {}
+    for name, body in sections(data):
+        if name in ('SH2-M', 'SH2-S'):
+            entry = dict(entries(body))
+            regs = struct.unpack('<16I', entry['R'][:64])
+            pr = struct.unpack('<3I', entry['SysRegs'][:12])[2]
+            out[name] = (struct.unpack('<I', entry['PC'][:4])[0], pr, regs[15])
+    return out
+
+
+def function_at(table, address):
+    """The ELF symbol containing address, as 'name+offset'."""
+    address &= 0x0FFFFFFF
+    best = None
+    for name, (start, size) in table.items():
+        if start <= address < start + max(size, 1) and (best is None or start > best[1]):
+            best = (name, start)
+    return f'{best[0]}+{address - best[1]:#x}' if best else '?'
 
 
 def tool(tools, name):
@@ -120,6 +145,7 @@ def main():
     p.add_argument('--words', action='store_true', help='print big-endian 32-bit words')
     p.add_argument('--json', action='store_true')
     p.add_argument('--dump', type=Path, help='also write each symbol\'s raw bytes to DIR/<symbol>.bin')
+    p.add_argument('--cpus', action='store_true', help='print each SH-2\'s PC and PR with their functions')
     args = p.parse_args()
     state = args.run
     if state.is_dir():
@@ -145,6 +171,9 @@ def main():
         print(json.dumps(dict(state=str(state), order=memory.order, symbols=result), indent=2))
         return
     print(f'{state} (Work RAM {memory.order})')
+    if args.cpus:
+        for cpu, (pc, pr, sp) in cpus(state).items():
+            print(f'{cpu} PC {pc:#010x} {function_at(table, pc)}  PR {pr:#010x} {function_at(table, pr)}  SP {sp:#010x}')
     for name, r in result.items():
         print(f"{name} {r['address']:#010x} {r['size']}: {r['value']}")
 

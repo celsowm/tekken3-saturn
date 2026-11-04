@@ -415,6 +415,38 @@ frames. Camera streams count frames in 10 bits; King (18 streams), Kuma, Ogre an
 The spline now takes the stream's own frame count, and `scripts/verify_camera_streams.py` passes over every bank of
 the roster (498 streams, 84,350 frames, equal to the original-code port).
 
+### Mednafen
+
+Mednafen 1.32.1 had stopped booting the disc: the first file read failed (`main.c:775`, `SAT_ERR_IO`) because a
+longword read of `DATATRNS` at 0x25890000 takes one FIFO word there, not two. LibSaturn now reads longwords at
+0x25818000. Then the fight hung after 13 ticks: `scripts/mednafen_state.py --cpus` put the Master in
+`vdp1::swap_settled` from `vdp1::submit`, waiting for the first `ON_SUBMIT` list's END, which never came because the
+change asked for with that list stopped it at the next field. The first list now enters manual mode without a change.
+Both fixes are lib-saturn 485effc8 and apply to every build, CD-DA included.
+
+Attract fight, 150 s from boot (`scripts/mednafen_fight.py --symbol _g_t3_adx_music`), the same AI pad hash
+0x640e32c0 in every row:
+
+| Build | Images/s | Discarded fields | Underruns | Min fill |
+| --- | --- | --- | --- | --- |
+| Control, no stream (CD-DA) | 22.21 | 10 | | |
+| Stream, first run | 19.91 | 21 | 47 | 1,344 |
+| + refill timed from the last look | 19.93 | 21 | 14 | 0 |
+| + second slice while the rings are low | **19.95** | 22 | **0** | **2,048** |
+
+Mednafen runs this fight at about two thirds of Ymir's rate, as before (`docs/REAL_HARDWARE.md`), so an image takes
+3 fields and some take 6 or more. Two library limits showed there and not on Ymir:
+
+- The SCSP half refill started its clock when the service saw the half flip, up to an image late, and so finished a
+  22.05 kHz half (11 fields) after it had started playing again. It now counts from the look before the flip and
+  writes each slice up to where the next look may land.
+- A scheduler visit decoded one 2,048-frame slice, which keeps up only above about 10.8 visits a second. While the
+  rings are under `music_reserve` (8,192 frames) a visit now delivers a second slice. The decode work per second is
+  unchanged; only late visits do more of it.
+
+Ymir with the same library: 30.68 images/s, 0 underruns, min fill 2,048, same pad hash. The stream costs Mednafen
+2.3 images/s (10%), as on Ymir. These are emulator measurements; nothing was heard, and no console has run it.
+
 ### Not the default
 
 `T3_FIGHT_ADX_MUSIC` stays OFF. The stream carries one arcade-rendered theme (the C352 oracle render), so with it

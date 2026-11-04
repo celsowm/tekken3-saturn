@@ -448,6 +448,15 @@ screenshots have the same hash. This covers those two frozen images, not every i
 
 These are emulator timings, not hardware timings. A real console has not run this build.
 
+### Longword CD reads broke Mednafen boot (2026-11-04)
+
+lib-saturn a9bd0968 read `DATATRNS` 32 bits at a time at 0x25890000. Mednafen takes one FIFO word for such a
+read (its CS2 bus code says this was tested on hardware), so every build after it failed its first file read
+there, and would probably have failed on a console. lib-saturn 485effc8 reads longwords at 0x25818000 instead,
+and fixes a VDP1 hang the boot fix then exposed (`docs/IMA_STREAM_EXPERIMENT.md`, "Mednafen"). A package built
+against a library between the two would carry the fault. Mednafen, attract fight, 150 s: 22.21 images/s with
+CD-DA, pad hash `0x640e32c0`.
+
 ### Regression check after these changes (2026-10-31)
 
 Mednafen, 120 s, final SDK, same pad hashes as before:
