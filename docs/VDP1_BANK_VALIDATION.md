@@ -422,12 +422,27 @@ logical divergence.
    identical to the independently reproduced stack corruption. The latter
    was fixed and tested across natural and accelerated restarts in both builds.
 4. Exact 2048-entry admission and overflow were tested on the host; an in-game
-   synthetic load at that limit was not run.
+   synthetic load at that limit was not run. Not needed for this game so far:
+   the roster smoke (11 pairings, 2026-11-04) peaks at 771 commands, and 937
+   with the DEBUG report drawn.
 5. Ymir fault injection: no emulator hook exists; host fault tests cover the
    modeled cases and do not substitute for a hardware fault-injection test.
 6. The production lockstep hooks and configuration were removed, with a
    temporary archive at `/private/tmp/t3-vdp1-lockstep-harness.tar` and the
    audit worktree sources at `/private/tmp/t3-vdp1-audit-lockstep-sources.tar`.
    The clean maps and changelog are updated.
-7. Separate task: the SCU IST writes in `src/hal/scu/dma.cpp:52`,
-   `src/hal/smpc/smpc.cpp:73` and `src/storage/cd/exec_hal.cpp:97`.
+7. Separate task: the SCU IST writes. The DMA and `sat_exec` writes are gone;
+   only `clear_smpc_ist` (`src/hal/smpc/smpc.cpp`) is left, before an INTBACK
+   CONTINUE. This game reads both ports in 15-byte mode, so a pad, 3D pad or
+   mouse report fits one chunk and never continues. Ymir, 800 fight fields
+   with 3D pads on both ports: 0 IST writes on either CPU; the same run with
+   the probe's test multitap on port 1: 1 write, from `finish_peripheral_read`.
+   So the write only matters with a multitap, and a replacement could only be
+   shown safe with one on a console (`lib-saturn/docs/SCU_IST_AUDIT.md`).
+8. Fixed 2026-11-04 (lib-saturn 485effc8): the first `ON_SUBMIT` list after
+   1-cycle mode was started with its framebuffer change already asked for.
+   On Mednafen the next field's change stopped that list before END, COPR
+   never reached END, and `submit` waited for ever (the fight hung after 13
+   ticks). That list now enters manual mode with FCM alone and asks for the
+   change at the VBlank-IN after END, like every later list. Ymir is
+   unchanged (same pad hash, 30.68 images/s in the ADX fight).
