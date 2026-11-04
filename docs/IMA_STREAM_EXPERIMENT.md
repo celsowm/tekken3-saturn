@@ -346,3 +346,25 @@ What the profile showed (`saturn_probe.py --debug-profile`, 300 fight fields, `s
 The 22.05 kHz file (`encode_adx_stream.py --rate 22050`, 5,111,824 B) halves the decode and the drive bandwidth
 but costs quality: codec SNR 29.0 dB against 35.8 dB at 44.1 kHz, and nothing above 11 kHz. Neither rate reaches the
 control's 31.8 images/s yet. Emulator measurements, not hardware; one pairing; no Mednafen recording was made.
+
+### The fight plays the 22.05 kHz track
+
+Over a longer window (6,000 fields from boot, about 3,760 observed, same AI pad hash), with the decoder's
+steps table and forced inlining in lib-saturn:
+
+| Build | Images/s | Underruns | Min fill |
+| --- | --- | --- | --- |
+| 44.1 kHz, Master decodes in `simulation_join` | 24.95 | 86 | 1,344 |
+| 44.1 kHz, decode offloaded to the Slave (rejected) | 24.40 | 184 | 1,344 |
+| **22.05 kHz, Master decodes in `simulation_join`** | **28.21** | **0** | **2,048** |
+
+At 44.1 kHz an update decodes at most 2,048 frames (one delivery per scheduler visit), so any stretch below about
+21.5 images/s drains the ring; at 22.05 kHz that limit is 10.8 images/s. `encode_adx_stream.py` now encodes at
+22,050 Hz by default; `--rate 44100` still gives the higher rate.
+
+The rejected row moved the decode off the Master: the music update only gathered the delivered blocks, a Slave task
+decoded them after the deferred join, and the Master wrote them to the rings before its next Slave submission
+(the executor runs one Slave task at a time and dispatches only when the Master services it, so the fused worker
+start would otherwise spin on a task that never started). Each batch took about 1,360 FRT ticks on the Slave and
+the Master still waited about 855 of them: the Slave's idle share in the profile is mostly spinning inside its own
+tasks, not free time, and the decode delayed its next ticks. Both the library API and the game side were removed.

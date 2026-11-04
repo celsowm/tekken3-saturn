@@ -84,8 +84,9 @@ def main():
     parser.add_argument('--seconds', type=float, help='encode only this much (default: the whole oracle)')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--ffmpeg', default='ffmpeg')
-    parser.add_argument('--rate', type=int, choices=(44100, 22050), default=44100,
-                        help='output rate; 22050 halves the SH-2 decode and the disc bandwidth')
+    parser.add_argument('--rate', type=int, choices=(44100, 22050), default=22050,
+                        help='output rate; 22050 (the fight\'s: docs/IMA_STREAM_EXPERIMENT.md) halves the SH-2 '
+                             'decode and the disc bandwidth against 44100')
     args = parser.parse_args()
     ima.RATE = args.rate   # read_oracle resamples to it, and the encoder and the meta header follow
 
