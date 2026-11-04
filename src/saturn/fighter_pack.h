@@ -46,9 +46,6 @@ sat_result_t t3_fighter_pack_read(unsigned actor,unsigned section,uint32_t at,vo
 /* Low WRAM: the logic banks and camera streams once loaded. Until then the
  * mesh loader borrows it for an archive and its texture table. */
 uint8_t* t3_fighter_pack_arena(void);
-/* The part of the arena the loaded banks and camera streams leave unused (16-byte aligned), valid once
- * t3_fighter_packs_load_banks has run. It stays free for the match: how much depends on the pairing. */
-uint8_t* t3_fighter_pack_arena_tail(uint32_t* bytes);
 _Static_assert(T3_ROSTER_ARENA_BYTES>=T3_ROSTER_ARCHIVE_BYTES+T3_ROSTER_TEXTURES*16u+16u,
     "the arena must also hold a decoding mesh");
 /* Where sat_character_asset_compact keeps an actor's asset for the match. */

@@ -84,7 +84,10 @@ def main():
     parser.add_argument('--seconds', type=float, help='encode only this much (default: the whole oracle)')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--ffmpeg', default='ffmpeg')
+    parser.add_argument('--rate', type=int, choices=(44100, 22050), default=44100,
+                        help='output rate; 22050 halves the SH-2 decode and the disc bandwidth')
     args = parser.parse_args()
+    ima.RATE = args.rate   # read_oracle resamples to it, and the encoder and the meta header follow
 
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -95,7 +98,7 @@ def main():
     decoded = decode(data, frames)
 
     (out / 'ima.bin').write_bytes(data)
-    (out / 'ima_decoded_44100.s16le').write_bytes(decoded.astype('<i2').tobytes())
+    (out / f'ima_decoded_{ima.RATE}.s16le').write_bytes(decoded.astype('<i2').tobytes())
     (out / 'ima_meta.h').write_text(
         f'#define IMA_SAMPLE_RATE {ima.RATE}u\n#define IMA_SAMPLE_COUNT {frames}u\n#define IMA_CHANNELS 2u\n'
         f'#define IMA_BYTES {len(data)}u\n#define IMA_FORMAT_ADX 1\n')

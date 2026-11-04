@@ -36,7 +36,9 @@ def main():
         dumps = json.loads((args.out / 'symbol-dumps.json').read_text())
         words = {}
         for symbol in args.symbol:
-            data = (args.out / dumps[symbol]['file']).read_bytes()
+            # saturn_probe.py keys the dump by the ELF name, which has the C compiler's '_' prefix.
+            entry = dumps[symbol] if symbol in dumps else dumps['_' + symbol]
+            data = (args.out / entry['file']).read_bytes()
             words[symbol] = list(struct.unpack(f'>{len(data) // 4}I', data[:len(data) // 4 * 4]))
     finally:
         shutil.rmtree(args.out, ignore_errors=True)

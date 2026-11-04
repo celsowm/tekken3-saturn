@@ -289,6 +289,15 @@ static sat_result_t g_cdda_result,g_cd_status_result;
 static sat_cd_status_t g_cd_status;
 #if defined(T3_ADX_MUSIC)
 static uint8_t g_adx_on;   /* the ADX stream owns the drive and the music */
+static uint8_t g_adx_due;  /* this frame's music service has not run yet (see simulation_join) */
+
+/* The ADX decode is the Master's largest audio cost (a 44.1 kHz stereo track, about a fifth of the Master on Ymir).
+ * Run in series it pushed images from two fields to three; run while the Master waits for the Slave it is hidden. */
+static void adx_service_due(void) {
+    if(!g_adx_due)return;
+    g_adx_due=0;
+    t3_adx_music_service();
+}
 #endif
 static uint32_t g_end_frame_ms,g_end_frame_sum_ms,g_end_frame_avg_ms,g_rate_sample_ticks,g_tick_rate_x10;
 static uint32_t g_render_work_ms, g_render_submissions;
@@ -804,18 +813,15 @@ static sat_result_t start_fight_theme(void) {
 }
 
 #if defined(T3_ADX_MUSIC)
-/* The ADX stream borrows the arena bytes this pairing's banks leave free; a pairing that leaves too few plays the
- * CD-DA theme as before. The drive is the scheduler's while the stream plays. */
+/* The ADX player has its own arena in .bss (adx_music.c), so every pairing plays the stream; CD-DA is the fallback
+ * if it cannot start. The drive is the scheduler's while the stream plays. */
 static sat_result_t start_fight_music(void) {
-    uint32_t room;
-    uint8_t* const tail=t3_fighter_pack_arena_tail(&room);
     sat_cdfs_volume_t* volume;
     sat_cd_block_t* block;
     sat_result_t st;
-    if(room<t3_adx_music_arena_bytes()) t3_adx_music_skipped(1u,room);
-    else if((st=t3_disc_volume(&volume))!=SAT_OK) t3_adx_music_skipped(2u,(uint32_t)-st);
+    if((st=t3_disc_volume(&volume))!=SAT_OK) t3_adx_music_skipped(2u,(uint32_t)-st);
     else if((st=t3_disc_block(&block))!=SAT_OK) t3_adx_music_skipped(3u,(uint32_t)-st);
-    else if(t3_adx_music_start(volume,block,tail,room,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES)==SAT_OK) {
+    else if(t3_adx_music_start_resident(volume,block,IMA_SAMPLE_COUNT,IMA_SAMPLE_RATE,IMA_BYTES)==SAT_OK) {
         g_adx_on=1;
         return SAT_OK;
     }
@@ -926,6 +932,9 @@ static sat_result_t simulation_wait(sat_parallel_handle_t handle) {
 #endif
 
 static sat_result_t simulation_join(sat_parallel_handle_t handle,uint32_t count) {
+#if defined(T3_ADX_MUSIC)
+    if(g_adx_due && sat_parallel_service()==SAT_OK && !sat_parallel_done(handle))adx_service_due();
+#endif
     const uint32_t started=sat_time_ms();
 #if defined(T3_SLAVE_SIMULATION_POLL_TICKS)
     sat_result_t st=simulation_wait(handle);
@@ -1833,7 +1842,10 @@ int main(void) {
             unsigned count=0;
             while(count<32u && t3_combat_events_pop(&events[count]))++count;
             t3_sfx_play_events(events,count);
-#if defined(T3_ADX_MUSIC)
+#if defined(T3_ADX_MUSIC) && defined(T3_SLAVE_SIMULATION)
+            if(g_adx_on)g_adx_due=1;   /* serviced in simulation_join while the Slave works, else after it */
+            else
+#elif defined(T3_ADX_MUSIC)
             if(g_adx_on)t3_adx_music_service();
             else
 #endif
@@ -1989,6 +2001,9 @@ int main(void) {
             t3_move_probe_present();
         }
         g_t3_slave_sim_pose_lag=g_game.total_ticks-g_t3_slave_sim_pose_tick;
+#if defined(T3_ADX_MUSIC)
+        adx_service_due();   /* the Slave finished before the Master waited for it */
+#endif
 #endif
         if (T3_PERF_MODE!=1 && g_show_profiler) draw_profiler();
         T3_PERF_ADD(hud,hud_started);

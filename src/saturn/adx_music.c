@@ -17,8 +17,8 @@ SAT_MUSIC_CODECS_ADX_FROM_DISC_ONLY;
 
 volatile t3_adx_music_diag_t g_t3_adx_music;
 
-/* Everything but the pointer lives in the lent arena: the first bytes hold this, then the scheduler, then the
- * workspace. */
+/* Everything but the pointer lives in the lent arena: the first bytes hold this, then the scheduler's head, its two
+ * segment buffers, then the workspace. */
 typedef struct adx_state {
     sat_cdfs_file_source_t source;
     sat_cdfs_source_desc_t source_desc;
@@ -28,8 +28,10 @@ typedef struct adx_state {
 } adx_state_t;
 
 #define STATE_BYTES ((sizeof(adx_state_t) + 15u) & ~15u)
-#define DISC_BYTES ((sizeof(sat_disc_stream_t) + 15u) & ~15u)
+#define DISC_BYTES ((SAT_DISC_STREAM_HEAD_BYTES + 15u) & ~15u)
+#define SEGMENT_BYTES SAT_DISC_STREAM_SEGMENTS_BYTES(T3_ADX_MUSIC_SEGMENT_SECTORS)
 #define WORKSPACE_BYTES SAT_MUSIC_DISC_WORKSPACE_BYTES(T3_ADX_MUSIC_RING_FRAMES, 2u)
+#define ARENA_BYTES (STATE_BYTES + DISC_BYTES + SEGMENT_BYTES + WORKSPACE_BYTES)
 
 static adx_state_t* g_state;
 static sat_disc_stream_t* g_disc;
@@ -46,7 +48,7 @@ void t3_adx_music_skipped(uint32_t why, uint32_t value) {
     g_t3_adx_music.status = value;
 }
 
-uint32_t t3_adx_music_arena_bytes(void) { return STATE_BYTES + DISC_BYTES + WORKSPACE_BYTES; }
+uint32_t t3_adx_music_arena_bytes(void) { return ARENA_BYTES; }
 
 sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block, void* arena,
                                 uint32_t arena_bytes, uint32_t frames, uint32_t rate, uint32_t bytes) {
@@ -56,9 +58,11 @@ sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block
     g_t3_adx_music.magic = ADX_MAGIC;
     g_state = (adx_state_t*)arena;
     g_disc = (sat_disc_stream_t*)((uint8_t*)arena + STATE_BYTES);
-    void* const workspace = (uint8_t*)arena + STATE_BYTES + DISC_BYTES;
+    void* const segments = (uint8_t*)arena + STATE_BYTES + DISC_BYTES;
+    void* const workspace = (uint8_t*)segments + SEGMENT_BYTES;
     adx_state_t* const a = g_state;
-    if ((st = sat_disc_stream_init(g_disc, block)) != SAT_OK) return fail(1u, st);
+    if ((st = sat_disc_stream_init_segments(g_disc, block, segments, T3_ADX_MUSIC_SEGMENT_SECTORS)) != SAT_OK)
+        return fail(1u, st);
     /* The registries keep these descriptors: they stay valid while the program runs. */
     a->source_desc = (sat_cdfs_source_desc_t){ADX_DISC, ADX_SOURCE, bytes};
     if ((st = sat_cdfs_register_source_manifest(volume, &a->source_desc, 1u, &a->source)) != SAT_OK) return fail(2u, st);
@@ -81,6 +85,15 @@ sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block
     g_t3_adx_music.playing = 1u;
     return SAT_OK;
 }
+
+#if defined(T3_ADX_MUSIC_RESIDENT)
+static uint32_t g_arena[ARENA_BYTES / 4u];
+
+sat_result_t t3_adx_music_start_resident(sat_cdfs_volume_t* volume, sat_cd_block_t* block, uint32_t frames,
+                                         uint32_t rate, uint32_t bytes) {
+    return t3_adx_music_start(volume, block, g_arena, sizeof g_arena, frames, rate, bytes);
+}
+#endif
 
 void t3_adx_music_service(void) {
     sat_audio_stream_stats_t stream = {0};

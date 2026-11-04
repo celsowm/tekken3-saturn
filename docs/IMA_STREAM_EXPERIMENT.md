@@ -158,6 +158,8 @@ while the fight runs.
 
 ## ADX in the fight: not integrated, the fight program has no room
 
+(Historical. The fight now links and plays the track from a resident arena: see "ADX plays in the fight" at the end.)
+
 Measured on the built `tekken3_saturn.elf` (the fight program; `g_io` is the menu's buffer and does not exist here).
 
 | Region | Used | Limit | Free |
@@ -304,3 +306,43 @@ file reader: 0 underruns, 0 rejected writes, min fill 2,048, 323 segments, consu
 
 What is left in WRAM-H is the player: 17.2 KB of code is a measured floor for this architecture, with the pieces
 above; no more is dead for ADX from the disc. It is not recovered from the fight's data by this change.
+
+## ADX plays in the fight (resident arena, Ymir)
+
+The VDP1 command banks moved to VRAM (78.7 KB of WRAM-H back), and the player now has its own arena in `.bss`
+(`T3_ADX_MUSIC_RESIDENT`, `t3_adx_music_start_resident`), so every pairing gets the stream and the fighter-pack
+arena tail is gone. The arena is 75,272 B: ring 12,288 frames per channel (the value measured clean in the menu
+above) and the disc scheduler on 4-sector segments in caller storage (lib-saturn `sat_disc_stream_init_segments`;
+the default two 16 KiB buffers would not fit). The fight with the player links with **3,308 B of WRAM-H** above the
+16 KB stack reserve (`.bss` end 0x060fb314).
+
+Attract fight, Ymir with cache emulation, 3,600 fields from boot (`scripts/ymir_fight.py --symbol g_t3_adx_music`);
+the same AI pad hash 0x640e32c0 in every row, so it is the same fight. Images per second over the 1,360 observed
+fields; the control is the same build with `T3_FIGHT_ADX_MUSIC=OFF`.
+
+| Build | Images/s | Underruns | Min fill | Track played |
+| --- | --- | --- | --- | --- |
+| Control, no stream (CD-DA) | 31.81 | | | |
+| 44.1 kHz, first link | 14.13 | 113 | 1,344 | 12.6 s |
+| 44.1 kHz, decoder without `__ashiftrt_r4_12` | 16.63 | 116 | 1,344 | 15.0 s |
+| 44.1 kHz, decode into the staging halves | 18.71 | 121 | 1,344 | 16.9 s |
+| 44.1 kHz, music serviced while the Master waits for the Slave | 24.26 | 12 | 1,344 | 21.5 s |
+| 22.05 kHz track, same build | 27.11 | 0 | 2,048 | 22.5 s |
+
+What the profile showed (`saturn_probe.py --debug-profile`, 300 fight fields, `saturn_pc_profile.py functions`):
+
+- The track is 44.1 kHz stereo (`ima_meta.h`), 88,200 samples a second, not 22,050 as section C of
+  `MEMORY_LIFETIMES.md` assumed. In the first build ADX decode was 14.2% of the Master, delivery 5.3%, CD Block
+  transfer 2.5%, at 4,670 cycles per stereo block: `disc_feed.cpp` is built `-Os` and inlined the header decoder,
+  and GCC called `__ashiftrt_r4_12` for every sample's floor shift. The lib-saturn decoder now uses a biased
+  logical shift (about 2,900 cycles per block; output unchanged against an exact reference).
+- The Master spent about a quarter of its cycles waiting for the Slave (`master_receive`, `frt::counter`). The
+  fight now marks the music service due and runs it in `simulation_join` when the Slave is still busy, else after
+  the deferred join: once per frame either way. After that the Master's wait is about 1% and it is fully loaded;
+  decode is then 17.2% of it at 44.1 kHz.
+- At 44.1 kHz an image takes more than two fields; a slow image delays the SCSP refill, which is what the
+  remaining 12 underruns are (the ring's minimum fill stays 1,344).
+
+The 22.05 kHz file (`encode_adx_stream.py --rate 22050`, 5,111,824 B) halves the decode and the drive bandwidth
+but costs quality: codec SNR 29.0 dB against 35.8 dB at 44.1 kHz, and nothing above 11 kHz. Neither rate reaches the
+control's 31.8 images/s yet. Emulator measurements, not hardware; one pairing; no Mednafen recording was made.

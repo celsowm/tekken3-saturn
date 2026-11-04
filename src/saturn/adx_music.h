@@ -17,20 +17,31 @@ typedef struct t3_adx_music_diag {
 
 extern volatile t3_adx_music_diag_t g_t3_adx_music;
 
-/* The ring the player keeps per channel, in frames (LibSaturn needs 12288 at least; Ymir: 12288 gave 106 underruns, 16384 none). */
+/* The ring the player keeps per channel, in frames (LibSaturn needs 12288 at least; Ymir menu, 90 s: 0 underruns at
+ * 12288 and at 16384 once the scheduler keeps a waiting ADX segment, docs/IMA_STREAM_EXPERIMENT.md). */
 #ifndef T3_ADX_MUSIC_RING_FRAMES
-#define T3_ADX_MUSIC_RING_FRAMES 16384u
+#define T3_ADX_MUSIC_RING_FRAMES 12288u
+#endif
+/* Sectors per disc read (LibSaturn's default is 8, two 16 KiB buffers). An ADX segment waits compressed in its
+ * buffer, so a smaller one costs drive commands, not ring margin: 4 sectors are 0.33 s of the track. */
+#ifndef T3_ADX_MUSIC_SEGMENT_SECTORS
+#define T3_ADX_MUSIC_SEGMENT_SECTORS 4u
 #endif
 
-/* Bytes of memory the player needs for as long as the track plays: its state, the disc scheduler and the music
- * workspace. The caller lends them (4-byte aligned) to t3_adx_music_start(); the program carries no resident buffer. */
+/* Bytes of memory the player needs for as long as the track plays: its state, the disc scheduler, its segment
+ * buffers and the music workspace. The caller lends them (4-byte aligned) to t3_adx_music_start(). */
 uint32_t t3_adx_music_arena_bytes(void);
 
 /* Registers ADXMUSIC.BIN (`frames` frames at `rate` Hz, stereo, `bytes` long) and starts it. Needs sat_audio_init. */
 sat_result_t t3_adx_music_start(sat_cdfs_volume_t* volume, sat_cd_block_t* block, void* arena,
                                 uint32_t arena_bytes, uint32_t frames, uint32_t rate, uint32_t bytes);
-/* The caller did not start the track: step 0x100|why (1 arena too small, 2 disc volume, 3 CD block), status = the bytes
- * the arena had (why 1) or the error code. Lets a measured fight say why it fell back to CD-DA. */
+#if defined(T3_ADX_MUSIC_RESIDENT)
+/* As t3_adx_music_start, in the player's own arena in .bss: the fight plays the track whatever the pairing. */
+sat_result_t t3_adx_music_start_resident(sat_cdfs_volume_t* volume, sat_cd_block_t* block, uint32_t frames,
+                                         uint32_t rate, uint32_t bytes);
+#endif
+/* The caller did not start the track: step 0x100|why (2 disc volume, 3 CD block), status = the error code. Lets a
+ * measured fight say why it fell back to CD-DA. */
 void t3_adx_music_skipped(uint32_t why, uint32_t value);
 void t3_adx_music_service(void);
 /* Stops the track, detaches the scheduler (waits for a segment in flight) and releases the arena. */

@@ -554,10 +554,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(T3_LOCAL_SFX "" CACHE PATH "Private USA import (SLUS_004.02, raw/072, 073, 080; Law ARC via T3_LOCAL_ACTOR1_ARC): adds the original combat sounds and voices")
     set(T3_STAGE_CDDA_WAV "" CACHE FILEPATH "Private stage music WAV for the mixed-mode disc")
     # Experimental ADX stream (docs/IMA_STREAM_EXPERIMENT.md): the output of scripts/encode_adx_stream.py (ima.bin,
-    # ima_meta.h; private, never in Git). The fight plays it instead of CD-DA when the arena tail can lend the player
-    # its memory; the menu opens it from the title with L+R+A held and START.
+    # ima_meta.h; private, never in Git). The fight plays it instead of CD-DA, from the player's own arena in .bss;
+    # the menu opens it from the title with L+R+A held and START.
     set(T3_ADX_MUSIC_DIR "" CACHE PATH "Encoded ADX track for the fight and the menu's stream test (private)")
-    option(T3_FIGHT_ADX_MUSIC "Play the ADX stream in the fight (needs T3_ADX_MUSIC_DIR; the fight program does not link with it, see docs/IMA_STREAM_EXPERIMENT.md)" OFF)
+    option(T3_FIGHT_ADX_MUSIC "Play the ADX stream in the fight (needs T3_ADX_MUSIC_DIR; see docs/IMA_STREAM_EXPERIMENT.md)" OFF)
     if(T3_FIGHT_ADX_MUSIC AND NOT T3_ADX_MUSIC_DIR)
         message(FATAL_ERROR "T3_FIGHT_ADX_MUSIC needs T3_ADX_MUSIC_DIR")
     endif()
@@ -565,7 +565,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         get_filename_component(_t3_adx_dir "${T3_ADX_MUSIC_DIR}" ABSOLUTE)
         target_sources(tekken3_saturn PRIVATE src/saturn/adx_music.c)
         target_include_directories(tekken3_saturn PRIVATE "${_t3_adx_dir}")
-        target_compile_definitions(tekken3_saturn PRIVATE T3_ADX_MUSIC=1)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_ADX_MUSIC=1 T3_ADX_MUSIC_RESIDENT=1)
     endif()
     option(T3_STAGE_CDDA "Play the stage theme from audio track 2 after boot loading" OFF)
     if(T3_STAGE_CDDA)
