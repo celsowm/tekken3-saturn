@@ -145,11 +145,12 @@ static void walk_back(const t3_motion_stream_t* s,unsigned ch,int32_t scale,walk
 /* PS1 keyed-channel B-spline. Weight tables are taken from a PRIVATE
  * executable or a synthetic fixture supplied by the caller. This is
  * intentionally the integer/table algorithm, not approximate catmull-rom.
- * `w` is where the knot walk stopped for this frame. */
-static int evaluate(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
+ * `w` is where the knot walk stopped for this frame. `frames` is the
+ * stream's own count: a pose stream's byte, or a camera segment's up to 1023. */
+static int evaluate(const t3_motion_stream_t* s, unsigned ch, unsigned frame, unsigned frames,
                     const t3_motion_tables_t* t, int32_t scale, const walk_t* w,
                     int32_t* result) {
-    const unsigned frames=s->frames,k=s->counts[ch],prev=w->prev,cur=w->cur;
+    const unsigned k=s->counts[ch],prev=w->prev,cur=w->cur;
     const int32_t p0=w->p0,p1=w->p1,p2=w->p2;
     int32_t p3=p2;
     unsigned span,local;
@@ -201,12 +202,12 @@ static int evaluate(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
     *result=wrap32((uint32_t)floor_shift(wrap32(weighted),16u)+(uint32_t)p1);
     return 1;
 }
-static int spline(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
+static int spline(const t3_motion_stream_t* s, unsigned ch, unsigned frame, unsigned frames,
                   const t3_motion_tables_t* t, int32_t scale, int32_t* result) {
     walk_t w;
     walk_start(s,ch,scale,&w);
-    while(!walk_stops(&w,s->frames,s->counts[ch],frame))walk_forward(s,ch,scale,&w);
-    return evaluate(s,ch,frame,t,scale,&w,result);
+    while(!walk_stops(&w,frames,s->counts[ch],frame))walk_forward(s,ch,scale,&w);
+    return evaluate(s,ch,frame,frames,t,scale,&w,result);
 }
 /* spline resuming from the knot this channel's last sample stopped at. The
  * walk stops where it would from the first knot: stepping back while the
@@ -220,7 +221,7 @@ static int spline_from(const t3_motion_stream_t* s, unsigned ch, unsigned frame,
     while(w.next>2u && frame<=w.prev)walk_back(s,ch,scale,&w);
     while(!walk_stops(&w,s->frames,s->counts[ch],frame))walk_forward(s,ch,scale,&w);
     *knot=(t3_motion_knot_t){w.p0,w.p1,w.p2,(uint16_t)w.prev,(uint16_t)w.cur,(uint8_t)w.next};
-    return evaluate(s,ch,frame,t,scale,&w,result);
+    return evaluate(s,ch,frame,s->frames,t,scale,&w,result);
 }
 static int sample_one(const t3_motion_stream_t* s, unsigned ch,
                       unsigned frame, const t3_motion_tables_t* t,
@@ -239,7 +240,7 @@ static int sample_one(const t3_motion_stream_t* s, unsigned ch,
         v=(int32_t)(uint16_t)get_key(s,ch,0)+delta;
     } else if(k==n)v=get_key(s,ch,f);
     else {
-        rc=knot?spline_from(s,ch,f,t,ch<15u?2:32,knot,&v):spline(s,ch,f,t,ch<15u?2:32,&v);
+        rc=knot?spline_from(s,ch,f,t,ch<15u?2:32,knot,&v):spline(s,ch,f,n,t,ch<15u?2:32,&v);
         if(rc!=1)return rc;
     }
     *output=signed16((uint16_t)(((uint32_t)v*2u)&0xffffu));
@@ -250,11 +251,12 @@ int t3_motion_spline_words(const uint8_t* keys,size_t bytes,unsigned count,
                            int16_t* out) {
     t3_motion_stream_t stream={0};
     int32_t value;
-    if(!keys || !out || count<3u || count>255u || frames<2u || frames>255u ||
+    /* A camera stream counts frames in 10 bits; some throw streams run past 255. */
+    if(!keys || !out || count<3u || count>255u || frames<2u || frames>1023u ||
        frame>=frames || bytes<count*2u)return -1;
-    stream.data=keys;stream.length=bytes;stream.frames=(uint8_t)frames;
+    stream.data=keys;stream.length=bytes;
     stream.counts[0]=(uint8_t)count;
-    if(spline(&stream,0,frame,tables,16,&value)!=1)return 0;
+    if(spline(&stream,0,frame,frames,tables,16,&value)!=1)return 0;
     *out=signed16((uint16_t)value);
     return 1;
 }

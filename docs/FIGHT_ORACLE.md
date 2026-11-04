@@ -201,7 +201,9 @@ streams. The 17,594 stream bytes are loaded from `CAMERA.BIN` into Low Work RAM
 and checked with FNV-1a before play. `scripts/verify_camera_streams.py` compiles
 the production C decoder on the host and compares every sample against the
 pinned original-code Python port: **66 streams, 9,600 frames, seven channels
-per frame, all equal**. The build reserves 576 cold face records and moves
+per frame, all equal** for these two banks. Over every roster bank it is 498
+streams and 84,350 frames, all equal, once splines longer than 255 frames
+decode (King, Kuma, Ogre and True Ogre have them; 2026-11-04). The build reserves 576 cold face records and moves
 small camera and bank descriptors to Low Work RAM to fit stock hardware.
 
 The uninstrumented `build/t30-law` release image passed a 5,000-field Ymir

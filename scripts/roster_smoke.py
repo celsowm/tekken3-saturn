@@ -5,15 +5,20 @@ Reconfigures the build in place, so no variant builds pile up (AGENTS.md disk
 budget). Each pair leaves two screenshots and a JSON summary under --out; no
 recordings. The default pairs start every fighter of the roster at least once
 on each side, then the mirror match and the worst cases for sound and memory.
+--music adds the ADX stream's counters (g_t3_adx_music) and the image rate;
+the build is set back to no boot pair at the end.
 """
 import argparse
 import json
+import struct
 import subprocess
 from pathlib import Path
 
 import fighter_roster
 
 WORST = ((5, 14), (14, 5), (3, 8), (0, 0), (15, 15), (20, 20))
+MUSIC_FIELDS = ('magic', 'status', 'step', 'playing', 'underruns', 'rejected_writes', 'min_fill', 'consumed',
+                'segments', 'waits', 'music_loops')
 
 
 def default_pairs():
@@ -47,12 +52,24 @@ def run_pair(args, first, second):
                '--build', str(args.build), '--disc', str(args.build / 'disc/music.cue'),
                '--libsaturn', str(args.libsaturn), '--bios', str(args.bios), '--nm', args.nm,
                '--out', str(out), '--frames', str(args.frames), '--timeout', str(args.timeout),
-               '--screenshot-frame', str(args.frames // 2), '--port2', args.port2]
+               '--screenshot-frame', str(args.frames // 2), '--port2', args.port2, '--sh2-cache', args.sh2_cache]
+    if args.music:
+        command += ['--dump-symbol', 'g_t3_adx_music']
     done = subprocess.run(command, capture_output=True, text=True)
     if done.returncode:
         result = dict(pair=[first, second], ok=False, error=done.stderr.strip().splitlines()[-1])
     else:
-        result = dict(pair=[first, second], ok=True, **summary(json.loads(done.stdout)))
+        report = json.loads(done.stdout)
+        result = dict(pair=[first, second], ok=True, **summary(report))
+        result['images_per_second'] = round(report['state']['submitted_frames'] * 60 /
+                                            max(report['state']['observed_fields'], 1), 2)
+        if args.music:
+            dumps = json.loads((out / 'symbol-dumps.json').read_text())
+            entry = dumps.get('g_t3_adx_music') or dumps['_g_t3_adx_music']
+            data = (out / entry['file']).read_bytes()
+            music = dict(zip(MUSIC_FIELDS, struct.unpack(f'>{len(MUSIC_FIELDS)}I', data[:4 * len(MUSIC_FIELDS)])))
+            result['music'] = music
+            result['ok'] = music['playing'] == 1 and music['step'] == 0 and music['underruns'] == 0
     # Only the pictures and the summary stay; the raw dumps are large and repeat.
     keep = (f'frame-{args.frames // 2}.png', 'screen.png', 'native-panic.json')
     for path in out.iterdir():
@@ -73,16 +90,21 @@ def main():
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--port2', choices=('pad', 'none'), default='pad',
                         help='none lets the CPU play P2')
+    parser.add_argument('--sh2-cache', choices=('on', 'off'), default='off')
+    parser.add_argument('--music', action='store_true', help='report the ADX stream; a pair fails on an underrun')
     parser.add_argument('--resume', action='store_true', help='keep pairs that already have a result')
     parser.add_argument('--pair', type=int, nargs=2, action='append', help='instead of the default pairs')
     args = parser.parse_args()
     args.build, args.out = args.build.resolve(), args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
     failed = 0
-    for first, second in args.pair or default_pairs():
-        result = run_pair(args, first, second)
-        failed += not result['ok']
-        print(json.dumps(result), flush=True)
+    try:
+        for first, second in args.pair or default_pairs():
+            result = run_pair(args, first, second)
+            failed += not result['ok']
+            print(json.dumps(result), flush=True)
+    finally:
+        subprocess.run(['cmake', '.', '-DT3_BOOT_FIGHTERS='], cwd=args.build, check=True, stdout=subprocess.DEVNULL)
     raise SystemExit(1 if failed else 0)
 
 

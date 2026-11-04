@@ -244,12 +244,28 @@ static void knot_cursor(void) {
     printf("knot cursor: %u of %u samples succeeded and matched\n",sampled,compared);
     assert(sampled*10u>=compared*9u);
 }
+/* Camera section-8 splines count frames in 10 bits: some throw cameras run
+ * past 255 frames (339 in King's bank), and every frame must decode. */
+static void long_camera_spline(void) {
+    static uint8_t table[T3_PSX_SPLINE_TABLE_BYTES];
+    const t3_motion_tables_t t={table,sizeof(table)};
+    uint8_t keys[2u*12u];
+    int16_t out;
+    for(unsigned i=0;i<sizeof(table);++i)table[i]=(uint8_t)rnd(256u);
+    /* Ten 32-frame knots and one of 18 after the first key: 339 frames. */
+    put16(keys,100u);
+    for(unsigned k=1;k<12u;++k)put16(keys+2u*k,(3u<<5)|(k<11u?31u:17u));
+    for(unsigned f=0;f<339u;++f)assert(t3_motion_spline_words(keys,sizeof(keys),12u,f,339u,&t,&out)==1);
+    assert(t3_motion_spline_words(keys,sizeof(keys),12u,0u,1024u,&t,&out)==-1);
+    assert(t3_motion_spline_words(keys,sizeof(keys),12u,339u,339u,&t,&out)==-1);
+}
 int main(void) {
     open_and_sample();
     malformed_streams();
     cache_ownership();
     decoded_sample_cache();
     knot_cursor();
+    long_camera_spline();
     puts("PS1 49-channel motion layout and sparse spline sample: passed");
     return 0;
 }

@@ -47,7 +47,8 @@ def main():
                         '-I' + str(ROOT / 'src/game'),
                         '-I' + str(args.saturn_include),
                         str(ROOT / 'src/game/psx_camera.c'),
-                        str(ROOT / 'src/game/psx_motion.c')], check=True)
+                        str(ROOT / 'src/game/psx_motion.c'),
+                        str(ROOT / 'src/game/psx_pose.c')], check=True)   # the camera's matrix product
         decode = ctypes.CDLL(str(library)).t3_psx_camera_decode_compact
         decode.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
                            ctypes.c_uint, ctypes.POINTER(Spline),

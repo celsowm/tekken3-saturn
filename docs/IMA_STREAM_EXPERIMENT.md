@@ -387,3 +387,30 @@ decoded them after the deferred join, and the Master wrote them to the rings bef
 start would otherwise spin on a task that never started). Each batch took about 1,360 FRT ticks on the Slave and
 the Master still waited about 855 of them: the Slave's idle share in the profile is mostly spinning inside its own
 tasks, not free time, and the decode delayed its next ticks. Both the library API and the game side were removed.
+
+### Roster smoke with the stream (Ymir)
+
+`scripts/roster_smoke.py --music --sh2-cache on --port2 none --frames 3600` rebuilds `build/adx-fight` for each
+named pair (`T3_BOOT_FIGHTERS`, menus skipped, home stage of P2) and reads `g_t3_adx_music`; a pair fails on an
+underrun or a player error. Images per second here count from boot without menus, so they are higher than the
+attract numbers above and only compare within this table.
+
+| Pair | Stage | Images/s | Underruns | Min fill |
+| --- | --- | --- | --- | --- |
+| 05-14 | 6 | 35.56 | 0 | 2,048 |
+| 03-08 | 10 | 36.26 | 0 | 2,048 |
+| 09-02 | 5 | 34.31 | 0 | 2,048 |
+| 17-05 | 9 | 37.27 | 0 | 2,048 |
+| 12-19 | 14 | 33.47 | 0 | 2,048 |
+| 06-10 | 12 | 36.02 | 0 | 2,048 |
+| 15-15 | 2 | 42.07 (44.37 without the stream) | 0 | 2,048 |
+| 20-20 | 6 | 37.19 | 0 | 2,048 |
+| 14-03 | 11 | 34.35 | 0 | 2,048 |
+| 11-14 | 6 | 35.07 | 0 | 2,048 |
+| 03-11 | 1 | 34.52 | 0 | 2,048 |
+
+20-20 first panicked at tick 2,986 (`simulation_join`, `SAT_ERR_INVALID_ARG`), with or without the stream: a
+True Ogre throw camera (stream 0x4EE, 339 frames) reached `t3_motion_spline_words`, which refused splines over 255
+frames. Camera streams count frames in 10 bits; King (18 streams), Kuma, Ogre and True Ogre have such streams.
+The spline now takes the stream's own frame count, and `scripts/verify_camera_streams.py` passes over every bank of
+the roster (498 streams, 84,350 frames, equal to the original-code port).
