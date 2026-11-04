@@ -414,3 +414,11 @@ True Ogre throw camera (stream 0x4EE, 339 frames) reached `t3_motion_spline_word
 frames. Camera streams count frames in 10 bits; King (18 streams), Kuma, Ogre and True Ogre have such streams.
 The spline now takes the stream's own frame count, and `scripts/verify_camera_streams.py` passes over every bank of
 the roster (498 streams, 84,350 frames, equal to the original-code port).
+
+### Not the default
+
+`T3_FIGHT_ADX_MUSIC` stays OFF. The stream carries one arcade-rendered theme (the C352 oracle render), so with it
+on every pairing hears that theme instead of its own stage's CD-DA track, and the fight gives up 1.3 images/s
+(attract, 30.53 against 31.8) to 2.3 (15-15 above). Encoding the other themes from the CD-DA rip would only repeat
+what CD-DA plays at no CPU cost. The stream is worth the default once there is a rendered track per theme, or when
+the fight needs the drive while music plays.
