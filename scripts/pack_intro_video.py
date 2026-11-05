@@ -29,11 +29,12 @@ SECTORS_PER_SECOND = 150
 
 
 def satmovie_module(libsaturn=None):
-    """LibSaturn's converter: from --libsaturn, the installed SDK, or the sibling checkout."""
+    """LibSaturn's converter: from --libsaturn, the installed SDK, the sibling or CI checkout."""
     candidates = [Path(libsaturn) / 'tools'] if libsaturn else []
     if os.environ.get('LIBSATURN_PREFIX'):
         candidates.append(Path(os.environ['LIBSATURN_PREFIX']) / 'share/libsaturn/tools')
-    candidates += [ROOT.parent / 'lib-saturn/tools', ROOT.parent / 'saturn-prefix/share/libsaturn/tools']
+    candidates += [ROOT.parent / 'lib-saturn/tools', ROOT.parent / 'saturn-prefix/share/libsaturn/tools',
+                   ROOT / '.external/libsaturn/tools']
     for folder in candidates:
         if (folder / 'satmovie.py').exists():
             sys.path.insert(0, str(folder))
