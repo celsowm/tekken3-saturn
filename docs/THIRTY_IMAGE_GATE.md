@@ -575,3 +575,66 @@ hashes (their `run.mov` files were deleted after inspection);
 current candidate is `build/flush-trusted` (`d60c58e0…`) and its control
 `build/flush-control` (`8eaab95b…`). The earlier `build/t30-face` baseline
 predates the promoted default and is superseded.
+
+## Shared screen projection (2026-11-05)
+
+Measured on the full-roster attract fight (Kuma against Jin, both CPU,
+`scripts/mednafen_fight.py --seconds 280`, AI pad hash `0xb99cc280` in every
+run). The silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) splits each image
+by its tick count, in FRT/128 (3,728 per field, 7,465 for two):
+
+| Image | Count | Master busy | Master waits for the Slave |
+|---|---:|---:|---:|
+| 2 ticks | 1,061 | about 5,900 | 1,210 |
+| 3+ ticks | 1,012 | about 6,850 | 4,614 |
+
+The Slave sets the rate: it skins actor 1 and then runs every deferred tick,
+while the Master idles at the join. With P1 neutral and only P2 on the CPU,
+232 of 407 images took 7,465 to 8,500: they missed two fields by less than
+14%. A late image then leaves three ticks for the next one, so the fight
+stays in the slower regime for a while (segments swing between about 28 and
+21 images/s).
+
+`T3_MASTER_SKIN_PERCENT` gives the Master a share of actor 1's vertices,
+which it projects right after starting the worker. Since skinning straight
+to screen it had been refused at compile time. It now works with it:
+
+- The Master projects its share with its own clip joints (actor 0's slot,
+  rewritten next) and never touches `pre_projected`.
+- The Master submits actor 1's faces (`T3_MASTER_WORKER_FACES`), so the
+  worker never reads the Master's share and goes straight on to its ticks.
+- If either CPU's projection refuses, the Master skins the whole actor to
+  world after the join (`settle_lead`), as one CPU's refusal already did.
+- An image on the original projection (live effects) keeps the whole actor
+  on the Slave.
+
+Wait-probe builds, same fight:
+
+| Master share | Marked images/s | Worst segment |
+|---|---:|---:|
+| 0% | 24.65 | 21.30 |
+| 35% | 25.01 | 22.36 |
+| 50% | 25.38 | 23.20 |
+| 65% | 25.61 | 23.86 |
+| 80% | 25.54 | 23.90 |
+
+Release A/B, same tree without probes:
+
+| Build | Marked images/s | Worst segment | Images in 280 s |
+|---|---:|---:|---:|
+| Control, 0% | 24.75 | 21.46 | 2,296 |
+| **65%** | **25.57** | **23.80** | 2,401 |
+
+Two segments are a little lower with the share (28.6 to 27.5 and 24.9 to
+24.52); the marked rate and the worst segment, which the rule judges, are
+well above the noise of about ±0.04.
+
+Frozen pixels: `T3_RENDER_BENCH_TICK` at 3000 and at 2000, screenshots of
+the 0% and 65% builds are byte-identical (SHA-1 `93d2595b…` and
+`5d69df64…`). At tick 2000 only 31 to 33 images of the run used the original
+projection, so the frozen image went through the shared path.
+
+The default is now 65 with screen skinning and Master-submitted worker faces,
+and 0 with `T3_FIGHTER_HAND_VARIANTS`, which rewrites actor 1's skin on the
+Slave. Existing build caches keep their value; reconfigure with
+`-UT3_MASTER_SKIN_PERCENT` to take the default.

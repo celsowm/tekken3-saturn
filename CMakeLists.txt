@@ -819,6 +819,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_MASTER_WORKER_FACES=1)
     endif()
+    # The Master projects this share of actor 1 while the Slave projects the
+    # rest, so the Slave reaches its deferred ticks sooner (docs/THIRTY_IMAGE_GATE.md,
+    # "Shared screen projection"). Hand variants rewrite actor 1's skin on the Slave.
+    if(T3_SKIN_TO_SCREEN AND T3_MASTER_WORKER_FACES AND NOT T3_FIGHTER_HAND_VARIANTS)
+        set(_t3_master_skin_default 65)
+    else()
+        set(_t3_master_skin_default 0)
+    endif()
+    set(T3_MASTER_SKIN_PERCENT "${_t3_master_skin_default}" CACHE STRING "Percent of actor 1's vertices the Master skins (0 to 90)")
+    if(NOT T3_MASTER_SKIN_PERCENT MATCHES "^[0-9]+$" OR T3_MASTER_SKIN_PERCENT GREATER 90)
+        message(FATAL_ERROR "T3_MASTER_SKIN_PERCENT must be between 0 and 90")
+    endif()
+    if(T3_MASTER_SKIN_PERCENT GREATER 0 AND T3_FIGHTER_HAND_VARIANTS)
+        message(FATAL_ERROR "T3_FIGHTER_HAND_VARIANTS needs T3_MASTER_SKIN_PERCENT=0")
+    endif()
+    target_compile_definitions(tekken3_saturn PRIVATE T3_MASTER_SKIN_PERCENT=${T3_MASTER_SKIN_PERCENT}u)
     if(T3_FUSED_ACTOR_PREPARATION AND T3_VDP2_FLOOR AND
        T3_LOCAL_CHARACTER_ARC AND T3_LOCAL_DIVMOT)
         set(_t3_branch_default ON)

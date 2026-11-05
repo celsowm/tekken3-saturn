@@ -1,6 +1,12 @@
 # Harness-led Saturn performance work
 
-Latest: [trusted scene flush](THIRTY_IMAGE_GATE.md#trusted-scene-flush-2026-10-24).
+Latest: [shared screen projection](THIRTY_IMAGE_GATE.md#shared-screen-projection-2026-11-05).
+The Master projects 65% of actor 1 while the Slave projects the rest and
+starts its ticks sooner. On the full-roster attract fight (280 s Mednafen)
+the marked rate goes from 24.75 to **25.57 images/s** and the worst segment
+from 21.46 to **23.80**, with identical frozen pixels and the same AI pad hash.
+
+Previous: [trusted scene flush](THIRTY_IMAGE_GATE.md#trusted-scene-flush-2026-10-24).
 The flush no longer revalidates per-face texture residency; the game's assets
 are uploaded once and the binding is immutable. A matched Mednafen A/B gives
 **30.94 versus 30.11 images/s** over the same 18 s round-1 window (+2.8%).

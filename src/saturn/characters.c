@@ -757,8 +757,9 @@ typedef struct {
      * complete; the worker's task then continues with other work. */
     volatile uint32_t worker_ready;
     /* Actor 1's leading vertices, which the Master skins after starting the
-     * worker. The worker skins the rest, then waits for lead_ready (through
-     * the uncached alias) before projecting. */
+     * worker. Skinning to world, the worker skins the rest, then waits for
+     * lead_ready (through the uncached alias) before projecting; skinning to
+     * screen, it projects the rest and goes straight on to its ticks. */
     uint16_t lead;
     volatile uint32_t lead_ready;
     sat_result_t lead_result;
@@ -1065,8 +1066,8 @@ uint32_t g_t3_phase_sums[sizeof(t3_character_phase_profile_t)/sizeof(uint16_t)],
 #endif
 
 #if defined(T3_SKIN_TO_SCREEN)
-#if T3_MASTER_SKIN_PERCENT
-#error "T3_SKIN_TO_SCREEN projects each actor on one CPU; keep T3_MASTER_SKIN_PERCENT at 0"
+#if T3_MASTER_SKIN_PERCENT && !defined(T3_MASTER_WORKER_FACES)
+#error "a Master share of actor 1's screen projection needs T3_MASTER_WORKER_FACES (the Master submits its faces)"
 #endif
 #if defined(T3_COMPILED_RENDERER)
 #error "T3_SKIN_TO_SCREEN skins through the SDK; the compiled renderer writes world vertices"
@@ -1313,6 +1314,22 @@ static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* a
         end-first,actor->mesh.vertices,actor->mesh.vertex_cap,&placement);
 }
 
+#if defined(T3_SKIN_TO_SCREEN)
+/* The Master's share of actor 1: vertices [0, end) straight to screen, while
+ * the worker projects the rest. Its clip joints go in actor 0's slot, which
+ * actor 0 rewrites next. It never clears pre_projected, which the worker owns:
+ * a refusal on either CPU is settled after the join (settle_lead). */
+static sat_result_t project_lead(const fused_actor_context_t* context,actor_t* actor,uint32_t end) {
+    sat_skin_placement_t placement;
+    sat_mat4_t* clip=g_clip_joints[0];
+    if(!t3_psx_skin_placement(&placement,context->center_x,context->center_z) ||
+       sat_skin_clip_joints(actor->joints,T3_JOINT_COUNT,&placement,&g_geometry_batch.view_proj,clip)!=SAT_OK)
+        return SAT_ERR_UNSUPPORTED;
+    return sat_skin_project_range(&actor->asset->skin,clip,T3_JOINT_COUNT,0,end,
+        (int16_t)g_geometry_batch.width,(int16_t)g_geometry_batch.height,actor->projected,T3_VERTEX_COUNT);
+}
+#endif
+
 /* Off the compiled fast path a pre-projected actor is refused with nothing
  * appended; skin it to world and let the caller submit again. */
 static int skin_to_world_after(sat_result_t st,const fused_actor_context_t* context,actor_t* actor) {
@@ -1361,6 +1378,9 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
             if(shared->relight==i)t3_fighter_light_relight(i,shared->original_joints[i]);
         }
 #endif
+#if !defined(T3_SKIN_TO_SCREEN)
+        /* Screen projection: the Master submits actor 1's faces, so the
+         * worker never reads the Master's share (see settle_lead). */
         if(st==SAT_OK && lead) {
             const fused_actor_context_t* shared=sat_parallel_uncached_address(context);
             for(uint32_t spins=0;!shared->lead_ready;)
@@ -1369,6 +1389,7 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
             if(st==SAT_OK)st=sat_parallel_cache_sync_range(actor->mesh.vertices,
                 lead*sizeof(*actor->mesh.vertices));
         }
+#endif
 #if defined(T3_NATIVE_PHASE_PROBE)
         const uint16_t placement_started=sat_time_frc();
 #endif
@@ -1452,26 +1473,56 @@ void t3_characters_prepare_worker(void) {
 #if defined(T3_FIGHTER_HAND_VARIANTS) && T3_MASTER_SKIN_PERCENT
 #error "hand variants rewrite actor 1's skin on the Slave alone: no Master share"
 #endif
+#if defined(T3_SKIN_TO_SCREEN)
+/* Both shares must be on screen; otherwise the whole actor goes to world, as
+ * a refusal on one CPU does (skin_to_world_after). */
+static sat_result_t settle_lead(actor_t* worker,sat_result_t lead_result) {
+    sat_result_t st=sat_parallel_cache_sync_range(&worker->instance,sizeof(worker->instance));
+    if(st!=SAT_OK || (lead_result==SAT_OK && worker->instance.pre_projected))return st;
+    worker->instance.pre_projected=0u;
+    ++g_t3_skin_screen_fallbacks;
+    return deform_actor(&g_fused_actors,worker,0,worker->vertex_count);
+}
+#endif
+
 static sat_result_t prepare_with_worker(void) {
     actor_t* worker=&g_actors[1];
 #if defined(T3_COMPILED_RENDERER)
     const uint32_t lead=worker->compiled_active?0u:worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
+#elif defined(T3_SKIN_TO_SCREEN)
+    /* The original projection builds the whole mesh on one CPU. */
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+    const int whole=worker->original_active || !worker->instance.pre_projected;
+#else
+    const int whole=!worker->instance.pre_projected;
+#endif
+    const uint32_t lead=whole?0u:worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
 #else
     const uint32_t lead=worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
 #endif
     g_fused_actors.lead=(uint16_t)lead;
-    const sat_result_t st=g_worker_start();
+    sat_result_t st=g_worker_start();
     if(st!=SAT_OK)return st;
+    sat_result_t lead_result=SAT_OK;
     if(lead) {
+#if defined(T3_SKIN_TO_SCREEN)
+        lead_result=project_lead(&g_fused_actors,worker,lead);
+#else
         fused_actor_context_t* shared=sat_parallel_uncached_address(&g_fused_actors);
         shared->lead_result=deform_actor(&g_fused_actors,worker,0,lead);
         shared->lead_ready=1u;
+#endif
     }
     prepare_actor_range(&g_fused_actors,0,1);
     const fused_actor_context_t* shared=sat_parallel_uncached_address(&g_fused_actors);
     for(uint32_t spins=0;!shared->worker_ready;)
         if(++spins>=4000000u)return SAT_ERR_TIMEOUT;
-    return sat_parallel_cache_sync_range(&g_actor_geometry[1],sizeof(g_actor_geometry[1]));
+    st=sat_parallel_cache_sync_range(&g_actor_geometry[1],sizeof(g_actor_geometry[1]));
+#if defined(T3_SKIN_TO_SCREEN)
+    if(st==SAT_OK && lead && shared->result[1]==SAT_OK)st=settle_lead(worker,lead_result);
+#endif
+    (void)lead_result;
+    return st;
 }
 
 static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
