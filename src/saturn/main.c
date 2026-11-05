@@ -778,13 +778,14 @@ static void title_screen(void) {
 }
 #endif
 
+/* Highest VDP1 commands and flushed scene faces in any frame since boot: sizes the program's VDP1 tables from a measured fight. */
+uint32_t g_t3_vdp1_peak[2];
+
 #if defined(T3_FIGHTER_PACKS)
 /* Title and select run before anything is loaded. The fight restarts this same
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
 
-/* Highest VDP1 commands and flushed scene faces in any frame since boot: sizes the program's VDP1 tables from a measured fight. */
-uint32_t g_t3_vdp1_peak[2];
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
