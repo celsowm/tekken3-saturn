@@ -7,29 +7,40 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.2 - SEGA SATURN FAN PORT (DEMO)
+README = '''TEKKEN 3 V0.3 - SEGA SATURN FAN PORT (DEMO)
 
 HOW TO PLAY
 Open music.cue in a Saturn emulator (Mednafen, Ymir...) with a compatible Saturn
 BIOS, or use a Saturn disc loader. Keep music.bin next to music.cue. A BIOS and
 emulator are not included.
 
-WHAT IS NEW IN V0.2
-- Boot intro: the LibSaturn logo movie, then the Tekken 3 opening movie. The
-  movies are decoded in software by the Saturn's two SH-2 CPUs. START skips them.
-- The pre-fight VS screen, shown while the fight loads, with the version and a
-  LibSaturn credit in its bottom line.
-- No black gap between the character select and the VS screen.
+WHAT IS NEW IN V0.3: A REAL ARCADE MODE
+- ARCADE MODE is the one-player ten-fight ladder. You pick only your fighter; the
+  VS screen shows STAGE 1 to 10 and each opponent is drawn like the original's
+  ladder (four of the original ten, four others, Heihachi, then Ogre). The CPU
+  gets harder with every fight. All 14 stages are in: every fighter fights on
+  its own home stage, with its own music.
+- Lose and CONTINUE? counts down from 9 (A/B/C/X/Y/Z cut it short, START
+  retries); at 0 it is GAME OVER, then the title.
+- At fight 10, win a round against Ogre and he returns as True Ogre.
+- After fight 10 the winner's ending movie plays, then a closing screen.
+- A NEW CHALLENGER: press START on controller 2 during a fight. Both players
+  pick, they fight, and the winner carries the run on.
+- VS MODE is the two-player match, as before.
+Still from V0.2: the boot intro (LibSaturn logo, then the Tekken 3 opening; START
+skips it) and the VS screen shown while the fight loads.
 
 PLAYING
-Press START at the title, then select ARCADE MODE. Connect a second controller
-before starting for two-player VS; with port 2 empty you fight the CPU. All 21
-fighters are on the select screen.
+Press START at the title, then ARCADE MODE (one player) or VS MODE (two players,
+connect a second controller first).
 Saturn pad: D-pad moves, X/Y punches, A/B kicks, L guard, R crouch, C jump.
 In OPTION MODE, UP/DOWN picks a row and LEFT/RIGHT changes it: DEBUG shows a
-performance report, MUSIC turns the CD music off. START resets a match.
+performance report, MUSIC turns the CD music off.
 Example Mednafen keys: arrows move, A/S punch, Z/X kick, C jump, Q guard,
 W crouch, Return START. Set these in your emulator.
+
+Not in yet: the staff roll, the ending captions, the Ogre cutscene, costumes and
+the ranking screen.
 
 REAL SATURN
 This build has run in emulators. On a real Saturn it is not verified: the movie

@@ -61,7 +61,7 @@ static sat_result_t compose_panel(uint8_t* image,uint8_t* record,unsigned pictur
 }
 
 static void credit(uint8_t* image) {
-    static const char line[]="V0.2 MADE USING celsowm/libsaturn";
+    static const char line[]="V0.3 MADE USING celsowm/libsaturn";
     const unsigned length=sizeof line-1u;
     const unsigned left=(VS_W-length*CREDIT_GLYPH_W)/2u;
     for(unsigned i=0;i<length;++i) {

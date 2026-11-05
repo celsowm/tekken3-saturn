@@ -3,6 +3,12 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## V0.3: arcade mode
+
+ARCADE MODE is the one-player ten-fight ladder with CONTINUE?, True Ogre, the winner's ending movie and
+challengers: [ARCADE_MODE.md](ARCADE_MODE.md). The disc also needs `-DT3_LOCAL_ENDING_MOVIES`
+(`scripts/pack_ending_movies.py`). `scripts/package_itch_demo.py` zips the disc for itch.io.
+
 ## V0.2: the opening movie
 
 A cold boot of a private disc plays the original's opening movie, then the title (START skips it).
