@@ -201,7 +201,7 @@ python3 scripts/watch_ci.py --repo celsowm/libsaturn \
 ```
 
 By default the script resolves HEAD and waits for both `Host combat regression`
-and `Saturn firmware and disc image`. Repeat `--workflow` to select other
+and `Saturn SDK`. Repeat `--workflow` to select other
 required workflow names. Full 40-character commit hashes work across repositories;
 branch names and abbreviated revisions are resolved using the local checkout.
 

@@ -304,7 +304,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for stages, accuracy gates, and Saturn ha
 
 ## CI-generated Saturn ISO and validation
 
-The [Saturn firmware and disc image](https://github.com/celsowm/tekken3-saturn/actions/workflows/saturn.yml) workflow uses the exact pinned LibSaturn source used for the original skeletal asset generator, GCC 13.2 targeting `sh2eb-elf`, an installed LibSaturn CMake package, and `libsaturn_add_disc(... IP_TEMPLATE_KIND native)`. On success it uploads `tekken3_saturn.iso`, `.bin`, `.cue`, `.elf`, `.app.bin`, resource/boot reports, and the asset manifest.
+The [Saturn SDK](https://github.com/celsowm/tekken3-saturn/actions/workflows/saturn.yml) workflow builds and installs the pinned LibSaturn with GCC 13.2 targeting `sh2eb-elf`. The game ELF and disc need the private PS1 data, which never enters GitHub Actions, so they are built locally.
 
 The native IP generator still uses Sega security/region payload bytes extracted from the LibSaturn-distributed Yaul *template*; no Yaul runtime is linked. Disc validation proves metadata, initial application load bytes, and Mode 1 sector data. It **does not** establish that the console BIOS, SAROO, Satiator, or an optical drive can boot the image.
 

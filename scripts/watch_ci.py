@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 
-DEFAULT_WORKFLOWS = ('Host combat regression', 'Saturn firmware and disc image')
+DEFAULT_WORKFLOWS = ('Host combat regression', 'Saturn SDK')
 
 
 def main():

@@ -1,4 +1,6 @@
-name: Saturn firmware and disc image
+name: Saturn SDK
+# The game ELF and disc need the private PS1 data, which never enters
+# GitHub Actions; build them locally. This job builds the pinned LibSaturn.
 on:
   push:
     branches: [main]
@@ -21,13 +23,10 @@ permissions:
   contents: read
 
 jobs:
-  saturn-disc:
+  libsaturn-sdk:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - name: Checkout game
-        uses: actions/checkout@v4
-
       - name: Checkout pinned LibSaturn
         uses: actions/checkout@v4
         with:
@@ -71,52 +70,3 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release -DLIBSATURN_BUILD_TESTS=OFF
           cmake --build build/libsaturn --parallel 3
           cmake --install build/libsaturn --prefix "$GITHUB_WORKSPACE/build/libsaturn-install"
-
-      - name: Configure and build Tekken 3 Saturn ELF + disc
-        env:
-          LIBSATURN_PREFIX: ${{ github.workspace }}/build/libsaturn-install
-        run: |
-          cmake --preset saturn \
-              -DLIBSATURN_SOURCE_DIR="$GITHUB_WORKSPACE/.external/libsaturn" \
-              -DT3_PARALLEL_GEOMETRY=ON -DT3_VERIFY_PARALLEL_GEOMETRY=ON \
-              -DT3_PROJECTED_FACE_QUEUE=ON -DT3_DIRECT_FACE_SPANS=ON \
-              -DT3_PERF_SAMPLES=ON
-          cmake --build --preset saturn --parallel 3
-          test -s build/saturn/tekken3_saturn.elf
-          test -s build/saturn/tekken3_saturn.app.bin
-          test -s build/saturn/disc/tekken3_saturn.iso
-          test -s build/saturn/disc/tekken3_saturn.bin
-          test -s build/saturn/disc/tekken3_saturn.cue
-
-      - name: Verify original boot memory and physical sector mapping
-        run: |
-          python3 .external/libsaturn/tools/check_boot_memory.py \
-              --elf build/saturn/tekken3_saturn.elf \
-              --app build/saturn/tekken3_saturn.app.bin \
-              --out build/saturn/disc/boot-memory.json
-          python3 .external/libsaturn/tools/check_disc_image.py \
-              --iso build/saturn/disc/tekken3_saturn.iso \
-              --bin build/saturn/disc/tekken3_saturn.bin \
-              --cue build/saturn/disc/tekken3_saturn.cue
-          python3 .external/libsaturn/tools/inspect_boot_image.py \
-              build/saturn/disc/tekken3_saturn.iso \
-              --app build/saturn/tekken3_saturn.app.bin \
-              --out build/saturn/disc/boot-report.json
-          sh2eb-elf-size build/saturn/tekken3_saturn.elf
-
-      - name: Upload disc and diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: tekken3-saturn-disc-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 14
-          path: |
-            build/saturn/disc/tekken3_saturn.iso
-            build/saturn/disc/tekken3_saturn.bin
-            build/saturn/disc/tekken3_saturn.cue
-            build/saturn/disc/tekken3_saturn.IP.BIN
-            build/saturn/disc/boot-memory.json
-            build/saturn/disc/boot-report.json
-            build/saturn/generated/characters/manifest.json
-            build/saturn/tekken3_saturn.elf
-            build/saturn/tekken3_saturn.app.bin
