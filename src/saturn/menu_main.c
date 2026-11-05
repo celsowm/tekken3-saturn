@@ -744,7 +744,11 @@ static void ladder_pick(void) {
 static void ladder_start(void) {
     const uint32_t seed=g_now*2654435761u^((uint32_t)sat_time_frc()<<16);
     for(unsigned i=0;i<4u;++i)g_arg[ARG_SEED+i]=(uint8_t)(seed>>(24u-8u*i));
+#if defined(T3_LADDER_SELFTEST_STAGE)
+    g_arg[ARG_STAGE]=T3_LADDER_SELFTEST_STAGE;   /* test builds reach the last fights quickly */
+#else
     g_arg[ARG_STAGE]=0;
+#endif
     g_arg[ARG_LADDER]=LADDER_ON;
     ladder_pick();
 }

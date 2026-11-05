@@ -23,7 +23,8 @@ def input_script(args):
     # START skips the movie, leaves the title and confirms ARCADE MODE: one press short and an idle menu falls into the
     # CPU demo. The select cursors begin on Paul and Law, the pair of the first demo, so they move before each pick.
     lines = [f'{at} {RETURN} 0.15' for at in (args.skip_movie, args.title_start, args.arcade)]
-    for pick, moves in ((args.pick_p1, args.p1_moves), (args.pick_cpu, args.cpu_moves)):
+    for pick, moves in (((args.pick_p1, args.p1_moves),) if args.ladder else
+                        ((args.pick_p1, args.p1_moves), (args.pick_cpu, args.cpu_moves))):
         key = RIGHT if moves > 0 else LEFT
         lines += [f'{pick - 0.5 * (abs(moves) - i):.2f} {key} 0.1' for i in range(abs(moves))]
         lines.append(f'{pick} {RETURN} 0.15')
@@ -56,11 +57,13 @@ def main():
     p.add_argument('--fight-start', type=float, default=195, help='first fight input')
     p.add_argument('--trim', type=float, default=0, help='seconds to cut from the start of the encode')
     p.add_argument('--keep-raw', action='store_true')
+    p.add_argument('--inputs', type=Path, help='a key script of "SECONDS KEYCODE HOLD" lines, used instead of the generated one')
+    p.add_argument('--ladder', action='store_true', help='V0.3 arcade mode: only P1 picks, the CPU opponent is drawn')
     args = p.parse_args()
     work = args.out.parent
     work.mkdir(parents=True, exist_ok=True)
     raw, script = work / 'raw.mov', work / 'inputs.txt'
-    script.write_text(input_script(args))
+    script.write_text(args.inputs.read_text() if args.inputs else input_script(args))
     cmd = ['mednafen', '-sound', '1', '-ss.correct_aspect', '0', '-ss.input.port2', 'none', '-qtrecord', str(raw), str(args.disc)]
     with (work / 'mednafen.log').open('w') as log:
         game = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
