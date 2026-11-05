@@ -22,16 +22,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 KEYS = ('frame_serial', 'vblanks', 'sim_ticks', 'loop_rate_x10', 'observed_fields',
         'discarded_fields', 'commands_used', 'faces_flushed', 'first_error')
+# START during the opening movie ends the intro; the title is up by frame 800.
+SKIP_INTRO = [(300, 'START')]
+INTRO = 500
 # Title, then the mode list: UP wraps to OPTION MODE, whose first row is DEBUG.
-TO_OPTIONS = [(400, 'START'), (480, 'UP'), (510, 'START')]
-DEBUG_ON = [(540, 'LEFT')]
-MUSIC_OFF = [(570, 'DOWN'), (600, 'LEFT')]
+TO_OPTIONS = [(INTRO + 400, 'START'), (INTRO + 480, 'UP'), (INTRO + 510, 'START')]
+DEBUG_ON = [(INTRO + 540, 'LEFT')]
+MUSIC_OFF = [(INTRO + 570, 'DOWN'), (INTRO + 600, 'LEFT')]
 # Back out, DOWN wraps to ARCADE MODE, then both picks on the select screen.
-TO_FIGHT = [(640, 'B'), (670, 'DOWN'), (700, 'START'), (2100, 'START'), (2160, 'START'), (2400, 'START')]
+TO_FIGHT = [(INTRO + at, button) for at, button in
+            [(640, 'B'), (670, 'DOWN'), (700, 'START'), (2100, 'START'), (2160, 'START'), (2400, 'START')]]
 SCENARIOS = {
     'plain': [],
-    'debug': TO_OPTIONS + DEBUG_ON + TO_FIGHT,
-    'music-off': TO_OPTIONS + DEBUG_ON + MUSIC_OFF + TO_FIGHT,
+    'debug': SKIP_INTRO + TO_OPTIONS + DEBUG_ON + TO_FIGHT,
+    'music-off': SKIP_INTRO + TO_OPTIONS + DEBUG_ON + MUSIC_OFF + TO_FIGHT,
 }
 
 
@@ -65,7 +69,7 @@ def main():
     p.add_argument('--bios', type=Path, required=True)
     p.add_argument('--libsaturn', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True)
-    p.add_argument('--frames', type=int, default=4800)
+    p.add_argument('--frames', type=int, default=5300)
     p.add_argument('--timeout', type=int, default=500)
     p.add_argument('--control', type=Path, help='an earlier saturn_probe.py run of the plain scenario')
     p.add_argument('--scenario', action='append', choices=SCENARIOS)
@@ -84,7 +88,7 @@ def main():
              '--disc', str(args.build / 'disc/music.cue'), '--bios', str(args.bios),
              '--libsaturn', str(args.libsaturn), '--out', str(run), '--frames', str(args.frames),
              '--timeout', str(args.timeout), '--device-script', str(script),
-             '--screenshot-frame', '630', '--screenshot-frame', str(args.frames - 100), '--capture-audio'],
+             '--screenshot-frame', str(INTRO + 630), '--screenshot-frame', str(args.frames - 100), '--capture-audio'],
             capture_output=True, text=True)
         if result.returncode:
             report[name] = {'error': result.returncode, 'stderr': result.stderr[-2000:]}
