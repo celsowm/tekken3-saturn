@@ -343,7 +343,7 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.2 HW REPORT", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.2", W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/libsaturn", W / 2, LOADING_CREDIT_Y));
