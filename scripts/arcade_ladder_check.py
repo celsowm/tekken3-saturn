@@ -36,6 +36,8 @@ def main():
     p.add_argument('--port2', choices=('pad', 'none'), default='pad',
                    help='a second pad must not turn the arcade ladder into a versus match')
     p.add_argument('--challenger', type=int, help='field of port 2 START, inside a ladder fight')
+    p.add_argument('--challenger-attacks', action='store_true',
+                   help='port 2 walks in and attacks through the challenge match, so it wins and carries the run on')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     script = args.out / 'ladder.devices'
@@ -44,6 +46,11 @@ def main():
         # START on port 2, then both picks on the select screen that follows.
         for at, port in [(args.challenger, 2), (args.challenger + 1700, 1), (args.challenger + 1700, 2)]:
             lines += f'{at} {port} buttons=START\n{at + 6} {port} buttons=NONE\n'
+        if args.challenger_attacks:
+            for at in range(args.challenger + 2600, args.frames, 24):
+                # Port 2 starts on the right: LEFT walks toward port 1, then a low kick, which an idle
+                # standing guard does not stop.
+                lines += f'{at} 2 buttons=LEFT\n{at + 12} 2 buttons=DOWN+A\n'
     script.write_text(''.join(sorted(lines.splitlines(True), key=lambda line: int(line.split()[0]))))
     shots = []
     for field in range(INTRO + 2200, args.frames - 1, args.every):
