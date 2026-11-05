@@ -130,8 +130,9 @@ FONT2_WIDTH, FONT2_HEIGHT, FONT2_ADVANCE = 24, 40, 22
 # entries follow this order in HUD.BIN and on the Saturn.
 TEXT_COLOURS = (1, 2, 3, 4, 5, 6, 8, 9)
 GLYPH_FILE_NAMES = {'!': 'excl', '.': 'dot', '?': 'query'}
-# G, H, J and X only appear in fighter names (the winner line).
-MESSAGE_CHARS = 'ABCDEFGHIJKLMNOPRSTUWXY!.?123456789'
+# G, H, J and X only appear in fighter names (the winner line); V only in the
+# arcade ladder's GAME OVER.
+MESSAGE_CHARS = 'ABCDEFGHIJKLMNOPRSTUWXY!.?123456789V'
 REPLAY_CHARS = 'REPLAY'
 FONT_TABLE = 0x80021D64
 

@@ -73,6 +73,9 @@ typedef struct {
     uint8_t start_intro;
     uint16_t start_physical[2]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */
+    /* With start_intro: the score of a match carried over (the arcade's True Ogre
+     * reload keeps the round number and both round-win counts; modes.md#match-flow). */
+    uint8_t start_wins[2],start_played;
     t3_psx_replay_storage_t* replay_storage;
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
     t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */

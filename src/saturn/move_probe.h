@@ -12,6 +12,8 @@
  * Only source files emitted into the private build/ tree may be loaded. */
 sat_result_t t3_move_probe_init(void);
 void t3_move_probe_reset(unsigned round);
+/* The score the next match starts with (a carried True Ogre fight); zeros for a new match. */
+void t3_move_probe_set_carry(uint8_t wins0,uint8_t wins1,uint8_t played);
 void t3_move_probe_tick(const t3_match_t* match);
 /* Snapshot the final owned pose once per submitted image. Legacy preview
  * modes still advance their own pose in tick; this call leaves them alone. */

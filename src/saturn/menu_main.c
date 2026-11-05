@@ -14,6 +14,8 @@
 #include <stdint.h>
 
 
+#include "arcade_ladder.h"
+#include "boot_arg.h"
 #include "disc.h"
 #include "menu_layout.h"
 #include "run_rules.h"
@@ -31,6 +33,7 @@
 #endif
 #include "menu_text.h"
 #include "saturn/app.h"
+#include "saturn/time.h"
 #include "saturn/audio.h"
 #include "saturn/color.h"
 #include "saturn/exec.h"
@@ -52,7 +55,7 @@ enum {
     FONT_SETS=3, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=100, GLOW_P1=192, GLOW_P2=198, GLOW_BANDS=6, CODE_BLACK=204, CODE_BAR=205, CODE_BAR_EDGE=206,
-    BOOT_ARG_BYTES=8, ARG_DEBUG=1, ARG_PRACTICE=2, ARG_MUSIC_OFF=16, PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R', MODE_DEMO=100,
+    ARG_DEBUG=1, ARG_PRACTICE=2, ARG_MUSIC_OFF=16, ARG_VERSUS=32, MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
     LAYERS=SAT_VDP2_LAYER_NBG0|SAT_VDP2_LAYER_NBG1|SAT_VDP2_LAYER_SPRITE|SAT_VDP2_LAYER_BACK
@@ -67,7 +70,7 @@ static sat_vdp1_texture_t g_port_tex[2];
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
 static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
-static uint8_t g_arg[BOOT_ARG_BYTES]={PHASE_SELECT,0,1,0,0,0,0,0};
+static uint8_t g_arg[BOOT_ARG_BYTES]={PHASE_SELECT,0,1};
 
 static unsigned w555(unsigned r,unsigned g,unsigned b) {return 0x8000u|r|(g<<5)|(b<<10);}
 
@@ -595,6 +598,37 @@ static void digits(char* out,unsigned value,unsigned width) {
     for(unsigned i=width;i-->0;value/=10u)out[i]=(char)('0'+value%10u);
 }
 
+enum { NAME_W=96, NAME_H=16, NAME_HEAD=48 };
+static sat_result_t load_names(void);
+static void draw_name(unsigned id,int bg_cx,int plate_y);
+
+/* After the tenth ladder fight: the original plays the winner's ending movie and the staff roll
+ * (modes.md#arcade-ending-and-staff-roll); this port shows a closing screen until START. */
+static void ending_flow(void) {
+    pads_t pads;
+    SAT_PANIC_IF_ERROR(load_backdrop("TITLEBG.BIN"));
+    SAT_PANIC_IF_ERROR(load_names());
+    backdrop_show(1);
+    fade(0);
+    for(unsigned f=0,t0=g_now;f<3600u;f=g_now-t0) {
+        frame_begin(&pads);
+        rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
+        text(2,"CONGRATULATIONS!",MENU_BG_W/2,316);
+        /* The name masks are black, made for the select screen's light plates. */
+        rect((MENU_BG_W/2-NAME_W/2)*2,346,NAME_W*2,NAME_H,CODE_WHITE);
+        draw_name(g_arg[ARG_PICK0]==T3_LADDER_TRUE_OGRE?T3_LADDER_OGRE:g_arg[ARG_PICK0],MENU_BG_W/2,346);
+        text(0,"THE KING OF IRON FIST TOURNAMENT 3",MENU_BG_W/2,386);
+        text(1,"MADE USING celsowm/libsaturn",MENU_BG_W/2,410);
+        frame_end();
+        if(f>60u && (pads.pad[0].pressed&START_BUTTONS))break;
+    }
+    for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
+        fade(-(int)(f*255/FADE_FRAMES));
+        frame_begin(&pads);
+        frame_end();
+    }
+}
+
 /* After a survival loss or the tenth time attack win: the wins or the time, until START. */
 static void result_flow(void) {
     pads_t pads;
@@ -644,7 +678,7 @@ static void glow_palette(unsigned side,unsigned colour) {
 }
 
 /* The original name pictures (NAMES.BIN): a black glyph mask per fighter, 96 x 16, and its extent. */
-enum { NAME_W=96, NAME_H=16, NAME_HEAD=48 };
+
 static sat_vdp1_texture_t g_name[SILHOUETTE];
 static uint8_t g_name_extent[SILHOUETTE][2];
 
@@ -697,9 +731,29 @@ enum { SPARKS=8 };
 static spark_t g_spark[SPARKS];
 
 
-static void select_flow(uint8_t picks[2]) {
+/* The opponent of the current ladder fight: True Ogre once Ogre has lost a round. */
+static void ladder_pick(void) {
+    uint8_t ladder[T3_LADDER_FIGHTS];
+    const uint32_t seed=((uint32_t)g_arg[ARG_SEED]<<24)|((uint32_t)g_arg[ARG_SEED+1]<<16)|
+        ((uint32_t)g_arg[ARG_SEED+2]<<8)|g_arg[ARG_SEED+3];
+    t3_arcade_ladder(seed,g_arg[ARG_PICK0],T3_LADDER_ROSTER,ladder);
+    g_arg[ARG_PICK1]=(g_arg[ARG_LADDER]&LADDER_CARRY)?T3_LADDER_TRUE_OGRE:ladder[t3_arcade_level(g_arg[ARG_STAGE])];
+}
+
+/* A one-player arcade run (modes.md#arcade-ladder): the player picks only their fighter. */
+static void ladder_start(void) {
+    const uint32_t seed=g_now*2654435761u^((uint32_t)sat_time_frc()<<16);
+    for(unsigned i=0;i<4u;++i)g_arg[ARG_SEED+i]=(uint8_t)(seed>>(24u-8u*i));
+    g_arg[ARG_STAGE]=0;
+    g_arg[ARG_LADDER]=LADDER_ON;
+    ladder_pick();
+}
+
+static void select_flow(uint8_t picks[2],int ladder) {
     pads_t pads;
     t3_select_cursor_t cursor[2]={t3_select_find(picks[0]),t3_select_find(picks[1])};
+    /* A ladder is one player's even with a second pad: port 2 joins only as a challenger. */
+    int two=0;
     unsigned chosen[2]={0,0},shown[2]={FIGHTERS+1,FIGHTERS+1},rest[2]={0,0},fade_in[2]={0,0};
     backdrop_show(0);
     SAT_PANIC_IF_ERROR(load_backdrop("SELBG.BIN"));
@@ -714,7 +768,8 @@ static void select_flow(uint8_t picks[2]) {
     for(unsigned elapsed=0,t0=g_now;elapsed<SELECT_FRAMES&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
         frame_begin(&pads);
         fade(elapsed<FADE_FRAMES?-255+(int)(elapsed*255/FADE_FRAMES):0);
-        if(pads.pad[1].connected) {
+        two=pads.pad[1].connected&&!ladder;
+        if(two) {
             for(unsigned side=0;side<2;++side) {
                 if(chosen[side])continue;
                 cursor[side]=steer(cursor[side],&pads.pad[side]);
@@ -722,15 +777,15 @@ static void select_flow(uint8_t picks[2]) {
             }
         } else if(!chosen[0]) {
             cursor[0]=steer(cursor[0],&pads.pad[0]);
-            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;sfx(SFX_PICK);}
+            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;chosen[1]=ladder;sfx(SFX_PICK);}
         } else if(pads.pad[0].pressed&SAT_PAD_B) {
             chosen[0]=0;
         } else {
             cursor[1]=steer(cursor[1],&pads.pad[0]);
             if(pads.pad[0].pressed&START_BUTTONS) {chosen[1]=1;sfx(SFX_PICK);}
         }
-        /* Until the first pick is made the CPU's side is the empty silhouette. */
-        const int empty1=!pads.pad[1].connected&&!chosen[0];
+        /* Until the first pick is made the CPU's side is the empty silhouette; a ladder never shows it. */
+        const int empty1=!two&&(!chosen[0]||ladder);
         for(unsigned side=0;side<2;++side) {
             const unsigned id=(side&&empty1)?SILHOUETTE:t3_select_id(cursor[side]);
             const int bg_x=side?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
@@ -784,9 +839,9 @@ static void select_flow(uint8_t picks[2]) {
         for(unsigned side=0;side<2;++side) {
             if(cursor[side].column>=T3_SELECT_DRAWN_COLUMNS)continue;
             if(side&&empty1)continue;
-            if(!chosen[side]&&(elapsed&16u)&&!(side==0u&&!pads.pad[1].connected&&chosen[0]))continue;
+            if(!chosen[side]&&(elapsed&16u)&&!(side==0u&&!two&&chosen[0]))continue;
             cell_frame(side,cursor[side],elapsed,(int)chosen[side]);
-            pic_left(side?(pads.pad[1].connected?TX_TAG_2P:TX_TAG_CPU):TX_TAG_1P,
+            pic_left(side?(two?TX_TAG_2P:TX_TAG_CPU):TX_TAG_1P,
                      SEL_GRID_X+(int)cursor[side].column*SEL_PITCH+2,
                      SEL_GRID_Y+(int)cursor[side].row*SEL_ROW_PITCH+9);
         }
@@ -797,6 +852,8 @@ static void select_flow(uint8_t picks[2]) {
     }
     picks[0]=(uint8_t)t3_select_id(cursor[0]);
     picks[1]=(uint8_t)t3_select_id(cursor[1]);
+    if(ladder)ladder_start();
+    else if(!(g_arg[ARG_LADDER]&LADDER_CHALLENGE))g_arg[ARG_LADDER]=0;   /* a challenger keeps the run */
 #if defined(T3_VS_SCREEN)
     {
         /* The caption follows the mode (modes.md). Port 2 decides arcade or VS, as choose_cpu does.
@@ -805,8 +862,8 @@ static void select_flow(uint8_t picks[2]) {
         t3_vs_kind_t kind=T3_VS_ARCADE;
         if(g_arg[4]&ARG_PRACTICE)kind=T3_VS_PRACTICE;
         else if(run==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
-        else if(run==T3_RUN_ARCADE && pads.pad[1].connected)kind=T3_VS_VERSUS;
-        vs_compose(picks,kind,g_arg[5]+1u);
+        else if(run==T3_RUN_ARCADE && two)kind=T3_VS_VERSUS;
+        vs_compose(picks,kind,(g_arg[ARG_LADDER]&LADDER_ON)?g_arg[ARG_STAGE]+1u:g_arg[5]+1u);
     }
 #endif
     for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
@@ -828,12 +885,25 @@ int main(void) {
     else g_arg[0]=0;                                  /* cold boot: the title first */
     unsigned mode=MODE_ARCADE;
     if(g_arg[0]==PHASE_RESULT) {result_flow();g_arg[0]=0;}
+    if(g_arg[0]==PHASE_ENDING) {ending_flow();g_arg[0]=0;}
+    if(g_arg[0]!=PHASE_SELECT)g_arg[ARG_LADDER]=0;   /* back at the title: the run is over */
     if(g_arg[0]!=PHASE_SELECT && (mode=title_flow())!=MODE_DEMO)
     {
         /* bit 1 practice, bits 2-3 run mode (1 survival, 2 time attack); a fresh run starts at no wins. */
         const unsigned run=mode==MODE_SURVIVAL?1u:mode==MODE_TIME?2u:0u;
-        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|(mode==MODE_PRACTICE?2u:0u)|(run<<2));
+        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|(mode==MODE_PRACTICE?2u:0u)|(run<<2)|
+            (mode==MODE_VS?ARG_VERSUS:0u));
         g_arg[5]=g_arg[6]=g_arg[7]=0;
+    }
+    if(mode!=MODE_DEMO && (g_arg[ARG_LADDER]&(LADDER_ON|LADDER_CHALLENGE))==LADDER_ON) {
+        /* The next ladder fight: straight to the VS screen, as FightMain's sub-state 2. */
+        ladder_pick();
+#if defined(T3_VS_SCREEN)
+        SAT_PANIC_IF_ERROR(cache_portraits());
+        vs_compose(&g_arg[1],T3_VS_ARCADE,g_arg[ARG_STAGE]+1u);
+#endif
+        g_arg[0]=PHASE_FIGHT;
+        start_fight();
     }
     if(mode!=MODE_DEMO) {
         /* Blank, as the original's transition screen, with the loading note its level changes use
@@ -858,7 +928,8 @@ int main(void) {
 #endif
         start_fight();
     }
-    select_flow(&g_arg[1]);
+    select_flow(&g_arg[1],((g_arg[4]>>2)&3u)==T3_RUN_ARCADE && !(g_arg[4]&(ARG_PRACTICE|ARG_VERSUS)) &&
+        !(g_arg[ARG_LADDER]&LADDER_CHALLENGE));
     g_arg[0]=PHASE_FIGHT;
     start_fight();
     for(;;) {}

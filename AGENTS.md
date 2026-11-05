@@ -25,9 +25,11 @@ builds and several SDK copies behind. Do not repeat that.
   frozen-pixel baseline, and `build/asset-*`, `build/paul-blend`,
   `build/saturn`, `build/host*`, `build/intro-probe` (its `INTRO.MOV` is the
   Tekken 3 opening; without it, and without `T3_LOCAL_VS_RECORDS` and
-  `T3_LOCAL_ARCADE_OVERLAY`, a disc silently loses the intro and the VS screen).
+  `T3_LOCAL_ARCADE_OVERLAY`, a disc silently loses the intro and the VS screen),
+  and `build/ending-movies` (`T3_LOCAL_ENDING_MOVIES`: the arcade endings).
 - **Play the full game.** `scripts/play_mednafen.py` refuses a disc without the
-  intro, the VS screen and the menus. Never hand the user a disc it rejects.
+  intro, the VS screen, the ending movies and the menus. Never hand the user a
+  disc it rejects.
 - **Name for deletion.** Give experiment outputs a shared prefix so one
   pattern removes them. Delete by an explicit list, never a bare wildcard.
 - Everything under `build/` and `assets/imported/` is git-ignored. Anything

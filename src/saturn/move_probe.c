@@ -403,6 +403,11 @@ sat_result_t t3_move_probe_init(void) {
     return g_active?SAT_OK:SAT_ERR_INVALID_ARG;
 }
 
+static uint8_t g_carry[3];
+void t3_move_probe_set_carry(uint8_t wins0,uint8_t wins1,uint8_t played) {
+    g_carry[0]=wins0;g_carry[1]=wins1;g_carry[2]=played;
+}
+
 void t3_move_probe_reset(unsigned round) {
     unsigned i;
     if (!g_active) return;
@@ -456,6 +461,8 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.enable_rounds=2;
 #if !defined(T3_REFERENCE_REPLAY)
     g_owned_config.start_intro=1;g_owned_config.start_seed=T3_START_SEED;
+    g_owned_config.start_wins[0]=g_carry[0];g_owned_config.start_wins[1]=g_carry[1];
+    g_owned_config.start_played=g_carry[2];
     g_owned_config.start_physical[0]=g_start_physical[0];
     g_owned_config.start_physical[1]=g_start_physical[1];
 #endif
@@ -1026,6 +1033,7 @@ int16_t t3_move_probe_fk_root_xx(unsigned i) {return i<2u && g_active?g_fk_root_
 #else
 sat_result_t t3_move_probe_init(void) {return SAT_OK;}
 void t3_move_probe_reset(unsigned round) {(void)round;}
+void t3_move_probe_set_carry(uint8_t wins0,uint8_t wins1,uint8_t played) {(void)wins0;(void)wins1;(void)played;}
 void t3_move_probe_tick(const t3_match_t* match) {(void)match;}
 void t3_move_probe_present(void) {}
 uint8_t t3_move_probe_active(void) {return 0u;}

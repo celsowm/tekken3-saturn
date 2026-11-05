@@ -13,7 +13,7 @@
 
 enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY,
        MARK_WON, MARK_EMPTY, DIGIT_FIRST, DIGIT_LAST=18, PLATE, NAME_P1, NAME_P2,
-       GLYPH_FIRST, REPLAY_FIRST=57, PIECES=63, TEXT_PALETTES=9 };
+       GLYPH_FIRST, REPLAY_FIRST=58, PIECES=64, TEXT_PALETTES=9 };
 /* Immutable descriptors fit the release build's narrow Low WRAM margin.
  * Startup-only upload scratch sits in High WRAM, with its reclaimed pose
  * cache capacity in the opt-in build. The font-2 glyph descriptors and the
@@ -168,7 +168,7 @@ sat_result_t t3_original_hud_text(const char* text,unsigned colour,unsigned font
      * from its own original x, so the positions stay exact; spaces advance
      * the pen like the original. The colour picks one of the message
      * tables, replacing the glyph's embedded palette (%c). */
-    static const char GLYPH_CHARS[]="ABCDEFGHIJKLMNOPRSTUWXY!.?123456789";
+    static const char GLYPH_CHARS[]="ABCDEFGHIJKLMNOPRSTUWXY!.?123456789V";
     static const char REPLAY_CHARS[]="REPLAY";
     _Static_assert(sizeof GLYPH_CHARS-1==REPLAY_FIRST-GLYPH_FIRST,"font 2 glyph order");
     _Static_assert(sizeof REPLAY_CHARS-1==PIECES-REPLAY_FIRST,"font 1 glyph order");

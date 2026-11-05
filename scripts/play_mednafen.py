@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # silently drops the feature: no opening movie, the plain loading bar instead of the VS screen.
 REQUIRED = {'INTRO.MOV': 'the Tekken 3 opening movie (-DT3_LOCAL_INTRO_MOVIE)',
             'VSBG0.BIN': 'the VS screen (-DT3_LOCAL_VS_RECORDS and -DT3_LOCAL_ARCADE_OVERLAY)',
-            'MENU.BIN': 'the title and select menus', 'INTRO.BIN': 'the intro program'}
+            'MENU.BIN': 'the title and select menus', 'INTRO.BIN': 'the intro program',
+            'END00.MOV': 'the arcade ending movies (-DT3_LOCAL_ENDING_MOVIES, scripts/pack_ending_movies.py)'}
 
 
 def missing_features(disc):

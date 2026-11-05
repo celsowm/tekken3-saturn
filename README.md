@@ -276,7 +276,9 @@ Disc artifacts are generated in `build/saturn/disc/`. Firmware startup and boot 
 
 D-pad LEFT/RIGHT: move away/toward the rival; UP/DOWN: sidestep.
 X: left punch, Y: right punch, A: left kick, B: right kick.
-L: guard, R: crouch, C: jump; START: reset match. Connect a second pad to control P2.
+L: guard, R: crouch, C: jump; START: reset match. In VS MODE a second pad controls P2.
+ARCADE MODE is the one-player ten-fight ladder; START on the second pad brings in a
+challenger ([docs/ARCADE_MODE.md](docs/ARCADE_MODE.md)).
 
 For Mednafen keyboard play, `python3 scripts/configure_mednafen_controls.py`
 backs up the existing configuration and maps the arrow keys to movement, A/S to

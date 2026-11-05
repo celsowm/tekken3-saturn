@@ -22,7 +22,8 @@ target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_eff
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
+    src/game/arcade_ladder.c)
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 # Most fields one image may catch up; below 60/N images/s the game plays slower.
@@ -1484,7 +1485,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         set_source_files_properties(src/game/psx_ai.c src/game/psx_camera.c src/game/psx_effect_fire.c
             src/game/psx_effect_pool.c src/game/psx_fighter_sounds.c src/game/psx_ground.c
             src/game/psx_hit_transaction.c src/game/psx_ik.c src/game/select_grid.c src/game/run_rules.c
-            src/game/stage_backdrop.c src/saturn/fighter_pack.c src/saturn/main.c
+            src/game/arcade_ladder.c src/game/stage_backdrop.c src/saturn/fighter_pack.c src/saturn/main.c
             PROPERTIES COMPILE_OPTIONS "-Os")
         target_sources(tekken3_saturn PRIVATE src/saturn/fighter_pack.c src/saturn/roster_names.c
             "${_t3_pack_gen}/t3_roster.h")
@@ -1552,9 +1553,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         if(T3_LOCAL_INTRO_MOVIE AND EXISTS "${T3_LOCAL_INTRO_MOVIE}")
             list(APPEND _t3_intro_movies "${T3_LOCAL_INTRO_MOVIE}")
         endif()
+        # The arcade endings (scripts/pack_ending_movies.py), private game data: END00-END18.MOV.
+        set(T3_LOCAL_ENDING_MOVIES "" CACHE PATH "Directory of packed ending movies ENDnn.MOV")
+        if(T3_LOCAL_ENDING_MOVIES)
+            file(GLOB _t3_ending_movies "${T3_LOCAL_ENDING_MOVIES}/END[0-9][0-9].MOV")
+            list(APPEND _t3_intro_movies ${_t3_ending_movies})
+        endif()
         if(_t3_intro_movies)
             add_executable(tekken3_intro src/saturn/intro_main.c src/saturn/disc.c)
-            target_include_directories(tekken3_intro PRIVATE src/saturn)
+            target_include_directories(tekken3_intro PRIVATE src/saturn src/game)
             target_compile_options(tekken3_intro PRIVATE -Wall -Wextra -O2)
             target_link_libraries(tekken3_intro PRIVATE LibSaturn::Saturn)
             libsaturn_configure_executable(tekken3_intro)
@@ -1581,7 +1588,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_INTRO_MOVIE}" ALL)
         endif()
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
-            src/game/select_grid.c "${_t3_menu_gen}/menu_layout.h")
+            src/game/select_grid.c src/game/arcade_ladder.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
         # Experimental Arcade music test (docs/ARCADE_MUSIC_ENGINE.md): the converter's output directory
         # (meta.bin, bank.bin, loads.bin, pages.bin; private, never in Git). L+R+START on the title opens it.
@@ -1679,6 +1686,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # cannot press START a one-CPU fight to measure, with P1 neutral.
     set(T3_DEMO_CPU_MASK "3" CACHE STRING "CPU fighter mask of the attract fight")
     target_compile_definitions(tekken3_saturn PRIVATE T3_DEMO_CPU_MASK=${T3_DEMO_CPU_MASK}u)
+    option(T3_LADDER_SELFTEST "Test builds: every arcade ladder fight counts as won once round 1 has begun" OFF)
+    if(T3_LADDER_SELFTEST)
+        target_compile_definitions(tekken3_saturn PRIVATE T3_LADDER_SELFTEST=1)
+    endif()
     # Whole fields wasted after each image, to stand in for a slower console.
     set(T3_SLOW_IMAGE_FIELDS "0" CACHE STRING "Fields wasted per image to imitate a slower console")
     if(T3_SLOW_IMAGE_FIELDS GREATER 0)
@@ -1772,6 +1783,10 @@ else()
         target_link_libraries(test_run_rules PRIVATE tekken3_fight)
         target_compile_options(test_run_rules PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME survival_time_attack_rules COMMAND test_run_rules)
+        add_executable(test_arcade_ladder tests/test_arcade_ladder.c)
+        target_link_libraries(test_arcade_ladder PRIVATE tekken3_fight)
+        target_compile_options(test_arcade_ladder PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME arcade_ladder_rules COMMAND test_arcade_ladder)
         add_executable(test_psx_face_preflight tests/test_psx_face_preflight.c)
         target_link_libraries(test_psx_face_preflight PRIVATE tekken3_fight)
         target_compile_options(test_psx_face_preflight PRIVATE -Wall -Wextra -Werror -UNDEBUG)

@@ -32,6 +32,8 @@
 #if defined(T3_ORIGINAL_TITLE) || defined(T3_FIGHTER_PACKS)
 #include "disc.h"
 #endif
+#include "arcade_ladder.h"
+#include "boot_arg.h"
 #include "run_rules.h"
 #include "saturn/time.h"
 #if defined(T3_OVERLAP_VDP1) || defined(T3_FIGHTER_PACKS)
@@ -586,6 +588,14 @@ static void arcade_advance(int winner) {
     if(winner==0 && g_arcade_stage<3u)++g_arcade_stage;
 }
 
+/* A one-player arcade ladder (arcade_ladder.c): g_arcade_stage is the fight index, and the seed, the
+ * flags and a carried score travel in the boot argument; the menu picks each opponent from them. */
+static uint8_t g_ladder,g_seed[4],g_carry[3];
+static uint8_t g_menu_flags;   /* boot argument flag bits only the menu reads (VS MODE) */
+/* Fields left of CONTINUE? and of GAME OVER (zero while neither shows), and since the match ended. */
+static unsigned g_continue_left,g_game_over_left,g_ladder_wait,g_challenger_left;
+static uint32_t g_ladder_field;
+
 /* The title's demonstration: both fighters are CPU, and any button or the end of the match goes back. */
 static uint8_t g_demo;
 static unsigned g_demo_ticks;
@@ -609,12 +619,14 @@ static void choose_cpu(const sat_pad_state_t* pad1) {
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
-    if(pad1->connected)g_arcade_stage=0u;
+    /* A ladder keeps its CPU whatever port 2 holds, except in a challenger's match. */
+    const int human2=pad1->connected && (!g_ladder || (g_ladder&LADDER_CHALLENGE));
+    if(human2)g_arcade_stage=0u;
     {
-        uint8_t level=(uint8_t)(4u+g_arcade_stage);
+        uint8_t level=g_ladder?t3_arcade_level(g_arcade_stage):(uint8_t)(4u+g_arcade_stage);
         if(g_run_mode==T3_RUN_SURVIVAL)level=t3_survival_level(g_wins);
         else if(g_run_mode==T3_RUN_TIME_ATTACK)level=t3_time_attack_level(g_wins);
-        t3_move_probe_set_cpu(pad1->connected?0u:2u,1u,level);
+        t3_move_probe_set_cpu(human2?0u:2u,1u,level);
     }
 #endif
 }
@@ -760,27 +772,117 @@ static void title_screen(void) {
 /* Title and select run before anything is loaded. The fight restarts this same
  * program with the picks, so each pairing starts on a clean machine whatever
  * the previous one left in VRAM, CRAM and Sound RAM. */
-enum { BOOT_ARG_BYTES=8u, PHASE_TITLE='T', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R' };
+
 /* Highest VDP1 commands and flushed scene faces in any frame since boot: sizes the program's VDP1 tables from a measured fight. */
 uint32_t g_t3_vdp1_peak[2];
 static uint8_t g_picks[2]={0,1};
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
-    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)|(g_music_off<<4)),
-        g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds};
+    const uint8_t arg[BOOT_ARG_BYTES]={phase,g_picks[0],g_picks[1],g_arcade_stage,(uint8_t)(g_show_profiler|(g_practice<<1)|(g_run_mode<<2)|(g_music_off<<4)|g_menu_flags),
+        g_wins,(uint8_t)(g_run_seconds>>8),(uint8_t)g_run_seconds,g_seed[0],g_seed[1],g_seed[2],g_seed[3],
+        g_ladder,g_carry[0],g_carry[1],g_carry[2]};
 #if defined(T3_ADX_MUSIC)
     if(g_adx_on)t3_adx_music_stop();   /* the next program reads the drive through its own scheduler-free path */
 #endif
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
+    /* PHASE_MENU is the title without the opening movie. */
     const char* program=phase==PHASE_FIGHT?"0.BIN":"MENU.BIN";
 #if defined(T3_INTRO)
     /* A cold boot shows the opening movie first; a disc without it goes straight to the title. */
     sat_cdfs_file_t intro;
-    if(phase==PHASE_TITLE && sat_cdfs_lookup(volume,"INTRO.BIN",&intro)==SAT_OK)program="INTRO.BIN";
+    /* So does the end of an arcade run, for the winner's ending movie when the disc has one. */
+    if((phase==PHASE_TITLE || phase==PHASE_ENDING) && sat_cdfs_lookup(volume,"INTRO.BIN",&intro)==SAT_OK)
+        program="INTRO.BIN";
 #endif
     SAT_PANIC_IF_ERROR(sat_exec(volume,program,arg,sizeof arg));
+}
+
+/* The ladder around a finished match (modes.md#match-flow): a win goes on to the next fight once
+ * the result has shown (or on START), a loss counts CONTINUE? down (a face button takes a digit
+ * off, START fights the same opponent again), and the end of the count is GAME OVER, then the
+ * title. Ladder fight 10's first round won against Ogre reloads him as True Ogre with the score. */
+enum { LADDER_RESULT_FIELDS=300, CHALLENGER_FIELDS=66 };
+static void ladder_step(const sat_pad_state_t* pad0,const sat_pad_state_t* pad1) {
+    const uint32_t now=sat_field_count();
+    const unsigned fields=g_ladder_field?now-g_ladder_field:1u;
+    g_ladder_field=now;
+    if(g_challenger_left) {
+        /* A NEW CHALLENGER ENTERS!! for 66 fields, then both players pick (sub-states 13-14). */
+        g_challenger_left=g_challenger_left>fields?g_challenger_left-fields:0u;
+        if(!g_challenger_left) {
+            g_ladder|=LADDER_CHALLENGE;
+            restart_program(PHASE_SELECT);
+        }
+        return;
+    }
+    if(g_ladder&LADDER_CHALLENGE) {
+        /* The challenger's match: the winner carries the run on at the same ladder fight. */
+        if(!g_game.match_done)return;
+        g_ladder_wait+=fields;
+        if(g_ladder_wait<LADDER_RESULT_FIELDS && !(pad0->pressed&SAT_PAD_START))return;
+        if(g_game.winner<0)restart_program(PHASE_SELECT);          /* a draw: the challenge again */
+        if(g_game.winner==1) {g_picks[0]=g_picks[1];g_ladder|=LADDER_SWAP;}
+        else g_ladder&=(uint8_t)~LADDER_SWAP;
+        g_ladder&=(uint8_t)~LADDER_CHALLENGE;
+        restart_program(PHASE_SELECT);
+    }
+    if(!g_game_over_left && !g_continue_left && pad1->connected && (pad1->pressed&SAT_PAD_START)) {
+        g_challenger_left=CHALLENGER_FIELDS;
+        return;
+    }
+    if(g_game_over_left) {
+        g_game_over_left=g_game_over_left>fields?g_game_over_left-fields:0u;
+        if(!g_game_over_left)restart_program(PHASE_MENU);
+        return;
+    }
+    if(g_continue_left) {
+        if(pad0->pressed&SAT_PAD_START) {
+            g_carry[0]=g_carry[1]=g_carry[2]=0;
+            restart_program(PHASE_SELECT);
+        }
+        unsigned cut=fields;
+        if(pad0->pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))cut+=T3_CONTINUE_DIGIT;
+        g_continue_left=g_continue_left>cut?g_continue_left-cut:0u;
+        if(!g_continue_left)g_game_over_left=T3_GAME_OVER_FIELDS;
+        return;
+    }
+#if defined(T3_LADDER_SELFTEST)
+    /* Test builds: four seconds into the fight the ladder goes on as if the player had won,
+     * through True Ogre's carried score at fight 10. */
+    static unsigned selftest;
+    if(!g_game.match_done && (selftest+=fields)>=240u) {
+        if(g_arcade_stage==T3_LADDER_FIGHTS-1u && !(g_ladder&LADDER_CARRY)) {
+            g_ladder|=LADDER_CARRY;g_carry[0]=1;g_carry[1]=0;g_carry[2]=1;
+            restart_program(PHASE_SELECT);
+        }
+        g_carry[0]=g_carry[1]=g_carry[2]=0;
+        if(++g_arcade_stage>=T3_LADDER_FIGHTS)restart_program(PHASE_ENDING);
+        g_ladder&=(uint8_t)~LADDER_CARRY;
+        restart_program(PHASE_SELECT);
+    }
+#endif
+    if(!g_game.match_done) {
+        if(g_arcade_stage==T3_LADDER_FIGHTS-1u && !(g_ladder&LADDER_CARRY) && g_picks[1]==T3_LADDER_OGRE &&
+           g_game.wins[0]>0u && !g_game.round_done) {
+            /* The next round has begun: the original's Ogre scene reloads the fight here. */
+            g_ladder|=LADDER_CARRY;
+            g_carry[0]=g_game.wins[0];g_carry[1]=g_game.wins[1];
+            g_carry[2]=(uint8_t)(g_game.round?g_game.round-1u:0u);
+            restart_program(PHASE_SELECT);
+        }
+        return;
+    }
+    g_ladder_wait+=fields;
+    if(g_ladder_wait<LADDER_RESULT_FIELDS && !(pad0->pressed&SAT_PAD_START))return;
+    if(g_game.winner==0) {
+        g_carry[0]=g_carry[1]=g_carry[2]=0;
+        if(++g_arcade_stage>=T3_LADDER_FIGHTS)restart_program(PHASE_ENDING);
+        g_ladder&=(uint8_t)~LADDER_CARRY;
+        restart_program(PHASE_SELECT);
+    }
+    g_continue_left=T3_CONTINUE_FIELDS;
 }
 
 /* Returns only in the fight phase, with both packs open. */
@@ -794,7 +896,11 @@ static void enter_fight_phase(void) {
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
         g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;
-        g_run_mode=(arg[4]>>2)&3u;g_music_off=(arg[4]>>4)&1u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
+        g_run_mode=(arg[4]>>2)&3u;g_music_off=(arg[4]>>4)&1u;g_menu_flags=arg[4]&0xE0u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
+        __builtin_memcpy(g_seed,arg+ARG_SEED,sizeof g_seed);
+        g_ladder=arg[ARG_LADDER];
+        __builtin_memcpy(g_carry,arg+ARG_CARRY_WINS,sizeof g_carry);
+        t3_move_probe_set_carry(g_carry[0],g_carry[1],g_carry[2]);
     }
     g_demo=restarted && arg[0]==PHASE_DEMO;
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
@@ -1193,6 +1299,20 @@ static void draw_hud(void) {
             "D-PAD MOVE/GUARD START RESET":"D-PAD MOVE/STEP  START RESET", 40, 208));
 #endif
     }
+#if defined(T3_ORIGINAL_HUD) && defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
+    /* FUN_800502D8's CONTINUE? n (colour 9, font 2, at 63, 200) and GAME OVER (colour 1, at 85, 200). */
+    if(g_continue_left) {
+        char line[]="CONTINUE? 9";
+        line[10]=(char)('0'+t3_continue_digit(g_continue_left));
+        SAT_PANIC_IF_ERROR(t3_original_hud_text(line,9u,2u,63,200));
+    } else if(g_game_over_left) {
+        SAT_PANIC_IF_ERROR(t3_original_hud_text("GAME OVER",1u,2u,85,200));
+    } else if(g_challenger_left && (g_challenger_left&24u)) {
+        /* The original's colour 7 is not among the extracted message colours; colour 8 stands in. */
+        SAT_PANIC_IF_ERROR(t3_original_hud_text("A NEW CHALLENGER",8u,2u,8,288));
+        SAT_PANIC_IF_ERROR(t3_original_hud_text("ENTERS!!",8u,2u,8,330));
+    }
+#endif
 }
 
 static void prepare_scene(void) {
@@ -1812,6 +1932,19 @@ int main(void) {
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
         if(g_demo && (pad0.pressed || pad1.pressed || g_game.match_done || ++g_demo_ticks>5400u))
             restart_program(PHASE_TITLE);
+#endif
+#if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
+        if(g_ladder&LADDER_ON) {
+            /* Port 2's player carries the run on: each side reads the other pad. */
+            if((g_ladder&(LADDER_SWAP|LADDER_CHALLENGE))==LADDER_SWAP) {
+                const sat_pad_state_t side0=pad1;
+                pad1=pad0;pad0=side0;
+            }
+            /* The ladder has no START reset: START only answers CONTINUE? and skips the result. */
+            ladder_step(&pad0,&pad1);
+            pad0.pressed&=(uint16_t)~SAT_PAD_START;
+            pad1.pressed&=(uint16_t)~SAT_PAD_START;
+        }
 #endif
         const int practice_again=g_practice && g_game.match_done;
         if ((pad0.pressed & SAT_PAD_START) || practice_again) {

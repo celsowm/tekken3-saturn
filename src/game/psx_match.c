@@ -694,7 +694,9 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     if(config->camera && (config->enable_rounds!=2 || !config->enable_body ||
        !config->camera->tables || !t3_psx_camera_valid(config->camera->tables)))return 0;
     if(config->start_intro) {
-        n.flow.played=0;
+        if(config->start_played>8u || config->start_wins[0]>=n.flow.to_win || config->start_wins[1]>=n.flow.to_win)return 0;
+        n.flow.played=config->start_played;
+        for(unsigned i=0;i<2;++i)n.round_actor[i].wins=config->start_wins[i];
         n.camera.rand=config->start_seed;
         for(unsigned i=0;i<2;++i) {
             t3_psx_fighter_t* f=&n.fighter[i];

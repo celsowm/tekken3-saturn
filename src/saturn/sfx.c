@@ -123,8 +123,10 @@ static void play(unsigned id) {
 /* Voices: a hurt voice for a hit (not a block) with the original's 40-tick
  * cooldown, and a shout on one swing in four. The match does not carry the
  * original's random draws, so the picks cycle. Events arrive in tick order. */
+#if !defined(T3_FIGHTER_PACKS)
 static uint32_t g_hurt_tick[2];
 static uint8_t g_hurt_set[2],g_hurt_next[2],g_shout_next[2],g_swings;
+#endif
 /* A match sound request: the sample extracted for that exact original code, or
  * counted as unmapped (no approximation). Kinds: T3_SOUND_SYSTEM/VOICE/EFFECT. */
 static void play_request(const t3_combat_event_t* e) {
@@ -203,7 +205,9 @@ void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
  * first round (frame 1 of later ones), the number at 100 / 40 unless final, and
  * "fight" when the intro ends. */
 static int32_t g_prev_state=-1,g_prev_frame;
+#if !defined(T3_FIGHTER_PACKS)
 static uint8_t g_prev_down[2];
+#endif
 void t3_sfx_round_update(void) {
     if(!g_ready)return;
     const int32_t state=t3_move_probe_round_value(1),frame=t3_move_probe_round_value(11);
