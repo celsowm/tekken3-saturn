@@ -18,6 +18,8 @@ jobs:
           ref: a198f9274b24a903ff19bafa36263febce4a06da
           path: .external/libsaturn
           persist-credentials: false
+      - name: Install Python test dependencies
+        run: python3 -m pip install --user numpy pillow
       - name: Configure portable core
         run: cmake --preset host -DT3_SATURN_MATH_INCLUDE_DIR="$PWD/.external/libsaturn/include"
       - name: Compile tests
