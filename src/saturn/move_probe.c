@@ -486,6 +486,16 @@ void t3_move_probe_reset(unsigned round) {
     g_owned_config.sound_sink=t3_combat_events_sound;
     t3_combat_events_connect_sound();
 #endif
+#if defined(T3_FIGHTER_PACKS) && defined(T3_PSX_HAND_CHANNELS)
+    {
+        static const uint8_t faces[][2]=T3_ROSTER_FACE_SHAPES;
+        for(unsigned i=0;i<2u;++i) {
+            const unsigned id=t3_fighter_pack(i)->id;
+            g_owned_config.face_attack[i]=id<T3_ROSTER_COUNT?faces[id][0]:0u;
+            g_owned_config.face_hit[i]=id<T3_ROSTER_COUNT?faces[id][1]:0u;
+        }
+    }
+#endif
     g_owned_config.collapse_on_ko=1; /* measured USA VS regional policy */
     g_owned_config.reactions=t3_local_combat_reactions;
     g_owned_config.reactions_size=T3_LOCAL_COMBAT_REACTION_BYTES;
@@ -1150,6 +1160,14 @@ int t3_move_probe_fighter_shown(unsigned i) {
     (void)i;
 #endif
     return 1;
+}
+unsigned t3_move_probe_hand_variant(unsigned i,unsigned channel) {
+#if defined(T3_ENABLE_PSX_OWNED_MATCH) && defined(T3_PSX_HAND_CHANNELS)
+    if(i<2u && channel<2u && g_active)return g_owned_match.fighter[i].hands.variant[channel];
+#else
+    (void)i;(void)channel;
+#endif
+    return 0u;
 }
 int32_t t3_move_probe_world_center(unsigned axis) {
     return (int32_t)(((int64_t)t3_move_probe_owned_value(0,axis+1u)+

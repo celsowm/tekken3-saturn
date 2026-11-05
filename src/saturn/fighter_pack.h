@@ -16,6 +16,35 @@ enum {
     T3_PACK_FLIPBOOK,T3_PACK_VOICES,T3_PACK_PCM,T3_PACK_NAMES,T3_PACK_SECTIONS
 };
 
+/* One lit normal: a Q12 unit vector in its joint's basis (scripts/build_fighter_packs.py,
+ * lighting_data). */
+typedef struct {
+    int16_t x,y,z;
+    uint16_t joint;
+} t3_light_normal_t;
+
+/* A face's lighting word: the normal of corner A, its tone class, and whether that one
+ * normal lights the whole face; otherwise light_corners holds corners B, C and D. */
+#define T3_LIGHT_FACE_NORMAL(word) ((word)&0x3FFu)
+#define T3_LIGHT_FACE_TONE(word) (((word)>>10)&15u)
+#define T3_LIGHT_FACE_FLAT 0x8000u
+#define T3_LIGHT_TONES 16u
+
+/* A row with hand (or jaw) vertex variants (scripts/build_fighter_packs.py,
+ * hand_variant_rows): the vertices of projected block `block` and the skin
+ * records (record << 2 | influence) that its variants move, then per variant
+ * 0..T3_HAND_VARIANTS-1 and the base (index T3_HAND_VARIANTS) their positions;
+ * a variant whose bit in `present` is clear keeps the current block. */
+#define T3_HAND_VARIANTS 10u
+typedef struct {
+    uint8_t channel,block;
+    uint16_t vertex_count,record_count,present;
+    const uint16_t* vertices;
+    const uint16_t* records;
+    const int16_t (*coords)[3];    /* [T3_HAND_VARIANTS + 1][vertex_count] */
+    const int16_t (*positions)[3]; /* [T3_HAND_VARIANTS + 1][record_count] */
+} t3_hand_variant_row_t;
+
 typedef struct {
     uint32_t id,bank_type,voice_set,scale_percent,name_width;
     uint32_t vertices,faces,textures,palettes,voice_count,compact_bytes,bank_fnv1a;
@@ -30,6 +59,13 @@ typedef struct {
     uint32_t projected_count,projected_vertices;
     const uint16_t (*projected_faces)[4];
     const uint8_t (*face_ot)[2];
+    uint32_t light_normal_count; /* 0 without lighting data */
+    const t3_light_normal_t* light_normals;
+    const uint16_t* light_faces;
+    const uint16_t* light_corners;
+    const uint16_t* light_tones; /* T3_LIGHT_TONES mean texel colours, RGB555 */
+    const t3_hand_variant_row_t* hand_rows;
+    uint32_t hand_row_count;
     const uint8_t* bank; /* in the arena, after t3_fighter_packs_load_banks */
     uint32_t bank_bytes;
 } t3_fighter_pack_t;

@@ -56,10 +56,18 @@ implementation of Tekken3Remake.
   (original fighter ordering-table arithmetic, packed face selection and
   observed fighter/effect links),
   `scripts/kmd_to_ska.py` and `scripts/build_local_kmd_assets.py` (preservation
-  of original KMD face type and ordering flags),
+  of original KMD face type and ordering flags; with `scripts/build_fighter_packs.py`, the
+  KMD normal exchange, face colour offsets and stage light rigs),
+  `src/saturn/fighter_hands.c` and `scripts/kmd_to_ska.py` `hand_variants`
+  (PartSelectVertexVariant's hand and jaw vertex variants from
+  `docs/research/formats/3dmk-models.md`), `scripts/kmd_variants.py`,
+  `src/saturn/fighter_light.c` (the fighter light rig and per-normal colour rule from
+  `docs/research/code/stages.md`, Lighting),
   `src/game/psx_particle_projection.c` (billboard transform, signed relative
   coordinates and OT insertion rules from `docs/research/code/effects.md`
   and `tools/research/projection_sim.py`, checked against original code),
+  `src/game/psx_hands.c` (HandFaceCommand and FighterHandPoses hand channels from
+  `remake/core/fighter/fighter_hands.gd`, `move_events.gd` and `fighter_physics.gd`),
   `src/game/psx_blink.c` (eye timer and
   shared RNG from `remake/core/fighter/fighter_animation.gd`), `src/game/move_clock.c`,
   `src/game/psx_tap_latch.c` (button tap retention and original bug #52 from

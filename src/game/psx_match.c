@@ -280,6 +280,24 @@ T3_SIM_WRAP_ACTOR(static int,place,T3_SIM_ROOT,
     (t3_psx_match_t* match,t3_psx_fighter_t* f),
     (match,f),(unsigned)(f-match->fighter))
 
+/* FighterMovePhysics' hand shape (moves.md, physics step 9): the costume's hit
+ * shape on a clean hit; otherwise, unless a hand event ran in this move, its
+ * attack shape at the start of a non-damage move during the fight and within
+ * 8 frames before a damage move's active window. */
+#if defined(T3_PSX_HAND_CHANNELS)
+static void face_shape(const t3_psx_match_t* n,t3_psx_fighter_t* f,unsigned i) {
+    const t3_psx_match_config_t* c=n->config;
+    if(f->vm.clock.move_changed)f->hand_event_move=0; /* cleared as the move starts */
+    if(f->ground.hit_clean){t3_psx_hands_command(&f->hands,3u,c->face_hit[i],10);return;}
+    if(f->hand_event_move)return;
+    const int fight=c->enable_rounds!=2 || n->flow.state==T3_ROUND_FIGHT || n->flow.state==T3_ROUND_RESULT;
+    if(f->vm.clock.move_changed && !f->ground.damage && !f->ground.in_reaction && fight)
+        t3_psx_hands_command(&f->hands,3u,c->face_attack[i],10);
+    if(f->ground.damage && (int)f->vm.move.active_first-(int)f->vm.clock.pose_frame<8)
+        t3_psx_hands_command(&f->hands,3u,c->face_attack[i],10);
+}
+#endif
+
 /* HandFaceCommand's level channel for True Ogre: shapes 2 and 3 raise it, the others lower it. */
 static void ogre_command(t3_psx_fighter_t* f,unsigned shape,int speed) {
     if(!speed)speed=1;
@@ -404,6 +422,9 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
         if(!t3_psx_head_look(&f->head,&tables,f->world,match->fighter[1u-index].world,
                             &f->vm.move,f->vm.clock.pose_frame,f->no_look_at,&complete[2]))return 0;
     }
+#if defined(T3_PSX_HAND_CHANNELS)
+    if(c->character[index]!=20u && !match->flow.freeze)t3_psx_hands_step(&f->hands);
+#endif
     t3_psx_part_t ogre_parts[T3_PSX_DRAW_PARTS];
     if(c->character[index]==20u) {
         if(!ogre_sway(match,f,parts,complete,ogre_parts))return 0;
@@ -828,6 +849,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         if(!t3_psx_ground_step(&f->ground,&n->fighter[1u-i].ground,&f->vm,
                 &n->fighter[1u-i].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
         if(f->ground.flight_landed)f->vm.clock.ballistic=0u;
+#if defined(T3_PSX_HAND_CHANNELS)
+        if(c->character[i]!=20u)face_shape(n,f,i);
+#endif
     }
     for(unsigned i=0;i<2;++i) {
         T3_MATCH_PHASE(150+i);
@@ -850,6 +874,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             if(t3_psx_move_events_sample(f->vm.active_bank,&f->vm.move,f->previous_pose_frame,
                                          f->vm.clock.pose_frame,&f->events)!=1)return 0;
             if(c->character[i]==20u)ogre_events(f);
+#if defined(T3_PSX_HAND_CHANNELS)
+            else if(t3_psx_hands_event(&f->hands,f->events.hand,c->face_attack[i]))f->hand_event_move=1;
+#endif
         }
         /* FightFrame runs HitApply every frame, after a KO too; the round's
          * no-damage flag (0x800958A0) keeps health then. */
@@ -1044,6 +1071,9 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         /* Port diagnostics count successful contacts per round. */
         f->registered_hits=f->registered_blocks=0;
         f->body.active=1;f->body.invulnerable=0;f->no_look_at=0;
+#if defined(T3_PSX_HAND_CHANNELS)
+        t3_psx_hands_command(&f->hands,3u,n->config->face_attack[i],10);
+#endif
         f->blend.frames=f->blend.counter=0;f->blend.weight=0;
         for(unsigned k=0;k<3;++k)f->blend.root_delta[k]=0;
         n->round_actor[i].health_left=n->round_actor[i].won=n->round_actor[i].win_pose=0;

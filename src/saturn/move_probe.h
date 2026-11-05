@@ -73,6 +73,8 @@ int32_t t3_move_probe_backdrop_turn(void);
 int32_t t3_move_probe_owned_value(unsigned fighter,unsigned field);
 /* t3_psx_match_fighter_shown for the owned match; true without one. */
 int t3_move_probe_fighter_shown(unsigned fighter);
+/* The vertex variant hand channel `channel` shows (psx_hands.h); 0 without a match. */
+unsigned t3_move_probe_hand_variant(unsigned fighter,unsigned channel);
 #if defined(T3_ORIGINAL_HUD) && defined(T3_ENABLE_PSX_OWNED_MATCH)
 /* Original 60 Hz HUD lengths, copied only at a committed simulation boundary. */
 void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]);

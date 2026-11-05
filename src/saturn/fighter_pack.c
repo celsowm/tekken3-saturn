@@ -3,7 +3,10 @@
 #include "placement.h"
 #include "saturn/cdfs.h"
 
-enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=3u, DIRECTORY_WORD=26u };
+enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=5u, DIRECTORY_WORD=26u,
+       LIGHT_WORD=DIRECTORY_WORD+2u*T3_PACK_SECTIONS };
+_Static_assert(sizeof(t3_light_normal_t)==8u,"pack lit normals");
+_Static_assert(sizeof(t3_hand_variant_row_t)==24u,"pack hand variant rows");
 _Static_assert(sizeof(t3_psx_projected_part_t)==22u*sizeof(uint32_t),"pack projected rows");
 _Static_assert(sizeof(t3_psx_part_t)==16u,"pack parts");
 _Static_assert(sizeof(t3_psx_camera_choice_t)==8u,"pack camera choices");
@@ -94,6 +97,27 @@ static sat_result_t open_pack(unsigned actor,unsigned id) {
     pack->projected_faces=(const uint16_t(*)[4])(const void*)(store+w[23]);
     pack->projected_vertices=w[24];
     pack->face_ot=(const uint8_t(*)[2])(const void*)(store+w[25]);
+    /* Lighting data exists with the LUT4 textures only; zero normals mark it absent. */
+    const uint32_t* light=w+LIGHT_WORD;
+    pack->light_normal_count=light[0];
+    if(light[0]) {
+        pack->light_normals=(const t3_light_normal_t*)(const void*)(store+light[1]);
+        pack->light_faces=(const uint16_t*)(const void*)(store+light[2]);
+        pack->light_corners=(const uint16_t*)(const void*)(store+light[3]);
+        pack->light_tones=(const uint16_t*)(const void*)(store+light[4]);
+    }
+    /* The hand rows hold hot offsets until relocated, as the projected rows. */
+    t3_hand_variant_row_t* hands=(t3_hand_variant_row_t*)(void*)(store+light[6]);
+    pack->hand_row_count=light[5];
+    for(uint32_t r=0;r<light[5];++r) {
+        t3_hand_variant_row_t* row=&hands[r];
+        if(row->block>=w[22])return SAT_ERR_VERSION;
+        row->vertices=(const uint16_t*)(const void*)(store+(uintptr_t)row->vertices);
+        row->records=(const uint16_t*)(const void*)(store+(uintptr_t)row->records);
+        row->coords=(const int16_t(*)[3])(const void*)(store+(uintptr_t)row->coords);
+        row->positions=(const int16_t(*)[3])(const void*)(store+(uintptr_t)row->positions);
+    }
+    pack->hand_rows=hands;
     return SAT_OK;
 }
 

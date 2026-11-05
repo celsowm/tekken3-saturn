@@ -18,6 +18,7 @@
 #include "psx_hud_bar.h"
 #include "psx_tap_latch.h"
 #include "psx_blink.h"
+#include "psx_hands.h"
 #include "psx_fighter_sounds.h"
 #include "psx_effect_pool.h"
 #include "psx_fight_camera.h"
@@ -87,6 +88,11 @@ typedef struct {
     struct t3_psx_ai_game* ai;
     t3_psx_sound_tables_t sound_tables;
     uint8_t sound_voice_set[2]; /* private metadata, not inferred from costume */
+    /* Each costume's hand shapes (0x80095D74 attacking and its own, 0x80095DA8 on a
+     * clean hit): presentation only, nothing in the simulation reads the hands. */
+#if defined(T3_PSX_HAND_CHANNELS)
+    uint8_t face_attack[2],face_hit[2];
+#endif
     /* Optional consumer of every original sound request, in call order. Voice
      * ids arrive already resolved to the character's sound code. */
     t3_psx_sound_emit_t sound_sink;void* sound_sink_user;
@@ -112,6 +118,10 @@ typedef struct {
     t3_psx_head_t head;
     uint8_t no_look_at;
     int16_t ogre_sway,ogre_level,ogre_target,ogre_rate; /* True Ogre's +0x1294 and level channel */
+#if defined(T3_PSX_HAND_CHANNELS) /* only the hand variants read them */
+    t3_psx_hands_t hands;
+    uint8_t hand_event_move; /* +0xBC: a hand event ran in this move, so no face shape */
+#endif
     uint8_t blend_guarded_previous,blend_in_reaction;
     int32_t ramp_step;
     uint32_t body_contacts;

@@ -20,7 +20,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_spark.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_vertex_exchange.c src/game/psx_vertex_project.c src/game/psx_projected_mesh.c src/game/psx_fighter_ot.c src/game/psx_face_coverage.c src/game/psx_scene_ot.c src/game/psx_particle_projection.c src/game/psx_particle_assets.c src/game/psx_particle_snapshot.c src/game/psx_particle_prepare.c src/game/psx_particle_order.c src/game/psx_particle_tile.c src/game/psx_flipbook.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_fighter_sounds.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
     src/game/arcade_ladder.c)
@@ -143,11 +143,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             endif()
             list(APPEND _t3_pack_files "${_t3_pack_gen}/F${_t3_pack_id}.BIN")
         endforeach()
+        # 0 keeps the 8x8 INDEX8 face patches; N bakes native-density LUT4 patches of at most N
+        # texels a side with each face's original 16-colour table (docs/FIGHTER_FIDELITY.md).
+        set(T3_FIGHTER_TEXTURE_CAP "0" CACHE STRING "Fighter face textures: 0 = 8x8 patches, N = native LUT4 up to N")
+        # Rewritten only when the value changes, so a new cap rebuilds the packs.
+        # Hand and jaw vertex variants from the original hand channels (docs/FIGHTER_FIDELITY.md).
+        # Off: the A/B costs 0.09 img/s. The packs store the variants and the channels compile only with it.
+        option(T3_FIGHTER_HAND_VARIANTS "Show the original hand and jaw poses" OFF)
+        set(_t3_pack_hands "")
+        if(T3_FIGHTER_HAND_VARIANTS)
+            set(_t3_pack_hands "--hand-variants")
+        endif()
+        file(CONFIGURE OUTPUT "${_t3_pack_gen}/texture_cap.txt" CONTENT "${T3_FIGHTER_TEXTURE_CAP} ${_t3_pack_hands}\n")
         add_custom_command(OUTPUT ${_t3_pack_files} "${_t3_pack_gen}/t3_roster.h"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
                 --raw "${T3_LOCAL_SFX}/raw" --exe "${T3_LOCAL_SFX}/SLUS_004.02"
                 --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --out "${_t3_pack_gen}"
+                --texture-cap "${T3_FIGHTER_TEXTURE_CAP}" ${_t3_pack_hands}
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
+                "${_t3_pack_gen}/texture_cap.txt"
                 "${CMAKE_SOURCE_DIR}/scripts/fighter_roster.py"
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_camera_assets.py"
                 "${CMAKE_SOURCE_DIR}/scripts/build_local_kmd_assets.py"
@@ -1491,6 +1505,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             "${_t3_pack_gen}/t3_roster.h")
         target_include_directories(tekken3_saturn PRIVATE "${_t3_pack_gen}")
         target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_PACKS=1 T3_SECOND_CHARACTER=1)
+        if(T3_FIGHTER_HAND_VARIANTS)
+            target_sources(tekken3_saturn PRIVATE src/saturn/fighter_hands.c)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_HAND_VARIANTS=1)
+            target_compile_definitions(tekken3_fight PUBLIC T3_PSX_HAND_CHANNELS=1)
+        endif()
+        # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md). Off
+        # until an A/B shows no frame-rate loss; it needs the native LUT4 textures.
+        option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" OFF)
+        if(T3_FIGHTER_LIGHTING)
+            if(T3_FIGHTER_TEXTURE_CAP EQUAL 0 OR NOT T3_ORIGINAL_FIGHTER_PROJECTION)
+                message(FATAL_ERROR "T3_FIGHTER_LIGHTING requires T3_FIGHTER_TEXTURE_CAP > 0 and T3_ORIGINAL_FIGHTER_PROJECTION")
+            endif()
+            target_sources(tekken3_saturn PRIVATE src/saturn/fighter_light.c)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_LIGHTING=1)
+        endif()
         if(T3_BOOT_FIGHTERS)
             list(GET T3_BOOT_FIGHTERS 0 _t3_boot_fighter_0)
             list(GET T3_BOOT_FIGHTERS 1 _t3_boot_fighter_1)
@@ -1686,6 +1715,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     # cannot press START a one-CPU fight to measure, with P1 neutral.
     set(T3_DEMO_CPU_MASK "3" CACHE STRING "CPU fighter mask of the attract fight")
     target_compile_definitions(tekken3_saturn PRIVATE T3_DEMO_CPU_MASK=${T3_DEMO_CPU_MASK}u)
+    # Measurement builds: the attract fight always plays this pair ("p1,p2", fighter ids),
+    # so an A/B of two builds draws the same fighters on the same stage.
+    set(T3_DEMO_PAIR "" CACHE STRING "Test builds: fixed attract fight pair, empty for the rotation")
+    if(T3_DEMO_PAIR)
+        target_compile_definitions(tekken3_menu PRIVATE T3_DEMO_PAIR=${T3_DEMO_PAIR})
+    endif()
     option(T3_LADDER_SELFTEST "Test builds: every arcade ladder fight counts as won once round 1 has begun" OFF)
     set(T3_LADDER_SELFTEST_STAGE "0" CACHE STRING "Test builds: the ladder fight (0-9) a new run starts at")
     if(T3_LADDER_SELFTEST)
@@ -2030,6 +2065,13 @@ else()
             COMMAND "${_t3_hud_oracle_python}" "${CMAKE_SOURCE_DIR}/tests/test_psx_blink.py"
                 --runner "$<TARGET_FILE:t3_psx_blink_eval>")
         set_tests_properties(ps1_original_blink_rng PROPERTIES SKIP_RETURN_CODE 77)
+        add_executable(t3_psx_hands_eval tools/psx_hands_eval.c)
+        target_link_libraries(t3_psx_hands_eval PRIVATE tekken3_fight)
+        target_compile_options(t3_psx_hands_eval PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME ps1_original_hand_channels
+            COMMAND "${_t3_hud_oracle_python}" "${CMAKE_SOURCE_DIR}/tests/test_psx_hands.py"
+                --runner "$<TARGET_FILE:t3_psx_hands_eval>")
+        set_tests_properties(ps1_original_hand_channels PROPERTIES SKIP_RETURN_CODE 77)
         add_executable(t3_psx_fighter_sounds_eval tools/psx_fighter_sounds_eval.c)
         target_link_libraries(t3_psx_fighter_sounds_eval PRIVATE tekken3_fight)
         target_compile_options(t3_psx_fighter_sounds_eval PRIVATE -Wall -Wextra -Werror)

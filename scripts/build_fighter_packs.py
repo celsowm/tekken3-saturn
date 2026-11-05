@@ -9,6 +9,7 @@ The output is retail-derived: keep it under assets/imported or build/.
 """
 import argparse
 import json
+import math
 from pathlib import Path
 import struct
 import subprocess
@@ -21,14 +22,17 @@ from divmot_to_logic import sections_of
 from extract_psx_char_flipbook import flipbook_file
 from extract_psx_hud import extract_name, system_textures
 from extract_psx_sfx import all_voice_codes, arc_member, vab_sound
-from build_stage_packs import fighter_home
+from build_stage_packs import STAGE_RECORDS, STAGE_RECORD_BYTES, fighter_home, usa_file_offset
 from fighter_roster import COMMON_RECORD, ROSTER, STAGE_NUMBERS, bank_record, body_radii, filter_words, records
-from kmd_to_ska import parse_kmd
+from kmd_to_ska import HAND_VARIANTS, parse_kmd
 from psx_character_textures import load_character_vram
 
 SCRIPTS = Path(__file__).resolve().parent
 MAGIC = 0x54334650
-VERSION = 3
+VERSION = 5
+# Tone classes of the lighting data: Gouraud offsets are additive, so each face's offset scales
+# with its class's mean texel colour (see lighting_data).
+TONE_CLASSES = 16
 HEADER_BYTES = 256
 SECTIONS = ('hot', 'archive', 'bank', 'camera', 'flipbook', 'voices', 'pcm', 'names')
 VOICE_ROW_BYTES = 16
@@ -102,6 +106,102 @@ def projected_table(mesh, put):
     return bytes(rows)
 
 
+def tone_classes(tones, k=TONE_CLASSES):
+    """Lloyd's k-means over the faces' mean 5-bit colours, seeded at luminance quantiles."""
+    order = sorted(range(len(tones)), key=lambda i: sum(tones[i]))
+    centres = [tones[order[(2 * j + 1) * len(order) // (2 * k)]] for j in range(k)]
+    labels = [0] * len(tones)
+    for _ in range(24):
+        labels = [min(range(k), key=lambda j: sum((a - b) ** 2 for a, b in zip(t, centres[j]))) for t in tones]
+        for j in range(k):
+            members = [tones[i] for i, label in enumerate(labels) if label == j]
+            if members:
+                centres[j] = tuple(sum(m[c] for m in members) / len(members) for c in range(3))
+    return labels, centres
+
+
+def lighting_data(lighting):
+    """The faces' lit normals for the runtime relight (fighter_light.c).
+
+    normals: (x, y, z, joint) int16 each, Q12 unit vectors in the joint's basis.
+    faces: one word per face: bits 0-9 the normal of corner A, bits 10-13 the tone class, bit 15
+    set when one normal lights the whole face; otherwise `corners` holds the normals of its
+    corners B, C, D, three words per such face in face order.
+    tones: per class the mean texel colour, RGB555."""
+    normals, faces = lighting['normals'], lighting['faces']
+    if len(normals) > 1024:
+        raise ValueError('more than 1024 lit normals')
+    labels, centres = tone_classes(lighting['tones'])
+    words, corners = [], []
+    for face, label in zip(faces, labels):
+        flat = len(set(face)) == 1
+        words.append(face[0] | label << 10 | (0x8000 if flat else 0))
+        if not flat:
+            corners += face[1:]
+    return (b''.join(struct.pack('>hhhH', x, y, z, joint) for joint, x, y, z in normals),
+            struct.pack(f'>{len(words)}H', *words), struct.pack(f'>{len(corners)}H', *corners),
+            struct.pack(f'>{len(centres)}H', *(round(r) | round(g) << 5 | round(b) << 10 for r, g, b in centres)),
+            len(normals))
+
+
+def hand_variant_rows(variants, mesh, put):
+    """The hand-variant rows (kmd_to_ska.hand_variants) as t3_hand_variant_row_t records, their
+    arrays placed with `put`: channel, projected block, the moved vertices and changed skin
+    records (record << 2 | influence), then per variant 0-9 and the base the vertices' KMD
+    positions and the records' skin positions (zero for a variant that keeps the block)."""
+    blocks = {(b['part'], b['row']): i for i, b in enumerate(mesh)}
+    rows = b''
+    for v in variants:
+        present = sum(1 << i for i, c in enumerate(v['coords'][:HAND_VARIANTS]) if c is not None)
+        zero_v, zero_r = [(0, 0, 0)] * len(v['vertices']), [(0, 0, 0)] * len(v['records'])
+        coords = [c if c is not None else zero_v for c in v['coords']]
+        positions = [p if p is not None else zero_r for p in v['positions']]
+        if any(r >= 1 << 14 or k > 2 for r, k in v['records']):
+            raise ValueError('hand variant record out of range')
+        at = [put(struct.pack(f">{len(v['vertices'])}H", *v['vertices']), 2),
+              put(struct.pack(f">{len(v['records'])}H", *(r << 2 | k for r, k in v['records'])), 2),
+              put(b''.join(struct.pack('>3h', *p) for c in coords for p in c), 2),
+              put(b''.join(struct.pack('>3h', *p) for c in positions for p in c), 2)]
+        rows += struct.pack('>BBHHH4I', v['channel'], blocks[v['part'], v['row']], len(v['vertices']),
+                            len(v['records']), present, *at)
+    return rows, len(variants)
+
+
+def light_rigs(exe, stages=20):
+    """Each stage's fighter light rig from its 28-byte record (FUN_80039BB4; documented in
+    Tekken3Remake docs/research/code/stages.md, Lighting): ambient word, base RGB, main light
+    RGB and the main light's matrix row, the negated unit direction in Q12."""
+    rows = []
+    for stage in range(stages):
+        at = usa_file_offset(STAGE_RECORDS + STAGE_RECORD_BYTES * stage)
+        ambient = struct.unpack_from('<i', exe, at)[0]
+        base, light = exe[at + 4:at + 7], exe[at + 8:at + 11][::-1]
+        pitch, yaw = (a * math.tau / 4096 for a in struct.unpack_from('<hh', exe, at + 12))
+        direction = (math.cos(yaw - math.pi) * math.cos(pitch), math.sin(pitch),
+                     math.sin(yaw - math.pi) * math.cos(pitch))
+        rows.append((ambient, base[0] | base[1] << 8 | base[2] << 16, light[0] | light[1] << 8 | light[2] << 16,
+                     *(round(-4096 * c) for c in direction)))
+    return rows
+
+
+# FUN_800364E8 / FUN_80036518: a byte per costume slot, the hand shape while attacking (and the
+# costume's own) and on a clean hit (Tekken3Remake tools/remake_import/tables.py; NOTICE.md).
+FACE_ATTACK, FACE_HIT, FACE_SLOTS = 0x80095D74, 0x80095DA8, 0x37
+
+
+def face_shapes(exe):
+    """(attack, hit) hand shapes per character id, from its costume slot."""
+    tables = [exe[usa_file_offset(at):][:FACE_SLOTS] for at in (FACE_ATTACK, FACE_HIT)]
+    by_id = {f.id: f for f in ROSTER}
+    out = []
+    for character in range(max(by_id) + 1):
+        slot = by_id[character].slot
+        out.append(tuple(t[slot] if slot < FACE_SLOTS else 0 for t in tables))
+        if any(v >= 8 for v in out[-1]):
+            raise ValueError(f'character {character}: hand shape {out[-1]} beyond the hand shapes')
+    return out
+
+
 def compact_bytes(archive):
     """sat_character_asset_compact's result for this archive, for sizing storage."""
     head = struct.unpack_from('>24I', archive)
@@ -124,11 +224,11 @@ def logic_bank(raw_path, scratch):
     return found[0].read_bytes()
 
 
-def build(fighter, raw, exe, system_vram, libsaturn, scratch):
+def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, hand_variants=False):
     r = records(fighter)
     arc = (raw / f"{r['arc']:03}.bin").read_bytes()
     model = parse_kmd((raw / f"{r['kmd']:03}.bin").read_bytes())
-    archive, report = compile_mesh(model, libsaturn, scratch / 'mesh', raw / f"{r['arc']:03}.bin")
+    archive, report = compile_mesh(model, libsaturn, scratch / 'mesh', raw / f"{r['arc']:03}.bin", texture_cap)
     if report['joints'] != 22 or not report['original_textures']:
         raise ValueError(f'{fighter.name}: unexpected rig or texture kind')
     raw_bank = (raw / f'{bank_record(fighter):03}.bin').read_bytes()
@@ -162,6 +262,22 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch):
     place('projected', projected_rows)
     place('projected_faces', b''.join(struct.pack('>4H', *f) for f in faces), 2)
     place('face_ot', bytes(v for row in report['face_ot_metadata'] for v in row), 1)
+    # Lighting needs LUT4 textures: VDP1 Gouraud does not shade INDEX8 texels.
+    lighting = report['texture_report'].get('lighting')
+    normal_count = 0
+    for name in ('light_normals', 'light_faces', 'light_corners', 'light_tones'):
+        fields[name] = 0
+    if lighting:
+        normals, light_faces, corners, tones, normal_count = lighting_data(lighting)
+        place('light_normals', normals)
+        place('light_faces', light_faces, 2)
+        place('light_corners', corners, 2)
+        place('light_tones', tones, 2)
+    hand_rows, hand_row_count = hand_variant_rows(report['hand_variants'], mesh, put) if hand_variants else (b'', 0)
+    if hand_rows:
+        place('hand_variants', hand_rows)
+    else:
+        fields['hand_variants'] = 0
     align(hot, 4)
 
     sections = dict(hot=bytes(hot), archive=archive, bank=bank, camera=encoded,
@@ -179,7 +295,8 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch):
              fields['parts'], fields['radii'], fields['choices'], choice_count, fields['streams'], stream_count,
              fields['double_sided'], voice_count, compact_bytes(archive),
              fnv1a(bank), fields['projected'], len(mesh), fields['projected_faces'], projected_vertices,
-             fields['face_ot'], *directory]
+             fields['face_ot'], *directory, normal_count, fields['light_normals'], fields['light_faces'],
+             fields['light_corners'], fields['light_tones'], hand_row_count, fields['hand_variants']]
     if len(words) * 4 > HEADER_BYTES:
         raise ValueError('pack header overflow')
     struct.pack_into(f'>{len(words)}I', image, 0, *words)
@@ -200,7 +317,7 @@ def branch_rows(bank):
     return (second - first) // 12
 
 
-def header(rows, common_rows, homes):
+def header(rows, common_rows, homes, rigs, faces):
     def most(key):
         return max(row[key] for row in rows)
     pairs = [(a, b) for a in rows for b in rows]
@@ -226,6 +343,11 @@ def header(rows, common_rows, homes):
              '/* Home stage and music track, by character id. */',
              f"#define T3_ROSTER_STAGES {{{','.join(str(home[0]) for home in homes)}}}",
              f"#define T3_ROSTER_TRACKS {{{','.join(str(home[1]) for home in homes)}}}",
+             '/* Per stage: ambient, base RGB, light RGB (R in the low byte), light row x, y, z (Q12). */',
+             f'#define T3_ROSTER_LIGHT_RIG_COUNT {len(rigs)}u',
+             '#define T3_ROSTER_LIGHT_RIGS {' + ','.join('{' + ','.join(str(v) for v in rig) + '}' for rig in rigs) + '}',
+             '/* Hand shapes by character id: attacking (and the costume\'s own), on a clean hit. */',
+             '#define T3_ROSTER_FACE_SHAPES {' + ','.join('{%d,%d}' % face for face in faces) + '}',
              '#endif', '']
     return '\n'.join(lines)
 
@@ -237,6 +359,10 @@ def main():
     parser.add_argument('--libsaturn-source', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--only', type=int, action='append', help='build only these character ids (a test aid)')
+    parser.add_argument('--texture-cap', type=int, default=0,
+                        help='0: 8x8 INDEX8 face patches; N: native-density LUT4 patches of at most N texels a side')
+    parser.add_argument('--hand-variants', action='store_true',
+                        help='store the hand and jaw vertex variants (T3_FIGHTER_HAND_VARIANTS)')
     args = parser.parse_args()
     exe = args.exe.read_bytes()
     system_vram = system_textures.build_vram(system_textures.members(exe, 'usa'))
@@ -249,7 +375,8 @@ def main():
             if args.only and fighter.id not in args.only:
                 continue
             with tempfile.TemporaryDirectory() as scratch:
-                image, bank, row = build(fighter, args.raw, exe, system_vram, args.libsaturn_source, Path(scratch))
+                image, bank, row = build(fighter, args.raw, exe, system_vram, args.libsaturn_source, Path(scratch),
+                                         args.texture_cap, args.hand_variants)
             (args.out / row['file']).write_bytes(image)
             (banks / f"{fighter.id:02}.t3logic").write_bytes(bank)
             rows.append(row)
@@ -260,7 +387,7 @@ def main():
     homes = [fighter_home(exe, character) for character in range(max(f.id for f in ROSTER) + 1)]
     if {f.id for f in ROSTER} != set(range(len(homes))) or not {home[0] for home in homes} <= set(STAGE_NUMBERS):
         raise ValueError(f'a character has no baked home stage: {homes}')
-    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common), homes))
+    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common), homes, light_rigs(exe), face_shapes(exe)))
     (args.out / 'roster.json').write_text(json.dumps(rows, indent=1) + '\n')
     print(json.dumps(dict(packs=len(rows), bytes=sum(r['bytes'] for r in rows)), indent=1))
 

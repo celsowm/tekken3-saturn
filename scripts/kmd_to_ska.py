@@ -36,6 +36,7 @@ class VertBlock:
     imports_global: tuple[int,...]
     coords: tuple[tuple[int,int,int],...]
     posts: tuple[tuple[int,...],...]
+    lead: int = 0
 
 @dataclass(frozen=True)
 class KmdRow:
@@ -48,6 +49,13 @@ class KmdRow:
     double_sided: tuple[int,...] = ()
     face_uvs: tuple = ()
     face_ot: tuple[tuple[int,int], ...] = ()  # group, original flags' high byte
+    normals: VertBlock | None = None
+    # Per face, the byte offsets of its lit colours: one for a flat face (FT3, FT4), one per
+    # corner for a Gouraud face (GT3, GT4), in the face's vertex order.
+    face_colours: tuple[tuple[int,...], ...] = ()
+    # Per vertVariants entry, the block's own vertex positions; None for a zero entry (the
+    # current block stays) and for a block whose imports or posts differ from the base.
+    variant_coords: tuple = ()
     @property
     def parent(self):
         return struct.unpack("<i",struct.pack("<I",self.words[8]))[0]
@@ -91,10 +99,10 @@ def parse_vertex(data,start,end,normals=False):
     if rd.pos!=end:raise KmdError(f"vertex/normal block misaligned at 0x{rd.pos:x}")
     if not normals and lead!=2*(1+len(local)+len(shared)):
         raise KmdError("unexpected PS1 vertex import header")
-    return VertBlock(local,shared,tuple(coords),post)
+    return VertBlock(local,shared,tuple(coords),post,lead)
 
 def parse_faces(data,start,end):
-    rd=Reader(data,start,end);faces=[];counts=[];double_sided=[];face_ot=[]
+    rd=Reader(data,start,end);faces=[];counts=[];double_sided=[];face_ot=[];colours=[]
     for i,(length,corners) in enumerate(zip(GROUP_SIZES,GROUP_CORNERS)):
         count=rd.u32()
         if count>8192:raise KmdError("excessive KMD face count")
@@ -105,11 +113,17 @@ def parse_faces(data,start,end):
             vi=((w&0x1fc)>>2,(w>>9)&0x7f,(w>>16)&0x7f)
             if corners==4:vi+=((w>>25)&0x7f,)
             faces.append(vi)
+            # Colour fields (3dmk-models.md, face block): FT3 word 1; FT4 word 1 bits 2-8;
+            # GT3 word 1 bits 2-8, 9-15 (>>7) and 16-31; GT4 word 1 bits 2-8 then word 2's three.
+            if i==0:colours.append((words[1],))
+            elif i==1:colours.append((words[1]&0x1fc,))
+            elif i==2:colours.append((words[1]&0x1fc,(words[1]>>7)&0x1fc,words[1]>>16))
+            else:colours.append((words[1]&0x1fc,words[2]&0x1fc,(words[2]>>7)&0x1fc,words[2]>>16))
             flags=words[1] if corners==4 else words[0]
             double_sided.append(int(bool(flags & 0x1000000)))
             face_ot.append((i,flags >> 24))
     if rd.pos!=end:raise KmdError("KMD faces have extra or truncated data")
-    return tuple(faces),tuple(counts),tuple(double_sided),tuple(face_ot)
+    return tuple(faces),tuple(counts),tuple(double_sided),tuple(face_ot),tuple(colours)
 
 def parse_texmap(data,start,end,counts,with_uv=False):
     rd=Reader(data,start,end)
@@ -167,10 +181,17 @@ def parse_kmd(data):
         if not all(row[v] in ends for v in (0,2,3,4)):
             raise KmdError("incomplete KMD mesh block pointers")
         vert=parse_vertex(data,row[0],ends[row[0]])
-        parse_vertex(data,row[2],ends[row[2]],normals=True)
-        faces,counts,double_sided,face_ot=parse_faces(data,row[3],ends[row[3]])
+        normals=parse_vertex(data,row[2],ends[row[2]],normals=True)
+        faces,counts,double_sided,face_ot,colours=parse_faces(data,row[3],ends[row[3]])
         mats,uvs=parse_texmap(data,row[4],ends[row[4]],counts,with_uv=True)
-        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,())),double_sided,uvs,face_ot))
+        variant_coords=()
+        if i in variants and variants[i][1]:
+            blocks=[parse_vertex(data,at,ends[at]) if at else None for at in variants[i]]
+            variant_coords=tuple(b.coords if b and b.imports_local==vert.imports_local and
+                                 b.imports_global==vert.imports_global and b.posts==vert.posts and
+                                 len(b.coords)==len(vert.coords) else None for b in blocks)
+        parsed.append(KmdRow(i,row,vert,faces,mats,tuple(variants.get(i,())),double_sided,uvs,face_ot,
+                             normals,colours,variant_coords))
     return Kmd(scale,tuple(parsed))
 
 def merge(a,b):
@@ -321,7 +342,142 @@ def projected_vertex_map(kmd, source_to_vertex):
     # must not overwrite that index without resolving projected differences.
     return [(part, row, slot, index) for (part, row, slot), index in seen.items()]
 
-def compile_ska(kmd,source,output,texture_arc=None):
+def drawn_rows(kmd):
+    """(part, row) in the order the fighter draws them: parts 0..17, a second mesh after its part."""
+    for part,row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
+            if kmd.rows[ri].vert is not None:yield part,ri
+
+def lit_colours(kmd):
+    """Every face's lit colours as the normals that light them.
+
+    The PS1 lights each normal of a row (NCCT) into a colour slot; seam rows import slots that
+    earlier rows exported through the scratchpad and global buffers, as their vertices do
+    (3dmk-models.md, normal block). Adapted from the rules of Tekken3Remake's converter
+    (tools/remake_import/character.py, exchange_normals; see NOTICE.md). Returns the normals
+    used, as (part, x, y, z) in the PS1 basis (Q12 unit vectors that the part's PS1 rotation
+    turns, as the original's GTE does), and per face four indices into them in VDP1 corner
+    order: a flat face repeats its one normal."""
+    scratch={};shared={};normals={};faces=[]
+    for part,ri in drawn_rows(kmd):
+        row=kmd.rows[ri];nb=row.normals
+        if nb is None:raise KmdError('drawn row without a normal block')
+        cur=1
+        for idx in nb.imports_local:
+            if idx//2 not in scratch:raise KmdError('unresolved scratch colour import')
+            scratch[cur]=scratch[idx//2];cur+=1
+        for idx in nb.imports_global:
+            if idx//2 not in shared:raise KmdError('unresolved global colour import')
+            scratch[cur]=shared[idx//2];cur+=1
+        for i in range(len(nb.coords)):
+            scratch[cur]=(part,ri,i);cur+=1
+        source=nb.lead//4
+        to_global,to_scratch=nb.posts
+        for idx in to_global:
+            shared[idx//2]=scratch[source];source+=1
+        for idx in to_scratch:
+            scratch[idx//2]=scratch[source];source+=1
+        if len(row.face_colours)!=len(row.faces):raise KmdError('face colour metadata missing')
+        for face,offsets in zip(row.faces,row.face_colours):
+            terms=[]
+            for c in range(len(face)):
+                slot=offsets[0 if len(offsets)==1 else c]>>2
+                if slot not in scratch:raise KmdError('face reads an unlit colour slot')
+                term=scratch[slot]
+                if term not in normals:normals[term]=len(normals)
+                terms.append(normals[term])
+            # The corner order of to_source_model's quads: (0,1,2,2) and (0,1,3,2).
+            faces.append((terms[0],terms[1],terms[2],terms[2]) if len(terms)==3 else
+                         (terms[0],terms[1],terms[3],terms[2]))
+    return [(part,*kmd.rows[ri].normals.coords[i]) for part,ri,i in normals],faces
+
+# VDP1 VRAM one fighter's native textures may take (pixels plus 32-byte LUTs). With the 8x8 bake,
+# 145,824 bytes stayed free in a Kuma-Jin fight beside about 100 KB of fighter textures, so two
+# fighters at this budget leave about 50 KB spare. A mirror match shares one copy.
+TEXTURE_VRAM_BUDGET=96*1024
+
+def native_textures(kmd,vram,cap,quads):
+    """Native-density LUT4 patches (psx_character_textures.bake_face_lut4), shared when equal."""
+    from psx_character_textures import bake_face_lut4
+    luts={};unique={};textures=[];face_textures=[];reduced=0
+    for part,row_index in enumerate(PART_ROWS[:18]):
+        for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
+            row=kmd.rows[ri]
+            if row.vert is None:continue
+            for material,uv in zip(row.materials,row.face_uvs):
+                width,height,codes,lut,opaque,cut=bake_face_lut4(vram,material,uv,cap)
+                reduced+=cut
+                lut_index=luts.setdefault(lut,len(luts))
+                key=(width,height,tuple(codes),lut_index,opaque)
+                if key not in unique:
+                    unique[key]=len(textures)
+                    textures.append(dict(width=width,height=height,palette_slot=lut_index,
+                                         pixels=bytes(a<<4|b for a,b in zip(codes[::2],codes[1::2])),
+                                         flags=0x8000,pixel_count=width*height))
+                face_textures.append(unique[key])
+    if len(face_textures)!=len(quads):raise KmdError('texture/geometry face order disagrees')
+    return textures,face_textures,[c for lut in luts for c in lut],reduced
+
+def face_tones(textures,face_textures,luts):
+    """Each face's mean opaque texel as 5-bit (r, g, b): what an additive Gouraud offset scales."""
+    means={}
+    for t,texture in enumerate(textures):
+        lut=luts[texture['palette_slot']*16:texture['palette_slot']*16+16]
+        codes=[c for b in texture['pixels'] for c in (b>>4,b&15) if c]
+        if not codes:means[t]=(0.0,0.0,0.0);continue
+        means[t]=tuple(sum((lut[c]>>s)&31 for c in codes)/len(codes) for s in (0,5,10))
+    return [means[t] for t in face_textures]
+
+# FighterHandPoses' channel per variant row (3dmk-models.md, vertex variants): channel 0 drives
+# part 16's hand, or the head (rows 19, 20) for Kuma, Panda and Gon; channel 1 part 12's hand.
+# True Ogre's rows 2 and 22 follow his wing frames and level channel, not shown here.
+VARIANT_CHANNELS={14:1,18:0,19:0,20:0}
+HAND_VARIANTS=10 # channel values 0..0x206 select variants 0-9
+
+def hand_variants(kmd,source,base):
+    """Each variant row's changes, as skin record positions and KMD vertex positions.
+
+    The model is exported again with the row showing each variant, and its skin records are
+    compared with the base export `base`: the variant moves only positions, so equal records
+    keep their order. Returns [dict(part, row, channel, vertices, records, coords, positions)]
+    with `coords[v]` and `positions[v]` per variant (None for an entry that keeps the current
+    block) plus the base at index HAND_VARIANTS; rows the exporter would reorder are left out.
+    """
+    from dataclasses import replace
+    from model_pipeline import skeletal_export as sx
+    skin=base.skin
+    def records(s):
+        return [(list(p),) for p,_ in s.rigid]+[[list(q) for q in b[3]] for b in s.blend]
+    def shape(s):
+        return ([j for _,j in s.rigid],[(b[0],b[1],b[2]) for b in s.blend],s.source_vertex,s.pos_shift)
+    base_records=records(skin)
+    out=[]
+    for part,ri in drawn_rows(kmd):
+        row=kmd.rows[ri]
+        if ri not in VARIANT_CHANNELS or not row.variant_coords:continue
+        coords=[row.variant_coords[v] if v<len(row.variant_coords) else None for v in range(HAND_VARIANTS)]
+        per_variant=[];usable=True
+        for c in coords:
+            if c is None:per_variant.append(None);continue
+            rows=list(kmd.rows);rows[ri]=replace(row,vert=replace(row.vert,coords=c))
+            model,_,_=to_source_model(replace(kmd,rows=tuple(rows)),source)
+            variant=sx.export_model(model,rate=20).skin
+            if shape(variant)!=shape(skin):usable=False;break
+            per_variant.append(records(variant))
+        if not usable:continue
+        changed=sorted({(r,k) for recs in per_variant if recs for r,rec in enumerate(recs)
+                        for k,pos in enumerate(rec) if pos!=base_records[r][k]})
+        moved=sorted({i for c in coords if c for i,(a,b) in enumerate(zip(c,row.vert.coords)) if a!=b})
+        if not changed and not moved:continue
+        def pick(recs):return [tuple(recs[r][k]) for r,k in changed]
+        out.append(dict(part=part,row=ri,channel=VARIANT_CHANNELS[ri],vertices=moved,
+                        records=[(r,k) for r,k in changed],
+                        coords=[[c[i] for i in moved] if c else None for c in coords]+
+                               [[row.vert.coords[i] for i in moved]],
+                        positions=[pick(recs) if recs else None for recs in per_variant]+[pick(base_records)]))
+    return out
+
+def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0):
     model,quads,variants_omitted=to_source_model(kmd,source)
     double_sided=[];face_ot=[]
     for part,row_index in enumerate(PART_ROWS[:18]):
@@ -339,6 +495,7 @@ def compile_ska(kmd,source,output,texture_arc=None):
         from model_pipeline.static_import import ImportResult
         export=sx.export_model(model,rate=20)
         verified=sx.verify(model,export)
+        variants=hand_variants(kmd,source,export)
         remap=export.skin.source_to_vertex
         bounds=[[round(65536*extreme(v[i] for v in model.vertices)) for i in range(3)]
                 for extreme in (min,max)]
@@ -354,6 +511,25 @@ def compile_ska(kmd,source,output,texture_arc=None):
             from psx_character_textures import load_character_vram,bake_face
             from model_pipeline.texture_bake import build_shared_palette,map_faces_to_indices
             vram,tim_count=load_character_vram(texture_arc.read_bytes())
+        if texture_arc is not None and texture_cap:
+            # The largest size cap, in VDP1's 8-pixel width steps, that fits the budget.
+            for cap in range(texture_cap,7,-8):
+                textures,face_textures,luts,reduced=native_textures(kmd,vram,cap,quads)
+                vram_bytes=sum(t['pixel_count']//2 for t in textures)+2*len(luts)
+                if vram_bytes<=TEXTURE_VRAM_BUDGET:break
+            else:raise KmdError(f'native textures need {vram_bytes} bytes of VDP1 VRAM')
+            render.textures=textures
+            render.face_texture_indices=face_textures
+            render.luts_rgb555=luts
+            normals,lit_faces=lit_colours(kmd)
+            if len(lit_faces)!=len(quads):raise KmdError('lighting/geometry face order disagrees')
+            texture_report=dict(tim_uploads=tim_count,textures=len(textures),luts=len(luts)//16,
+                                lighting=dict(normals=normals,faces=lit_faces,
+                                              tones=face_tones(textures,face_textures,luts)),
+                                lut4_texture_bytes=sum(t['pixel_count']//2 for t in textures),
+                                reduced_faces=reduced,texture_cap=cap,vram_bytes=vram_bytes,
+                                source_arc_sha256=hashlib.sha256(texture_arc.read_bytes()).hexdigest())
+        elif texture_arc is not None:
             rgba=[]
             for part,row_index in enumerate(PART_ROWS[:18]):
                 for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
@@ -413,7 +589,8 @@ def compile_ska(kmd,source,output,texture_arc=None):
                 ('schema','joint_mask','maximum_l1','exact_skin_supported')},
             "double_sided_faces":double_sided,"face_ot_metadata":face_ot,
             "projected_vertex_map":projected_vertex_map(kmd,remap),
-            "variant_rows_pending":variants_omitted,
+            "variant_rows_pending":variants_omitted-len(variants),
+            "hand_variants":variants,
             "original_textures":texture_arc is not None,"original_motion":False,
             "textures":len(render.textures),"texture_report":texture_report,
             "clip":["bind"],"archive_bytes":len(blob),

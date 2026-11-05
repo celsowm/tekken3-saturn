@@ -9,7 +9,10 @@
  * debugger checks it before/after reading; a paused reader rejects odd.
  * Loop rate is NOT necessarily visible screen FPS. */
 #define T3_DIAGNOSTICS_MAGIC 0x54334431u /* T3D1 */
-#define T3_DIAGNOSTICS_VERSION 24u
+#define T3_DIAGNOSTICS_VERSION 26u
+/* Ten seconds of simulation between tick marks, eight marks. */
+#define T3_TICK_MARKS 8u
+#define T3_TICK_MARK_STEP 600u
 
 typedef struct {
     uint32_t magic, version;
@@ -86,6 +89,12 @@ typedef struct {
     uint8_t psx_in_throw[2], psx_attack_pending[2];
     /* Version 24: faces dropped for want of a cold record; they leave holes. */
     uint32_t faces_skipped;
+    /* Version 25: VDP1 texture VRAM left past the arena's cursor. */
+    uint32_t vdp1_vram_free;
+    /* Version 26: images drawn and fields observed when the simulation first
+     * reached tick T3_TICK_MARK_STEP*(i+1); zero until then. Two builds running
+     * the same deterministic fight compare the same stretch of it. */
+    uint32_t images_at_tick_mark[T3_TICK_MARKS], fields_at_tick_mark[T3_TICK_MARKS];
 } t3_diagnostics_t;
 
 extern volatile t3_diagnostics_t g_t3_diagnostics;

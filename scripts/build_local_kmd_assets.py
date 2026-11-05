@@ -24,9 +24,10 @@ def skeleton_parts(model):
         result.append((row.parent,slot,(x,y,-z)))
     return result
 
-def compile_mesh(model,lib_source,preview,texture_arc):
-    """One KMD render mesh -> (SKA1 archive, compile report), budget-checked."""
-    report = compile_ska(model,lib_source,preview,texture_arc)
+def compile_mesh(model,lib_source,preview,texture_arc,texture_cap=0):
+    """One KMD render mesh -> (SKA1 archive, compile report), budget-checked.
+    texture_cap 0 bakes 8x8 INDEX8 patches; otherwise native LUT4 patches up to that size."""
+    report = compile_ska(model,lib_source,preview,texture_arc,texture_cap)
     archive = (preview/"fighter_bind.ska").read_bytes()
     vertices = report["compiled_vertices"]
     faces = report["faces"]

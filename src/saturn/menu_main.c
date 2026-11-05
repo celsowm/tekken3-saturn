@@ -924,8 +924,13 @@ int main(void) {
     }
     if(mode==MODE_DEMO) {
         /* The demonstration: two CPU fighters from a rotation, ended by any button. */
+#if defined(T3_DEMO_PAIR)
+        static const uint8_t pairs[][2]={{T3_DEMO_PAIR}};
+        const unsigned pair=0;
+#else
         static const uint8_t pairs[][2]={{1,8},{0,3},{7,4},{14,15},{5,2},{9,6}};
         const unsigned pair=(g_now/2u)%(sizeof pairs/sizeof pairs[0]);
+#endif
         g_arg[0]=PHASE_DEMO;g_arg[1]=pairs[pair][0];g_arg[2]=pairs[pair][1];
 #if defined(T3_VS_SCREEN)
         vs_compose(&g_arg[1],T3_VS_DEMO,1u);

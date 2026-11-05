@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from psx_character_textures import load_character_vram, sample, bake_face
+from psx_character_textures import load_character_vram, sample, bake_face, bake_face_lut4, native_size
 
 
 def arc_fixture(depth=4):
@@ -48,5 +48,33 @@ class Textures(unittest.TestCase):
         vram,_=load_character_vram(raw)
         with self.assertRaises(ValueError):sample(vram,0x10000,0,0)
 
+
+    def test_lut4_keeps_clut_order_and_code_zero_transparent(self):
+        vram,_=load_character_vram(arc_fixture())
+        # Texels 0..3 of row 0: transparent, red, green, blue (CLUT entries 0..3).
+        width,height,codes,lut,opaque,reduced=bake_face_lut4(vram,0,((0,0),(3,0),(0,0),(3,0)))
+        self.assertEqual((width,height),(8,1))
+        self.assertFalse(opaque);self.assertFalse(reduced)
+        self.assertEqual(lut[:4],(0,0x801f,0x83e0,0xfc00))
+        self.assertEqual(codes[0],0);self.assertEqual(codes[-1],3)
+
+    def test_lut4_moves_an_opaque_entry_zero(self):
+        vram,_=load_character_vram(arc_fixture())
+        vram[504*1024]=0x1234                      # entry 0 opaque now
+        _,_,codes,lut,opaque,_=bake_face_lut4(vram,0,((0,0),(1,0),(0,0),(1,0)))
+        self.assertTrue(opaque);self.assertEqual(lut[0],0)
+        self.assertNotIn(0,codes)
+        self.assertEqual(lut[codes[0]],0x9234)
+
+    def test_lut4_8bit_table_of_shown_colours(self):
+        vram,_=load_character_vram(arc_fixture(8))
+        _,_,codes,lut,opaque,reduced=bake_face_lut4(vram,0x8000,((0,0),(1,0),(0,0),(1,0)))
+        self.assertTrue(opaque);self.assertFalse(reduced)
+        self.assertEqual(lut[0],0);self.assertEqual({lut[c] for c in codes},{0x801f,0x83e0})
+
+    def test_native_size_follows_the_longer_edges_and_cap(self):
+        self.assertEqual(native_size(((0,0),(20,0),(0,10),(20,10)),32),(24,11))
+        self.assertEqual(native_size(((0,0),(100,0),(0,100),(100,100)),32),(32,32))
+        self.assertEqual(native_size(((0,0),(2,0),(1,3)),32),(8,4))
 
 if __name__=='__main__':unittest.main()

@@ -49,6 +49,9 @@ volatile uint32_t g_t3_cached_stage_faces;
 #include "diagnostics.h"
 #include "placement.h"
 #include "move_probe.h"
+#if defined(T3_FIGHTER_LIGHTING)
+#include "fighter_light.h"
+#endif
 #include "perf.h"
 #include "sfx.h"
 #include "flipbook_burst.h"
@@ -1674,6 +1677,7 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.model_archive_bytes=T3_ARCHIVE_BYTES;
     g_t3_diagnostics.model_texture_count=T3_TEXTURE_COUNT;
     g_t3_diagnostics.model_texture_vram_bytes=t3_characters_texture_vram_bytes();
+    g_t3_diagnostics.vdp1_vram_free=sat_vdp1_vram_free_bytes();
     g_t3_diagnostics.skin_work_ms=t3_characters_skin_work_ms();
     g_t3_diagnostics.render_work_ms=g_render_work_ms;
     g_t3_diagnostics.submitted_frames=g_render_submissions;
@@ -1735,6 +1739,12 @@ static void publish_diagnostics(uint32_t work_started_ms, uint32_t tick_count,
     g_t3_diagnostics.psx_shadow_overlap_frames[0] = t3_move_probe_shadow_frames(0);
     g_t3_diagnostics.psx_shadow_overlap_frames[1] = t3_move_probe_shadow_frames(1);
     ++g_t3_diagnostics.frame_serial;
+    for(unsigned m=0;m<T3_TICK_MARKS;++m)
+        if(!g_t3_diagnostics.images_at_tick_mark[m] &&
+           g_t3_diagnostics.sim_ticks>=T3_TICK_MARK_STEP*(m+1u)) {
+            g_t3_diagnostics.images_at_tick_mark[m]=g_t3_diagnostics.frame_serial;
+            g_t3_diagnostics.fields_at_tick_mark[m]=g_t3_diagnostics.observed_fields;
+        }
     ++g_t3_diagnostics.snapshot_epoch;
 }
 
@@ -1807,6 +1817,12 @@ int main(void) {
         FX(60),
 #endif
         (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
+#if defined(T3_FIGHTER_LIGHTING)
+    {
+        static const uint8_t light_stage[]=T3_ROSTER_STAGES;
+        t3_fighter_light_stage(light_stage[g_picks[t3_stage_side(g_demo)]]);
+    }
+#endif
     SAT_PANIC_IF_ERROR(t3_characters_init(character_loading_progress, NULL));
     t3_match_reset(&g_game);
     SAT_PANIC_IF_ERROR(t3_cold_data_load());

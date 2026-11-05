@@ -39,6 +39,12 @@
 #include "stage_vdp2.h"
 #endif
 #endif
+#if defined(T3_FIGHTER_LIGHTING)
+#include "fighter_light.h"
+#endif
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+#include "fighter_hands.h"
+#endif
 #if defined(T3_COMPILED_RENDERER)
 #include "compiled_renderer.h"
 extern const t3_compiled_plan_t t3_compiled_plan;
@@ -190,6 +196,10 @@ static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUN
 static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUNT];
 #endif
 static uint8_t g_initialized;
+#if defined(T3_FIGHTER_LIGHTING)
+/* Each image relights one actor's tables, the two in turn. */
+static uint8_t g_light_turn;
+#endif
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 #if defined(T3_COMPILED_RENDERER)
@@ -398,8 +408,17 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             material->kind=SAT_SCENE3D_INDEXED_TEXTURED;
             material->texture=&a->textures[t];
             material->color_calc_slot=SAT_INDEXED_SOLID_OPAQUE;
-            material->rgb555=model.palettes_rgb555[
-                texture->palette_slot*256u+texture->pixels[texture->pixel_count/2u]];
+            /* The fallback colour of a near-clipped face: its middle texel. Native-density
+             * patches shrink on most faces: high-speed shrink keeps their VDP1 cost near the
+             * 8x8 patches' (docs/FIGHTER_FIDELITY.md). */
+            if(texture->flags&SAT_MODEL_TEXTURE_LUT4) {
+                material->rgb555=model.luts_rgb555[texture->palette_slot*16u+
+                    (texture->pixels[texture->pixel_count/4u]>>4)];
+                material->sprite_flags=SAT_SPRITE_FLAG_HIGH_SPEED_SHRINK;
+            }
+            else
+                material->rgb555=model.palettes_rgb555[
+                    texture->palette_slot*256u+texture->pixels[texture->pixel_count/2u]];
         }
 #else
         if ((st = sat_character_materials_upload(&model, a->owners,
@@ -459,6 +478,12 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
                 T3_TEXTURE_COUNT)) != SAT_OK) return st;
         a->binding.programs = &a->material_programs;
         a->instance.validated_binding = &a->binding;
+#if defined(T3_FIGHTER_LIGHTING)
+        a->instance.face_gouraud=t3_fighter_light_load(i);
+#endif
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+        (void)t3_fighter_hands_load(i,(sat_skin_asset_t*)(uintptr_t)&a->asset->skin);
+#endif
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
         a->original_mesh=a->mesh;
         a->original_mesh.vertex_cap=T3_PROJECTED_VERTEX_COUNT;
@@ -743,6 +768,14 @@ typedef struct {
 #if defined(T3_ORIGINAL_FIGHTER_OT)
     uint16_t original_first[2],original_after[2];
 #endif
+#endif
+#if defined(T3_FIGHTER_LIGHTING)
+    /* The actor whose tables this image relights from original_joints, or 2. */
+    uint8_t relight;
+#endif
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+    /* Per actor the variant of each hand channel, and whether its CPU changed one. */
+    uint8_t hand_variant[2][2],hands_changed[2];
 #endif
 #if defined(T3_NATIVE_PHASE_PROBE)
     t3_character_phase_profile_t phase;
@@ -1310,7 +1343,20 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
         const uint16_t skin_started=sat_time_frc();
 #endif
         const uint32_t lead=i==1u?context->lead:0u;
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+        {
+            fused_actor_context_t* shared=sat_parallel_uncached_address(context);
+            shared->hands_changed[i]=(uint8_t)t3_fighter_hands_apply(i,
+                (sat_skin_asset_t*)(uintptr_t)&actor->asset->skin,shared->hand_variant[i]);
+        }
+#endif
         sat_result_t st=deform_actor(context,actor,lead,actor->vertex_count);
+#if defined(T3_FIGHTER_LIGHTING)
+        {
+            const fused_actor_context_t* shared=sat_parallel_uncached_address(context);
+            if(shared->relight==i)t3_fighter_light_relight(i,shared->original_joints[i]);
+        }
+#endif
         if(st==SAT_OK && lead) {
             const fused_actor_context_t* shared=sat_parallel_uncached_address(context);
             for(uint32_t spins=0;!shared->lead_ready;)
@@ -1399,6 +1445,9 @@ void t3_characters_prepare_worker(void) {
 #if !defined(T3_MASTER_SKIN_PERCENT)
 #define T3_MASTER_SKIN_PERCENT 0u
 #endif
+#if defined(T3_FIGHTER_HAND_VARIANTS) && T3_MASTER_SKIN_PERCENT
+#error "hand variants rewrite actor 1's skin on the Slave alone: no Master share"
+#endif
 static sat_result_t prepare_with_worker(void) {
     actor_t* worker=&g_actors[1];
 #if defined(T3_COMPILED_RENDERER)
@@ -1432,6 +1481,10 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
         .center_z=t3_move_probe_world_center(2),
         .shown={(uint8_t)t3_move_probe_fighter_shown(0),(uint8_t)t3_move_probe_fighter_shown(1)},
         .result={SAT_OK,SAT_OK},.worker_ready=0u};
+#if defined(T3_FIGHTER_LIGHTING)
+    g_fused_actors.relight=2u;
+    ++g_light_turn;
+#endif
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
 #if defined(T3_PARTICLE_GATED_PROJECTION)
     /* The original projection and OT exist to order particles against the
@@ -1445,10 +1498,22 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     for(unsigned i=0;i<2;++i) {
         g_actors[i].mesh.vertex_count=g_actors[i].vertex_count;
         g_actors[i].instance.world=NULL;
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+        for(unsigned c=0;c<2u;++c)g_fused_actors.hand_variant[i][c]=(uint8_t)t3_move_probe_hand_variant(i,c);
+#endif
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
         original_projection_disable(&g_actors[i]);
+#if defined(T3_FIGHTER_LIGHTING)
+        /* Lighting reads the PS1 rotations on every path; the original
+         * projection still runs only when its view is ready. */
+        const int joints_ready=g_fused_actors.shown[i] && t3_move_probe_copy_world(i,
+            g_fused_actors.original_joints[i],&g_fused_actors.original_mask[i]);
+        if(joints_ready && i==(g_light_turn&1u))g_fused_actors.relight=(uint8_t)i;
+        if(original_view_ready && joints_ready) {
+#else
         if(original_view_ready && g_fused_actors.shown[i] && t3_move_probe_copy_world(i,g_fused_actors.original_joints[i],
                 &g_fused_actors.original_mask[i])) {
+#endif
             g_actors[i].original_active=1u;
             g_actors[i].instance.mesh=&g_actors[i].original_mesh;
             g_actors[i].instance.validated_binding=&g_actors[i].original_binding;
@@ -1498,6 +1563,11 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     const uint16_t merge_started=sat_time_frc();
 #endif
     if((st=sat_parallel_cache_sync_range(&g_fused_actors,sizeof(g_fused_actors)))!=SAT_OK)return st;
+#if defined(T3_FIGHTER_HAND_VARIANTS)
+    /* The Slave rewrote actor 1's hands; the Master may read them in a fallback. */
+    if(g_fused_actors.hands_changed[1] &&
+       (st=t3_fighter_hands_sync(1u,(sat_skin_asset_t*)(uintptr_t)&slave->asset->skin))!=SAT_OK)return st;
+#endif
 #if defined(T3_MASTER_WORKER_FACES)
     /* The worker only skinned actor 1 (its geometry is already synced); it
      * may have cleared pre_projected. Its faces are submitted here, so the

@@ -118,6 +118,8 @@ def decode(raw):
     extended+=[('local_pose_cache','I',4)] if result['version']>=22 else []
     extended+=THROW_FIELDS if result['version']>=23 else []
     extended+=[('faces_skipped','I',1)] if result['version']>=24 else []
+    extended+=[('vdp1_vram_free','I',1)] if result['version']>=25 else []
+    extended+=[('images_at_tick_mark','I',8),('fields_at_tick_mark','I',8)] if result['version']>=26 else []
     for name, kind, count in extended:
         alignment = struct.calcsize('>' + kind)
         at = (at + alignment - 1) // alignment * alignment
