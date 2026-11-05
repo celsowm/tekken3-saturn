@@ -109,8 +109,22 @@ Without the option, neither the channels nor the pack rows are built in
 
 The shipped default is above every earlier control (24.79–24.83 / 21.43).
 
-Not done: True Ogre's wings and row 22, Gon's blink-driven mouth, and
-Gon's palette copy.
+Not done, because each one needs work the port doesn't have yet
+(3dmk-models.md):
+
+- **True Ogre's row 22:** it follows channel 0, but it belongs to
+  attachment part 19. The port draws only parts 0–17 (`drawn_rows`).
+- **True Ogre's wings (row 2):** they play their own frame lists
+  (`0x80095CAC` idle, `0x80095CC0` flap). In `ogre3/ogre4` the variant
+  blocks are strides into the motion bank's runtime buffer, not file
+  offsets, so they can't be exported the way the hand rows are.
+- **Gon's blink-driven mouth and palette copy:** the copy swaps a 16-entry
+  CLUT. It needs the LUT4 textures (Phase 1, off) and the hand channels
+  (off). The default build's baked textures would need a second texture
+  set.
+
+All of them build on options that already measured as a loss, so they can
+only add cost.
 
 ## Phase 4: draw-order bias and mesh shadows
 
