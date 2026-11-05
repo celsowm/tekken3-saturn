@@ -66,6 +66,8 @@ typedef struct {
     const uint16_t* light_tones; /* T3_LIGHT_TONES mean texel colours, RGB555 */
     const t3_hand_variant_row_t* hand_rows;
     uint32_t hand_row_count;
+    const uint8_t* shadow; /* the TK3psSDW block (build_fighter_packs.py, shadow_mesh) */
+    uint32_t shadow_faces; /* 0 without one */
     const uint8_t* bank; /* in the arena, after t3_fighter_packs_load_banks */
     uint32_t bank_bytes;
 } t3_fighter_pack_t;

@@ -52,6 +52,9 @@ volatile uint32_t g_t3_cached_stage_faces;
 #if defined(T3_FIGHTER_LIGHTING)
 #include "fighter_light.h"
 #endif
+#if defined(T3_FIGHTER_MESH_SHADOWS)
+#include "fighter_shadow.h"
+#endif
 #include "perf.h"
 #include "sfx.h"
 #include "flipbook_burst.h"
@@ -145,7 +148,9 @@ static void capture_boot_cache(void) {
 }
 #endif
 
-#if defined(T3_VDP2_FLOOR)
+#if defined(T3_VDP2_FLOOR) && defined(T3_FIGHTER_MESH_SHADOWS)
+#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u+2u*T3_SHADOW_MAX_FACES)
+#elif defined(T3_VDP2_FLOOR)
 #define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u)
 #else
 #define T3_STAGE_SCENE_CAPACITY T3_SCENE_CAPACITY
@@ -241,7 +246,9 @@ static uint32_t g_keys[FACE_CAP];
 #else
 static uint32_t g_keys[FACE_CAP] T3_HOT_WRAM;
 #endif
-#if defined(T3_MIXED_OT_DIAGNOSTIC)
+#if defined(T3_HIGH_SORT_KEYS)
+static uint16_t g_order[FACE_CAP];
+#elif defined(T3_MIXED_OT_DIAGNOSTIC)
 static uint16_t g_order[FACE_CAP] __attribute__((section(".wram_l")));
 #else
 static uint16_t g_order[FACE_CAP] T3_HOT_WRAM;
@@ -464,7 +471,7 @@ static void draw_sparks(void) {}
 #endif
 
 #if defined(T3_VDP2_FLOOR)
-#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
+#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS) && !defined(T3_FIGHTER_MESH_SHADOWS)
 /* Drop shadows. The original flattens each fighter's PSSDW mesh onto the floor
  * with the stage light's shear (FighterBuildShadowPrims, opaque POLY_F3/F4, the
  * stage record's shadow colour); here an octagon of two quads sits under the
@@ -500,7 +507,7 @@ static void floor_tiles(void) {
 #endif
     g_stage_input[0]=t3_move_probe_world_center(0);
     g_stage_input[1]=t3_move_probe_world_center(2);
-#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS)
+#if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS) && !defined(T3_FIGHTER_MESH_SHADOWS)
     drop_shadows();
 #endif
 }
@@ -1817,10 +1824,16 @@ int main(void) {
         FX(60),
 #endif
         (sat_fx16_t)(SAT_FX16_ONE * W / H), Q(25), FX(40)));
-#if defined(T3_FIGHTER_LIGHTING)
+#if defined(T3_FIGHTER_LIGHTING) || defined(T3_FIGHTER_MESH_SHADOWS)
     {
         static const uint8_t light_stage[]=T3_ROSTER_STAGES;
-        t3_fighter_light_stage(light_stage[g_picks[t3_stage_side(g_demo)]]);
+        const unsigned stage=light_stage[g_picks[t3_stage_side(g_demo)]];
+#if defined(T3_FIGHTER_LIGHTING)
+        t3_fighter_light_stage(stage);
+#endif
+#if defined(T3_FIGHTER_MESH_SHADOWS)
+        t3_fighter_shadow_stage(stage);
+#endif
     }
 #endif
     SAT_PANIC_IF_ERROR(t3_characters_init(character_loading_progress, NULL));

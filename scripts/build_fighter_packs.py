@@ -29,7 +29,7 @@ from psx_character_textures import load_character_vram
 
 SCRIPTS = Path(__file__).resolve().parent
 MAGIC = 0x54334650
-VERSION = 5
+VERSION = 6
 # Tone classes of the lighting data: Gouraud offsets are additive, so each face's offset scales
 # with its class's mean texel colour (see lighting_data).
 TONE_CLASSES = 16
@@ -184,6 +184,80 @@ def light_rigs(exe, stages=20):
     return rows
 
 
+# FUN_8003A6E4's Q12 tables: sine (0x8001E8C4) and cosine, a quarter turn on; index & 0xFFF.
+SINE_TABLE, COSINE_TABLE = 0x8001E8C4, 0x8001F0C4
+STAGE_SHADOW_ANGLES = 0x14  # b, a: FUN_8003A098
+
+
+def shadow_shear(read16, stage):
+    """The stage's floor shear (m01, m21) at 0x800B0018 (FUN_80036180; Tekken3Remake
+    docs/research/code/stages.md, Lighting): the unit x axis turned through FUN_8003A6E4 by
+    (0, -a, -b), then m01 = -4096*dx/dy and m21 = -4096*dz/dy (C division, s16 results).
+    read16(address) is a signed 16-bit read of a Rev.1 address."""
+    b, a = (read16(STAGE_RECORDS + STAGE_RECORD_BYTES * stage + STAGE_SHADOW_ANGLES + 2 * k) for k in (0, 1))
+    angle = (0, -a, -b)
+    s = [read16(SINE_TABLE + 2 * (v & 0xFFF)) for v in angle]
+    c = [read16(COSINE_TABLE + 2 * (v & 0xFFF)) for v in angle]
+    # FUN_8003A6E4's first column, with the GTE's IR0 * IR >> 12 products.
+    cxcz, cxsz = c[0] * c[2] >> 12, c[0] * s[2] >> 12
+    dx = c[1] * c[2] >> 12
+    dy = ((s[1] * (s[0] * c[2] >> 12) >> 12) + cxsz)
+    dz = ((s[0] * s[2] >> 12) - (s[1] * cxcz >> 12))
+    dx, dy, dz = (((v + 0x8000) & 0xFFFF) - 0x8000 for v in (dx, dy, dz))
+    if not dy:
+        raise ValueError(f'stage {stage}: the shadow light is level')
+
+    def quotient(v):
+        q = abs(v << 12) // abs(dy)
+        q = q if (v < 0) == (dy < 0) else -q
+        return ((-q + 0x8000) & 0xFFFF) - 0x8000
+    return quotient(dx), quotient(dz)
+
+
+def shadow_shears(exe, stages=20):
+    return [shadow_shear(lambda address: struct.unpack_from('<h', exe, usa_file_offset(address))[0], stage)
+            for stage in range(stages)]
+
+
+# TK3psSDW, ARC member 3 (Tekken3Remake docs/research/formats/pssdw-member.md).
+SHADOW_MAGIC, SHADOW_SECTIONS = b'TK3psSDW', 18
+
+
+def shadow_mesh(arc):
+    """The drop-shadow mesh as the pack's shadow block, or (b'', 0) without one: the u16 slot
+    count, the u16 first slot of each of the 18 joint sections and the end, s16 (x, y, z) per
+    slot (padding slots kept: the indices count them), then four slot bytes per face in VDP1
+    perimeter order (a triangle repeats its last corner; a POLY_F4 row's 0, 1, 2, 3 is 0, 1, 3, 2)."""
+    data = arc_member(arc, 3)
+    if not data:
+        return b'', 0
+    if data[:8] != SHADOW_MAGIC:
+        raise ValueError('ARC member 3 is not TK3psSDW')
+    end, word_count, row_count = struct.unpack_from('<3I', data, 8)
+    offsets = struct.unpack_from(f'<{SHADOW_SECTIONS}I', data, 0x14)
+    coords, firsts = [], []
+    for i, at in enumerate(offsets):
+        firsts.append(len(coords))
+        slots = -(-struct.unpack_from('<I', data, at)[0] // 3) * 3
+        if at + 4 + 8 * slots != (offsets[i + 1] if i + 1 < SHADOW_SECTIONS else end):
+            raise ValueError(f'shadow section {i} does not end at the next one')
+        coords += [struct.unpack_from('<3h', data, at + 4 + 8 * k) for k in range(slots)]
+    firsts.append(len(coords))
+    if struct.unpack_from('<I', data, end)[0] != word_count:
+        raise ValueError('shadow triangle count disagrees')
+    words = struct.unpack_from(f'<{word_count}I', data, end + 4)
+    at = end + 8 + 4 * word_count
+    if struct.unpack_from('<I', data, at - 4)[0] != row_count or at + 4 * row_count != len(data):
+        raise ValueError('shadow quad rows disagree')
+    faces = [(w >> 2 & 0xFF, w >> 10 & 0xFF, w >> 20 & 0xFF, w >> 20 & 0xFF) for w in words]
+    faces += [(r[0], r[1], r[3], r[2]) for r in (data[at + 4 * k:at + 4 * k + 4] for k in range(row_count))]
+    if len(coords) > 256 or any(v >= len(coords) for f in faces for v in f):
+        raise ValueError('shadow face index out of range')
+    block = struct.pack(f'>{2 + SHADOW_SECTIONS}H', len(coords), *firsts)
+    block += b''.join(struct.pack('>3h', *v) for v in coords) + bytes(v for f in faces for v in f)
+    return block, len(faces)
+
+
 # FUN_800364E8 / FUN_80036518: a byte per costume slot, the hand shape while attacking (and the
 # costume's own) and on a clean hit (Tekken3Remake tools/remake_import/tables.py; NOTICE.md).
 FACE_ATTACK, FACE_HIT, FACE_SLOTS = 0x80095D74, 0x80095DA8, 0x37
@@ -278,6 +352,10 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
         place('hand_variants', hand_rows)
     else:
         fields['hand_variants'] = 0
+    shadow, shadow_faces = shadow_mesh(arc)
+    fields['shadow'] = 0
+    if shadow:
+        place('shadow', shadow, 2)
     align(hot, 4)
 
     sections = dict(hot=bytes(hot), archive=archive, bank=bank, camera=encoded,
@@ -296,7 +374,8 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
              fields['double_sided'], voice_count, compact_bytes(archive),
              fnv1a(bank), fields['projected'], len(mesh), fields['projected_faces'], projected_vertices,
              fields['face_ot'], *directory, normal_count, fields['light_normals'], fields['light_faces'],
-             fields['light_corners'], fields['light_tones'], hand_row_count, fields['hand_variants']]
+             fields['light_corners'], fields['light_tones'], hand_row_count, fields['hand_variants'],
+             shadow_faces, fields['shadow']]
     if len(words) * 4 > HEADER_BYTES:
         raise ValueError('pack header overflow')
     struct.pack_into(f'>{len(words)}I', image, 0, *words)
@@ -317,7 +396,7 @@ def branch_rows(bank):
     return (second - first) // 12
 
 
-def header(rows, common_rows, homes, rigs, faces):
+def header(rows, common_rows, homes, rigs, faces, shears):
     def most(key):
         return max(row[key] for row in rows)
     pairs = [(a, b) for a in rows for b in rows]
@@ -348,6 +427,8 @@ def header(rows, common_rows, homes, rigs, faces):
              '#define T3_ROSTER_LIGHT_RIGS {' + ','.join('{' + ','.join(str(v) for v in rig) + '}' for rig in rigs) + '}',
              '/* Hand shapes by character id: attacking (and the costume\'s own), on a clean hit. */',
              '#define T3_ROSTER_FACE_SHAPES {' + ','.join('{%d,%d}' % face for face in faces) + '}',
+             '/* Per stage: the floor shear m01, m21 (Q12) that flattens the shadow meshes. */',
+             '#define T3_ROSTER_SHADOW_SHEARS {' + ','.join('{%d,%d}' % s for s in shears) + '}',
              '#endif', '']
     return '\n'.join(lines)
 
@@ -387,7 +468,8 @@ def main():
     homes = [fighter_home(exe, character) for character in range(max(f.id for f in ROSTER) + 1)]
     if {f.id for f in ROSTER} != set(range(len(homes))) or not {home[0] for home in homes} <= set(STAGE_NUMBERS):
         raise ValueError(f'a character has no baked home stage: {homes}')
-    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common), homes, light_rigs(exe), face_shapes(exe)))
+    (args.out / 't3_roster.h').write_text(header(rows, branch_rows(common), homes, light_rigs(exe), face_shapes(exe),
+                                                    shadow_shears(exe)))
     (args.out / 'roster.json').write_text(json.dumps(rows, indent=1) + '\n')
     print(json.dumps(dict(packs=len(rows), bytes=sum(r['bytes'] for r in rows)), indent=1))
 

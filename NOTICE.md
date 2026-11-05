@@ -63,6 +63,9 @@ implementation of Tekken3Remake.
   `docs/research/formats/3dmk-models.md`), `scripts/kmd_variants.py`,
   `src/saturn/fighter_light.c` (the fighter light rig and per-normal colour rule from
   `docs/research/code/stages.md`, Lighting),
+  `src/saturn/fighter_shadow.c` and `scripts/build_fighter_packs.py` `shadow_mesh` and
+  `shadow_shear` (the TK3psSDW drop-shadow mesh and its floor shear from
+  `docs/research/formats/pssdw-member.md` and `docs/research/code/stages.md`, Lighting),
   `src/game/psx_particle_projection.c` (billboard transform, signed relative
   coordinates and OT insertion rules from `docs/research/code/effects.md`
   and `tools/research/projection_sim.py`, checked against original code),

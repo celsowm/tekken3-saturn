@@ -45,6 +45,10 @@
 #if defined(T3_FIGHTER_HAND_VARIANTS)
 #include "fighter_hands.h"
 #endif
+#if defined(T3_FIGHTER_MESH_SHADOWS)
+#include "fighter_shadow.h"
+#include "stage_vdp2.h"
+#endif
 #if defined(T3_COMPILED_RENDERER)
 #include "compiled_renderer.h"
 extern const t3_compiled_plan_t t3_compiled_plan;
@@ -1591,6 +1595,11 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
     if(slave->original_active && (st=sat_parallel_cache_sync_range(slave->world_vertices,
             slave->original_mesh.vertex_count*sizeof(t3_psx_projected_vertex_t)))!=SAT_OK)return st;
     if(!apply_original_fighter_ot(scene,&g_fused_actors))return SAT_ERR_INVALID_ARG;
+#endif
+#if defined(T3_FIGHTER_MESH_SHADOWS)
+    for(unsigned i=0;i<2u;++i)if(g_actors[i].original_active)
+        (void)t3_fighter_shadow_submit(scene,i,&g_fused_actors.original_view,
+                                       g_fused_actors.original_joints[i],t3_stage_vdp2_shadow());
 #endif
 #else
     if((st=sat_parallel_cache_sync_range(&g_geometry_batch,sizeof(g_geometry_batch)))!=SAT_OK)return st;

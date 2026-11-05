@@ -3,7 +3,7 @@
 #include "placement.h"
 #include "saturn/cdfs.h"
 
-enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=5u, DIRECTORY_WORD=26u,
+enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=6u, DIRECTORY_WORD=26u,
        LIGHT_WORD=DIRECTORY_WORD+2u*T3_PACK_SECTIONS };
 _Static_assert(sizeof(t3_light_normal_t)==8u,"pack lit normals");
 _Static_assert(sizeof(t3_hand_variant_row_t)==24u,"pack hand variant rows");
@@ -118,6 +118,9 @@ static sat_result_t open_pack(unsigned actor,unsigned id) {
         row->positions=(const int16_t(*)[3])(const void*)(store+(uintptr_t)row->positions);
     }
     pack->hand_rows=hands;
+    pack->shadow_faces=light[7];
+    pack->shadow=store+light[8];
+    if(light[7] && light[8]+2u>hot)return SAT_ERR_VERSION;
     return SAT_OK;
 }
 

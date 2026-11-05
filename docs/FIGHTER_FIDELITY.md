@@ -119,11 +119,24 @@ Gon's palette copy.
   original's OT bucket, `(Z[a] + Z[b] − bias)` with the signed bias from
   flags bits 25–31 (3dmk-models.md), and keeps the original's culling and
   LIFO order.
-- **Mesh shadows:** not attempted. The plan made them depend on frame time
-  saved by earlier phases, and none saved any. The PSSDW mesh flattened by
-  the stage light's shear would add dozens of faces per fighter to a scene
-  that already misses the rule over a few Gouraud tables. The two-quad
-  octagon in the stage's shadow colour (`drop_shadows` in `main.c`) stays.
+- **Mesh shadows:** tried and rejected. They sit behind
+  `T3_FIGHTER_MESH_SHADOWS` (off), which needs `T3_ORIGINAL_FIGHTER_OT`, and
+  also `T3_HIGH_SORT_KEYS`, because Low WRAM has no room for the larger
+  painter arrays.
+  - The packs (version 6) carry the TK3psSDW mesh (`shadow_mesh` in
+    `build_fighter_packs.py`): 64 faces per fighter, 65 for Mokujin.
+  - Each stage's floor shear comes from FUN_80036180 (`shadow_shear`).
+    `ps1_original_shadow_shear` checks the port against the original code
+    on all 20 stages.
+  - `fighter_shadow.c` projects each joint's section through
+    camera × shear × joint. It queues every face as a flat quad in the
+    stage's shadow colour, behind the whole scene.
+  - Measured: 704 images in 280 s, 2 of 7 segments, marked 22.91 / worst
+    22.86. The control made 2298 images at 24.75 / 21.46. The faces were
+    queued (probe: 64 per call, none behind the eye), but no shadow was
+    visible on the floor at frame 200.
+  - Before this can ship, both the placement and the cost need work. The
+    two-quad octagon (`drop_shadows` in `main.c`) stays.
 
 ## LibSaturn changes made for this work
 

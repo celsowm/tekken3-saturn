@@ -869,7 +869,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_sources(tekken3_saturn PRIVATE src/saturn/memory_probe.c)
         target_compile_definitions(tekken3_saturn PRIVATE T3_MEMORY_PROBE=1)
     endif()
-    option(T3_HIGH_SORT_KEYS "Experiment with scene painter keys in High WRAM" OFF)
+    option(T3_HIGH_SORT_KEYS "Experiment with scene painter keys and order in High WRAM" OFF)
     if(T3_HIGH_SORT_KEYS)
         target_compile_definitions(tekken3_saturn PRIVATE T3_HIGH_SORT_KEYS=1)
     endif()
@@ -1510,6 +1510,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_HAND_VARIANTS=1)
             target_compile_definitions(tekken3_fight PUBLIC T3_PSX_HAND_CHANNELS=1)
         endif()
+        # The original TK3psSDW shadow meshes in place of the two-quad shadow (docs/FIGHTER_FIDELITY.md).
+        option(T3_FIGHTER_MESH_SHADOWS "Draw the original fighter shadow meshes" OFF)
+        if(T3_FIGHTER_MESH_SHADOWS)
+            # Low WRAM has no room for the larger painter arrays.
+            if(NOT T3_ORIGINAL_FIGHTER_OT OR NOT T3_HIGH_SORT_KEYS)
+                message(FATAL_ERROR "T3_FIGHTER_MESH_SHADOWS requires T3_ORIGINAL_FIGHTER_OT and T3_HIGH_SORT_KEYS")
+            endif()
+            target_sources(tekken3_saturn PRIVATE src/saturn/fighter_shadow.c)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_MESH_SHADOWS=1)
+        endif()
         # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md). Off
         # until an A/B shows no frame-rate loss; it needs the native LUT4 textures.
         option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" OFF)
@@ -2071,6 +2081,9 @@ else()
         add_test(NAME ps1_original_hand_channels
             COMMAND "${_t3_hud_oracle_python}" "${CMAKE_SOURCE_DIR}/tests/test_psx_hands.py"
                 --runner "$<TARGET_FILE:t3_psx_hands_eval>")
+        add_test(NAME ps1_original_shadow_shear
+            COMMAND "${_t3_hud_oracle_python}" "${CMAKE_SOURCE_DIR}/tests/test_psx_shadow_shear.py")
+        set_tests_properties(ps1_original_shadow_shear PROPERTIES SKIP_RETURN_CODE 77)
         set_tests_properties(ps1_original_hand_channels PROPERTIES SKIP_RETURN_CODE 77)
         add_executable(t3_psx_fighter_sounds_eval tools/psx_fighter_sounds_eval.c)
         target_link_libraries(t3_psx_fighter_sounds_eval PRIVATE tekken3_fight)
