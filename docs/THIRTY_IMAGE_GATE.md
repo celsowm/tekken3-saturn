@@ -638,3 +638,53 @@ The default is now 65 with screen skinning and Master-submitted worker faces,
 and 0 with `T3_FIGHTER_HAND_VARIANTS`, which rewrites actor 1's skin on the
 Slave. Existing build caches keep their value; reconfigure with
 `-UT3_MASTER_SKIN_PERCENT` to take the default.
+
+## Stage tables written once (2026-11-05)
+
+Same attract fight and probes as above, with the 65% share. The wait probe
+now also keeps, per tick count, when the Slave is dispatched and the
+Master's own work (the image less its vblank and join waits); the Slave FRT
+probe keeps its totals.
+
+| Image | Count | Slave dispatched at | Master's own work under 7,000 |
+|---|---:|---:|---:|
+| 2 ticks | 1,324 | about 640 | 1,127 |
+| 3+ ticks | 905 | about 1,020 | 823 |
+
+On the Slave a tick averages 2,242, its share of actor 1 817 per image, and
+the stage tables 1,388 each time it claims them (1,438 of 2,406 images; the
+Master takes the rest, mostly the three-tick images). Three ticks cost more
+than two fields on their own, so a late image is followed by more: the
+Master cannot pull the fight out of that regime by taking more of actor 1.
+What helps is less work on the Slave's chain, and on two-tick images the
+stage tables close it.
+
+Split timers in `t3_stage_vdp2_prepare`, per build:
+
+| Part | Before | After |
+|---|---:|---:|
+| panorama lines (`t3_stage_backdrop_lines`, the line loop) | 622 | 628 |
+| floor coefficients (`sat_vdp2_floor_from_view`) | 456 | 394 |
+| encoding (rotation parameters, line scroll) | 296 | 12 |
+
+- The line loop packed `sat_vdp2_line_scroll_entry_t` entries in High WRAM
+  and `sat_vdp2_line_scroll_encode` then rewrote them as 1,344 halfwords in
+  the Low WRAM table. The loop now writes each (x, y, increment) entry
+  straight into the table as three longwords. `t3_stage_vdp2_init` checks
+  once that the packing equals the SDK encoder's words for NBG0.
+- LibSaturn: `sat_vdp2_floor_from_view` compared each line against
+  `near_z` and the coefficient range with 64-bit products. For a whole
+  n = -dir_y those tests are fixed bounds on n, computed once; the far test
+  is one 32x32 product. The results are unchanged (`test_vdp2_floor`).
+
+Frozen pixels: `T3_RENDER_BENCH_TICK` at 2000 and 3000, screenshots are
+byte-identical to the shared-projection ones (`5d69df64…`, `93d2595b…`).
+
+Release, no probes:
+
+| Build | Marked images/s | Worst segment | Images in 280 s |
+|---|---:|---:|---:|
+| Shared projection (`59bf9bb`) | 25.57 | 23.80 | 2,401 |
+| **Stage tables written once** | **26.41** | **24.54** | 2,491 |
+
+Segments 24.90, 25.00, 28.05, 26.96, 24.54, 25.20, 30.25.

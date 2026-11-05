@@ -1,6 +1,13 @@
 # Harness-led Saturn performance work
 
-Latest: [shared screen projection](THIRTY_IMAGE_GATE.md#shared-screen-projection-2026-11-05).
+Latest: [stage tables written once](THIRTY_IMAGE_GATE.md#stage-tables-written-once-2026-11-05).
+The panorama's line-scroll words go straight into the Low WRAM table, and the
+floor coefficients drop two 64-bit products a line: the stage build costs
+about 1,030 instead of 1,370 FRT/128. On the same attract fight the marked
+rate goes from 25.57 to **26.41 images/s** and the worst segment from 23.80
+to **24.54**, with identical frozen pixels and the same AI pad hash.
+
+Previous: [shared screen projection](THIRTY_IMAGE_GATE.md#shared-screen-projection-2026-11-05).
 The Master projects 65% of actor 1 while the Slave projects the rest and
 starts its ticks sooner. On the full-roster attract fight (280 s Mednafen)
 the marked rate goes from 24.75 to **25.57 images/s** and the worst segment

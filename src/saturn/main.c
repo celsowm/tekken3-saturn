@@ -321,6 +321,12 @@ static uint32_t g_t3_native_pre_ticks, g_t3_native_post_ticks;
 /* Whole-run image statistics: duration buckets, and phase sums by the
  * image's tick count (2 or 3+). */
 static uint32_t g_t3_hist[4], g_t3_by_ticks[2][6], g_t3_by_ticks_n[2];
+/* From the start of preparation to the Slave's dispatch, summed the same way. */
+static uint16_t g_t3_prepare_started_frc, g_t3_dispatch_ticks;
+static volatile uint32_t g_t3_dispatch_sum[2];
+/* The Master's own work (the image less its vblank and join waits), by
+ * tick count: <6000, <6500, <7000, <7465, more. */
+static volatile uint32_t g_t3_own_hist[2][5];
 static uint32_t g_t3_native_painter_ticks, g_t3_native_emit_ticks;
 static uint32_t g_t3_painter_sum, g_t3_emit_sum, g_t3_flush_samples;
 #endif
@@ -1125,6 +1131,9 @@ static sat_result_t prepare_simulation_entry(const void* input,uint32_t bytes,vo
 }
 
 static sat_result_t start_prepare_simulation(void) {
+#if defined(T3_NATIVE_WAIT_PROBE)
+    g_t3_dispatch_ticks=(uint16_t)(sat_time_frc()-g_t3_prepare_started_frc);
+#endif
     capture_image_match();
     g_stage_on_worker=T3_PERF_MODE!=1;
     stage_claim_reset();
@@ -2097,6 +2106,7 @@ int main(void) {
 #if defined(T3_NATIVE_WAIT_PROBE)
         const uint16_t native_prepare_started=sat_time_frc();
         g_t3_native_pre_ticks=(uint16_t)(native_prepare_started-native_loop_started);
+        g_t3_prepare_started_frc=native_prepare_started;
 #endif
 #if defined(T3_SLAVE_SIMULATION) && defined(T3_FUSED_ACTOR_PREPARATION)
         g_prepare_handle=0;g_stage_on_worker=0;
@@ -2238,6 +2248,9 @@ int main(void) {
                         g_t3_native_flush_ticks,g_t3_native_hud_ticks,g_t3_native_join_ticks,
                         g_t3_native_post_ticks};
                     for(unsigned j=0;j<6;++j)g_t3_by_ticks[k][j]+=phases[j];
+                    g_t3_dispatch_sum[k]+=g_t3_dispatch_ticks;
+                    const uint32_t own=phases[1]+phases[2]+phases[3]-phases[4]+phases[5];
+                    ++g_t3_own_hist[k][own<6000u?0:own<6500u?1:own<7000u?2:own<7465u?3:4];
                     ++g_t3_by_ticks_n[k];
                 }
             }

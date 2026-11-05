@@ -38,9 +38,6 @@ enum {
 };
 static sat_vdp2_rotation_params_t g_params __attribute__((section(".wram_l")));
 /* Rebuilt every image: High WRAM, where an access costs a quarter of Low's. */
-#if !defined(T3_PARTICLE_ORDERED_MASK_PROBE)
-static sat_vdp2_line_scroll_entry_t g_lines[HEIGHT];
-#endif
 static t3_stage_backdrop_line_t g_backdrop[HEIGHT];
 static sat_fx16_t g_wall_depth[HEIGHT]
 #if defined(T3_PARTICLE_GENERAL_MASK_PROBE)
@@ -60,6 +57,11 @@ typedef struct {
     ];
 } tables_t;
 static tables_t g_tables[2] __attribute__((section(".wram_l"),aligned(4)));
+/* A 16.16 line-scroll value as its table word pair (integer bits masked,
+ * the fraction's top 8 bits in bits 15-8), high word first. */
+static inline uint32_t line_word(int32_t value,uint32_t integer_mask) {
+    return ((((uint32_t)value>>16)&integer_mask)<<16)|((uint32_t)value&0xFF00u);
+}
 static uint32_t g_slot;
 /* Per slot, the VDP1 list whose swap publishes it; 0 for none. */
 static volatile uint32_t g_pending[2];
@@ -77,17 +79,16 @@ void t3_stage_stack_sample(unsigned which) {
 #endif
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 /* Reuse the stage upload buffer after initialization. The two 80-cell
- * particle slots and stage lines extend the union beyond the upload buffer;
- * the linker enforces the Low WRAM limit. Slots live through their swaps. */
+ * particle slots may extend the union beyond the upload buffer; the linker
+ * enforces the Low WRAM limit. Slots live through their swaps. */
 static union {
     uint16_t load_words[8192];
-    struct { t3_particle_tile_probe_t tiles[2]; sat_vdp2_line_scroll_entry_t lines[HEIGHT]; } live;
+    struct { t3_particle_tile_probe_t tiles[2]; } live;
 } g_stage_boot_or_particles __attribute__((section(".wram_l"),aligned(4)));
 _Static_assert(sizeof(g_stage_boot_or_particles.live)<=24576u,"live stage data exceeds particle budget");
 _Static_assert(0x64080u+T3_PARTICLE_PROBE_MAX_TILES*128u<=0x80000u,"particle characters exceed VDP2 VRAM");
 #define g_load_words (g_stage_boot_or_particles.load_words)
 #define g_probe_tiles (g_stage_boot_or_particles.live.tiles)
-#define g_lines (g_stage_boot_or_particles.live.lines)
 #else
 static uint16_t g_load_words[8192] __attribute__((section(".wram_l"),aligned(4)));
 #endif
@@ -570,6 +571,18 @@ sat_result_t t3_stage_vdp2_init(void) {
     if((st=sat_vdp2_screen_color_calc_set(SAT_VDP2_SCREEN_NBG1,1,0))!=SAT_OK)return st;
     if((st=sat_vdp2_color_calc_set_add(1))!=SAT_OK)return st;
 #endif
+    {
+        /* prepare packs NBG0's (x, y, increment) entries itself; they must be
+         * the words the SDK's encoder writes for this layer. */
+        const sat_vdp2_line_scroll_entry_t probe={0x12345678,-0x2468ACE,0x2ABCDu};
+        uint16_t words[6];
+        const uint32_t packed[3]={line_word(probe.x,0x7FFu),line_word(probe.y,0x7FFu),
+                                  line_word((int32_t)probe.zoom,0x7u)};
+        if(sat_vdp2_line_scroll_encode(SAT_VDP2_NBG0,&probe,1,words,6)!=6)return SAT_ERR_UNSUPPORTED;
+        for(unsigned i=0;i<3u;++i)
+            if(words[2*i]!=(uint16_t)(packed[i]>>16) || words[2*i+1]!=(uint16_t)packed[i])
+                return SAT_ERR_UNSUPPORTED;
+    }
     /* From here on the VDP2 reads parameter table A and coefficient table A,
      * and only the swap handler rewrites them. Until the first image every
      * line is transparent. */
@@ -614,7 +627,10 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(!t3_stage_backdrop_lines(&g_cylinder,camera->view_proj.m,eye,turn,1,g_backdrop,g_wall_depth))
         return SAT_ERR_UNSUPPORTED;
 #endif
-    for(unsigned y=0;y<HEIGHT;++y) {
+    tables_t* tables=&g_tables[g_slot];
+    /* Straight into the slot's Low WRAM words, one store per word pair. */
+    uint32_t* line_words=(uint32_t*)(void*)tables->lines;
+    for(unsigned y=0;y<HEIGHT;++y,line_words+=3) {
         int32_t column=g_backdrop[y].x;
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION) && !defined(T3_STAGE_NO_VIEWPORT_SHIFT)
         /* Stage rays previously assumed x=160; the mapped original GTE
@@ -622,7 +638,9 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         column=(column-(t3_psx_viewport_x(192)-WIDTH/2)*(int32_t)g_backdrop[y].zoom)
             &((T3_STAGE_COLUMNS<<16)-1);
 #endif
-        g_lines[y]=(sat_vdp2_line_scroll_entry_t){column,g_backdrop[y].y,g_backdrop[y].zoom};
+        line_words[0]=line_word(column,0x7FFu);
+        line_words[1]=line_word(g_backdrop[y].y,0x7FFu);
+        line_words[2]=line_word((int32_t)g_backdrop[y].zoom,0x7u);
     }
     /* A floor tile is 64 dots and 1,800 PS1 units. The skin's world is 96 fx16
      * per PS1 unit around the fighters' centre, x and -z. The bitmap's repeat
@@ -631,7 +649,6 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_W*SAT_FX16_ONE)),
         -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_H*SAT_FX16_ONE)),0,
         g_wall_depth,1};
-    tables_t* tables=&g_tables[g_slot];
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     /* Generate a 228-line virtual view, then display lines 4..227. Its
      * center is 114-4=110 and the original 240-line half-height becomes
@@ -661,8 +678,6 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
 #endif
     g_params.coefficient_address=COEFFICIENT_A;
     if((st=sat_vdp2_rotation_encode_params(&g_params,tables->params))!=SAT_OK)return st;
-    if(sat_vdp2_line_scroll_encode(SAT_VDP2_NBG0,g_lines,HEIGHT,tables->lines,LINE_WORDS)!=LINE_WORDS)
-        return SAT_ERR_UNSUPPORTED;
     g_previous_camera=*camera;g_previous_center[0]=center_x;g_previous_center[1]=center_z;
     g_previous_turn=turn;
     g_valid=g_dirty=1;
@@ -672,7 +687,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
 sat_result_t t3_stage_vdp2_sync(void) {
     /* Everything prepare writes, for the CPU that did not run it. */
     const struct {const void* address;uint32_t size;} range[]={
-        {&g_params,sizeof g_params},{g_lines,sizeof g_lines},{g_backdrop,sizeof g_backdrop},
+        {&g_params,sizeof g_params},{g_backdrop,sizeof g_backdrop},
         {g_wall_depth,sizeof g_wall_depth},{&g_tables[g_slot],sizeof g_tables[g_slot]},
         {&g_previous_camera,sizeof g_previous_camera},{g_previous_center,sizeof g_previous_center},
         {&g_previous_turn,sizeof g_previous_turn},{&g_valid,sizeof g_valid},{&g_dirty,sizeof g_dirty},
