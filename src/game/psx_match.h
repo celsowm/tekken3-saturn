@@ -38,24 +38,24 @@ typedef struct {
 typedef struct {
     /* `bank` is both fighters' character bank unless actor_bank names one. */
     const t3_divmot_t *bank,*common;
-    const t3_divmot_t* actor_bank[2];
-    uint8_t character[2]; /* character ids, for restrictions 0x46..0x5C */
+    const t3_divmot_t* actor_bank[T3_PSX_FIGHTERS];
+    uint8_t character[T3_PSX_FIGHTERS]; /* character ids, for restrictions 0x46..0x5C */
     t3_psx_ground_tables_t ground_tables;
     t3_motion_tables_t spline;
     const t3_command_sequence_t* sequences;size_t sequence_count;
-    t3_psx_spawn_t spawn[2];
+    t3_psx_spawn_t spawn[T3_PSX_FIGHTERS];
     unsigned scale_percent;
     /* Each actor's model scale; zero uses scale_percent. */
-    unsigned actor_scale_percent[2];
+    unsigned actor_scale_percent[T3_PSX_FIGHTERS];
     int32_t max_health_q16;
     /* Optional full original world pose + normal-mode body/arena integration. */
-    const t3_psx_part_t* parts[2]; /* Each actor's model, even in mirror matches. */
+    const t3_psx_part_t* parts[T3_PSX_FIGHTERS]; /* Each actor's model, even in mirror matches. */
     t3_psx_ik_tables_t ik;
     t3_psx_rsqrt_t rsqrt; /* Optional original transition blend, requires body poses. */
     const uint8_t* body_tables;size_t body_tables_size;
     /* Each actor's 48 bytes of body joints and radii (0x80097384); NULL uses
      * the block at body_tables+384. */
-    const uint8_t* actor_body_shapes[2];
+    const uint8_t* actor_body_shapes[T3_PSX_FIGHTERS];
     uint8_t enable_body,enable_combat;
     /* 1: every attack may start (matched against original-code fights,
      * docs/FIGHT_ORACLE.md); 0: only the first qualified Paul attacks
@@ -72,11 +72,11 @@ typedef struct {
     /* Production round-one placement/intro. Zero preserves the neutral
      * mid-fight initializer used by existing oracle seeds. */
     uint8_t start_intro;
-    uint16_t start_physical[2]; /* Original PsyQ buttons at first placement. */
+    uint16_t start_physical[T3_PSX_FIGHTERS]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */
     /* With start_intro: the score of a match carried over (the arcade's True Ogre
      * reload keeps the round number and both round-win counts; modes.md#match-flow). */
-    uint8_t start_wins[2],start_played;
+    uint8_t start_wins[T3_PSX_FIGHTERS],start_played;
     t3_psx_replay_storage_t* replay_storage;
     t3_motion_sample_cache_t* sample_cache; /* Optional, derived, immutable-bank lifetime. */
     t3_psx_local_pose_cache_t* local_pose_cache; /* Optional raw FK/IK only, same lifetime contract. */
@@ -87,11 +87,11 @@ typedef struct {
      * like replay_storage; requires enable_rounds=2 and combat. */
     struct t3_psx_ai_game* ai;
     t3_psx_sound_tables_t sound_tables;
-    uint8_t sound_voice_set[2]; /* private metadata, not inferred from costume */
+    uint8_t sound_voice_set[T3_PSX_FIGHTERS]; /* private metadata, not inferred from costume */
     /* Each costume's hand shapes (0x80095D74 attacking and its own, 0x80095DA8 on a
      * clean hit): presentation only, nothing in the simulation reads the hands. */
 #if defined(T3_PSX_HAND_CHANNELS)
-    uint8_t face_attack[2],face_hit[2];
+    uint8_t face_attack[T3_PSX_FIGHTERS],face_hit[T3_PSX_FIGHTERS];
 #endif
     /* Optional consumer of every original sound request, in call order. Voice
      * ids arrive already resolved to the character's sound code. */
@@ -162,23 +162,23 @@ typedef struct t3_psx_match {
 #if T3_PSX_FIGHTERS>2
     uint8_t opponent[T3_PSX_FIGHTERS]; /* the fighter each one faces (FUN_800B5EC0 in Tekken Force) */
 #endif
-    t3_psx_fighter_t fighter[2];
-    t3_psx_sound_state_t sound[2];
+    t3_psx_fighter_t fighter[T3_PSX_FIGHTERS];
+    t3_psx_sound_state_t sound[T3_PSX_FIGHTERS];
     uint32_t ticks;
     uint32_t input_frame_seen;
     t3_psx_round_t round;
     t3_psx_round_flow_t flow;
-    t3_psx_round_actor_t round_actor[2];
+    t3_psx_round_actor_t round_actor[T3_PSX_FIGHTERS];
     /* HUD state is advanced after RoundFlow and before this tick's combat,
      * then published with the same committed match as the fighter image. */
-    t3_psx_hud_bar_t hud_bars[2];
+    t3_psx_hud_bar_t hud_bars[T3_PSX_FIGHTERS];
     uint8_t hud_replay_entry;
     uint32_t fight_clock;
     t3_psx_replay_t replay;
     int32_t intro_camera_left,replay_skip;
     uint8_t round_gap; /* FightMain frames since the round ended (0..2) */
     /* Without a fight camera: the screen x supplied by the frames. */
-    uint8_t screen_known;int16_t screen_x[2];
+    uint8_t screen_known;int16_t screen_x[T3_PSX_FIGHTERS];
     /* Diagnostic: this tick's fighter draw consumed frame->fighter_view
      * (the host exports that view into the sparse reference fixture). */
     uint8_t frame_view_used;
@@ -193,13 +193,13 @@ typedef struct t3_psx_match {
 } t3_psx_match_t;
 typedef struct {
     uint32_t frame_counter;
-    uint16_t physical[2],pressed[2];
+    uint16_t physical[T3_PSX_FIGHTERS],pressed[T3_PSX_FIGHTERS];
     /* Without a fight camera there is no screen position: side_known supplies
      * each fighter's side for this frame (otherwise the side is kept). */
-    uint8_t side_known,side[2];
+    uint8_t side_known,side[T3_PSX_FIGHTERS];
     /* Likewise each fighter's screen x (+0x1278) after the previous frame,
      * for PairwiseDistances' off-screen rule. */
-    uint8_t screen_known;int16_t screen_x[2];
+    uint8_t screen_known;int16_t screen_x[T3_PSX_FIGHTERS];
     /* Without a fight camera: the fighter view the previous frame left
      * (0x800AE2E8 with H), which a draw before CameraFrame uses; NULL when
      * unknown. */
