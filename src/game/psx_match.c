@@ -808,13 +808,24 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     /* MoveStartAll (0x80045834): a pending throw (0x21) at its entry frame
      * goes first; its victim starts through ThrowVictimStart, then the
      * thrower. With two, the frame counter picks one. */
+#if T3_PSX_FIGHTERS==2
     unsigned order[2]={0u,1u};
+#else
+    unsigned order[T3_PSX_FIGHTERS];
+    for(unsigned k=0;k<T3_PSX_FIGHTERS;++k)order[k]=k;
+#endif
     /* The blend's previous event frame is the pose before ThrowVictimStart
      * restarts a victim at pose 1. */
+#if T3_PSX_FIGHTERS==2
     const uint16_t previous_pose[2]={(uint16_t)n->fighter[0].vm.clock.pose_frame,
                                      (uint16_t)n->fighter[1].vm.clock.pose_frame};
+#else
+    uint16_t previous_pose[T3_PSX_FIGHTERS];
+    for(unsigned k=0;k<T3_PSX_FIGHTERS;++k)previous_pose[k]=(uint16_t)n->fighter[k].vm.clock.pose_frame;
+#endif
     {
         T3_MATCH_PHASE(110);
+#if T3_PSX_FIGHTERS==2
         int ready[2]={0,0},thrower=-1;
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
             const t3_move_vm_t* v=&n->fighter[i].vm;
@@ -827,8 +838,23 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             order[0]=T3_PSX_OPP(n,(unsigned)thrower);order[1]=(unsigned)thrower;
             if(!throw_victim_start(n,order[0],order[1]))return 0;
         }
+#else
+        /* The fighters with a throw at its entry frame, in index order; the frame counter picks one. The victim
+         * goes first, then the thrower, then the other (3 - victim - thrower). */
+        unsigned list[T3_PSX_FIGHTERS],count=0;
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+            const t3_move_vm_t* v=&n->fighter[i].vm;
+            if((c->enable_rounds!=2 || n->fighter[i].body.active) && v->pending_valid &&
+               v->queued.transition==33u && v->queued.entry_frame<=v->clock.pose_frame)list[count++]=i;
+        }
+        if(count) {
+            const unsigned thrower=list[n->ticks%count];
+            order[0]=T3_PSX_OPP(n,thrower);order[1]=thrower;order[2]=3u-order[0]-order[1];
+            if(!throw_victim_start(n,order[0],order[1]))return 0;
+        }
+#endif
     }
-    for(unsigned j=0;j<2;++j) {
+    for(unsigned j=0;j<T3_PSX_FIGHTERS;++j) {
         T3_MATCH_PHASE(120+j);
         const unsigned i=order[j];
         t3_psx_fighter_t* f=&n->fighter[i];
@@ -999,9 +1025,16 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             (uint8_t)((input.pressed_buttons<<4)|input.direction),
             input_frame,n->input_frame_seen,&latch_register);
     }
-    for(unsigned j=0;j<2;++j) {
+    for(unsigned j=0;j<T3_PSX_FIGHTERS;++j) {
         T3_MATCH_PHASE(200+j);
+#if T3_PSX_FIGHTERS==2
         unsigned i=(j+(n->ticks&1u))&1u;
+#else
+        /* MoveStepAll: fighters 0 and 1 alternate by frame parity, the third goes last and only while the
+         * level runs. */
+        if(j==2u && n->level_ended)break;
+        unsigned i=j<2u?(j+(n->ticks&1u))&1u:j;
+#endif
         t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[T3_PSX_OPP(n,i)];
         t3_branch_context_t facts={0};
         if(!t3_psx_ground_angles(&f->ground,&opp->ground,&c->ground_tables))return 0;

@@ -168,6 +168,7 @@ typedef struct t3_psx_match {
      * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
     uint8_t off_screen_extra[T3_PSX_FIGHTERS];
     uint32_t pair_dist[T3_PSX_FIGHTERS]; /* each fighter's distance to its opponent (MoveStep's `dist`) */
+    uint8_t level_ended; /* 0x800B70E8: the level's enemies are over, the third fighter no longer steps */
 #endif
     t3_psx_fighter_t fighter[T3_PSX_FIGHTERS];
     t3_psx_sound_state_t sound[T3_PSX_FIGHTERS];
