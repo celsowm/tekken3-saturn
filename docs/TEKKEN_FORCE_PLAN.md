@@ -64,6 +64,30 @@ Checked against the code, the docs and the local tools before any work:
   (`sat_parallel_*`), CD streaming and the RAM cartridge (`ram_cart.h`) exist.
   The mode must not depend on a RAM cartridge.
 
+## Phase 0 results (2026-11-06)
+
+- **Harness fixed.** `verify_force_sim.py` fails for two reasons: (1) `force.ovl` has no
+  GTE site list, so every COP2 instruction is found lazily and the CPU stops at PC 0.
+  `scripts/overlay_cop2_sites.py` writes the list by recursive descent (Ghidra 12.2 cannot
+  analyse here: the PSX loader extension was built for 12.1.4 and crashes in analysis, and it
+  needs Gradle 9.1 to rebuild). (2) `force_sim.py` calls `projection_sim._s32`, which does not
+  exist (`draw_sim._s32` does): `scripts/patches/tekken3remake-force-sim-s32.patch`, to apply to
+  the submodule checkout. Then `verify_force_sim.py` has 0 mismatches in all 11 checks,
+  `check_force_bosses.py` 0 differences in 352 pairs, `check_force_manual_target.py` passes.
+- **The Force enemy is light.** Character 21 uses costume slots 47-50 (key `0x54 + costume`
+  in the table at `0x80095CE8`), disc records 259-262, 263-266, 267-270, 271-274 (the voice
+  record, the second of each, is empty). KMD 11-12 KB with 342 faces (Paul: 26.5 KB, 773),
+  ARC 24 KB, motion bank 107 KB (Paul's 313 KB; one bank for all four costumes). Two enemies
+  are 684 faces, less than one more fighter: three actors are 1,457 faces against 1,546
+  for two full fighters, so the geometry load does not grow. Third-actor go/no-go for
+  geometry: **go**; the real cost (preparation split, texture patches, shadows) still has to
+  be measured in the `FORCE.BIN` skeleton.
+- **The mode-8 camera is small.** `FUN_800B545C` is 42 instructions and `FUN_800B5504` 231.
+- **LibSaturn hand-off:** `SAT_EXEC_ARG_MAX` is 64 bytes (LibSaturn `b52ec400`, host test
+  passes).
+- Private data for the enemy is extracted to `assets/imported/force-import/` (records
+  259-274 and 9, 10).
+
 ## Decisions
 
 0. **Tekken Force is its own program.** `FORCE.BIN` runs from the menu like
