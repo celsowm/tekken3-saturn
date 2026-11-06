@@ -137,20 +137,29 @@ Checked against the code, the docs and the local tools before any work:
   level-1 section, with three fighter records per fight frame (git-ignored, private). It needs every overlay
   linked as `NNN_<name>.ovl` in `work/jp_rev1/bns` (records 000 enbu, 005 arcade, 006 practice, 007 force,
   008 volley, 009 select, 010 title, 011 ranking, 301 ending, 302 result: symlinks to `NNN_rec`, git-ignored).
-- **Phase 3, slices 1 and 2 done (2026-11-06).** `T3_PSX_FIGHTERS` (default 2) sizes the match's per-fighter
-  arrays and fighter loops, and `T3_PSX_OPP(match, i)` replaces `1u-i` in `psx_match.c`,
-  `psx_match_camera.c` and `psx_match_effects.c`; at 3 the match has an `opponent[]` field. Checked at 2: the
-  94 running host tests pass and the versus `app.bin` is byte-identical (491,228 bytes). At 3 it compiles
-  without warnings but is **not correct yet**. What is left in `advance_core` and its callees, all of which
-  need the original's three-fighter behaviour read from the original code and then checked with the
-  three-fighter trace:
-  - the pad inputs (`p0`, `p1`): the step takes an array, the enemies' pads come from the AI;
-  - MoveStartAll's throw ordering and the `ticks & 1` order of MoveStep (two fighters only);
-  - snapshots written as two-element initialisers (`hp`, `pose`, `previous_pose`, `old_active`, `facts`);
-  - pairwise distances and body separation for three (`pair_distance`, `bodies`, `pair[2]`);
-  - `fighter_roles` (the player faces the target; the target and the other enemy face the player) feeding
-    `opponent[]`, the round flow and `psx_round` (a duel's wins and winner), the camera and replay;
-  - a three-fighter trace comparator (the flow trace `flow_force.bin` holds the fighter records).
+- **Phase 3, slices 1-4 done (2026-11-06), duel path untouched.** `T3_PSX_FIGHTERS` (default 2) sizes the match's
+  per-fighter arrays, fighter loops and pad array; `T3_PSX_OPP(match, i)` replaces `1u-i` in `psx_match.c`,
+  `psx_match_camera.c` and `psx_match_effects.c`. At 3 (the `FORCE.BIN` build) the match also gets `opponent[]`,
+  `off_screen_extra[]`, `pair_dist[]`, `pair_all[]`, `level_ended` and the Force walls. Taken from the original
+  code (disassembly of `FUN_8004391C`, `FUN_80045450`, `FUN_80045834`, `FUN_80043F40` and its caller):
+  - pairwise distances for every pair, each fighter against its own opponent, the stand-in for an off-screen
+    opponent including the Force enemy whose slot is free (`FUN_800B2EEC`);
+  - MoveStartAll: with a pending throw the frame counter picks the thrower among all of them, order victim,
+    thrower, the third; otherwise 0, 1, 2. MoveStepAll: fighters 0 and 1 alternate by frame parity, the third
+    follows and only while the level runs (`0x800B70E8` = 0);
+  - the body phase: BodySeparate on the pairs (0,1), (0,2), (1,2) with the pair table's distances, and the
+    Force walls (`psx_force_walls.c`) in place of the arena limits.
+  Checked at 2 after every step: the 94 running host tests pass and the versus `app.bin` is byte-identical
+  (491,228 bytes), so the duel's code and frame rate are unchanged. **Not checked at 3**: there is no
+  three-fighter comparator yet. Left for phase 3:
+  - the hit application for three (`t3_psx_match_apply_hits` is pair-atomic: each attacker against its
+    opponent), the contact phase's `free_slots_mask`/`game_mode` facts for mode 8, and mode 8's throw
+    doubling in BodySeparate (`psx_body.c`);
+  - `fighter_roles` feeding `opponent[]` each frame, the round flow (Force has no rounds), the camera
+    (`psx_force_camera.c` instead of the fight camera) and the replay, none of which the Force program
+    needs the duel versions of;
+  - the snapshots still written as two-element initialisers for the duel's round logic (`hp`, `pose`,
+    `old_active`) and the three-fighter trace comparator against `flow_force.bin`.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
