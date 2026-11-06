@@ -14,6 +14,8 @@
 #include "disc.h"
 #include "psx_force_camera.h"
 #include "psx_force_level.h"
+#include "psx_force_handoff.h"
+#include "saturn/exec.h"
 #include "saturn/render2d.h"
 
 enum {
@@ -59,13 +61,18 @@ int main(void) {
     sat_vdp2_layer_config_t layer;
     uint8_t header[HEADER_BYTES];
     static uint8_t cells[128*64*4];     /* the map: (tile, palette) per 64 x 64 texel cell */
-    const char* name="LEV1.BIN";
+    char name[]="LEV1.BIN";
+    uint8_t arg[SAT_EXEC_ARG_MAX];
+    uint32_t arg_bytes=0;
+    t3_force_handoff_t start;
     SAT_PANIC_IF_ERROR(sat_init(&video));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_COLOR_RED));
     (void)sat_vdp2_layers_commit();
     SAT_PANIC_IF_ERROR(sat_begin_frame());
     SAT_PANIC_IF_ERROR(sat_end_frame());
     SAT_PANIC_IF_ERROR(t3_disc_volume(&g_volume));
+    /* The menu's hand-off picks the level; started on its own the probe shows level 1. */
+    if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && t3_force_handoff_unpack(arg,arg_bytes,&start))name[3]=(char)('1'+start.level);
     SAT_PANIC_IF_ERROR(read_at(name,0,header,HEADER_BYTES));
     const uint32_t width=be32(header+12),height=be32(header+16),tiles=be32(header+20),palettes=be32(header+24);
     const uint32_t cells_at=be32(header+28),tiles_at=be32(header+32),palettes_at=be32(header+36);

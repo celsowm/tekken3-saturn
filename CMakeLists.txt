@@ -1646,7 +1646,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         # layer. The levels are the private output of scripts/build_force_levels.py.
         set(T3_LOCAL_FORCE_LEVELS "" CACHE PATH "Private LEV1-4.BIN (scripts/build_force_levels.py) for the Force stage probe")
         if(T3_LOCAL_FORCE_LEVELS AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN")
-            add_executable(tekken3_force_probe src/saturn/force_stage_probe.c src/saturn/disc.c src/game/psx_force_camera.c src/game/psx_force_level.c)
+            add_executable(tekken3_force_probe src/saturn/force_stage_probe.c src/saturn/disc.c src/game/psx_force_camera.c src/game/psx_force_level.c src/game/psx_force_handoff.c)
             target_include_directories(tekken3_force_probe PRIVATE src/saturn src/game)
             target_compile_options(tekken3_force_probe PRIVATE -Wall -Wextra -O2)
             target_link_libraries(tekken3_force_probe PRIVATE LibSaturn::Saturn)
@@ -1691,6 +1691,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_menu PRIVATE src/saturn/adx_music.c)
             target_include_directories(tekken3_menu PRIVATE "${_t3_adx_dir}")
             target_compile_definitions(tekken3_menu PRIVATE T3_ADX_MUSIC_TEST=1)
+        endif()
+        # Tekken Force: with the private levels built, the menu starts FORCE.BIN (the probe program for now).
+        if(TARGET tekken3_force_probe)
+            target_sources(tekken3_menu PRIVATE src/game/psx_force_handoff.c)
+            target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_PROGRAM=1)
+            add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_force_probe>/tekken3_force_probe.app.bin"
+                    "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                DEPENDS tekken3_force_probe VERBATIM)
+            list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV2.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV3.BIN"
+                "${T3_LOCAL_FORCE_LEVELS}/LEV4.BIN" "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN")
         endif()
         target_compile_options(tekken3_menu PRIVATE -Wall -Wextra -Os)
         target_link_libraries(tekken3_menu PRIVATE LibSaturn::Saturn)

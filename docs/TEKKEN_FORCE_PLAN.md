@@ -220,6 +220,14 @@ Checked against the code, the docs and the local tools before any work:
   and the runner's state (cyan block) are plain boxes. Mednafen screenshots show the script advancing, the camera
   locking and released, and defeated enemies (white) beside the player. No fighters, models or combat yet: those
   need the three-fighter match core and `FORCE.BIN`.
+- **Menu entry and hand-off wired (2026-11-06), not run end to end.** With the private levels configured
+  (`-DT3_LOCAL_FORCE_LEVELS=assets/imported/force-packs`, which now needs `LEV1-4.BIN`, `TRIG.BIN` and
+  `TABLES.BIN`), `MENU.BIN` builds with `T3_FORCE_PROGRAM`: TEKKEN FORCE becomes selectable and starts `FORCE.BIN`
+  (for now the probe program) through `sat_exec` with the 40-byte hand-off block (`psx_force_handoff.c`: level 0,
+  seed from the menu clock); the program reads it and loads `LEVn.BIN` for the level (level 1 when started on its
+  own, as the probe disc does, checked in Mednafen). The game disc's file list gains `FORCE.BIN`, `LEV1-4.BIN`,
+  `TRIG.BIN` and `TABLES.BIN`. Not done: a full game disc built and played from the menu into Force (the disc
+  build needs the whole private data set), NOW LOADING, the tally screens and returning to the menu.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 

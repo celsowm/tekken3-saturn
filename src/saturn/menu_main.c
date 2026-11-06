@@ -16,6 +16,9 @@
 
 #include "arcade_ladder.h"
 #include "boot_arg.h"
+#if defined(T3_FORCE_PROGRAM)
+#include "psx_force_handoff.h"
+#endif
 #include "disc.h"
 #include "menu_layout.h"
 #include "run_rules.h"
@@ -371,6 +374,9 @@ enum { MODES=8 };
 static int mode_playable(unsigned mode,const pads_t* pads) {
     return mode==MODE_ARCADE || mode==MODE_PRACTICE || mode==MODE_OPTION || mode==MODE_TIME ||
            mode==MODE_SURVIVAL ||
+#if defined(T3_FORCE_PROGRAM)
+           mode==MODE_FORCE ||
+#endif
            (mode==MODE_VS && pads->pad[1].connected);
 }
 
@@ -891,7 +897,20 @@ int main(void) {
     if(g_arg[0]==PHASE_RESULT) {result_flow();g_arg[0]=0;}
     if(g_arg[0]==PHASE_ENDING) {ending_flow();g_arg[0]=0;}
     if(g_arg[0]!=PHASE_SELECT)g_arg[ARG_LADDER]=0;   /* back at the title: the run is over */
-    if(g_arg[0]!=PHASE_SELECT && (mode=title_flow())!=MODE_DEMO)
+    if(g_arg[0]!=PHASE_SELECT)mode=title_flow();
+#if defined(T3_FORCE_PROGRAM)
+    if(g_arg[0]!=PHASE_SELECT && mode==MODE_FORCE) {
+        /* Tekken Force is its own program (docs/TEKKEN_FORCE_PLAN.md): level 1, the first character, no keys. */
+        t3_force_handoff_t start={0};
+        uint8_t block[T3_FORCE_HANDOFF_BYTES];
+        start.seed=g_now;
+        t3_force_handoff_pack(&start,block);
+        backdrop_show(0);
+        fade(0);
+        SAT_PANIC_IF_ERROR(sat_exec(g_volume,"FORCE.BIN",block,sizeof block));
+    }
+#endif
+    if(g_arg[0]!=PHASE_SELECT && mode!=MODE_DEMO)
     {
         /* bit 1 practice, bits 2-3 run mode (1 survival, 2 time attack); a fresh run starts at no wins. */
         const unsigned run=mode==MODE_SURVIVAL?1u:mode==MODE_TIME?2u:0u;
