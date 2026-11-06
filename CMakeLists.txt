@@ -2085,6 +2085,12 @@ else()
         target_link_libraries(test_psx_force_handoff PRIVATE tekken3_fight)
         target_compile_options(test_psx_force_handoff PRIVATE -Wall -Wextra -Werror)
         add_test(NAME force_handoff_block COMMAND test_psx_force_handoff)
+        add_executable(test_psx_force_roles tests/test_psx_force_roles.c)
+        target_link_libraries(test_psx_force_roles PRIVATE tekken3_fight)
+        target_compile_options(test_psx_force_roles PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME force_roles_golden COMMAND test_psx_force_roles)
+        set_tests_properties(force_roles_golden PROPERTIES SKIP_RETURN_CODE 77
+            ENVIRONMENT "T3_FORCE_ROLES_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/roles.bin")
         add_test(NAME force_level_runner_golden COMMAND test_psx_force_level)
         set_tests_properties(force_level_runner_golden PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT "T3_FORCE_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/level.bin")

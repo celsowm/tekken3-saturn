@@ -49,3 +49,15 @@ int t3_force_choose_target(t3_force_target_t* s,const t3_force_target_inputs_t* 
     if(s->manual)s->manual_side=(uint32_t)(pick!=0);
     return pick;
 }
+
+unsigned t3_force_roles(t3_force_target_t* s,const t3_force_target_inputs_t* in,const t3_force_roles_in_t* r,
+                        uint8_t previous_opponent,uint8_t opponent[3],uint8_t* both_hidden){
+    const unsigned a=previous_opponent==1u?1u:2u,b=3u-a;
+    t3_force_candidate_t ca={r->hidden[a],r->index[a],(uint32_t)((uint32_t)r->screen_x[a]-1u<399u),r->quadrant[a],r->rel[a]};
+    t3_force_candidate_t cb={r->hidden[b],r->index[b],(uint32_t)((uint32_t)r->screen_x[b]-1u<399u),r->quadrant[b],r->rel[b]};
+    const unsigned target=t3_force_choose_target(s,in,&ca,&cb)?b:a;
+    const unsigned other=3u-target;
+    opponent[0]=(uint8_t)target;opponent[target]=0;opponent[other]=0;
+    *both_hidden=(uint8_t)!(r->hidden[a]==0||r->hidden[b]==0);
+    return target;
+}

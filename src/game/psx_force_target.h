@@ -35,4 +35,19 @@ typedef struct {
 /* Chooses between candidates a and b: returns 0 for a, 1 for b; steps `s` (the wait, the manual side). */
 int t3_force_choose_target(t3_force_target_t* s,const t3_force_target_inputs_t* in,
                            const t3_force_candidate_t* a,const t3_force_candidate_t* b);
+
+/* FUN_800B5EC0 in Tekken Force with the player as fighter 0 and the enemies as fighters 1 and 2: the enemy the
+ * player faced last and the other are the candidates (in that order); the choice above picks the target.
+ * Writes each fighter's default opponent: the player's is the target, the target's and the other enemy's is the
+ * player. `screen_x` is each fighter's +0x1278 (an enemy is "close" with 1..399), `cand` the candidates'
+ * hidden flags, quadrants and relative angles by fighter index. Returns the target (1 or 2); `both_hidden`
+ * is the player's +0xC7. */
+typedef struct {
+    uint8_t hidden[3];
+    uint16_t screen_x[3];
+    int16_t quadrant[3],rel[3];
+    uint8_t index[3];
+} t3_force_roles_in_t;
+unsigned t3_force_roles(t3_force_target_t* s,const t3_force_target_inputs_t* in,const t3_force_roles_in_t* r,
+                        uint8_t previous_opponent,uint8_t opponent[3],uint8_t* both_hidden);
 #endif
