@@ -13,6 +13,8 @@
 #include "saturn/vdp2_special.h"
 #include "disc.h"
 #include "psx_force_camera.h"
+#include "psx_force_level.h"
+#include "saturn/render2d.h"
 
 enum {
     HEADER_BYTES=64, TILE_BYTES=2048, CELLS_PER_TILE=64,
@@ -21,6 +23,9 @@ enum {
 };
 static uint8_t g_io[8192] __attribute__((aligned(4)));
 static uint8_t g_trig[0x2800] __attribute__((aligned(4)));
+static uint8_t g_tables[T3_FORCE_TABLE_BYTES] __attribute__((aligned(4)));
+static uint8_t g_script[T3_FORCE_SCRIPT_BYTES] __attribute__((aligned(4)));
+static t3_force_level_t g_level;
 static sat_cdfs_volume_t* g_volume;
 
 static uint32_t be32(const uint8_t* p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -67,6 +72,8 @@ int main(void) {
     if(be32(header)!=0x54334C46u || width>16u || height>8u || palettes>MAX_PALETTES || CHAR_BASE/32u+tiles*CELLS_PER_TILE+1u>0x7FFFu)
         SAT_PANIC_IF_ERROR(SAT_ERR_IO);
     SAT_PANIC_IF_ERROR(read_at("TRIG.BIN",0,g_trig,sizeof g_trig));
+    SAT_PANIC_IF_ERROR(read_at("TABLES.BIN",0,g_tables,sizeof g_tables));
+    SAT_PANIC_IF_ERROR(read_at(name,be32(header+44),g_script,T3_FORCE_SCRIPT_BYTES));
     SAT_PANIC_IF_ERROR(read_at(name,cells_at,cells,width*height*4u));
     /* Palettes: 16 colours each, palette number p at CRAM colour p * 16 (one read for all of them). */
     SAT_PANIC_IF_ERROR(read_at(name,palettes_at,g_io,palettes*32u));
@@ -114,19 +121,48 @@ int main(void) {
     for(unsigned i=0;i<4;++i)layer.plane_address[i]=NAMES_BASE;
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_configure(&layer));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_COLOR_BLACK));
-    /* The player walks right at 30 units a frame; the original's side-scrolling camera follows it (free scroll mode)
-     * and the panorama moves one dot per 20 units of the camera's x (yaw 0: its view-space x). */
+    /* The level runner on the device: the player walks right at 30 units a frame (and waits while the script holds
+     * the screen for a fight); the original's camera follows it, and the runner (psx_force_level.c) runs the real
+     * level script. Enemies are the runner's slots drawn as boxes: yellow while loading, red fighting, white when
+     * defeated. Each enemy is "killed" 150 frames after it starts fighting. */
     t3_force_camera_t camera={0};
-    int32_t start_x=0,player_x=0;
+    int32_t start_x=0,player_x=0,fighting[T3_FORCE_SLOTS]={0};
     const int32_t roll=t3_force_camera_setup(&camera,1u,0,&start_x);
+    t3_force_level_t* lv=&g_level;
+    lv->round_state=1;lv->player_health=0x640000;lv->timer=0x1000;
+    for(unsigned i=0;i<T3_FORCE_SLOTS;++i){lv->slot[i].state=1;lv->fighter[i].index=(uint8_t)(i+1);lv->fighter[i].health=0;}
     for(;;) {
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
-        player_x+=30;
+        const int holding=lv->state==1;      /* the script waits for kills */
+        if(!holding)player_x+=30;
         t3_force_camera_frame(&camera,g_trig,roll,player_x,0);
+        lv->camera_x=camera.x;lv->origin=start_x;lv->lock_x=camera.x;
+        lv->player.x=player_x;lv->player.z=0;
+        lv->scroll_mode=camera.mode;
+        t3_force_level_step(lv,g_tables,g_script);
+        camera.mode=lv->scroll_mode;camera.left=lv->bound[0];camera.right=lv->bound[1];camera.min=lv->bound[2];camera.max=lv->bound[3];
+        for(unsigned i=0;i<T3_FORCE_SLOTS;++i) {
+            if(lv->slot[i].state==5){if(++fighting[i]>150)lv->fighter[i].health=0;} else fighting[i]=0;
+        }
         const int32_t dots=((camera.x-start_x)/20)%(int32_t)(width*64u);
         SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,(dots<0?dots+(int32_t)(width*64u):dots)<<16,(int32_t)((height*64u>VIEW_H?height*64u-VIEW_H:0u)<<16)));
         (void)sat_vdp2_layers_commit();
         SAT_PANIC_IF_ERROR(sat_begin_frame());
+        {
+            const sat_rect_t me={(int16_t)(VIEW_W/2+(player_x-camera.x)/20-6),150,12,40};
+            (void)sat_fill_rect(&me,sat_color_rgba(40,80,255,255));
+            for(unsigned i=0;i<T3_FORCE_SLOTS;++i) {
+                const int st=lv->slot[i].state;
+                if(st<2||st>7)continue;
+                const sat_rect_t box={(int16_t)(VIEW_W/2+(lv->fighter[i].root_x-camera.x)/20-6),150,12,40};
+                (void)sat_fill_rect(&box,st<4?sat_color_rgba(255,220,0,255):st<6?sat_color_rgba(255,40,40,255):sat_color_rgba(255,255,255,255));
+            }
+            /* the script position: a bar of its records, and the runner's state as a coloured block */
+            const sat_rect_t bar={4,4,(uint16_t)(lv->script_ptr>120?120:lv->script_ptr)*2u+2u,4};
+            (void)sat_fill_rect(&bar,sat_color_rgba(0,255,0,255));
+            const sat_rect_t st={4,12,(uint16_t)(lv->state*8+4),4};
+            (void)sat_fill_rect(&st,sat_color_rgba(0,255,255,255));
+        }
         SAT_PANIC_IF_ERROR(sat_end_frame());
     }
 }

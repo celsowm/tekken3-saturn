@@ -213,6 +213,13 @@ Checked against the code, the docs and the local tools before any work:
   enemies close and within 400 units. The cause is not found; the roles stay verified on random states and on
   98.9% of a real game. (The submodule fixes, `force_sim.py`'s `ds._s32` and this range, are in
   `scripts/patches/tekken3remake-research-fixes.patch`.)
+- **The level runner runs on the Saturn (2026-11-06).** The probe now also runs `psx_force_level.c` with the real
+  level script read from `LEV1.BIN` and the tables from `TABLES.BIN`: the player walks right and waits while the
+  script holds the screen, the camera follows it, the runner spawns enemies at the script's triggers, and each
+  enemy is "killed" 150 frames after it starts fighting. Enemies, the player, the script position (green bar)
+  and the runner's state (cyan block) are plain boxes. Mednafen screenshots show the script advancing, the camera
+  locking and released, and defeated enemies (white) beside the player. No fighters, models or combat yet: those
+  need the three-fighter match core and `FORCE.BIN`.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
