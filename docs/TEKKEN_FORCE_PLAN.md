@@ -99,13 +99,21 @@ Checked against the code, the docs and the local tools before any work:
     and strings of the executable, so they come from the existing HUD extraction (`extract_psx_hud.py`), not
     from force.ovl. The music of the boss fight is the boss character's record (`FUN_800B2B3C`); the
     level's own track is still to find (phase 5).
-- **Phase 2 started (2026-11-06).** `src/game/psx_force_level.c` is the level runner (script commands, wait,
-  end-of-level, tally, boss set-up, spawn patterns, the two enemy slots, caps), as an event-emitting state
-  machine with no drawing. `tests/test_psx_force_level.c` replays golden cases from
-  `scripts/export_force_level_cases.py` (the verified Python port, 20,000 random states: 0 mismatches;
-  skipped when the private cases are missing). Constant tables: `scripts/build_force_tables.py`
-  (TABLES.BIN). Still to port: items (pickup), fighter roles and targeting, arena walls, the mode-8
-  camera.
+- **Phase 2 done for the rules (2026-11-06).** Each piece is C with attribution, a host test over golden cases
+  and no game data in the repository (cases are generated into `build/force-cases/`, skipped when missing):
+  - `psx_force_level.c`: the level runner (script commands, wait, end-of-level, tally, boss set-up, spawn
+    patterns, the two enemy slots, the items and pickup, the caps) as an event-emitting state machine. 30,000
+    random states against the verified Python port (`export_force_level_cases.py`): 0 mismatches.
+  - `psx_force_target.c`: who the player faces (hidden, close, nearer, in front, 120-frame wait, the manual
+    switch), 30,000 cases (`export_force_target_cases.py`): 0 mismatches. The relative angles and pair
+    distances are inputs.
+  - `psx_force_walls.c`: the z and x limits, 30,000 cases (`export_force_walls_cases.py`): 0 mismatches.
+  - `psx_force_camera.c`: the side-scrolling camera (FUN_800B545C, FUN_800B5504), checked against the
+    **original code** in the CPU harness (`export_force_camera_cases.py`), 20,000 cases: 0 mismatches.
+  - `psx_force_handoff.c`: the 40-byte run hand-off block (round trip, range and checksum test).
+  - Constant tables: `build_force_tables.py` (TABLES.BIN); boss table BOSS.BIN.
+  - Not ported: the per-frame draw code (progress bar, key icons, text, panorama sprites: phase 4) and
+    `fighter_roles`' record bookkeeping (phase 3, it needs the match's fighter records).
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
