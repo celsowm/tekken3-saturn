@@ -21,13 +21,25 @@ static int16_t abs_damage(int16_t n) {
     int32_t v=n<0?-(int32_t)n:n;
     return (int16_t)(v<32768?v:v-65536);
 }
+#if T3_PSX_FIGHTERS==2
+#define HIT_ATTACKER(match,i) (1u-(i))
+#else
+/* The fighter that can hit defender i this frame: one that faces it and whose gate accepted (the first by
+ * index), else its own opponent. Not yet compared with the original's HitApply for three fighters. */
+static unsigned hit_attacker(const t3_psx_match_t* match,unsigned i) {
+    for(unsigned j=0;j<T3_PSX_FIGHTERS;++j)
+        if(j!=i && T3_PSX_OPP(match,j)==i && match->fighter[j].hit_gate.status==T3_HIT_GATE_ACCEPT)return j;
+    return T3_PSX_OPP(match,i);
+}
+#define HIT_ATTACKER(match,i) hit_attacker(match,i)
+#endif
 int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
-    staged_t staged[2];
+    staged_t staged[T3_PSX_FIGHTERS];
     const t3_psx_match_config_t* c;
     if(!match || !match->config || !match->config->enable_combat)return 0;
     c=match->config;
-    for(unsigned i=0;i<2;++i) {
-        const unsigned a=1u-i;
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+        const unsigned a=HIT_ATTACKER(match,i);
         const t3_psx_fighter_t *f=&match->fighter[i],*attacker=&match->fighter[a];
         const t3_psx_hit_test_gate_t* gate=&attacker->hit_gate;
         t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t facts={0};
@@ -106,7 +118,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     }
     /* USA VS FighterCollapse runs immediately in MoveStepAll on a clean KO,
      * after selecting the ordinary reaction. It does not wait for next tick. */
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         staged_t* s=&staged[i];
         if(s->hit.health_q16==0 && s->hit.hit_clean) {
             const t3_move_record_t* next=s->vm.pending_valid?&s->vm.pending_move:&s->vm.move;
@@ -123,14 +135,14 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
                 if(!t3_move_vm_queue(&s->vm,0xD66u,6u,1u,1,-1) ||
                    t3_move_vm_begin(&s->vm,facts)!=1)return 0;
                 s->hit.guarded=0;s->hit.hit_clean=1;s->ground.guard=0;
-                if(!t3_psx_ground_start(&s->ground,&staged[1u-i].ground,&s->vm,&previous,
+                if(!t3_psx_ground_start(&s->ground,&staged[HIT_ATTACKER(match,i)].ground,&s->vm,&previous,
                         &c->ground_tables,0,0,facts,&s->hit.reaction,0))return 0;
                 s->collapsed=1;
             }
         }
     }
     /* Publish only after both actors, including their destination rows, pass. */
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&match->fighter[i];const staged_t* s=&staged[i];
         f->vm=s->vm;f->ground=s->ground;f->hit=s->hit;
         f->health_q16=s->hit.health_q16;f->got_hit=s->got_hit;f->hit_freeze_in=s->freeze;
@@ -139,7 +151,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
          * writes this frame's outcome; without one the flags stay clear. */
         f->last_guarded=s->hit.guarded;f->last_counter=s->hit.counter;
         if(s->got_hit){if(s->hit.guarded)++f->registered_blocks;else ++f->registered_hits;}
-        if(s->got_hit)f->last_attacker=(uint8_t)(1u-i);
+        if(s->got_hit)f->last_attacker=(uint8_t)HIT_ATTACKER(match,i);
         if(s->collapsed)f->last_guarded=0;
         f->contact=f->hit_gate.status==T3_HIT_GATE_ACCEPT &&
             !(match->reversal_cancelled&(1u<<(i+2u)));
