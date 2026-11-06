@@ -823,7 +823,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
                         const t3_psx_match_frame_t* physical) {
     T3_MATCH_PHASE(100);
     const t3_psx_match_config_t* c;
-    t3_input_t pads[2]={p0,p1};
+    t3_input_t pads[T3_PSX_FIGHTERS]={p0,p1};
     if(!n || !n->config || n->ticks==UINT32_MAX)return 0;
     c=n->config;
     if(c->enable_rounds==1 && n->round.done) {
@@ -1412,7 +1412,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     else if(n->flow.camera<2 && n->intro_camera_left>0) {
         n->flow.camera=--n->intro_camera_left?1:2;
     }
-    t3_input_t pads[2]={p0,p1};
+    t3_input_t pads[T3_PSX_FIGHTERS]={p0,p1};
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         if(!n->flow.input[i])pads[i]=(t3_input_t){T3_PSX_INPUT_CLEAR,0};
         else if(n->flow.input[i]==2)pads[i]=(t3_input_t){
