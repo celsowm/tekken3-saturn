@@ -92,10 +92,12 @@ def main():
     parser.add_argument('--levels', type=Path, required=True)
     parser.add_argument('--tables', type=Path, required=True)
     parser.add_argument('--max-frames', type=int, default=0)
+    parser.add_argument('--trig', type=Path, help='TRIG.BIN: also check the side-scrolling camera')
     args = parser.parse_args()
     lib_path = Path(tempfile.mkdtemp()) / 'force_level.so'
     subprocess.run(['cc', '-O2', '-shared', '-fPIC', '-I', str(ROOT / 'src/game'), '-o', str(lib_path),
-                    str(ROOT / 'src/game/psx_force_level.c'), str(ROOT / 'tests/force_level_shim.c')], check=True)
+                    str(ROOT / 'src/game/psx_force_level.c'), str(ROOT / 'tests/force_level_shim.c'), str(ROOT / 'src/game/psx_force_camera.c'),
+                    str(ROOT / 'tests/force_camera_shim.c')], check=True)
     lib = ctypes.CDLL(str(lib_path))
     lib.force_step.argtypes = [ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p,
                                ctypes.c_char_p, ctypes.POINTER(ctypes.c_int32)]
@@ -111,6 +113,9 @@ def main():
     names = [n for n, _, _ in ex.GLOBALS] + [f'slot{i}.{n}' for i in range(2) for n, _, _ in ex.SLOT] + \
         [f'fighter{i}.{n}' for i in range(2) for n, _, _ in ex.FIGHTER_FIELDS] + \
         [f'item{i}.{n}' for i in range(2) for n, _, _ in ex.ITEM] + [f'player.{n}' for n, _, _ in ex.PLAYER_FIELDS]
+    trig = args.trig.read_bytes() if args.trig else None
+    lib.force_camera_step.argtypes = [ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+    cam_bad, cam_total, cam_prev, cam_player = 0, 0, None, None
     previous, script_base = None, None
     bad, total = Counter(), 0
     shown = 0
@@ -156,7 +161,26 @@ def main():
                 if diffs and shown < 8:
                     shown += 1
                     print(f'frame {k}: ' + ', '.join(f'{n} {out[names.index(n)]}/{vec[names.index(n)]}' for n in diffs[:6]))
+        if trig and ram.u32(0x800B7098):
+            # the camera runs once a frame: from the record after the previous frame, with the player's position
+            # after the previous one (the camera runs before the fighters move)
+            rec = struct.unpack_from('<I13i', bytes(ram.data[ram._off(0x800B7098):ram._off(0x800B7098) + 56]))
+            player_now = (ram.s32(ram.u32(0x800B7098) + 0xF68), ram.s32(ram.u32(0x800B7098) + 0xF70))
+            if cam_prev is not None and cam_player is not None and ram.s32(0x80097350) == 1:
+                arr = (ctypes.c_int32 * 14)(*[v - (1 << 32) if i == 0 and v >= 1 << 31 else v for i, v in enumerate(cam_prev)])
+                lib.force_camera_step(arr, trig, ram.s32(0x800A8A90), cam_player[0], cam_player[1])
+                got = [v & 0xFFFFFFFF if i == 0 else v for i, v in enumerate(arr)]
+                cam_total += 1
+                # the scroll mode (field 7) and the bounds are written by the level runner in the same frame
+                keep = [i for i in range(1, 14) if i not in (7, 10, 11, 12, 13)]
+                if [got[i] for i in keep] != [rec[i] for i in keep]:
+                    cam_bad += 1
+                    if cam_bad <= 5:
+                        print(f'camera frame {k}:', [(i, got[i], rec[i]) for i in keep if got[i] != rec[i]])
+            cam_prev, cam_player = rec, player_now
         previous = vec
+    if trig:
+        print(f'camera: {cam_total} frames compared, {cam_bad} differ')
     print(f'{total} frames compared; fields differing: {dict(bad.most_common(12))}')
 
 

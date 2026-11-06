@@ -196,7 +196,11 @@ Checked against the code, the docs and the local tools before any work:
   scroll mode, bounds). Not compared, because the trace does not record them or the projection does: the fight
   timer and what depends on it (clear time, bonus time, score), and the popups' screen positions. The inputs
   that must come from after the frame are the camera x, the fighters' health, `fce`, `fe7`, `fc4` and the text
-  flag; only the freeze flag comes from before it. This is the template for the match comparator: same trace,
+  flag; only the freeze flag comes from before it. With `--trig` the same script also steps
+  `psx_force_camera.c` over the recorded game (the record from the previous frame, the player's position from
+  the previous frame, since the camera runs before the fighters move): **5,996 frames, 0 differences** in
+  x, y, z, pitch, yaw, h, the target x and the pitch target (the scroll mode and bounds are the level runner's,
+  written in the same frame). This is the template for the match comparator: same trace,
   same frame-by-frame rule, the fighter records as the thing to compare.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
