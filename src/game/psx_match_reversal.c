@@ -39,30 +39,37 @@ static int condition(void* user,const t3_branch_record_t* row) {
     const int matched=t3_psx_reversal_condition(row->condition,row->parameter,&facts);
     return q->failed?-1:matched;
 }
-static unsigned opponent(const t3_psx_fighter_t* f,unsigned i) {
-    if(f->ground.in_throw)return 1u-i;
+static unsigned opponent(const t3_psx_match_t* n,const t3_psx_fighter_t* f,unsigned i) {
+    (void)n;
+    if(f->ground.in_throw)return T3_PSX_OPP(n,i);
     if(f->ground.was_hit_this_move)return f->last_attacker;
     if(f->contact)return f->last_hit_target;
-    return 1u-i;
+    return T3_PSX_OPP(n,i);
 }
 int t3_psx_match_reversals(t3_psx_match_t* n) {
     const t3_psx_match_config_t* c=n->config;
     n->reversal_cancelled=0;
     /* HitClearSlots and HitTest's writes, before selecting FighterOpponent. */
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&n->fighter[i];
         f->got_hit=0;f->contact=0;
     }
-    for(unsigned i=0;i<2;++i)if(n->fighter[i].hit_gate.status==T3_HIT_GATE_ACCEPT) {
-        t3_psx_fighter_t *a=&n->fighter[i],*d=&n->fighter[1u-i];
-        a->contact=a->contact_this_move=a->hit_done=1;a->last_hit_target=(uint8_t)(1u-i);
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(n->fighter[i].hit_gate.status==T3_HIT_GATE_ACCEPT) {
+        t3_psx_fighter_t *a=&n->fighter[i],*d=&n->fighter[T3_PSX_OPP(n,i)];
+        a->contact=a->contact_this_move=a->hit_done=1;a->last_hit_target=(uint8_t)T3_PSX_OPP(n,i);
         d->got_hit=1;d->ground.was_hit_this_move=1;
     }
-    for(unsigned j=0;j<2;++j) {
+    for(unsigned j=0;j<T3_PSX_FIGHTERS;++j) {
+#if T3_PSX_FIGHTERS==2
         const unsigned i=(j+((n->frame_counter&1u)?0u:1u))&1u;
+#else
+        /* MoveBranchAll: like MoveStepAll, 0 and 1 by frame parity, the third last and only while the level runs. */
+        if(j==2u && n->level_ended)break;
+        const unsigned i=j<2u?(j+((n->frame_counter&1u)?0u:1u))&1u:j;
+#endif
         t3_psx_fighter_t* f=&n->fighter[i];
-        const unsigned oi=opponent(f,i);
-        if(oi>1)return 0;
+        const unsigned oi=opponent(n,f,i);
+        if(oi>=T3_PSX_FIGHTERS)return 0;
         t3_psx_fighter_t* o=&n->fighter[oi];
         if(c->character[oi]==17u)continue;
         f->ground.damage_override=0;
