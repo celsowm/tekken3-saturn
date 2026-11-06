@@ -99,6 +99,13 @@ Checked against the code, the docs and the local tools before any work:
     and strings of the executable, so they come from the existing HUD extraction (`extract_psx_hud.py`), not
     from force.ovl. The music of the boss fight is the boss character's record (`FUN_800B2B3C`); the
     level's own track is still to find (phase 5).
+- **Phase 2 started (2026-11-06).** `src/game/psx_force_level.c` is the level runner (script commands, wait,
+  end-of-level, tally, boss set-up, spawn patterns, the two enemy slots, caps), as an event-emitting state
+  machine with no drawing. `tests/test_psx_force_level.c` replays golden cases from
+  `scripts/export_force_level_cases.py` (the verified Python port, 20,000 random states: 0 mismatches;
+  skipped when the private cases are missing). Constant tables: `scripts/build_force_tables.py`
+  (TABLES.BIN). Still to port: items (pickup), fighter roles and targeting, arena walls, the mode-8
+  camera.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 

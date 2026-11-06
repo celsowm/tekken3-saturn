@@ -94,7 +94,7 @@ implementation of Tekken3Remake.
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
   `src/game/psx_round.c`, `src/game/psx_round_flow.c`, `src/game/psx_replay.c`,
-  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/psx_camera.c`,
+  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/psx_force_level.c`, `src/game/psx_camera.c`,
   `src/game/psx_match_camera.c`, `src/game/psx_motion.c`,
   `src/game/stage_backdrop.c`, `src/game/stage_rules.c`,
   `src/game/input_history.c`, `src/game/psx_reaction.c`,
