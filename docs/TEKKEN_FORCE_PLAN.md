@@ -248,8 +248,7 @@ Checked against the code, the docs and the local tools before any work:
 - **Pair distances against the recorded game (2026-11-06): exact.** With the `pair_table` range in the trace,
   `scripts/check_force_flow_trace.py --pairs` checks `PairwiseDistances`' table: after every Force frame (5,996
   of them) each pair's distance equals `isqrt(dx^2 + dz^2)` of the fighters' roots **as they were when the
-  frame began** (the previous frame's final roots); 3 of the 17,985 pair distances differ (not yet looked at,
-  probably a frame where fighters are placed). This is the rule the three-fighter
+  frame began** (the previous frame's final roots), 0 differences over consecutive frames of a running round. This is the rule the three-fighter
   `pair_distance` in `psx_match.c` implements (it runs after the move start and before the ground step, on the
   roots the previous frame left), and the order of the whole pair table by `fold(i) + fold(j)` is confirmed.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records

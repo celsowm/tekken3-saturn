@@ -182,6 +182,8 @@ def main():
                     if cam_bad <= 5:
                         print(f'camera frame {k}:', [(i, got[i], rec[i]) for i in keep if got[i] != rec[i]])
             cam_prev, cam_player = rec, player_now
+        if args.pairs and ram.s32(0x80097350) != 1:
+            pair_roots = None
         if args.pairs and ram.s32(0x80097350) == 1:
             # PairwiseDistances (the match core's pair_distance for three fighters): the table after a frame holds
             # the distances of the fighters' roots as they were when the frame began
