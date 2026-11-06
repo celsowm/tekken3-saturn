@@ -1,3 +1,15 @@
+diff --git a/tools/research/flow_trace.py b/tools/research/flow_trace.py
+index 63e2150..d745154 100644
+--- a/tools/research/flow_trace.py
++++ b/tools/research/flow_trace.py
+@@ -85,6 +85,7 @@ RANGES = (
+     ("ai_records", 0x8009F6C0, 0x660),
+     ("ball_mode", 0x800B6400, 0xA00),     # volley.ovl: options, tuning, gauges, popups, projection
+     ("force_mode", 0x800B69F0, 0x720),    # force.ovl: targeting, slots, items, script, score, camera
++    ("pair_table", 0x8009EA08, 0x60),     # PairwiseDistances: distance, dx, dz, direction per fighter pair
+ )
+ # Blocks read through a pointer: (name, pointer address, size).
+ POINTED = (
 diff --git a/tools/research/force_sim.py b/tools/research/force_sim.py
 index 095e107..8b0746f 100644
 --- a/tools/research/force_sim.py

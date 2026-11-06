@@ -207,8 +207,12 @@ Checked against the code, the docs and the local tools before any work:
   targets, wait, hidden and screen flags and the current positions: 6,678 of 6,776 frames equal the original's
   targets (98.6%), 98 differ, all of them in frames where both enemies are close and within 400 units of each
   other, so the pick rests on the facing-quadrant and relative-angle fields (`+0x2A..+0x34`) whose values before
-  the frame are not in the trace. The comparator needs those fields from the harness (`fight_harness.py`
-  exports per-frame fields), not from the flow trace; until then the roles are verified on random states only.
+  the frame are not in the trace. **Update:** with the pair-distance table recorded too (`flow_trace.py` now has
+  a `pair_table` range at `0x8009EA08`; the trace is re-recorded, 14 minutes) and everything taken from the
+  previous frame's records, 6,699 of 6,776 frames (98.9%) equal the original; 77 still differ, again both
+  enemies close and within 400 units. The cause is not found; the roles stay verified on random states and on
+  98.9% of a real game. (The submodule fixes, `force_sim.py`'s `ds._s32` and this range, are in
+  `scripts/patches/tekken3remake-research-fixes.patch`.)
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
