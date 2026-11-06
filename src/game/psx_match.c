@@ -609,7 +609,12 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
         facts.defender_state_class=d->ground.state_class;facts.defender_step_kind=d->ground.step_kind;
         facts.defender_hit_cooldown=d->ground.hit_cooldown!=0;
         facts.defender_in_air=d->ground.in_air!=0u;facts.defender_in_throw=d->ground.throw_state!=0;
-        facts.defender_is_cpu=d->ground.is_cpu;facts.free_slots_mask=3;facts.game_mode=1;
+        facts.defender_is_cpu=d->ground.is_cpu;facts.free_slots_mask=3;
+#if T3_PSX_FIGHTERS>2
+        facts.game_mode=8;      /* Tekken Force: a thrown defender cannot be hit (THROW_LOCK) */
+#else
+        facts.game_mode=1;
+#endif
         facts.hit_done=match->config->enable_combat?f->hit_done:0;
         if(!t3_psx_hit_test_gate(&facts,&f->hit_gate))return 0;
         if(f->hit_gate.status==T3_HIT_GATE_ACCEPT)++f->gate_frames;

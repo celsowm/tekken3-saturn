@@ -263,6 +263,9 @@ Checked against the code, the docs and the local tools before any work:
   in that build) and accepts three actors. Versus `app.bin` stays 491,228 bytes (a first version with a run-time
   lookup grew it by 104 bytes and was replaced by the compile-time one); 103 host tests pass; both files compile
   at three fighters. Unverified at 3, like the rest of the match core.
+- **Contact facts, mode 8 (2026-11-06).** At three fighters the hit gate gets `game_mode = 8` (a thrown defender
+  cannot be hit, the gate's THROW_LOCK rule for modes 7 and 8); the duel keeps 1. `free_slots_mask` stays 3 (the
+  match applies one hit per defender per frame). Versus binary unchanged (491,228 bytes).
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
