@@ -171,6 +171,20 @@ Checked against the code, the docs and the local tools before any work:
     replay instead of the fight camera's, and the duel round logic's two-element snapshots (`hp`, `pose`,
     `old_active`);
   - the three-fighter trace comparator against `flow_force.bin`.
+- **Phase 4 started: the stage layer works on the Saturn (2026-11-06).** `src/saturn/force_stage_probe.c`
+  (CMake target `tekken3_force_probe`, `-DT3_LOCAL_FORCE_LEVELS=assets/imported/force-packs`, disc
+  `build/disc/tekken3_force_probe.cue`, 41 KB) reads `LEV1.BIN` from the disc and shows its 16 x 5 panorama as
+  an NBG0 cell layer scrolling sideways; checked with `scripts/mednafen_shots.py` (screenshots only, no video).
+  Design that came out of it:
+  - 64 x 64 texel tiles become 64 cells each; 2-word pattern names (the 1-word 10-bit character numbers cannot
+    address 5,120 cells), 16-colour palettes at CRAM colour `p * 16` (80 palettes, CRAM mode 1), the character
+    data at `0x40000` (character number `0x2000 + n`), names in a 2 x 1 page plane at 0;
+  - the disc reads matter: one read per palette or per tile made the load take over 25 s in Mednafen; with the
+    palettes in one read and four tiles per read it takes about 20 s. A game build must stream or pack this
+    better (one read for the whole level, or load while NOW LOADING shows);
+  - texels of colour 0 are transparent, as on the PlayStation, and show the back colour.
+  Not done in phase 4: the Force camera's scroll rule (`psx_force_camera.c` feeds it), level 4's staircase
+  (vertical cell scroll), the third actor, the HUD, items and the enemies' drawing.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 

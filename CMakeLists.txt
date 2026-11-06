@@ -1642,6 +1642,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             libsaturn_add_disc(tekken3_spike_intro NAME tekken3_spike_intro
                 IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_INTRO_MOVIE}" ALL)
         endif()
+        # Tekken Force stage-layer probe (docs/TEKKEN_FORCE_PLAN.md, phase 4): the baked level panorama on a VDP2
+        # layer. The levels are the private output of scripts/build_force_levels.py.
+        set(T3_LOCAL_FORCE_LEVELS "" CACHE PATH "Private LEV1-4.BIN (scripts/build_force_levels.py) for the Force stage probe")
+        if(T3_LOCAL_FORCE_LEVELS AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN")
+            add_executable(tekken3_force_probe src/saturn/force_stage_probe.c src/saturn/disc.c)
+            target_include_directories(tekken3_force_probe PRIVATE src/saturn)
+            target_compile_options(tekken3_force_probe PRIVATE -Wall -Wextra -O2)
+            target_link_libraries(tekken3_force_probe PRIVATE LibSaturn::Saturn)
+            libsaturn_configure_executable(tekken3_force_probe)
+            libsaturn_add_binary(tekken3_force_probe MAX_BYTES 983040)
+            libsaturn_add_disc(tekken3_force_probe NAME tekken3_force_probe
+                IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" ALL)
+        endif()
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c src/game/arcade_ladder.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
