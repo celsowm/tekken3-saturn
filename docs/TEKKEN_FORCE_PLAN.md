@@ -85,6 +85,14 @@ Checked against the code, the docs and the local tools before any work:
 - **The mode-8 camera is small.** `FUN_800B545C` is 42 instructions and `FUN_800B5504` 231.
 - **LibSaturn hand-off:** `SAT_EXEC_ARG_MAX` is 64 bytes (LibSaturn `b52ec400`, host test
   passes).
+- **Phase 1 started (2026-11-06).**
+  - `scripts/build_fighter_packs.py --force-enemies` writes F21-F24.BIN (Crow, Falcon, Hawk, Owl; 163-173 KB
+    each, 247 vertices, 342 faces; the nested four-costume ARC is handled in `psx_character_textures.py`;
+    a normal roster pack is byte-identical to before).
+  - `scripts/build_force_levels.py` writes LEV1-4.BIN from stage archives 51-54 (map, deduplicated 64 x 64
+    tiles and palettes, floor descriptor, level script): 170, 160, 139 and 35 KB. Level 1's 16 x 5 panorama
+    renders correctly from the baked file.
+  - Still to build: item and HUD pictures, the boss table, music per level.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
