@@ -20,7 +20,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_spark.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_vertex_exchange.c src/game/psx_vertex_project.c src/game/psx_projected_mesh.c src/game/psx_fighter_ot.c src/game/psx_face_coverage.c src/game/psx_scene_ot.c src/game/psx_particle_projection.c src/game/psx_particle_assets.c src/game/psx_particle_snapshot.c src/game/psx_particle_prepare.c src/game/psx_particle_order.c src/game/psx_particle_tile.c src/game/psx_flipbook.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
     src/game/arcade_ladder.c)
@@ -2069,6 +2069,12 @@ else()
         add_test(NAME force_target_choice_golden COMMAND test_psx_force_target)
         set_tests_properties(force_target_choice_golden PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT "T3_FORCE_TARGET_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/target.bin")
+        add_executable(test_psx_force_walls tests/test_psx_force_walls.c)
+        target_link_libraries(test_psx_force_walls PRIVATE tekken3_fight)
+        target_compile_options(test_psx_force_walls PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME force_walls_golden COMMAND test_psx_force_walls)
+        set_tests_properties(force_walls_golden PROPERTIES SKIP_RETURN_CODE 77
+            ENVIRONMENT "T3_FORCE_WALLS_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/walls.bin")
         add_test(NAME force_level_runner_golden COMMAND test_psx_force_level)
         set_tests_properties(force_level_runner_golden PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT "T3_FORCE_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/level.bin")
