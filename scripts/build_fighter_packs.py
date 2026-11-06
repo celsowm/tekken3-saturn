@@ -23,7 +23,7 @@ from extract_psx_char_flipbook import flipbook_file
 from extract_psx_hud import extract_name, system_textures
 from extract_psx_sfx import all_voice_codes, arc_member, vab_sound
 from build_stage_packs import STAGE_RECORDS, STAGE_RECORD_BYTES, fighter_home, usa_file_offset
-from fighter_roster import COMMON_RECORD, ROSTER, STAGE_NUMBERS, bank_record, body_radii, filter_words, records
+from fighter_roster import COMMON_RECORD, FORCE_ENEMIES, ROSTER, is_force_enemy, STAGE_NUMBERS, bank_record, body_radii, filter_words, records
 from kmd_to_ska import HAND_VARIANTS, parse_kmd
 from psx_character_textures import load_character_vram
 
@@ -302,13 +302,16 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     r = records(fighter)
     arc = (raw / f"{r['arc']:03}.bin").read_bytes()
     model = parse_kmd((raw / f"{r['kmd']:03}.bin").read_bytes())
-    archive, report = compile_mesh(model, libsaturn, scratch / 'mesh', raw / f"{r['arc']:03}.bin", texture_cap)
+    enemy = is_force_enemy(fighter)
+    archive, report = compile_mesh(model, libsaturn, scratch / 'mesh', raw / f"{r['arc']:03}.bin", texture_cap,
+                                   costume=fighter.slot - FORCE_ENEMIES[0].slot if enemy else None)
     if report['joints'] != 22 or not report['original_textures']:
         raise ValueError(f'{fighter.name}: unexpected rig or texture kind')
     raw_bank = (raw / f'{bank_record(fighter):03}.bin').read_bytes()
     bank = logic_bank(raw / f'{bank_record(fighter):03}.bin', scratch / 'logic')
     choices, choice_count, streams, stream_count, encoded = camera_data(raw_bank)
-    table, pcm, voice_count = voices(exe, fighter, (raw / f"{r['vab']:03}.bin").read_bytes(), arc)
+    # Force enemies have no voice record and no select-screen name art.
+    table, pcm, voice_count = (b'', b'', 0) if enemy else voices(exe, fighter, (raw / f"{r['vab']:03}.bin").read_bytes(), arc)
 
     # The hot block: read once into the actor's High WRAM storage and kept for the match.
     hot, fields = bytearray(), {}
@@ -360,7 +363,7 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
 
     sections = dict(hot=bytes(hot), archive=archive, bank=bank, camera=encoded,
                     flipbook=flipbook_file(arc)[0], voices=table, pcm=pcm,
-                    names=names(arc, fighter.name_width, system_vram))
+                    names=b'' if enemy else names(arc, fighter.name_width, system_vram))
     image = bytearray(HEADER_BYTES)
     directory = []
     for name in SECTIONS:
@@ -444,6 +447,8 @@ def main():
                         help='0: 8x8 INDEX8 face patches; N: native-density LUT4 patches of at most N texels a side')
     parser.add_argument('--hand-variants', action='store_true',
                         help='store the hand and jaw vertex variants (T3_FIGHTER_HAND_VARIANTS)')
+    parser.add_argument('--force-enemies', action='store_true',
+                        help="build only Tekken Force's four enemy packs (F21-F24.BIN, force.json); no roster header")
     args = parser.parse_args()
     exe = args.exe.read_bytes()
     system_vram = system_textures.build_vram(system_textures.members(exe, 'usa'))
@@ -452,7 +457,7 @@ def main():
     banks.mkdir(exist_ok=True)
     rows = []
     try:
-        for fighter in ROSTER:
+        for fighter in (FORCE_ENEMIES if args.force_enemies else ROSTER):
             if args.only and fighter.id not in args.only:
                 continue
             with tempfile.TemporaryDirectory() as scratch:
@@ -463,6 +468,10 @@ def main():
             rows.append(row)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'fighter pack failed: {error}\n')
+    if args.force_enemies:
+        (args.out / 'force.json').write_text(json.dumps(rows, indent=1) + '\n')
+        print(json.dumps(dict(packs=len(rows), bytes=sum(r['bytes'] for r in rows)), indent=1))
+        return
     with tempfile.TemporaryDirectory() as scratch:
         common = logic_bank(args.raw / f'{COMMON_RECORD:03}.bin', Path(scratch) / 'logic')
     homes = [fighter_home(exe, character) for character in range(max(f.id for f in ROSTER) + 1)]

@@ -21,7 +21,20 @@ def upload_block(vram, data, at, dx, dy):
     return at + length
 
 
-def load_character_vram(arc):
+def nested_costume(data, costume):
+    """The TIM sequence of one child of a nested costume directory (the Tekken Force enemy slots
+    47-50): `u32 4`, four `<offset, size>` pairs, then the children. The game uploads all four at
+    16 words and one CLUT row apart and adds 64 to each u and 0x40 to each CLUT field; the child
+    alone at the base position is the same picture for the mesh's own coordinates."""
+    if costume is None or not 0 <= costume < 4:
+        raise ValueError('a nested costume directory needs a costume 0..3')
+    start, size = struct.unpack_from('<II', data, 4 + 8 * costume)
+    if start + size > len(data):
+        raise ValueError('nested costume child outside its member')
+    return data[start:start+size]
+
+
+def load_character_vram(arc, costume=None):
     if len(arc) < 44 or struct.unpack_from('<I', arc)[0] != 5:
         raise ValueError('expected five-member character ARC')
     ranges = [struct.unpack_from('<II', arc, 4+8*i) for i in range(5)]
@@ -32,6 +45,8 @@ def load_character_vram(arc):
         raise ValueError('overlapping character ARC members')
     start, size = ranges[0]
     data, at, count = arc[start:start+size], 0, 0
+    if len(data) >= 36 and struct.unpack_from('<I', data)[0] == 4 and struct.unpack_from('<I', data, 36)[0] == 0xFFFFFFFF:
+        data = nested_costume(data, costume)
     vram = [0] * (1024*512)
     while at < len(data):
         if data[at:] == bytes(4):

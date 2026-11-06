@@ -477,7 +477,7 @@ def hand_variants(kmd,source,base):
                         positions=[pick(recs) if recs else None for recs in per_variant]+[pick(base_records)]))
     return out
 
-def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0):
+def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0,costume=None):
     model,quads,variants_omitted=to_source_model(kmd,source)
     double_sided=[];face_ot=[]
     for part,row_index in enumerate(PART_ROWS[:18]):
@@ -510,7 +510,7 @@ def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0):
         if texture_arc is not None:
             from psx_character_textures import load_character_vram,bake_face
             from model_pipeline.texture_bake import build_shared_palette,map_faces_to_indices
-            vram,tim_count=load_character_vram(texture_arc.read_bytes())
+            vram,tim_count=load_character_vram(texture_arc.read_bytes(),costume)
         if texture_arc is not None and texture_cap:
             # The largest size cap, in VDP1's 8-pixel width steps, that fits the budget.
             for cap in range(texture_cap,7,-8):

@@ -39,6 +39,12 @@ ROSTER = tuple(Fighter(*row) for row in (
     (19, 'DOCTOR B', 44, 20, 18, 67),
     (20, 'TRUE OGRE', 32, 21, 14, 35),
 ))
+# Tekken Force's enemies: character 21 in four costumes (slots 47-50, costume key 0x54 + costume),
+# one motion bank (type 20, in each slot's own record), the voice set 22, no select-screen name art.
+# Their pack ids continue the roster's; the ARC is a nested four-costume directory.
+FORCE_FIRST_ID = 21
+FORCE_ENEMIES = tuple(Fighter(FORCE_FIRST_ID + k, name, 47 + k, 22, 20, width)
+                      for k, (name, width) in enumerate((('CROW', 37), ('FALCON', 49), ('HAWK', 34), ('OWL', 27))))
 BY_BANK_TYPE = {f.bank_type: f for f in ROSTER if f.id not in (15, 20)}
 
 
@@ -53,9 +59,15 @@ def records(fighter):
     return dict(kmd=kmd, vab=kmd + 1, arc=kmd + 2, bank=kmd + 3)
 
 
+def is_force_enemy(fighter):
+    return fighter.id >= FORCE_FIRST_ID
+
+
 def bank_record(fighter):
     """The DIVMOT record the fighter plays. Mokujin copies another fighter's bank
     each round in the original; this port fixes his character record's bank."""
+    if is_force_enemy(fighter):
+        return records(fighter)['bank']
     return records(BY_BANK_TYPE[fighter.bank_type])['bank']
 
 
