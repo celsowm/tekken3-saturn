@@ -176,6 +176,41 @@ static const int16_t* screen_of(const t3_psx_match_t* match) {
 /* PairwiseDistances (0x8004391C), two fighters: the pair's distance and
  * direction, then per fighter its distance and target direction, or a
  * screen-based stand-in with a fixed facing or an opponent off screen. */
+#if T3_PSX_FIGHTERS>2
+/* The same for any number of fighters, as the original's loop over every pair and then over every fighter
+ * against its own opponent (0x8004391C with its count argument). A fighter whose opponent is off screen
+ * (or that has a fixed facing) gets the screen-based stand-in. */
+static int pair_distance(t3_psx_match_t* match) {
+    const int16_t* screen=screen_of(match);
+    uint8_t off[T3_PSX_FIGHTERS];
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)off[i]=(uint8_t)((screen && (uint16_t)screen[i]>=0x191u) || match->off_screen_extra[i]);
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+        const unsigned o=T3_PSX_OPP(match,i),big=i>o?i:o,small=i>o?o:i;
+        t3_psx_ground_state_t* g=&match->fighter[i].ground;
+        const int64_t x=(int64_t)match->fighter[big].ground.root.x-match->fighter[small].ground.root.x;
+        const int64_t z=(int64_t)match->fighter[big].ground.root.z-match->fighter[small].ground.root.z;
+        uint16_t direction;
+        if(x< -32767 || x>32767 || z< -32767 || z>32767)return 0;
+        const uint32_t distance=isqrt((uint32_t)(x*x+z*z));
+        match->pair_dist[i]=distance;
+        if(!screen){g->distance=distance;continue;}
+        if(!t3_psx_atan2(&match->config->ground_tables,(int32_t)z,(int32_t)x,&direction))return 0;
+        if(!g->fixed_facing && !off[o]) {
+            g->distance=distance;
+            g->target_dir=(uint16_t)(o<i?direction:direction-0x8000u);
+        } else {
+            int32_t s=screen[i];
+            s=0xB4-(s<0?-s:s);
+            s=0xB4-(s<0?-s:s);
+            s=s<0?-s:s;
+            g->distance=(uint32_t)(s*10);
+            g->target_dir=(uint16_t)(g->fixed_facing_side?0xC000u:0x4000u);
+        }
+    }
+    match->fighter_distance=match->fighter[0].ground.distance;
+    return 1;
+}
+#else
 static int pair_distance(t3_psx_match_t* match) {
     const int64_t x=(int64_t)match->fighter[1].ground.root.x-match->fighter[0].ground.root.x;
     const int64_t z=(int64_t)match->fighter[1].ground.root.z-match->fighter[0].ground.root.z;
@@ -207,6 +242,7 @@ static int pair_distance(t3_psx_match_t* match) {
     match->fighter_distance=match->fighter[0].ground.distance;
     return 1;
 }
+#endif
 static int root_pose(const t3_psx_match_t* match,t3_psx_fighter_t* fighter,unsigned frame,int16_t root[3]) {
     const t3_motion_stream_t* stream;
     const t3_move_vm_t* vm=&fighter->vm;
@@ -971,7 +1007,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         if(!t3_psx_ground_angles(&f->ground,&opp->ground,&c->ground_tables))return 0;
         /* MoveStep (0x800454E0) then takes `dist` from the pair table, without
          * PairwiseDistances' off-screen stand-in. */
-        f->ground.distance=n->pair_distance;
+        f->ground.distance=T3_PSX_PAIR_DIST(n,i);
         if(c->enable_combat) {
             t3_psx_match_branch_facts(n,i,&facts);
             facts.tap_condition_used=&f->taps.condition_used;

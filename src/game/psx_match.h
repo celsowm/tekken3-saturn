@@ -31,8 +31,10 @@
 #endif
 #if T3_PSX_FIGHTERS==2
 #define T3_PSX_OPP(match,i) (1u-(i))
+#define T3_PSX_PAIR_DIST(match,i) ((match)->pair_distance)
 #else
 #define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
+#define T3_PSX_PAIR_DIST(match,i) ((match)->pair_dist[i])
 #endif
 
 /* Throw situation code (0x800313B0), branch conditions 2..0x17. */
@@ -162,6 +164,10 @@ typedef struct t3_psx_match {
     const t3_psx_match_config_t* config;
 #if T3_PSX_FIGHTERS>2
     uint8_t opponent[T3_PSX_FIGHTERS]; /* the fighter each one faces (FUN_800B5EC0 in Tekken Force) */
+    /* Tekken Force: set for an enemy whose slot is free and while its level still runs (FUN_800B2EEC), which
+     * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
+    uint8_t off_screen_extra[T3_PSX_FIGHTERS];
+    uint32_t pair_dist[T3_PSX_FIGHTERS]; /* each fighter's distance to its opponent (MoveStep's `dist`) */
 #endif
     t3_psx_fighter_t fighter[T3_PSX_FIGHTERS];
     t3_psx_sound_state_t sound[T3_PSX_FIGHTERS];
