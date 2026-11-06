@@ -12,6 +12,7 @@
 #include "saturn/vdp2_layers.h"
 #include "saturn/vdp2_special.h"
 #include "disc.h"
+#include "psx_force_camera.h"
 
 enum {
     HEADER_BYTES=64, TILE_BYTES=2048, CELLS_PER_TILE=64,
@@ -19,6 +20,7 @@ enum {
     MAX_PALETTES=127, VIEW_W=320, VIEW_H=224
 };
 static uint8_t g_io[8192] __attribute__((aligned(4)));
+static uint8_t g_trig[0x2800] __attribute__((aligned(4)));
 static sat_cdfs_volume_t* g_volume;
 
 static uint32_t be32(const uint8_t* p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
@@ -64,6 +66,7 @@ int main(void) {
     const uint32_t cells_at=be32(header+28),tiles_at=be32(header+32),palettes_at=be32(header+36);
     if(be32(header)!=0x54334C46u || width>16u || height>8u || palettes>MAX_PALETTES || CHAR_BASE/32u+tiles*CELLS_PER_TILE+1u>0x7FFFu)
         SAT_PANIC_IF_ERROR(SAT_ERR_IO);
+    SAT_PANIC_IF_ERROR(read_at("TRIG.BIN",0,g_trig,sizeof g_trig));
     SAT_PANIC_IF_ERROR(read_at(name,cells_at,cells,width*height*4u));
     /* Palettes: 16 colours each, palette number p at CRAM colour p * 16 (one read for all of them). */
     SAT_PANIC_IF_ERROR(read_at(name,palettes_at,g_io,palettes*32u));
@@ -111,10 +114,17 @@ int main(void) {
     for(unsigned i=0;i<4;++i)layer.plane_address[i]=NAMES_BASE;
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_configure(&layer));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(SAT_COLOR_BLACK));
-    /* The camera scrolls one dot per 20 units of its view x: here 40 units a frame, 2 dots. */
-    for(uint32_t frame=0;;++frame) {
+    /* The player walks right at 30 units a frame; the original's side-scrolling camera follows it (free scroll mode)
+     * and the panorama moves one dot per 20 units of the camera's x (yaw 0: its view-space x). */
+    t3_force_camera_t camera={0};
+    int32_t start_x=0,player_x=0;
+    const int32_t roll=t3_force_camera_setup(&camera,1u,0,&start_x);
+    for(;;) {
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
-        SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,(int32_t)((frame*2u)%(width*64u))<<16,(int32_t)((height*64u>VIEW_H?height*64u-VIEW_H:0u)<<16)));
+        player_x+=30;
+        t3_force_camera_frame(&camera,g_trig,roll,player_x,0);
+        const int32_t dots=((camera.x-start_x)/20)%(int32_t)(width*64u);
+        SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_scroll(SAT_VDP2_NBG0,(dots<0?dots+(int32_t)(width*64u):dots)<<16,(int32_t)((height*64u>VIEW_H?height*64u-VIEW_H:0u)<<16)));
         (void)sat_vdp2_layers_commit();
         SAT_PANIC_IF_ERROR(sat_begin_frame());
         SAT_PANIC_IF_ERROR(sat_end_frame());

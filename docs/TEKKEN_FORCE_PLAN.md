@@ -183,7 +183,10 @@ Checked against the code, the docs and the local tools before any work:
     palettes in one read and four tiles per read it takes about 20 s. A game build must stream or pack this
     better (one read for the whole level, or load while NOW LOADING shows);
   - texels of colour 0 are transparent, as on the PlayStation, and show the back colour.
-  Not done in phase 4: the Force camera's scroll rule (`psx_force_camera.c` feeds it), level 4's staircase
+  The probe also runs the C side-scrolling camera (`psx_force_camera.c`, with `TRIG.BIN` from
+  `scripts/build_force_trig.py`) on the Saturn: a player walking right at 30 units a frame, the layer scrolling
+  `camera.x / 20` dots; two screenshots ten seconds apart show the level moving.
+  Not done in phase 4: the real player and enemies behind that camera, level 4's staircase
   (vertical cell scroll), the third actor, the HUD, items and the enemies' drawing.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
