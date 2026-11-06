@@ -136,7 +136,7 @@ int main(void) {
     int32_t start_x=0,player_x=0,fighting[T3_FORCE_SLOTS]={0};
     const int32_t roll=t3_force_camera_setup(&camera,1u,0,&start_x);
     t3_force_level_t* lv=&g_level;
-    lv->round_state=1;lv->player_health=0x640000;lv->timer=0x1000;
+    lv->round_state=1;lv->player_health=0x320000;lv->timer=0x1000;   /* half health, so a pickup shows */
     for(unsigned i=0;i<T3_FORCE_SLOTS;++i){lv->slot[i].state=1;lv->fighter[i].index=(uint8_t)(i+1);lv->fighter[i].health=0;}
     unsigned done_frames=0;
     for(;;) {
@@ -169,6 +169,16 @@ int main(void) {
                 if(st<2||st>7)continue;
                 const sat_rect_t box={(int16_t)(VIEW_W/2+(lv->fighter[i].root_x-camera.x)/20-6),150,12,40};
                 (void)sat_fill_rect(&box,st<4?sat_color_rgba(255,220,0,255):st<6?sat_color_rgba(255,40,40,255):sat_color_rgba(255,255,255,255));
+            }
+            for(unsigned i=0;i<T3_FORCE_ITEMS;++i) {            /* roast chickens: green boxes until picked up */
+                if(lv->item[i].state!=1)continue;
+                const sat_rect_t it={(int16_t)(VIEW_W/2+(lv->item[i].x-camera.x)/20-5),176,10,10};
+                (void)sat_fill_rect(&it,sat_color_rgba(60,220,60,255));
+            }
+            {   /* the player's health bar (the original's maximum is 0x640000) */
+                const int32_t hp=lv->player_health>0?lv->player_health>>16:0;
+                const sat_rect_t hb={4,214,(uint16_t)(hp>200?200:hp)*1u+1u,6};
+                (void)sat_fill_rect(&hb,sat_color_rgba(255,120,0,255));
             }
             /* the script position: a bar of its records, and the runner's state as a coloured block */
             const sat_rect_t bar={4,4,(uint16_t)(lv->script_ptr>120?120:lv->script_ptr)*2u+2u,4};

@@ -232,6 +232,11 @@ Checked against the code, the docs and the local tools before any work:
   clear, computes the bonuses and runs the tally (the score bar jumps, the runner state reaches the tally state),
   then asks `sat_exec` for `MENU.BIN` to return to the title (not found on the probe's own disc, so it stays; the
   return is untested).
+- **Items and health on the device (2026-11-06).** The demo draws the runner's item slots (green boxes: the script's
+  roast chickens, which scroll away behind the camera if missed) and the player's health bar. The player starts at
+  half health; in Mednafen screenshots an item is on the ground at the screen's edge and a later shot has the
+  health bar 50 points longer (the +50 pickup, `0x4E6A` sound and LIFE UP! state in the runner). Pictures,
+  text, the progress bar and the key icons are still the original HUD's to draw (phase 4).
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
