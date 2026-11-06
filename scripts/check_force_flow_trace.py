@@ -19,6 +19,7 @@ import sys
 import tempfile
 import zlib
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -92,6 +93,7 @@ def main():
     parser.add_argument('--levels', type=Path, required=True)
     parser.add_argument('--tables', type=Path, required=True)
     parser.add_argument('--max-frames', type=int, default=0)
+    parser.add_argument('--pairs', action='store_true', help='also check the pair-distance table (needs a trace with the pair_table range)')
     parser.add_argument('--trig', type=Path, help='TRIG.BIN: also check the side-scrolling camera')
     args = parser.parse_args()
     lib_path = Path(tempfile.mkdtemp()) / 'force_level.so'
@@ -116,6 +118,8 @@ def main():
     trig = args.trig.read_bytes() if args.trig else None
     lib.force_camera_step.argtypes = [ctypes.POINTER(ctypes.c_int32), ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
     cam_bad, cam_total, cam_prev, cam_player = 0, 0, None, None
+    pair_bad = pair_total = 0
+    pair_roots = None
     previous, script_base = None, None
     bad, total = Counter(), 0
     shown = 0
@@ -178,7 +182,22 @@ def main():
                     if cam_bad <= 5:
                         print(f'camera frame {k}:', [(i, got[i], rec[i]) for i in keep if got[i] != rec[i]])
             cam_prev, cam_player = rec, player_now
+        if args.pairs and ram.s32(0x80097350) == 1:
+            # PairwiseDistances (the match core's pair_distance for three fighters): the table after a frame holds
+            # the distances of the fighters' roots as they were when the frame began
+            fold = lambda i: 1 << (i - 1) if i > 1 else i  # noqa: E731
+            roots = [(ram.s32(base + 0xF68), ram.s32(base + 0xF70)) for base in header['fighters']]
+            if pair_roots is not None:
+                pair_total += 1
+                for i in range(3):
+                    for j in range(i + 1, 3):
+                        dx, dz = pair_roots[j][0] - pair_roots[i][0], pair_roots[j][1] - pair_roots[i][1]
+                        if ram.u32(0x8009EA08 + 0x10 * (fold(i) + fold(j))) != math.isqrt(dx * dx + dz * dz):
+                            pair_bad += 1
+            pair_roots = roots
         previous = vec
+    if args.pairs:
+        print(f'pair table: {pair_total} frames compared, {pair_bad} pair distances differ')
     if trig:
         print(f'camera: {cam_total} frames compared, {cam_bad} differ')
     print(f'{total} frames compared; fields differing: {dict(bad.most_common(12))}')
