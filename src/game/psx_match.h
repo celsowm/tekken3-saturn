@@ -35,6 +35,7 @@
 #else
 #define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_dist[i])
+#include "psx_force_walls.h"
 #endif
 
 /* Throw situation code (0x800313B0), branch conditions 2..0x17. */
@@ -168,6 +169,9 @@ typedef struct t3_psx_match {
      * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
     uint8_t off_screen_extra[T3_PSX_FIGHTERS];
     uint32_t pair_dist[T3_PSX_FIGHTERS]; /* each fighter's distance to its opponent (MoveStep's `dist`) */
+    /* Tekken Force's walls replace the arena's limits while `force_walls_on` (ArenaBounds in mode 8). */
+    t3_force_walls_t force_walls;int32_t force_view_x;uint8_t force_stage,force_walls_on;
+    uint32_t pair_all[3]; /* the pair table's distances for pairs (0,1), (0,2), (1,2) */
     uint8_t level_ended; /* 0x800B70E8: the level's enemies are over, the third fighter no longer steps */
 #endif
     t3_psx_fighter_t fighter[T3_PSX_FIGHTERS];

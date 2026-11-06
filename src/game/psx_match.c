@@ -193,6 +193,7 @@ static int pair_distance(t3_psx_match_t* match) {
         if(x< -32767 || x>32767 || z< -32767 || z>32767)return 0;
         const uint32_t distance=isqrt((uint32_t)(x*x+z*z));
         match->pair_dist[i]=distance;
+        match->pair_all[small+big-1u]=distance;
         if(!screen){g->distance=distance;continue;}
         if(!t3_psx_atan2(&match->config->ground_tables,(int32_t)z,(int32_t)x,&direction))return 0;
         if(!g->fixed_facing && !off[o]) {
@@ -567,7 +568,7 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     return 1;
 }
 static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
-    t3_hurt_cylinder_t hurt[2][T3_PSX_HURT_ZONES];
+    t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                               match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
@@ -622,7 +623,7 @@ T3_SIM_WRAP(static int,contacts,T3_SIM_CONTACT,
 static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
     const t3_psx_match_config_t* c=match->config;
     t3_psx_body_tables_t tables={c->ground_tables,c->body_tables,384u};
-    t3_psx_body_actor_t pair[2];
+    t3_psx_body_actor_t pair[T3_PSX_FIGHTERS];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&match->fighter[i];
         f->body.anchor=f->ground.anchor;f->body.root=f->ground.root;
@@ -633,6 +634,18 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
     /* World joints/shapes remain those computed before separation, as in source. */
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const t3_vec3i_t before=pair[i].root;
+#if T3_PSX_FIGHTERS>2
+        if(match->force_walls_on) {
+            /* ArenaBounds in mode 8: the Force walls, then the same ramp clamp. */
+            int32_t dx,dz;
+            t3_force_walls(&match->force_walls,pair[i].root.x,pair[i].root.z,i!=0u,match->force_view_x,match->force_stage,&dx,&dz);
+            const int32_t ramp=pair[i].ramp;
+            dx=dx>ramp||dx<-ramp?(dx<1?-ramp:ramp):dx;
+            dz=dz>ramp||dz<-ramp?(dz<1?-ramp:ramp):dz;
+            pair[i].anchor.x=(int32_t)((uint32_t)pair[i].anchor.x+(uint32_t)dx);pair[i].anchor.z=(int32_t)((uint32_t)pair[i].anchor.z+(uint32_t)dz);
+            pair[i].root.x=(int32_t)((uint32_t)pair[i].root.x+(uint32_t)dx);pair[i].root.z=(int32_t)((uint32_t)pair[i].root.z+(uint32_t)dz);
+        } else
+#endif
         if(!t3_psx_arena_bounds(&pair[i],&pair[T3_PSX_OPP(match,i)],&tables))return 0;
         if(match->throw_link && match->fighter[0].ground.in_throw && match->fighter[1].ground.in_throw) {
             /* ArenaBounds moves a linked throw partner by the same correction. */
@@ -666,8 +679,26 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
         g->velocity_root=g->root;
         if(!attack_shapes(match,&match->fighter[i]))return 0;
     }
+#if T3_PSX_FIGHTERS==2
     if((c->enable_rounds!=2 || match->flow.camera<3) &&
        !t3_psx_body_separate(pair,match->fighter[0].ground.distance,&tables))return 0;
+#else
+    /* The pairs (0,1), (0,2), (1,2), each with the pair table's distance. BodySeparate marks the contact
+     * with the other fighter of its pair: remapped here to that fighter's index. */
+    if(c->enable_rounds!=2 || match->flow.camera<3) {
+        static const uint8_t pairs[3][2]={{0,1},{0,2},{1,2}};
+        for(unsigned k=0;k<3u;++k) {
+            const unsigned a=pairs[k][0],b=pairs[k][1];
+            t3_psx_body_actor_t pr[2]={pair[a],pair[b]};
+            const uint8_t with_a=pr[0].contact_with,with_b=pr[1].contact_with;
+            pr[0].contact_with=pr[1].contact_with=0;
+            if(!t3_psx_body_separate(pr,k==0?match->fighter[0].ground.distance:match->pair_all[k],&tables))return 0;
+            const uint8_t new_a=(uint8_t)((pr[0].contact_with&2u)?(1u<<b):0u),new_b=(uint8_t)((pr[1].contact_with&1u)?(1u<<a):0u);
+            pair[a]=pr[0];pair[b]=pr[1];
+            pair[a].contact_with=(uint8_t)(with_a|new_a);pair[b].contact_with=(uint8_t)(with_b|new_b);
+        }
+    }
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         if(pair[i].contact)++match->fighter[i].body_contacts;
         match->fighter[i].body=pair[i];
@@ -788,7 +819,7 @@ static t3_input_t physical_pad(unsigned side,uint16_t held,uint16_t pressed,t3_i
     }
     return pad;
 }
-static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_replay_frame_t record[2],
+static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_replay_frame_t record[T3_PSX_FIGHTERS],
                         const t3_psx_match_frame_t* physical) {
     T3_MATCH_PHASE(100);
     const t3_psx_match_config_t* c;
@@ -965,7 +996,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
      * The callback owns effect-echo allocation only. Native playback still
      * needs the committed request/replay bridge (combat_events.c remains). */
     if(c->sound_tables.size) {
-        t3_psx_sound_facts_t facts[2]={0};
+        t3_psx_sound_facts_t facts[T3_PSX_FIGHTERS]={0};
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
             const t3_psx_fighter_t* f=&n->fighter[i];
             facts[i]=(t3_psx_sound_facts_t){.player=(uint8_t)i,.character=c->character[i],
@@ -1209,7 +1240,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     T3_MATCH_PHASE(1);
     t3_psx_round_flow_facts_t facts={0};
     t3_psx_round_flow_actions_t actions;
-    t3_psx_replay_frame_t record[2]={{0}};
+    t3_psx_replay_frame_t record[T3_PSX_FIGHTERS]={{0}};
     n->frame_counter=frame->frame_counter;
     /* Main-loop RNG, before FightMain: it also advances while the director
      * is idle between rounds (Tekken3Remake fight_simulation.begin_frame,
