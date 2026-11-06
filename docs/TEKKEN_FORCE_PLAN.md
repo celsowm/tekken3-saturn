@@ -202,6 +202,13 @@ Checked against the code, the docs and the local tools before any work:
   x, y, z, pitch, yaw, h, the target x and the pitch target (the scroll mode and bounds are the level runner's,
   written in the same frame). This is the template for the match comparator: same trace,
   same frame-by-frame rule, the fighter records as the thing to compare.
+- **Roles against the recorded game (2026-11-06), not exact.** Stepping the verified Python `fighter_roles` (the C
+  `t3_force_roles` is equal to it on 30,000 random cases) over the same trace, from the previous frame's
+  targets, wait, hidden and screen flags and the current positions: 6,678 of 6,776 frames equal the original's
+  targets (98.6%), 98 differ, all of them in frames where both enemies are close and within 400 units of each
+  other, so the pick rests on the facing-quadrant and relative-angle fields (`+0x2A..+0x34`) whose values before
+  the frame are not in the trace. The comparator needs those fields from the harness (`fight_harness.py`
+  exports per-frame fields), not from the flow trace; until then the roles are verified on random states only.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
