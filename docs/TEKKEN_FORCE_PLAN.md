@@ -92,7 +92,13 @@ Checked against the code, the docs and the local tools before any work:
   - `scripts/build_force_levels.py` writes LEV1-4.BIN from stage archives 51-54 (map, deduplicated 64 x 64
     tiles and palettes, floor descriptor, level script): 170, 160, 139 and 35 KB. Level 1's 16 x 5 panorama
     renders correctly from the baked file.
-  - Still to build: item and HUD pictures, the boss table, music per level.
+  - `scripts/build_force_boss_table.py` writes BOSS.BIN (92 keys x 4 levels x character, costume; run with the
+    Tekken3Remake venv). `scripts/build_force_icons.py` writes KEYS.BIN (the three key sprites, decoded from
+    force.ovl's ARC at `0x800B0FE0`).
+  - The other pictures (roast chicken, progress bar, `+n SEC`, STAGE CLEAR, NOW LOADING) are system textures
+    and strings of the executable, so they come from the existing HUD extraction (`extract_psx_hud.py`), not
+    from force.ovl. The music of the boss fight is the boss character's record (`FUN_800B2B3C`); the
+    level's own track is still to find (phase 5).
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
