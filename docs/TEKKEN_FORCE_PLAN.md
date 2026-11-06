@@ -188,6 +188,16 @@ Checked against the code, the docs and the local tools before any work:
   `camera.x / 20` dots; two screenshots ten seconds apart show the level moving.
   Not done in phase 4: the real player and enemies behind that camera, level 4's staircase
   (vertical cell scroll), the third actor, the HUD, items and the enemies' drawing.
+- **First comparator against the whole original game (2026-11-06).** `scripts/check_force_flow_trace.py` replays
+  `psx_force_level.c` over `flow_force.bin` (7,000 frames from boot through a Force level-1 section): each frame
+  is stepped from the recorded state before it, with the fight's inputs (camera, health, positions) taken from
+  after it, and every field the level runner writes is compared with the recorded state after it: **6,671
+  frames, 0 differences** (script position, state, wait, patterns, both enemy slots, items, kill counter,
+  scroll mode, bounds). Not compared, because the trace does not record them or the projection does: the fight
+  timer and what depends on it (clear time, bonus time, score), and the popups' screen positions. The inputs
+  that must come from after the frame are the camera x, the fighters' health, `fce`, `fe7`, `fc4` and the text
+  flag; only the freeze flag comes from before it. This is the template for the match comparator: same trace,
+  same frame-by-frame rule, the fighter records as the thing to compare.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
