@@ -155,14 +155,19 @@ Checked against the code, the docs and the local tools before any work:
   (491,228 bytes), so the duel's code and frame rate are unchanged. **Not checked at 3**: there is no
   three-fighter comparator yet, and the hit application's attacker choice is my reading, not the original's
   HitApply read for three fighters. Left for phase 3:
-  - the AI bus (`psx_ai_game.c`): its address map already holds three fighter slots, but its fighter images,
+  - the AI bus (`psx_ai_game.c`) runs the original AI code over a memory bus; Force's AI has its own state it
+    reads and writes (`ai_sim.py`: `FORCE_TARGETS` 0x8009F6A8, one s32 per enemy and the AI record's +0x32C
+    words from `FORCE_WORDS` 0x80023210 per group and level, `AI_MULTI` 0x8009F6A4 = 1 in Force,
+    `FORCE_LAYOUT` 0x800AE3D8, the leader return `FUN_800B2E60`), none of which the bus maps yet. Its address map already holds three fighter slots, but its fighter images,
     picks, collections and pads are two, `cpu_mask` is limited to 3, and its bank placement
     (`place_banks`: fighter 0, fighter 1, divmot 99) is the duel's. Force's enemies share bank type 20 and
     the original's Force bank placement has to be read first; verify with the AI harness
     (`verify_ai_sim.py`);
-  - mode 8's throw doubling in BodySeparate (`psx_body.c`), the contact phase's mode-8 facts
-    (`free_slots_mask`, `game_mode`), the sound facts' opponent (`psx_fighter_sounds.c` pairs `1u-p`);
-  - `fighter_roles` feeding `opponent[]` each frame, the round flow (Force has none), the Force camera and
+  - the contact phase's mode-8 facts (`free_slots_mask`, `game_mode`) and the sound facts' opponent
+    (`psx_fighter_sounds.c` pairs `1u-p`). Done since: mode 8's throw doubling in BodySeparate
+    (`t3_psx_body_separate_force`, built only at three fighters, unverified at 3) and `fighter_roles`
+    (`t3_force_roles`, 30,000 golden cases, 0 mismatches), whose result is written into `opponent[]` each frame;
+  - the round flow (Force has none), the Force camera and
     replay instead of the fight camera's, and the duel round logic's two-element snapshots (`hp`, `pose`,
     `old_active`);
   - the three-fighter trace comparator against `flow_force.bin`.
