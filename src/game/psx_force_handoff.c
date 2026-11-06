@@ -1,11 +1,10 @@
 #include "psx_force_handoff.h"
-#include <string.h>
 
 static void put32(uint8_t* p,uint32_t v){p[0]=(uint8_t)(v>>24);p[1]=(uint8_t)(v>>16);p[2]=(uint8_t)(v>>8);p[3]=(uint8_t)v;}
 static uint32_t get32(const uint8_t* p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
 
 void t3_force_handoff_pack(const t3_force_handoff_t* in,uint8_t* out){
-    memset(out,0,T3_FORCE_HANDOFF_BYTES);
+    for(unsigned i=0;i<T3_FORCE_HANDOFF_BYTES;++i)out[i]=0;
     out[0]='G';out[1]='F';out[2]=T3_FORCE_HANDOFF_VERSION;
     out[3]=in->level;out[4]=in->section;out[5]=in->character;out[6]=in->costume;out[7]=in->keys;out[8]=in->flags;
     out[9]=in->pad_side;

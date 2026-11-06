@@ -5,7 +5,6 @@
  * tools/research/force_sim.py (level_script, _commands, _bonus_frame, tally, _boss, _patterns,
  * _enemy_slot, level_frame's caps). Changes: see psx_force_level.h. */
 #include "psx_force_level.h"
-#include <string.h>
 
 /* Offsets in the tables (original 0x800B0A10 + offset). */
 enum {
