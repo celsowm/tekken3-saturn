@@ -227,7 +227,11 @@ Checked against the code, the docs and the local tools before any work:
   seed from the menu clock); the program reads it and loads `LEVn.BIN` for the level (level 1 when started on its
   own, as the probe disc does, checked in Mednafen). The game disc's file list gains `FORCE.BIN`, `LEV1-4.BIN`,
   `TRIG.BIN` and `TABLES.BIN`. Not done: a full game disc built and played from the menu into Force (the disc
-  build needs the whole private data set), NOW LOADING, the tally screens and returning to the menu.
+  build needs the whole private data set), NOW LOADING and the tally *screens* (the numbers). The demo does run the
+  whole end of a level on the device: the script ends, the runner passes NOW LOADING's states, freezes on the stage
+  clear, computes the bonuses and runs the tally (the score bar jumps, the runner state reaches the tally state),
+  then asks `sat_exec` for `MENU.BIN` to return to the title (not found on the probe's own disc, so it stays; the
+  return is untested).
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 

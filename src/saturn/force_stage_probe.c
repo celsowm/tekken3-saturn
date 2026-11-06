@@ -138,8 +138,14 @@ int main(void) {
     t3_force_level_t* lv=&g_level;
     lv->round_state=1;lv->player_health=0x640000;lv->timer=0x1000;
     for(unsigned i=0;i<T3_FORCE_SLOTS;++i){lv->slot[i].state=1;lv->fighter[i].index=(uint8_t)(i+1);lv->fighter[i].health=0;}
+    unsigned done_frames=0;
     for(;;) {
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        /* The fight freezes on the stage clear (round state 8): the runner then computes the bonuses and runs the
+         * tally; when it is done the program returns to the title. */
+        if(lv->state==6)lv->round_state=8;
+        if(lv->state==7 && lv->tally_done && ++done_frames>150)
+            (void)sat_exec(g_volume,"MENU.BIN",NULL,0);          /* a cold start: the title */
         const int holding=lv->state==1;      /* the script waits for kills */
         if(!holding)player_x+=30;
         t3_force_camera_frame(&camera,g_trig,roll,player_x,0);
@@ -167,6 +173,8 @@ int main(void) {
             /* the script position: a bar of its records, and the runner's state as a coloured block */
             const sat_rect_t bar={4,4,(uint16_t)(lv->script_ptr>120?120:lv->script_ptr)*2u+2u,4};
             (void)sat_fill_rect(&bar,sat_color_rgba(0,255,0,255));
+            const sat_rect_t score={4,20,(uint16_t)(lv->score/100u>300u?300u:lv->score/100u)+2u,4};
+            (void)sat_fill_rect(&score,sat_color_rgba(255,200,0,255));
             const sat_rect_t st={4,12,(uint16_t)(lv->state*8+4),4};
             (void)sat_fill_rect(&st,sat_color_rgba(0,255,255,255));
         }
