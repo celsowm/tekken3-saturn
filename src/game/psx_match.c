@@ -33,7 +33,7 @@ static uint32_t blend_row(const t3_divmot_t* bank,unsigned slot) {
 /* FUN_80038B60: a throw victim takes its partner's scale. */
 static unsigned actor_scale(const t3_psx_match_t* match,unsigned actor) {
     const t3_psx_match_config_t* c=match->config;
-    if(match->fighter[actor].ground.throw_state<0)actor=1u-actor;
+    if(match->fighter[actor].ground.throw_state<0)actor=T3_PSX_OPP(match,actor);
     return c->actor_scale_percent[actor]?c->actor_scale_percent[actor]:c->scale_percent;
 }
 typedef struct { const t3_psx_match_t* match;const t3_divmot_t* bank;unsigned scale_percent; } blend_user_t;
@@ -91,7 +91,7 @@ int16_t t3_psx_throw_situation(const t3_psx_ground_state_t* self,int contact,
 }
 void t3_psx_match_branch_facts(const t3_psx_match_t* n,unsigned i,t3_branch_context_t* facts) {
     const t3_psx_match_config_t* c=n->config;
-    const t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[1u-i];
+    const t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[T3_PSX_OPP(n,i)];
     *facts=(t3_branch_context_t){0};
     facts->known=T3_FACT_IDENTITY|T3_FACT_DISTANCE|T3_FACT_ORIENTATION|T3_FACT_RECOVERY|
                  T3_FACT_COLLISION|T3_FACT_CONTACT|T3_FACT_HEALTH|T3_FACT_POWER|T3_FACT_OPPONENT|
@@ -100,11 +100,11 @@ void t3_psx_match_branch_facts(const t3_psx_match_t* n,unsigned i,t3_branch_cont
     facts->throw_situation=t3_psx_throw_situation(&f->ground,f->contact,&opp->ground);
     if(c->enable_rounds==2)facts->known|=T3_FACT_SIDE;
     facts->side_flag=f->side_flag;
-    facts->opponent_bank=t3_psx_match_bank(c,1u-i)->bank_type;facts->own_character=c->character[i];
+    facts->opponent_bank=t3_psx_match_bank(c,T3_PSX_OPP(n,i))->bank_type;facts->own_character=c->character[i];
     facts->distance=(int32_t)f->ground.distance;
     /* Kuma and True Ogre read as 0x28 closer, each. */
     facts->adjusted_distance=facts->distance-0x28*((c->character[i]==11u||c->character[i]==20u)+
-                                                  (c->character[1u-i]==11u||c->character[1u-i]==20u));
+                                                  (c->character[T3_PSX_OPP(n,i)]==11u||c->character[T3_PSX_OPP(n,i)]==20u));
     facts->relative_angle=f->ground.relative_angle;facts->heading_delta=f->ground.heading_delta;
     facts->facing_quadrant=f->ground.facing_quadrant;facts->opponent_quadrant=f->ground.opponent_quadrant;
     facts->recover_frames=f->ground.recover_frames;facts->recover_mash=f->ground.recover_mash;
@@ -191,7 +191,7 @@ static int pair_distance(t3_psx_match_t* match) {
     if(!t3_psx_atan2(&match->config->ground_tables,(int32_t)z,(int32_t)x,&direction))return 0;
     for(unsigned i=0;i<2;++i) {
         t3_psx_ground_state_t* g=&match->fighter[i].ground;
-        if(!g->fixed_facing && (uint16_t)screen[1u-i]<0x191u) {
+        if(!g->fixed_facing && (uint16_t)screen[T3_PSX_OPP(match,i)]<0x191u) {
             g->distance=distance;
             g->target_dir=(uint16_t)(i?direction:direction-0x8000u);
         } else {
@@ -419,7 +419,7 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
     else if(f->parts_mask) {
         t3_psx_body_tables_t tables={c->ground_tables,c->body_tables,384u};
         f->head.no_yaw=c->character[index]==17u;
-        if(!t3_psx_head_look(&f->head,&tables,f->world,match->fighter[1u-index].world,
+        if(!t3_psx_head_look(&f->head,&tables,f->world,match->fighter[T3_PSX_OPP(match,index)].world,
                             &f->vm.move,f->vm.clock.pose_frame,f->no_look_at,&complete[2]))return 0;
     }
 #if defined(T3_PSX_HAND_CHANNELS)
@@ -535,7 +535,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     for(unsigned i=0;i<2;++i)if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                               match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
     for(unsigned i=0;i<2;++i) {
-        t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[1u-i];
+        t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[T3_PSX_OPP(match,i)];
         t3_psx_hit_test_facts_t facts={0};t3_world_attack_t active=f->strike;
         unsigned segment=0;int zone=-1,any=0;
         uint8_t descriptor[4];
@@ -548,7 +548,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
                 if(!(o->flags&2u) || !(o->flags&(i?8u:0x10u)))continue;
                 active.segment_count=1;any=1;
                 active.segments[0]=(t3_world_segment_t){{o->px,o->py,o->pz},{o->x,o->y,o->z},0};
-                zone=t3_psx_attack_contact(&active,hurt[1u-i],&segment);
+                zone=t3_psx_attack_contact(&active,hurt[T3_PSX_OPP(match,i)],&segment);
                 if(zone< -1)return 0;
             }
             if(zone>=0){f->projectile=active.segments[0];f->projectile_hit=1;}
@@ -556,7 +556,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
             active.segment_count=f->ground.active_segments;
             if(active.segment_count>f->strike.segment_count)return 0;
             any=active.segment_count!=0;
-            if(any)zone=t3_psx_attack_contact(&active,hurt[1u-i],&segment);
+            if(any)zone=t3_psx_attack_contact(&active,hurt[T3_PSX_OPP(match,i)],&segment);
             if(zone< -1)return 0;
         }
         f->geometry=(t3_psx_shadow_result_t){any?
@@ -597,10 +597,10 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
     /* World joints/shapes remain those computed before separation, as in source. */
     for(unsigned i=0;i<2;++i) {
         const t3_vec3i_t before=pair[i].root;
-        if(!t3_psx_arena_bounds(&pair[i],&pair[1u-i],&tables))return 0;
+        if(!t3_psx_arena_bounds(&pair[i],&pair[T3_PSX_OPP(match,i)],&tables))return 0;
         if(match->throw_link && match->fighter[0].ground.in_throw && match->fighter[1].ground.in_throw) {
             /* ArenaBounds moves a linked throw partner by the same correction. */
-            t3_psx_body_actor_t* o=&pair[1u-i];
+            t3_psx_body_actor_t* o=&pair[T3_PSX_OPP(match,i)];
             const int32_t dx=(int32_t)((uint32_t)pair[i].root.x-(uint32_t)before.x);
             const int32_t dz=(int32_t)((uint32_t)pair[i].root.z-(uint32_t)before.z);
             o->anchor.x=(int32_t)((uint32_t)o->anchor.x+(uint32_t)dx);o->anchor.z=(int32_t)((uint32_t)o->anchor.z+(uint32_t)dz);
@@ -788,7 +788,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         if(ready[0] && ready[1])thrower=(int)(n->ticks&1u);
         else if(ready[0] || ready[1])thrower=ready[1];
         if(thrower>=0) {
-            order[0]=1u-(unsigned)thrower;order[1]=(unsigned)thrower;
+            order[0]=T3_PSX_OPP(n,(unsigned)thrower);order[1]=(unsigned)thrower;
             if(!throw_victim_start(n,order[0],order[1]))return 0;
         }
     }
@@ -817,13 +817,13 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             f->hit_done=0;
             if(!f->contact)f->contact_this_move=0;
             int count=t3_attack_joint_pairs(f->vm.active_bank,&f->vm.move);
-            if(count<0 || !t3_psx_ground_start(&f->ground,&n->fighter[1u-i].ground,
+            if(count<0 || !t3_psx_ground_start(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,
                     &f->vm,&before,&c->ground_tables,flags,
                     (uint8_t)(f->vm.current_branch_kind==3u || f->vm.current_branch_kind==4u),
                     facts,&f->reaction,(uint8_t)count))return 0;
             if(f->vm.current_transition==34u) {
                 /* The thrower has not started yet: its pending move times the fall. */
-                const t3_move_vm_t* t=&n->fighter[1u-i].vm;
+                const t3_move_vm_t* t=&n->fighter[T3_PSX_OPP(n,i)].vm;
                 if(!t->pending_valid)return 0;
                 thrown_recovery(&f->ground,&f->vm.move,&t->pending_move);
             }
@@ -845,9 +845,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         T3_MATCH_PHASE(140+i);
         t3_psx_fighter_t* f=&n->fighter[i];
         const t3_command_frame_t input=t3_history_at(&f->input,0);
-        f->ground.character=c->character[i];f->ground.opp_character=c->character[1u-i];
-        if(!t3_psx_ground_step(&f->ground,&n->fighter[1u-i].ground,&f->vm,
-                &n->fighter[1u-i].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
+        f->ground.character=c->character[i];f->ground.opp_character=c->character[T3_PSX_OPP(n,i)];
+        if(!t3_psx_ground_step(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,
+                &n->fighter[T3_PSX_OPP(n,i)].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
         if(f->ground.flight_landed)f->vm.clock.ballistic=0u;
 #if defined(T3_PSX_HAND_CHANNELS)
         if(c->character[i]!=20u)face_shape(n,f,i);
@@ -888,7 +888,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             for(unsigned i=0;i<2;++i)if(!t3_psx_match_effects_hit(n,i))return 0;
             if(c->enable_rounds==2 && n->replay.mode==7 && n->replay.mark<0) {
                 for(unsigned i=0;i<2;++i)if(hp[i]>0 && !n->fighter[i].health_q16) {
-                    if(!t3_psx_replay_mark_ko(&n->replay,(unsigned)pose[1u-i]))return 0;
+                    if(!t3_psx_replay_mark_ko(&n->replay,(unsigned)pose[T3_PSX_OPP(n,i)]))return 0;
                     break;
                 }
             }
@@ -936,7 +936,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         if(c->camera && c->enable_rounds==2 && n->flow.input[i]==1 && !cpu) {
             t3_psx_fighter_t* f=&n->fighter[i];
             f->side_flag=f->ground.fixed_facing?f->ground.fixed_facing_side:
-                n->camera.screen_x[1u-i]<=n->camera.screen_x[i];
+                n->camera.screen_x[T3_PSX_OPP(n,i)]<=n->camera.screen_x[i];
             if(physical && physical->physical_inputs)
                 pads[i]=physical_pad(f->side_flag,physical->physical[i],physical->pressed[i],pads[i]);
         }
@@ -966,7 +966,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     for(unsigned j=0;j<2;++j) {
         T3_MATCH_PHASE(200+j);
         unsigned i=(j+(n->ticks&1u))&1u;
-        t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[1u-i];
+        t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[T3_PSX_OPP(n,i)];
         t3_branch_context_t facts={0};
         if(!t3_psx_ground_angles(&f->ground,&opp->ground,&c->ground_tables))return 0;
         /* MoveStep (0x800454E0) then takes `dist` from the pair table, without
@@ -1048,7 +1048,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         if(f->body.active) {
             t3_move_start_facts_t facts={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,
                                          (int16_t)v->clock.pose_frame};
-            if(t3_move_vm_begin(v,facts)!=1 || !t3_psx_ground_start(g,&n->fighter[1u-i].ground,v,&v->move,
+            if(t3_move_vm_begin(v,facts)!=1 || !t3_psx_ground_start(g,&n->fighter[T3_PSX_OPP(n,i)].ground,v,&v->move,
                 &n->config->ground_tables,0,0,facts,&f->reaction,0))return 0;
         }
         v->clock.pose_frame=v->clock.root_frame=(int16_t)(first && v->move.length>150?v->move.length-149:1);
@@ -1226,7 +1226,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
                t3_move_vm_begin(&f->vm,start)!=1 ||
                /* RoundFlow binds pose_move before MoveStartOrAdvance. Its
                 * reanchor/power tail reads the new row, unlike a queued move. */
-               !t3_psx_ground_start(&f->ground,&n->fighter[1u-i].ground,&f->vm,&f->vm.move,
+               !t3_psx_ground_start(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,&f->vm.move,
                    &n->config->ground_tables,0,0,start,&f->reaction,0))return 0;
             f->hit_done=0;
             f->taps.condition_used=0;
@@ -1298,7 +1298,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     for(unsigned i=0;i<2;++i) {
         t3_psx_fighter_t* f=&n->fighter[i];
         if(f->ground.fixed_facing)f->side_flag=f->ground.fixed_facing_side;
-        else if(n->config->camera)f->side_flag=n->camera.screen_x[1u-i]<=n->camera.screen_x[i];
+        else if(n->config->camera)f->side_flag=n->camera.screen_x[T3_PSX_OPP(n,i)]<=n->camera.screen_x[i];
         else if(frame->side_known)f->side_flag=frame->side[i]!=0;
     }
     T3_MATCH_PHASE(60);

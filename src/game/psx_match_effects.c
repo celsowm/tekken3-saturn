@@ -89,7 +89,7 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
     const t3_psx_hit_candidate_t* slot=&f->hit.slots[(unsigned)f->hit.best_slot];
     if(!f->hit.hit_clean)return 1;
     int damage=f->hit.total_damage>slot->base_damage?f->hit.total_damage:slot->base_damage;
-    unsigned a=1u-defender;const t3_psx_fighter_t* attacker=&m->fighter[a];
+    unsigned a=T3_PSX_OPP(m,defender);const t3_psx_fighter_t* attacker=&m->fighter[a];
     {
         /* FUN_80076F10: the hit burst (set 3, index 0, drifting along the slot's vector) and,
          * from 21 damage, the attacker's own flipbook (stationary). State only. */

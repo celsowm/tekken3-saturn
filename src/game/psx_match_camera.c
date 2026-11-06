@@ -29,7 +29,7 @@ static int16_t event_left(const t3_psx_fighter_t* f,unsigned hi) {
 /* Fighter f as the director reads it (the record as the previous frame left it). */
 static void fighter(const t3_psx_match_t* m,unsigned i,t3_psx_camera_fighter_t* o) {
     const t3_psx_fighter_t* f=&m->fighter[i];
-    const t3_psx_fighter_t* a=&m->fighter[1u-i];
+    const t3_psx_fighter_t* a=&m->fighter[T3_PSX_OPP(m,i)];
     const t3_psx_fight_camera_config_t* c=m->config->camera;
     const t3_divmot_t* bank=f->vm.active_bank;
     *o=(t3_psx_camera_fighter_t){0};
