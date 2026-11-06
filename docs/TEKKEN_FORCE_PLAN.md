@@ -132,6 +132,18 @@ Checked against the code, the docs and the local tools before any work:
     (2) generalise the match core behind a fighter count and prove the two-fighter oracle tests unchanged;
     (3) run the three-fighter trace through it; (4) only then the `FORCE.BIN` program, memory map and the
     third actor's frame cost.
+- **Three-fighter golden trace exported (2026-11-06).** `flow_trace.py force --jobs 1` (10 minutes) writes
+  `third_party/Tekken3Remake/work/traces/flow_force.bin`: 7,000 frames of the whole game from boot into a Force
+  level-1 section, with three fighter records per fight frame (git-ignored, private). It needs every overlay
+  linked as `NNN_<name>.ovl` in `work/jp_rev1/bns` (records 000 enbu, 005 arcade, 006 practice, 007 force,
+  008 volley, 009 select, 010 title, 011 ranking, 301 ending, 302 result: symlinks to `NNN_rec`, git-ignored).
+- **Phase 3, first slice not started on purpose.** The match core spells "the opponent" as `1u-i` 46 times
+  (23 in `psx_match.c`) and sizes its pair arrays at 2. The safe first slice is a compile-time fighter count
+  (`T3_PSX_FIGHTERS`, 2 for the versus program) with an `opponent(match, i)` helper that compiles to the same
+  code at 2 (check: the versus `app.bin` stays byte-identical, the 94 running host tests pass), then the
+  per-fighter opponent index (`fighter_roles`: the player faces the target, the target and the other enemy face
+  the player) and a pairwise body separation for three. It is only worth doing together with the trace
+  comparator for three fighters, so the two go in one session.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
