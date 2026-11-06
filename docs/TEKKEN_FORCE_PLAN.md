@@ -258,6 +258,11 @@ Checked against the code, the docs and the local tools before any work:
   is pulled in by the ramp over the next frames, as the original does. Fighter 0 has 48 outside frames that
   were not looked at. The check does not prove the correction values; that needs the roots at the moment of the
   body phase, which a flow trace does not hold.
+- **Sound facts for three fighters (2026-11-06).** `psx_fighter_sounds.c` paired each fighter with `1u-p`; at
+  `T3_PSX_FIGHTERS>2` it now takes the opponent from the match's `opponent[]` (a context field that exists only
+  in that build) and accepts three actors. Versus `app.bin` stays 491,228 bytes (a first version with a run-time
+  lookup grew it by 104 bytes and was replaced by the compile-time one); 103 host tests pass; both files compile
+  at three fighters. Unverified at 3, like the rest of the match core.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 

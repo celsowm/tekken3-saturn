@@ -7,6 +7,12 @@
 #include "psx_fighter_sounds.h"
 
 typedef struct { const t3_psx_sound_context_t* c;int ok; } reader;
+/* The fighter a fighter faces: the duel's other one, or the context's table (Tekken Force's three). */
+#if T3_PSX_FIGHTERS>2
+static unsigned opponent(const reader* r,unsigned p){return r->c->opponent[p];}
+#else
+static unsigned opponent(const reader* r,unsigned p){(void)r;return 1u-p;}
+#endif
 static uint32_t readn(reader* r,uint32_t at,unsigned n) {
     const t3_psx_sound_tables_t* t=&r->c->tables;
     if(at>t->size || n>t->size-at){r->ok=0;return 0;}
@@ -63,9 +69,9 @@ static uint32_t voice_record(reader* r,unsigned voice) {
     if(voice>=23){r->ok=0;return 0;}
     return r32(r,12)+voice*24;
 }
-static void special(reader* r,t3_psx_sound_state_t s[2],
-                    const t3_psx_sound_facts_t f[2],unsigned p,unsigned n) {
-    const unsigned q=1u-p;
+static void special(reader* r,t3_psx_sound_state_t s[],
+                    const t3_psx_sound_facts_t f[],unsigned p,unsigned n) {
+    const unsigned q=opponent(r,p);
     switch(n) {
     case 0:s[p].hold=1;break;
     case 1:
@@ -82,9 +88,9 @@ static void special(reader* r,t3_psx_sound_state_t s[2],
     default:break;
     }
 }
-static void impact(reader* r,t3_psx_sound_state_t s[2],
-                   const t3_psx_sound_facts_t f[2],unsigned p,uint16_t code) {
-    const unsigned q=1u-p;const int wooden=f[q].character==15 && f[q].wooden;
+static void impact(reader* r,t3_psx_sound_state_t s[],
+                   const t3_psx_sound_facts_t f[],unsigned p,uint16_t code) {
+    const unsigned q=opponent(r,p);const int wooden=f[q].character==15 && f[q].wooden;
     if(f[q].guarded) {
         code=wooden?(f[p].first_joint<12?0x707B:0x707A):(f[p].first_joint<12?0x704D:0x704E);
         emit(r,T3_SOUND_EFFECT,f[q].player,code);return;
@@ -141,8 +147,8 @@ static void ambient(reader* r,t3_psx_sound_state_t* s,const t3_psx_sound_facts_t
     }
     if(f->pose_frame==(int)f->active_first-1)emit(r,T3_SOUND_EFFECT,f->player,0x604A);
 }
-static void script(reader* r,t3_psx_sound_state_t s[2],
-                   const t3_psx_sound_facts_t f[2],unsigned p) {
+static void script(reader* r,t3_psx_sound_state_t s[],
+                   const t3_psx_sound_facts_t f[],unsigned p) {
     t3_psx_sound_state_t* a=&s[p];
     if(a->script<0 || a->script>=470 || a->position<0){r->ok=0;return;}
     const uint32_t list=r32(r,r32(r,16)+4u*(unsigned)a->script);
@@ -156,7 +162,7 @@ static void script(reader* r,t3_psx_sound_state_t s[2],
             const unsigned type=(word>>12)&15;const uint16_t code=(uint16_t)(word>>16);
             if(type==0)emit(r,T3_SOUND_SYSTEM,0,code);
             else if(type==1 || type==2) {
-                const unsigned q=type==1?p:1u-p;
+                const unsigned q=type==1?p:opponent(r,p);
                 const unsigned category=code>>12;
                 emit(r,category>=2 && category<=5?T3_SOUND_VOICE:T3_SOUND_EFFECT,f[q].player,code);
             } else if(type==3)special(r,s,f,p,code&0xFFF);
@@ -166,11 +172,11 @@ static void script(reader* r,t3_psx_sound_state_t s[2],
     }
     r->ok=0;
 }
-int t3_psx_fighter_sounds(t3_psx_sound_state_t s[2],const t3_psx_sound_facts_t f[2],
+int t3_psx_fighter_sounds(t3_psx_sound_state_t s[],const t3_psx_sound_facts_t f[],
                          unsigned p,const t3_psx_sound_context_t* c) {
-    if(!s || !f || !c || !c->random || p>1 || !t3_psx_sound_tables_valid(c->tables))return 0;
-    reader r={c,1};const unsigned q=1u-p;
-    if(f[p].player>1 || f[q].player>1 || f[p].command_bytes>6 ||
+    if(!s || !f || !c || !c->random || p>=T3_PSX_FIGHTERS || !t3_psx_sound_tables_valid(c->tables))return 0;
+    reader r={c,1};const unsigned q=opponent(&r,p);
+    if(f[p].player>=T3_PSX_FIGHTERS || f[q].player>=T3_PSX_FIGHTERS || f[p].command_bytes>6 ||
        (f[p].command_bytes && !f[p].commands) || f[p].command_bytes%2)return 0;
     const uint32_t voice=voice_record(&r,f[p].voice_set);
     s[p].hold=0;

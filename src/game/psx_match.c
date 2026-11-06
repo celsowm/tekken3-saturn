@@ -1013,7 +1013,11 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         const t3_psx_sound_context_t context={.tables=c->sound_tables,.random=&n->camera.rand,
             .frame_counter=n->frame_counter,.vblank=n->frame_counter,
             .emit=t3_psx_match_effects_sound,.user=n,
-            .camera_phase=c->camera?(unsigned)n->camera.phase:(c->enable_rounds==2?(unsigned)n->flow.camera:2u)};
+            .camera_phase=c->camera?(unsigned)n->camera.phase:(c->enable_rounds==2?(unsigned)n->flow.camera:2u)
+#if T3_PSX_FIGHTERS>2
+            ,.opponent=n->opponent
+#endif
+            };
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(n->fighter[i].body.active &&
             !t3_psx_fighter_sounds(n->sound,facts,i,&context))return 0;
     }

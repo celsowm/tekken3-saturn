@@ -23,12 +23,18 @@ typedef struct {
     uint8_t air_first,active_first;
     const uint8_t* commands;size_t command_bytes; /* <=3 little-endian u16, FFFF ends */
 } t3_psx_sound_facts_t;
+#ifndef T3_PSX_FIGHTERS
+#define T3_PSX_FIGHTERS 2
+#endif
 typedef struct {
     t3_psx_sound_tables_t tables;
     uint32_t* random;
     uint32_t frame_counter,vblank;
     unsigned camera_phase;
     t3_psx_sound_emit_t emit;void* user;
+#if T3_PSX_FIGHTERS>2
+    const uint8_t* opponent;   /* the fighter each one faces (Tekken Force) */
+#endif
 } t3_psx_sound_context_t;
 
 int t3_psx_sound_tables_valid(t3_psx_sound_tables_t tables);
@@ -38,6 +44,6 @@ void t3_psx_sound_script_stop(t3_psx_sound_state_t* state);
 /* Run one active fighter in FightFrame order. Caller retains both states:
  * impact/special commands can stop the opponent's script. Returns 0 for
  * malformed private tables or commands; no gameplay approximations. */
-int t3_psx_fighter_sounds(t3_psx_sound_state_t state[2],
-    const t3_psx_sound_facts_t facts[2],unsigned actor,const t3_psx_sound_context_t* context);
+int t3_psx_fighter_sounds(t3_psx_sound_state_t state[],
+    const t3_psx_sound_facts_t facts[],unsigned actor,const t3_psx_sound_context_t* context);
 #endif
