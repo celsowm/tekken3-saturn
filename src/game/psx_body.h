@@ -31,6 +31,10 @@ int t3_psx_body_shapes(t3_psx_body_actor_t* actor,const t3_psx_joint_t parts[T3_
                         const t3_move_record_t* move,int16_t frame,uint8_t in_air,uint8_t was_hit);
 int t3_psx_body_separate(t3_psx_body_actor_t actors[2],uint32_t pair_distance,
                          const t3_psx_body_tables_t* tables);
+#if defined(T3_PSX_FIGHTERS) && T3_PSX_FIGHTERS>2
+int t3_psx_body_separate_force(t3_psx_body_actor_t actors[2],uint32_t pair_distance,
+                               const t3_psx_body_tables_t* tables,unsigned throw_count);
+#endif
 int t3_psx_arena_bounds(t3_psx_body_actor_t* actor,const t3_psx_body_actor_t* opponent,
                          const t3_psx_body_tables_t* tables);
 #endif

@@ -135,6 +135,42 @@ int t3_psx_body_separate(t3_psx_body_actor_t actors[2],uint32_t pair_distance,co
     }
     actors[0]=n[0];actors[1]=n[1];return 1;
 }
+#ifndef T3_PSX_FIGHTERS
+#define T3_PSX_FIGHTERS 2
+#endif
+#if T3_PSX_FIGHTERS>2
+/* The same in Tekken Force (mode 8), where BodySeparate also looks at the number of fighters in a throw: with
+ * two or more, a pushed fighter that may be pushed is pushed twice as far, and one that may not is not
+ * pushed (fight_sim.py body_separate in the pinned Tekken3Remake). */
+int t3_psx_body_separate_force(t3_psx_body_actor_t actors[2],uint32_t pair_distance,
+                               const t3_psx_body_tables_t* t,unsigned throw_count) {
+    t3_psx_body_actor_t n[2];
+    if(!actors || !t)return 0;
+    n[0]=actors[0];n[1]=actors[1];
+    if(pair_distance<=3000u && n[0].active && n[1].active &&
+       n[0].invulnerable!=1 && n[1].invulnerable!=1 && (!n[0].no_push || !n[1].no_push)) {
+        if(!solve(n,t))return 0;
+        for(unsigned i=0;i<2;++i) {
+            if(n[i].push.x || n[i].push.y || n[i].push.z) {
+                n[i].contact=1;n[i].contact_with|=(uint8_t)(1u<<(1u-i));
+                if(throw_count>1u) {
+                    if(!n[i].no_push) {
+                        n[i].push.x=wrap((int64_t)n[i].push.x*2);n[i].push.y=wrap((int64_t)n[i].push.y*2);
+                        n[i].push.z=wrap((int64_t)n[i].push.z*2);
+                    } else n[i].push.x=n[i].push.y=n[i].push.z=0;
+                }
+                n[i].anchor.x=wrap((int64_t)n[i].anchor.x+n[i].push.x);
+                n[i].anchor.y=wrap((int64_t)n[i].anchor.y+n[i].push.y);
+                n[i].anchor.z=wrap((int64_t)n[i].anchor.z+n[i].push.z);
+                n[i].root.x=wrap((int64_t)n[i].root.x+n[i].push.x);
+                n[i].root.y=wrap((int64_t)n[i].root.y+n[i].push.y);
+                n[i].root.z=wrap((int64_t)n[i].root.z+n[i].push.z);
+            }
+        }
+    }
+    actors[0]=n[0];actors[1]=n[1];return 1;
+}
+#endif
 static int32_t excess(int32_t v) {
     int64_t over=mag(v)-300000;
     return over>0?(int32_t)(v>0?-over:over):0;

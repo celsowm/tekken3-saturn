@@ -692,7 +692,7 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
             t3_psx_body_actor_t pr[2]={pair[a],pair[b]};
             const uint8_t with_a=pr[0].contact_with,with_b=pr[1].contact_with;
             pr[0].contact_with=pr[1].contact_with=0;
-            if(!t3_psx_body_separate(pr,k==0?match->fighter[0].ground.distance:match->pair_all[k],&tables))return 0;
+            if(!t3_psx_body_separate_force(pr,k==0?match->fighter[0].ground.distance:match->pair_all[k],&tables,match->throw_count))return 0;
             const uint8_t new_a=(uint8_t)((pr[0].contact_with&2u)?(1u<<b):0u),new_b=(uint8_t)((pr[1].contact_with&1u)?(1u<<a):0u);
             pair[a]=pr[0];pair[b]=pr[1];
             pair[a].contact_with=(uint8_t)(with_a|new_a);pair[b].contact_with=(uint8_t)(with_b|new_b);
