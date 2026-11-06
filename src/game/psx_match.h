@@ -23,6 +23,18 @@
 #include "psx_effect_pool.h"
 #include "psx_fight_camera.h"
 
+/* Fighters in a match: 2 for a duel (the versus program); Tekken Force's program is built with 3 and gives each
+ * fighter its opponent (docs/TEKKEN_FORCE_PLAN.md). At 2 the opponent is the other fighter and the code is
+ * the same as before. */
+#ifndef T3_PSX_FIGHTERS
+#define T3_PSX_FIGHTERS 2
+#endif
+#if T3_PSX_FIGHTERS==2
+#define T3_PSX_OPP(match,i) (1u-(i))
+#else
+#define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
+#endif
+
 /* Throw situation code (0x800313B0), branch conditions 2..0x17. */
 int16_t t3_psx_throw_situation(const t3_psx_ground_state_t* self,int contact,
                                const t3_psx_ground_state_t* opp);
@@ -146,17 +158,6 @@ typedef struct {
     uint8_t last_guarded,last_counter; /* +0xCF/+0xD3: valid on the hit frame only (cleared per frame) */
     uint16_t previous_pose_frame;uint8_t started;
 } t3_psx_fighter_t;
-/* Fighters in a match: 2 for a duel (the versus program); Tekken Force's program is built with 3 and gives each
- * fighter its opponent (docs/TEKKEN_FORCE_PLAN.md). At 2 the opponent is the other fighter and the code is
- * the same as before. */
-#ifndef T3_PSX_FIGHTERS
-#define T3_PSX_FIGHTERS 2
-#endif
-#if T3_PSX_FIGHTERS==2
-#define T3_PSX_OPP(match,i) (1u-(i))
-#else
-#define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
-#endif
 typedef struct t3_psx_match {
     const t3_psx_match_config_t* config;
 #if T3_PSX_FIGHTERS>2
