@@ -149,17 +149,23 @@ Checked against the code, the docs and the local tools before any work:
     follows and only while the level runs (`0x800B70E8` = 0);
   - the body phase: BodySeparate on the pairs (0,1), (0,2), (1,2) with the pair table's distances, and the
     Force walls (`psx_force_walls.c`) in place of the arena limits.
+  - the hit application: each defender takes the attacker among the fighters that face it and whose gate
+    accepted (else its own opponent); the reversal pass uses the opponent helper and MoveBranchAll's order.
   Checked at 2 after every step: the 94 running host tests pass and the versus `app.bin` is byte-identical
   (491,228 bytes), so the duel's code and frame rate are unchanged. **Not checked at 3**: there is no
-  three-fighter comparator yet. Left for phase 3:
-  - the hit application for three (`t3_psx_match_apply_hits` is pair-atomic: each attacker against its
-    opponent), the contact phase's `free_slots_mask`/`game_mode` facts for mode 8, and mode 8's throw
-    doubling in BodySeparate (`psx_body.c`);
-  - `fighter_roles` feeding `opponent[]` each frame, the round flow (Force has no rounds), the camera
-    (`psx_force_camera.c` instead of the fight camera) and the replay, none of which the Force program
-    needs the duel versions of;
-  - the snapshots still written as two-element initialisers for the duel's round logic (`hp`, `pose`,
-    `old_active`) and the three-fighter trace comparator against `flow_force.bin`.
+  three-fighter comparator yet, and the hit application's attacker choice is my reading, not the original's
+  HitApply read for three fighters. Left for phase 3:
+  - the AI bus (`psx_ai_game.c`): its address map already holds three fighter slots, but its fighter images,
+    picks, collections and pads are two, `cpu_mask` is limited to 3, and its bank placement
+    (`place_banks`: fighter 0, fighter 1, divmot 99) is the duel's. Force's enemies share bank type 20 and
+    the original's Force bank placement has to be read first; verify with the AI harness
+    (`verify_ai_sim.py`);
+  - mode 8's throw doubling in BodySeparate (`psx_body.c`), the contact phase's mode-8 facts
+    (`free_slots_mask`, `game_mode`), the sound facts' opponent (`psx_fighter_sounds.c` pairs `1u-p`);
+  - `fighter_roles` feeding `opponent[]` each frame, the round flow (Force has none), the Force camera and
+    replay instead of the fight camera's, and the duel round logic's two-element snapshots (`hp`, `pose`,
+    `old_active`);
+  - the three-fighter trace comparator against `flow_force.bin`.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
