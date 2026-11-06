@@ -360,6 +360,14 @@ dated notes above record.
    Tekken3Remake side (`flow_trace.py force` already records the three 6,284-byte fighter records, the pads and
    the bank epochs per frame) that writes the same fixture shape for three fighters, then an importer in `tests/`.
    Exit: the fixture loads and frame 0 equals the recorded records.
+   Finding (read from `docs/FIGHT_ORACLE.md`): the duel oracle is **self-driven**. It starts from the original seed,
+   the pads, the side flags and the per-tick screen x, runs the C match from a round start, and compares the
+   output with the original after each tick; no per-tick fighter state is fed in. For Force that means the
+   fixture also needs (a) the level start state (three fighters placed, the enemy bank type 20, the walls and
+   the level runner's inputs) and (b) the enemies' pads. The enemies are CPU fighters, so their pads come from
+   the original AI: record them as an `ai.bin` tape (as `--cpu-mask` does for the duel) and the comparator can
+   run **before** the Force AI port; step 3 then replaces the tape with the C AI and is checked against the
+   same fixture.
 2. **Comparator, in the order the original runs:** pair distances (done), MoveStartAll order, MoveStepAll order
    and parity, the body phase on the three pairs, hit application (the attacker choice is still my reading),
    then the roles' 77 unexplained frames. Exit: 0 differences over a recorded level-1 section.
