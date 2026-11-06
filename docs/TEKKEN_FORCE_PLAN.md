@@ -350,6 +350,29 @@ on Mednafen with `scripts/play_mednafen.py` accepting the disc.
 **6. Performance gate and polish.** Meet the frame-rate bar chosen after phase 0,
 document in `docs/THIRTY_IMAGE_GATE.md`, update `ROADMAP.md` and `ROSTER.md`.
 
+## Where to resume (2026-11-06)
+
+The remaining work in dependency order, each step with its own exit test. None of it is started beyond what the
+dated notes above record.
+
+1. **Three-fighter reference fixture.** The duel's oracle runs `t3_psx_match_step_original` over a sparse
+   reference fixture (per frame: move banks, tables, camera, pads). Add a Force exporter on the
+   Tekken3Remake side (`flow_trace.py force` already records the three 6,284-byte fighter records, the pads and
+   the bank epochs per frame) that writes the same fixture shape for three fighters, then an importer in `tests/`.
+   Exit: the fixture loads and frame 0 equals the recorded records.
+2. **Comparator, in the order the original runs:** pair distances (done), MoveStartAll order, MoveStepAll order
+   and parity, the body phase on the three pairs, hit application (the attacker choice is still my reading),
+   then the roles' 77 unexplained frames. Exit: 0 differences over a recorded level-1 section.
+3. **Force AI.** Map `FORCE_TARGETS`, `FORCE_WORDS`, `AI_MULTI`, `FORCE_LAYOUT` and the leader return on the AI
+   bus, three fighter images and the Force bank placement; verify with `verify_ai_sim.py`.
+4. **Real `FORCE.BIN`** with `T3_PSX_FIGHTERS=3`: memory map, enemy packs F21-F24, the third actor in the
+   Master/Slave split. Exit: a measured frame cost of two enemies at the attract-fight workload (go/no-go
+   from phase 0).
+5. **Screens and levels:** the original HUD, NOW LOADING and tally text, level 4's staircase (vertical cell
+   scroll), music, keys and Doctor B.
+6. **Disc and gate:** a full game disc played from the menu through `scripts/play_mednafen.py`, then the
+   Mednafen A/B against the no-regression rule, `docs/THIRTY_IMAGE_GATE.md`, ROADMAP and ROSTER.
+
 ## Risks
 
 - A third animated, skinned actor on a two-CPU frame budget that is already
