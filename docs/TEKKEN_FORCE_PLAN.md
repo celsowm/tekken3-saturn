@@ -114,6 +114,24 @@ Checked against the code, the docs and the local tools before any work:
   - Constant tables: `build_force_tables.py` (TABLES.BIN); boss table BOSS.BIN.
   - Not ported: the per-frame draw code (progress bar, key icons, text, panorama sprites: phase 4) and
     `fighter_roles`' record bookkeeping (phase 3, it needs the match's fighter records).
+- **Phase 3 sizing (2026-11-06).** Findings before any integration code:
+  - The versus program is byte-identical (`app.bin` 491,228 bytes, same `__bss_end` and `.wram_l` end) with all
+    the Force C files linked into `tekken3_fight`: the linker drops what nothing calls. (The Saturn toolchain
+    has no `string.h`: the Force modules use none.)
+  - `T3_DRAW_ACTORS = 3` **compiles** (the actor preparation and render loops in `characters.c` are generic),
+    so the third actor's drawing is a data and budget question, not a rewrite.
+  - The simulation is the hard part: `t3_psx_match_t` is a duel (`fighter[2]`, `round_actor[2]`,
+    `hud_bars[2]`, `sound[2]`, one `pair_distance`, "pair-atomic" `HitApply`, `last_attacker` and
+    `last_hit_target` indices, a camera and replay that follow two). Force's rules run the same engine on
+    three fighter records (the player and two enemy slots, with `fighter_roles` choosing the target), so
+    the match core needs an N-fighter generalisation (pairwise distances, body separation, hit application
+    for each attacker and defender, the round state for Force) checked against **three-fighter traces from
+    the original code**. `fight_harness.py` exports two-fighter traces today; a Force trace (level 1 section
+    with two enemies) has to be exported first (`flow_trace.py` has the `force` scenarios).
+  - Order for the next work: (1) export a three-fighter golden trace of a level-1 section with the harness;
+    (2) generalise the match core behind a fighter count and prove the two-fighter oracle tests unchanged;
+    (3) run the three-fighter trace through it; (4) only then the `FORCE.BIN` program, memory map and the
+    third actor's frame cost.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
