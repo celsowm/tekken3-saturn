@@ -16,7 +16,8 @@
 #define T3_FORCE_SCRIPT_BYTES (T3_FORCE_SCRIPT_RECORDS*20)
 /* The constant tables at the start of force.ovl (build_force_tables.py, TABLES.BIN), by offset. */
 #define T3_FORCE_TABLE_BYTES 0x1D0u
-#define T3_FORCE_VECTOR_WORDS 98
+#define T3_FORCE_VECTOR_WORDS 115
+#define T3_FORCE_ITEMS 2
 
 /* What the level runner asks of its caller, in call order. a, b, c as the original's arguments. */
 enum {
@@ -27,9 +28,9 @@ enum {
     T3_FORCE_EVENT_MODEL_RESET,    /* a: enemy slot */
     T3_FORCE_EVENT_MODEL_REQUEST,  /* a: fighter index, b: costume + 1 */
     T3_FORCE_EVENT_MODEL_BIND,     /* a: enemy slot */
-    T3_FORCE_EVENT_ITEM_PLACE,     /* a: x, b: z */
     T3_FORCE_EVENT_SAVE_PENDING,
-    T3_FORCE_EVENT_AREA_CHANGE
+    T3_FORCE_EVENT_AREA_CHANGE,
+    T3_FORCE_EVENT_HEALTH_FLASH    /* the player's back colour flash (FUN_8003A388) */
 };
 typedef struct { int32_t kind,a,b,c; } t3_force_event_t;
 
@@ -54,6 +55,21 @@ typedef struct {
     int32_t screen_x,screen_y;    /* input: the enemy's projected position for the popup */
 } t3_force_fighter_t;
 
+/* An item slot (0xBC bytes at 0x800B6E90 in the original): state 0 free, 1 on the ground, 2 LIFE UP! rising. */
+typedef struct {
+    uint32_t state;
+    int32_t x,z;
+    uint16_t popup_x,popup_y; /* y in 1/16 dots */
+    int32_t until;
+} t3_force_item_t;
+
+/* The player's fields the items read and write. */
+typedef struct {
+    int32_t x,z;               /* +0xF68, +0xF70 */
+    uint8_t db;                /* +0xDB: no pickup while set */
+    int32_t screen_x,screen_z; /* input: the player's projected position for the popup */
+} t3_force_player_t;
+
 typedef struct {
     int32_t level,state,clock,drawn,tally,tally_done;
     uint32_t score,hiscore_run;
@@ -73,6 +89,8 @@ typedef struct {
     int32_t bound[4],free_scroll;
     t3_force_slot_t slot[T3_FORCE_SLOTS];
     t3_force_fighter_t fighter[T3_FORCE_SLOTS];
+    t3_force_item_t item[T3_FORCE_ITEMS];
+    t3_force_player_t player;
     uint16_t countdown_sound[5]; /* sounds at 5..1 seconds left (0x8009747E in the executable) */
     t3_force_event_t events[T3_FORCE_EVENTS];
     unsigned event_count;

@@ -35,11 +35,11 @@ TABLE_BASE = fs.PATTERNS
 TABLE_BYTES = 0x1D0
 SCRIPT = 0x801F9000
 FIGHTER = (0x801F6000, 0x801F6800)
-PLAYER_FIGHTER = 0x801F8800
+PLAYER_FIGHTER = 0x800A96F0      # fighter record 0: its +0x3F4 is `player_health`
 EVENTS = 16
 
 # Event kinds (psx_force_level.h).
-MUSIC_FADE, START_MOVE, ENEMY_ACTION, SOUND, MODEL_RESET, MODEL_REQUEST, MODEL_BIND, ITEM_PLACE, SAVE_PENDING, AREA_CHANGE = range(1, 11)
+MUSIC_FADE, START_MOVE, ENEMY_ACTION, SOUND, MODEL_RESET, MODEL_REQUEST, MODEL_BIND, SAVE_PENDING, AREA_CHANGE, HEALTH_FLASH = range(1, 11)
 
 # The flat vector, in the order of t3_force_level_save in psx_force_level.h.
 GLOBALS = [
@@ -66,7 +66,9 @@ FIGHTER_FIELDS = [('health', 0x3F4, 'i'), ('health_max', 0x3F8, 'i'), ('f04', 4,
                   ('fe7', 0xE7, 'B'), ('owner', 0x22, 'B'), ('index', 0x1E, 'B'), ('key', 0x14, 'H'),
                   ('anchor_x', 0, 'i'), ('anchor_z', 8, 'i'), ('root_x', 0xF68, 'i'), ('root_z', 0xF70, 'i'),
                   ('screen_x', 0x990, 'i'), ('screen_y', 0x998, 'i')]
-VECTOR_WORDS = len(GLOBALS) + 2 * len(SLOT) + 2 * len(FIGHTER_FIELDS)
+ITEM = [('state', 0, 'I'), ('x', 4, 'i'), ('z', 0xC, 'i'), ('popup_x', 0x14, 'H'), ('popup_y', 0x16, 'H'), ('until', 0x18, 'i')]
+PLAYER_FIELDS = [('x', 0xF68, 'i'), ('z', 0xF70, 'i'), ('db', 0xDB, 'B'), ('screen_x', 0x990, 'i'), ('screen_z', 0x998, 'i')]
+VECTOR_WORDS = len(GLOBALS) + 2 * len(SLOT) + 2 * len(FIGHTER_FIELDS) + 2 * len(ITEM) + len(PLAYER_FIELDS)
 
 
 class Log(fs.ForceHooks):
@@ -107,6 +109,11 @@ def read_vector(ram, player_index):
     for base in FIGHTER:
         for name, off, kind in FIGHTER_FIELDS:
             out.append(s32(ram.get(base + off, kind)))
+    for i in range(2):
+        for name, off, kind in ITEM:
+            out.append(s32(ram.get(fs.ITEMS + 0xBC * i + off, kind)))
+    for name, off, kind in PLAYER_FIELDS:
+        out.append(s32(ram.get(PLAYER_FIGHTER + off, kind)))
     return out
 
 
@@ -132,6 +139,11 @@ def write_vector(ram, vec):
     for base in FIGHTER:
         for name, off, kind in FIGHTER_FIELDS:
             ram.put(base + off, kind, next(it))
+    for i in range(2):
+        for name, off, kind in ITEM:
+            ram.put(fs.ITEMS + 0xBC * i + off, kind, next(it))
+    for name, off, kind in PLAYER_FIELDS:
+        ram.put(PLAYER_FIGHTER + off, kind, next(it))
     ram.put(fs.PLAYER, 'I', PLAYER_FIGHTER)
     ram.put(fs.PLAYER_FIGHTER, 'I', PLAYER_FIGHTER)
     ram.put(PLAYER_FIGHTER + 0x1E, 'B', player_index)
@@ -145,6 +157,7 @@ def step(ram, log):
         fs.HOOKS.events.append((AREA_CHANGE, 0, 0, 0))
     for i in range(2):
         fs._enemy_slot(ram, None, fs.SLOTS + 0x18 * i, player)
+    fs.items(ram, None)
     if fs.SCORE_CAP < ram.u32(fs.SCORE):
         ram.put(fs.SCORE, 'I', fs.SCORE_CAP)
     if ram.u32(fs.HISCORE_RUN) < ram.u32(fs.SCORE):
@@ -196,6 +209,16 @@ def random_vector(rng, scripts):
                 rng.getrandbits(8), rng.getrandbits(8), rng.randrange(2), rng.randrange(2), rng.randrange(2), rng.randrange(3),
                 rng.randrange(3), rng.getrandbits(16), rng.randrange(-9000, 9000), rng.randrange(-3000, 3000),
                 rng.randrange(-9000, 9000), rng.randrange(-3000, 3000), rng.randrange(-3000, 3000), rng.randrange(-3000, 3000)]
+    px = origin + progress
+    for _ in range(2):
+        st = rng.choice([0, 1, 1, 1, 2, 2])
+        ix = rng.choice([px - 6000, px, px + 100, rng.randrange(-6000, 40000)])
+        clock = vec[2]
+        vec += [st, ix, rng.randrange(-2000, 2000), rng.getrandbits(16), rng.getrandbits(16),
+                rng.choice([clock + 0xF, clock + 1, clock - 3, rng.randrange(0, 6000), clock + 0x3C])]
+    pxx = rng.choice([px, px + 100, px + 600, rng.randrange(-5000, 40000)])
+    vec += [pxx, rng.choice([0, 100, 600, rng.randrange(-2000, 2000)]), rng.choice([0, 0, 1]),
+            rng.randrange(-3000, 3000), rng.randrange(-3000, 3000)]
     return [s32(x) for x in vec], level
 
 
@@ -218,7 +241,8 @@ def main():
     log = Log()
     fs.HOOKS = log
     ds.text = lambda *a: None
-    fs.place_item = lambda ram, x, z: log.events.append((ITEM_PLACE, x, z, 0))
+    ds.link = lambda *a: None
+    fs.health_flash = lambda ram, f: log.events.append((HEALTH_FLASH, 0, 0, 0))
     ss.save_pending = lambda ram: log.events.append((SAVE_PENDING, 0, 0, 0))
 
     def screen_of(ram, gte, x, y, z, scratch):

@@ -71,6 +71,14 @@ static void spawn(t3_force_level_t* s,int i,uint16_t costume,uint16_t kind,int32
     f->anchor_x=x;f->root_x=x;f->root_z=z;f->anchor_z=z;
 }
 
+/* FUN_800B4328: the first free item slot gets the item. */
+static void place_item(t3_force_level_t* s,int32_t x,int32_t z){
+    for(int i=0;i<T3_FORCE_ITEMS;++i){
+        t3_force_item_t* it=&s->item[i];
+        if(it->state==0){it->x=x;it->z=z;it->state=1;return;}
+    }
+}
+
 static void commands(t3_force_level_t* s,const uint8_t* t,const uint8_t* script,int32_t progress){
     (void)t;
     if(s->round_state!=1||progress<rec32(record(script,s->script_ptr),0))return;
@@ -93,7 +101,7 @@ static void commands(t3_force_level_t* s,const uint8_t* t,const uint8_t* script,
             stop=1;
             s->wait_defeated=0;s->state=1;s->wait_count=rec16(r,0xE);
         }else if(cmd==4){
-            emit(s,T3_FORCE_EVENT_ITEM_PLACE,wrap32((int64_t)cam+rec16(r,6)),rec16(r,0xA),0);
+            place_item(s,wrap32((int64_t)cam+rec16(r,6)),rec16(r,0xA));
         }else if(cmd==6){
             for(int i=0;i<T3_FORCE_SLOTS;++i)slot_release(s,i);
             emit(s,T3_FORCE_EVENT_MUSIC_FADE,0,0,0);
@@ -273,10 +281,37 @@ static void enemy_slot(t3_force_level_t* s,const uint8_t* t,int i){
     }
 }
 
+/* FUN_800B4374: a placed item is removed 5,000 units behind the camera; the player picks it up within 500
+ * units in x and z (health +50, sound 0x4E6A), which starts LIFE UP! (60 frames, sound 0x87C0 15 frames
+ * before the end). Drawing is the caller's. */
+static void items(t3_force_level_t* s){
+    for(int i=0;i<T3_FORCE_ITEMS;++i){
+        t3_force_item_t* it=&s->item[i];
+        if(it->state==1){
+            if(it->x<wrap32((int64_t)s->camera_x-5000)){it->state=0;continue;}
+            const int64_t dx=(int64_t)wrap32((int64_t)s->player.x-it->x),dz=(int64_t)wrap32((int64_t)s->player.z-it->z);
+            if((dx<0?-dx:dx)<0x1F5&&(dz<0?-dz:dz)<0x1F5&&s->player_health>0&&s->player.db==0){
+                s->player_health=wrap32((int64_t)s->player_health+0x320000);
+                emit(s,T3_FORCE_EVENT_SOUND,0x4E6A,0,0);
+                it->state=2;
+                it->until=wrap32((int64_t)s->clock+0x3C);
+                it->popup_x=(uint16_t)(((uint32_t)s->player.screen_x&0xFFFFu)-0x24u);
+                it->popup_y=(uint16_t)((uint32_t)s->player.screen_z<<4);
+                emit(s,T3_FORCE_EVENT_HEALTH_FLASH,0,0,0);
+            }
+        }else if(it->state==2){
+            if(s->frozen==0)it->popup_y=(uint16_t)(it->popup_y-8);
+            if((uint32_t)s->clock==(uint32_t)it->until-0xFu)emit(s,T3_FORCE_EVENT_SOUND,0x87C0,0,0);
+            if(it->until<s->clock)it->state=0;
+        }
+    }
+}
+
 void t3_force_level_step(t3_force_level_t* s,const uint8_t* t,const uint8_t* script){
     s->event_count=0;
     if(level_script(s,t,script))emit(s,T3_FORCE_EVENT_AREA_CHANGE,0,0,0);
     for(int i=0;i<T3_FORCE_SLOTS;++i)enemy_slot(s,t,i);
+    items(s);
     if(s->score>(uint32_t)SCORE_CAP)s->score=(uint32_t)SCORE_CAP;
     if(s->hiscore_run<s->score){s->hiscore_flag=1;s->hiscore_run=s->score;}
     if(s->timer>=TIMER_CAP+1)s->timer=TIMER_CAP;
@@ -312,6 +347,11 @@ void t3_force_level_load(t3_force_level_t* s,const int32_t* v){
         f->key=(uint16_t)v[n++];
         f->anchor_x=v[n++];f->anchor_z=v[n++];f->root_x=v[n++];f->root_z=v[n++];f->screen_x=v[n++];f->screen_y=v[n++];
     }
+    for(int i=0;i<T3_FORCE_ITEMS;++i){
+        t3_force_item_t* it=&s->item[i];
+        it->state=(uint32_t)v[n++];it->x=v[n++];it->z=v[n++];it->popup_x=(uint16_t)v[n++];it->popup_y=(uint16_t)v[n++];it->until=v[n++];
+    }
+    s->player.x=v[n++];s->player.z=v[n++];s->player.db=(uint8_t)v[n++];s->player.screen_x=v[n++];s->player.screen_z=v[n++];
 }
 #undef LOAD
 
@@ -341,5 +381,10 @@ void t3_force_level_save(const t3_force_level_t* s,int32_t* v){
         v[n++]=f->key;
         v[n++]=f->anchor_x;v[n++]=f->anchor_z;v[n++]=f->root_x;v[n++]=f->root_z;v[n++]=f->screen_x;v[n++]=f->screen_y;
     }
+    for(int i=0;i<T3_FORCE_ITEMS;++i){
+        const t3_force_item_t* it=&s->item[i];
+        v[n++]=(int32_t)it->state;v[n++]=it->x;v[n++]=it->z;v[n++]=it->popup_x;v[n++]=it->popup_y;v[n++]=it->until;
+    }
+    v[n++]=s->player.x;v[n++]=s->player.z;v[n++]=s->player.db;v[n++]=s->player.screen_x;v[n++]=s->player.screen_z;
 }
 #undef SAVE
