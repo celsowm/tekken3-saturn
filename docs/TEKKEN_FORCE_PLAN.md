@@ -251,6 +251,13 @@ Checked against the code, the docs and the local tools before any work:
   frame began** (the previous frame's final roots), 0 differences over consecutive frames of a running round. This is the rule the three-fighter
   `pair_distance` in `psx_match.c` implements (it runs after the move start and before the ground step, on the
   roots the previous frame left), and the order of the whole pair table by `fold(i) + fold(j)` is confirmed.
+- **Walls against the recorded game (2026-11-06), invariant only.** At the end of each running Force frame the
+  fighters should already be inside the walls: `_force_walls` (equal to `psx_force_walls.c` on 30,000 random
+  cases) gives a zero correction in 17,300 of 17,424 fighter-frames (99.3%). The 124 exceptions that were looked
+  at are enemies at `view + 5000`, the spawn x, 800 units beyond their 0x1068 limit (`dx -800`): a spawned enemy
+  is pulled in by the ramp over the next frames, as the original does. Fighter 0 has 48 outside frames that
+  were not looked at. The check does not prove the correction values; that needs the roots at the moment of the
+  body phase, which a flow trace does not hold.
 - Private data for the enemy is extracted to `assets/imported/force-import/` (records
   259-274 and 9, 10).
 
