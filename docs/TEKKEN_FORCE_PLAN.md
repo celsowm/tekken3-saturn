@@ -1,7 +1,15 @@
 # Tekken Force: plan
 
-Status: plan, nothing implemented. The menu lists TEKKEN FORCE and does nothing
-(`docs/ROSTER.md`, `docs/ROADMAP.md`).
+Status (2026-11-06): phases 0-2 done, phase 3 partly, phase 4 and 5 started; **the mode does not play yet**.
+In the shipping build the menu still lists TEKKEN FORCE and does nothing (`docs/ROSTER.md`, `docs/ROADMAP.md`);
+with the private levels configured it starts a Force demo program (the level script, camera, items and the
+tally on a scrolling panorama, enemies and the player as boxes). Done and checked: the research harness, the
+enemy packs and level files, the level runner, target choice, roles, walls, camera and hand-off in C (golden
+cases; the runner and camera also against a recorded whole game), the match core's fighter count for three
+fighters (duel binary unchanged). Open: the three-fighter match comparator, the AI state for Force, mode-8
+contact and sound facts, real fighters and the third actor's cost, the level 4 staircase, the original HUD, the
+screens' text, a full game disc played from the menu, and the frame-rate A/B (phase 6). The sections below are
+the plan; the dated notes inside them are the results.
 
 ## What the mode is
 
