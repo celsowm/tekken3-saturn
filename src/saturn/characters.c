@@ -763,6 +763,10 @@ typedef struct {
     uint16_t lead;
     volatile uint32_t lead_ready;
     sat_result_t lead_result;
+    /* Byte span of g_actor_geometry[1] the worker may have written this image
+     * (note_worker_write, through the uncached alias): the join drops only
+     * these lines from the Master's cache. Empty when first >= end. */
+    uint32_t written_first,written_end;
     /* Read before the worker and its deferred simulation start. A hidden actor
      * is still skinned, but submits no faces. */
     uint8_t shown[2];
@@ -1441,6 +1445,21 @@ static void original_projection_disable(actor_t* actor) {
     actor->instance.cull_backfaces=SAT_SCENE3D_CULL_SCREEN;
 #endif
 }
+/* Before a write by actor 1's worker into g_actor_geometry[1], widens the span
+ * the join invalidates. Writes outside that array were never in the join's
+ * sync, and other actors' writes stay on their own CPU. */
+static void note_worker_write(const fused_actor_context_t* context,const actor_t* actor,
+        const void* p,uint32_t bytes) {
+    if(actor!=&g_actors[1])return;
+    const uintptr_t base=(uintptr_t)&g_actor_geometry[1],at=(uintptr_t)p;
+    if(at<base || at-base>=sizeof(g_actor_geometry[1]))return;
+    const uint32_t first=(uint32_t)(at-base);
+    const uint32_t end=bytes<sizeof(g_actor_geometry[1])-first?first+bytes:(uint32_t)sizeof(g_actor_geometry[1]);
+    volatile fused_actor_context_t* shared=sat_parallel_uncached_address((void*)(uintptr_t)context);
+    if(first<shared->written_first)shared->written_first=first;
+    if(end>shared->written_end)shared->written_end=end;
+}
+
 static int project_original(const fused_actor_context_t* context,actor_t* actor) {
     const unsigned n=(unsigned)(actor-g_actors);
     /* The worker can retain cached data from the previous image. Read the
@@ -1462,6 +1481,8 @@ static int project_original(const fused_actor_context_t* context,actor_t* actor)
 #else
     t3_psx_projected_vertex_t* raw=geometry->original_raw;
 #endif
+    note_worker_write(context,actor,raw,actor->original_mesh.vertex_count*(uint32_t)sizeof(*raw));
+    note_worker_write(context,actor,geometry->projected,actor->original_mesh.vertex_count*(uint32_t)sizeof(*geometry->projected));
     if(!t3_psx_projected_mesh_build(parts,count,&context->original_view,context->original_joints[n],
             context->original_mask[n],raw,actor->original_mesh.vertex_count))return 0;
     for(unsigned i=0;i<actor->original_mesh.vertex_count;++i) {
@@ -1494,9 +1515,11 @@ static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* a
     }
 #endif
 #if defined(T3_COMPILED_RENDERER)
-    if(actor->compiled_active)
+    if(actor->compiled_active) {
+        note_worker_write(context,actor,actor->mesh.vertices,T3_VERTEX_COUNT*(uint32_t)sizeof(*actor->mesh.vertices));
         return t3_compiled_deform_range(&g_compiled_renderer,&actor->compiled_pose,
             0,T3_VERTEX_COUNT,actor->mesh.vertices,actor->mesh.vertex_cap)?SAT_OK:SAT_ERR_INVALID_ARG;
+    }
 #endif
     if(first>=end)return SAT_OK;
     /* Placement is applied as each vertex is stored, not in a
@@ -1507,6 +1530,7 @@ static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* a
 #if defined(T3_SKIN_TO_SCREEN)
     if(actor->instance.pre_projected) {
         sat_mat4_t* clip=g_clip_joints[actor-g_actors];
+        note_worker_write(context,actor,actor->projected+first,(end-first)*(uint32_t)sizeof(*actor->projected));
         if(sat_skin_clip_joints(actor->joints,T3_JOINT_COUNT,&placement,
                 &g_geometry_batch.view_proj,clip)==SAT_OK &&
            sat_skin_project_range(&actor->asset->skin,clip,T3_JOINT_COUNT,first,end-first,
@@ -1517,6 +1541,7 @@ static sat_result_t deform_actor(const fused_actor_context_t* context,actor_t* a
         ++g_t3_skin_screen_fallbacks;
     }
 #endif
+    note_worker_write(context,actor,actor->mesh.vertices+first,(end-first)*(uint32_t)sizeof(*actor->mesh.vertices));
     return sat_skin_deform_range_placed(&actor->asset->skin,actor->joints,T3_JOINT_COUNT,first,
         end-first,actor->mesh.vertices,actor->mesh.vertex_cap,&placement);
 }
@@ -1737,6 +1762,8 @@ static sat_result_t prepare_with_worker(void) {
     const uint32_t lead=worker->vertex_count*g_master_skin_percent/100u;
 #endif
     g_fused_actors.lead=(uint16_t)lead;
+    g_fused_actors.written_first=UINT32_MAX;
+    g_fused_actors.written_end=0u;
     sat_result_t st=g_worker_start();
     if(st!=SAT_OK)return st;
     sat_result_t lead_result=SAT_OK;
@@ -1753,7 +1780,11 @@ static sat_result_t prepare_with_worker(void) {
     const fused_actor_context_t* shared=sat_parallel_uncached_address(&g_fused_actors);
     for(uint32_t spins=0;!shared->worker_ready;)
         if(++spins>=4000000u)return SAT_ERR_TIMEOUT;
-    st=sat_parallel_cache_sync_range(&g_actor_geometry[1],sizeof(g_actor_geometry[1]));
+    /* Only the lines the worker wrote can be stale here: the Master's own
+     * writes went through its write-through cache. */
+    st=shared->written_first<shared->written_end?
+        sat_parallel_cache_sync_range((const uint8_t*)&g_actor_geometry[1]+shared->written_first,
+            shared->written_end-shared->written_first):SAT_OK;
 #if defined(T3_SKIN_TO_SCREEN)
     if(st==SAT_OK && lead && shared->result[1]==SAT_OK)st=settle_lead(worker,lead_result);
 #if defined(T3_MASTER_SKIN_CHECK)

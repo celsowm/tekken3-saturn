@@ -64,7 +64,9 @@ of record.
 | P2 constant shifts in the tick | **PROMOTED (2026-11-07)**: sound-table reads, IK square root and the FK slot mask without libgcc variable shifts; 27.85 → 27.93 marked, worst segment 26.10 → 26.10 |
 | P3 one-word entry header | **PROMOTED (2026-11-07)**: lib-saturn writes a projected entry's `kind`, `cached_projected` and `reserved` as one aligned word; 27.93 → 28.26 marked, worst segment 26.10 → 26.36; frozen pixels match |
 | R1+R3–R5 plan steps | **PROMOTED (2026-11-07)**: own screen-cull append loop (lib-saturn), fighter-image AI reads and whole-word reads, on-chip divider for camera and IK divides, no zero-fill in FK, compose and slots; 28.26 → 29.01 marked, worst segment 26.36 → 27.00, 7/7 segments ahead; frozen pixels match |
-| Base rate | 29.01 marked / 27.00 worst segment (2026-11-07, R1+R3–R5; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
+| R6 two-tick share | **KEPT AT 65 (2026-11-07)**: 55 gave 29.08 / 27.15 but segments 1, 2, 5 down by up to 0.20; 75 gave 29.04 / 27.00 with segment 3 −0.30 (inside noise); re-sweep after the next Slave or Master cut |
+| R8 worker-written span | **PROMOTED (2026-11-07)**: the join invalidates only the bytes of actor 1's geometry the Slave wrote, not all 14.8 KB; 29.01 → 29.06 marked, worst segment 27.00 → 27.05; frozen pixels match |
+| Base rate | 29.06 marked / 27.05 worst segment (2026-11-07, R8; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -1252,6 +1254,29 @@ run, control P3 (28.26 / 26.36):
   keys and order in locals and `scene->count` stored once per instance.
   `submit_instance<true>` keeps the old loop for other queues and grew
   0x1F1C → 0x205C; the new loop is ≈80 instructions per visible face.
+
+**R6 and R8 (2026-11-07).** Control R1+R3–R5 (29.01 / 27.00), same gates:
+
+| Candidate | Marked | Worst segment | Outcome |
+| --- | ---: | ---: | --- |
+| R6: two-tick share 55 (slow 100) | 29.08 | 27.15 | segments 1, 2, 5 down 0.11–0.20: not taken |
+| R6: two-tick share 75 (slow 100) | 29.04 | 27.00 | segment 3 −0.30, inside noise: not taken |
+| **R8: worker-written span** | **29.06** | **27.05** | **ahead, promoted** |
+
+- R6: neither side of 65 is a clean win; the two-tick images are balanced.
+  Re-sweep after the next cut that moves time between the CPUs.
+- R8: after the join the Master invalidated all of `g_actor_geometry[1]`
+  (740 × 20 bytes, ≈925 lines) on every image, though on three-tick images
+  the Slave projects none of actor 1 and on two-tick images only 35 %. Now
+  `note_worker_write` records, before each write the worker makes into that
+  array (original projection, compiled deform, screen projection, world
+  skinning), the byte span in the shared context through the uncached alias;
+  the join invalidates only that span. Lines outside it were written only by
+  the Master through its write-through cache, or by the Slave on an earlier
+  image whose join already dropped them, so nothing stale is left. Writes
+  outside the array (the OT raw vertices in the stage scratch) were never in
+  this sync and are unchanged. Not a whole-cache purge: that would throw away
+  the Master's hot lines to save a loop.
 
 **Stop rule.** If R1–R8 are done and the rate is still under 30, write down
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and
