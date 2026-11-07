@@ -55,7 +55,7 @@ of record.
 | W0 config/memory | **DONE**: cache-128 promoted; all W0.7 gates pass (primary +0.31/+0.54, second encounter +0.54/+0.70, Ymir equal hash, frozen pixels 2000/3000, 24 combat cases, 441-pair arena) |
 | W1 purge | **CLOSED**: 2,502 purges = 3,264 FRT total (0.876 fields); no selective invalidation |
 | W2 AI spikes | **MEASURED, NO CHANGE**: 39/8,684 updates over half a field, 0 over a field; spikes scan ~250 words vs a 4.5 mean; the trace hook disables the pick cache, so attribution needs a new trace; next step recorded |
-| W3 strong hits | **PROMOTED, GATES PASS (2026-11-07)**: fixtures `chain` and `two-chains`; entry-list compaction (OT sort 43.24 → 3.67 ms) and cell-map lookup (worst image 32.62 → 32.17 ms) promoted; outcodes measured, left OFF; face-mask hoist rejected; whole fight 26.84 → 26.89 marked, combat suite 24/24, frozen 2000/3000 equal, host tests pass (8 skip) |
+| W3 strong hits | **PROMOTED, GATES PASS (2026-11-07)**: fixtures `chain` and `two-chains`; entry-list compaction (OT sort 43.24 → 3.67 ms) and cell-map lookup (worst image 32.62 → 32.17 ms) promoted; outcodes measured; face-mask hoist rejected; whole fight 26.84 → 26.89 marked, combat suite 24/24, frozen 2000/3000 equal, host tests pass (8 skip). **Defaults fixed (2026-11-07):** compaction and outcodes are now the CMake default with the ordered mask (compaction had been called promoted but was still OFF); whole fight 26.89 → 26.92 |
 | W4 stage ownership | **CLOSED**: two policies rejected (mid −0.07/−0.18, aggressive −1.89/−1.48); keep the first-come race |
 | W5 pose topology | **PROMOTED**: bit-exact digest; primary +0.13/+0.16 (6/7 spans), pair 7,4 +0.11/+0.23; default is ON |
 | W6 panorama | **CLOSED**: profile captured (fit ≈70% of a 2.28 ms panorama); no exact rewrite with a measurable gain; keep the code |
@@ -554,6 +554,34 @@ cause was the capture length. The baseline was captured with `--frames 6200`
 (screenshot 6,100), and 5,000 frames end before the replay reaches tick 3000.
 The command above now notes this. The gains are real per image but stay
 within whole-fight noise; the base rate stays ≈26.9, and 30 img/s is still open.
+
+**Defaults corrected (2026-11-07).** `T3_MIXED_OT_LIVE_ENTRIES` was still
+`OFF` in `CMakeLists.txt`, so a default build never had the compaction; only
+the `perf-w3-cand` directory set it by hand. Both it and
+`T3_MIXED_OT_OUTCODES` now default to `T3_PARTICLE_ORDERED_MASK_PROBE` (ON
+whenever `T3_PARTICLES` is). The owner chose to ship the outcodes on the
+same-state evidence (1.6 ms cheaper per effect image, 0 mismatches over 19,681
+faces); the fixture worst-case drift (−0.87 / +0.72 ms) is which ticks get
+drawn. The `T3_MIXED_OT_OUTCODES_CHECK` line lacked a space before its doc
+string, which wrote a malformed cache entry; fixed. Gates on the new defaults
+(`build/perf-w3-cand`, cache 128, effect ring on):
+
+| Gate | Result |
+| --- | --- |
+| Whole fight (Mednafen, 280 s, vs `perf-w3-med-final-280`) | marked 26.89 → **26.92**, segments +0.04/+0.11/−0.05/0.00/−0.02/+0.06/+0.05, worst 25.26 → 25.24 (inside ±0.04 noise), 2,525 images, pad hash `0xb99cc280`, 8/8 marks |
+| Frozen pixels 2000 / 3000 | **PASS**: model pixels `4b1e8b36…` / `838c0a15…`, equal to the cache-128 baseline |
+| Host tests | 103/103 pass (8 skip without the private trace data) |
+
+Evidence: `assets/imported/perf-w3-med-dflt-280`, `perf-w3-dflt-frozen-*-ymir`.
+
+**Where the 30 img/s gap is.** 2,525 images in 5,836 fields is 2.31 fields
+per image; 30 img/s needs 2.0, so about a third of the images take a third
+field. Only 71 of them are effect images, so the gap is the ordinary fight
+image. The same run counts 1,806 late swaps (`sat_vdp1_frame_stats`: VBlanks
+at which a submitted VDP1 list had not ended, so the old picture stayed up)
+against only 15 CPU waits on the VDP1. Late swaps alone do not say whether the
+VDP1 draw or a late submit is the cause; the next package splits that per
+image (CPU build end vs. VDP1 draw end) before choosing a target.
 
 **Rejected: shape check once per face (2026-11-07).** `t3_face_quad_tile_coverage`
 runs `t3_face_quad_supported` (a walk of every scanline) for each cell a face
