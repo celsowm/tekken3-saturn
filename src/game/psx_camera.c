@@ -11,6 +11,7 @@
  * Attract,
  * Tekken Ball and Tekken Force cameras are outside this path. */
 #include "psx_camera.h"
+#include "sh2_divide.h"
 #include <stddef.h>
 
 #define ONE 4096
@@ -90,7 +91,7 @@ static int32_t cdiv(const cam_t* c,int64_t a,int64_t b) {
     int32_t x=w32(a),y=w32(b);
     if(y==0)return c->faithful?(x>=0?-1:1):x;
     if(x==INT32_MIN && y==-1)return x;
-    return x/y;
+    return t3_div32(x,y);
 }
 /* ISqrt (0x8002A578). */
 static int32_t isqrt(uint32_t n) {

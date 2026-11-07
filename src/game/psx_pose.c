@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 static const uint8_t k_slots[10]={0u,1u,11u,2u,3u,7u,6u,10u,14u,17u};
+/* The other rotation slots, which FK leaves zero. */
+static const uint8_t k_zero_slots[8]={4u,5u,8u,9u,12u,13u,15u,16u};
 
 static int16_t sat16(int32_t v) {
     return (int16_t)(v>32767 ? 32767 : (v< -32768 ? -32768 : v));
@@ -56,16 +58,18 @@ int T3_SIM_IMPL(t3_psx_pose_fk)(const int16_t pose[T3_PSX_POSE_CHANNELS],
                    const t3_psx_trig_t* table,
                    t3_psx_matrix_t out[T3_PSX_ROTATION_SLOTS],
                    uint32_t* valid_slots) {
-    t3_psx_matrix_t result[T3_PSX_ROTATION_SLOTS]={0};
+    static const t3_psx_matrix_t zero;
     uint32_t mask=0u;
     unsigned i;
     if (!pose || !valid_table(table) || !out || !valid_slots) return 0;
+    /* Nothing fails past the checks above, so the matrices go straight to out
+     * (Work RAM is write-through: no zero-fill and copy of a private array). */
     for(i=0;i<10u;++i) {
         unsigned ch=19u+3u*i;
-        t3_psx_euler_matrix(pose[ch],pose[ch+1u],pose[ch+2u],table,&result[k_slots[i]]);
+        t3_psx_euler_matrix(pose[ch],pose[ch+1u],pose[ch+2u],table,&out[k_slots[i]]);
         mask|=t3_psx_bit(k_slots[i]);
     }
-    __builtin_memcpy(out,result,sizeof(result)); /* one call, not one per matrix */
+    for(i=0;i<8u;++i)t3_psx_matrix_copy(&out[k_zero_slots[i]],&zero);
     *valid_slots=mask;
     return 1;
 }
@@ -181,7 +185,10 @@ int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PART
                          uint32_t valid_slots,const t3_psx_joint_t* root,
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],
                          uint32_t* valid_parts) {
-    t3_psx_joint_t result[T3_PSX_DRAW_PARTS]={0};
+    /* Only the parts in mask are written; the rest are zeroed before the copy
+     * instead of zero-filling the whole array first, and a written part's
+     * padding is zeroed with it (callers compare joints as bytes). */
+    t3_psx_joint_t result[T3_PSX_DRAW_PARTS];
     uint32_t mask=0u;
     unsigned i;
     if (!parts || !slots || !root || !out || !valid_parts ||
@@ -226,8 +233,12 @@ int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PART
         if(!t3_psx_mul_rot(&par->rotation,&slots[p->slot],
                            &result[i].rotation) ||
            !place(par,&p->offset,&result[i].origin))return 0;
+        __builtin_memset((uint8_t*)&result[i]+sizeof(t3_psx_matrix_t),0,
+                         offsetof(t3_psx_joint_t,origin)-sizeof(t3_psx_matrix_t));
         mask|=t3_psx_bit(i);
     }
+    for(i=0;i<T3_PSX_DRAW_PARTS;++i)
+        if(!(mask&t3_psx_bit(i)))__builtin_memset(&result[i],0,sizeof result[i]);
     __builtin_memcpy(out,result,sizeof(result)); /* one call, not one per part */
     *valid_parts=mask;
     return 1;
@@ -243,7 +254,9 @@ T3_SIM_WRAP(int,t3_psx_compose_parts,T3_SIM_PARTS,
 int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          const t3_psx_joint_t in[T3_PSX_DRAW_PARTS],uint32_t valid_parts,
                          t3_psx_joint_t out[T3_PSX_DRAW_PARTS],uint32_t* valid_slots) {
-    t3_psx_joint_t result[T3_PSX_DRAW_PARTS]={0};uint32_t mask=0;
+    /* in and out may be the same array, hence the private result; slots no
+     * part fills are zeroed at the copy instead of zero-filling it first. */
+    t3_psx_joint_t result[T3_PSX_DRAW_PARTS];uint32_t mask=0;
     if(!parts || !in || !out || !valid_slots || (valid_parts>>T3_PSX_DRAW_PARTS))return 0;
     uint32_t valid=valid_parts;
     for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i,valid>>=1)if(valid&1u) {
@@ -251,7 +264,9 @@ int t3_psx_parts_to_slots(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
         if(slot>=T3_PSX_DRAW_PARTS || (mask&t3_psx_bit(slot)))return 0;
         result[slot]=in[i];mask|=t3_psx_bit(slot);
     }
-    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)out[i]=result[i];
+    for(unsigned i=0;i<T3_PSX_DRAW_PARTS;++i)
+        if(!(mask&t3_psx_bit(i)))__builtin_memset(&result[i],0,sizeof result[i]);
+    __builtin_memcpy(out,result,sizeof(result));
     *valid_slots=mask;return 1;
 }
 unsigned t3_psx_count_parts(uint32_t mask) {

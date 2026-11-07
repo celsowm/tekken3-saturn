@@ -35,7 +35,7 @@ typedef struct t3_psx_ai_game {
      * divmot99), the fighters' low fields and branch facts. */
     struct t3_psx_match* match;
     const t3_divmot_t* bank[3];
-    uint8_t image[2][T3_PSX_AI_IMAGE];
+    uint8_t image[2][T3_PSX_AI_IMAGE] __attribute__((aligned(4)));
     t3_branch_context_t facts[2];unsigned facts_ready; /* bit i: facts[i] is this call's */
     t3_psx_ai_window_t window[9];unsigned window_count; /* constant rows, set per call */
     /* The globals and each fighter's fields above the image (fighter_high)

@@ -63,7 +63,8 @@ of record.
 | P1 exact tick cuts | **PROMOTED (2026-11-07)**: size-specialised AI bus reads and writes, ground angles in place; whole fight 27.50 → 27.85 marked, worst segment 25.90 → 26.10, pad hash unchanged |
 | P2 constant shifts in the tick | **PROMOTED (2026-11-07)**: sound-table reads, IK square root and the FK slot mask without libgcc variable shifts; 27.85 → 27.93 marked, worst segment 26.10 → 26.10 |
 | P3 one-word entry header | **PROMOTED (2026-11-07)**: lib-saturn writes a projected entry's `kind`, `cached_projected` and `reserved` as one aligned word; 27.93 → 28.26 marked, worst segment 26.10 → 26.36; frozen pixels match |
-| Base rate | 28.26 marked / 26.36 worst segment (2026-11-07, P3; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
+| R1+R3–R5 plan steps | **PROMOTED (2026-11-07)**: own screen-cull append loop (lib-saturn), fighter-image AI reads and whole-word reads, on-chip divider for camera and IK divides, no zero-fill in FK, compose and slots; 28.26 → 29.01 marked, worst segment 26.36 → 27.00, 7/7 segments ahead; frozen pixels match |
+| Base rate | 29.01 marked / 27.00 worst segment (2026-11-07, R1+R3–R5; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -1215,6 +1216,42 @@ somewhat more there.
   Check whether it still clears line by line where purging the whole cache
   (or one larger range) is cheaper. Every Slave-written range must still be
   coherent when the Master reads it; the frozen gate catches a miss.
+
+**Results (2026-11-07).** Whole fight, 280 s, pad hash `0xb99cc280` on every
+run, control P3 (28.26 / 26.36):
+
+| Candidate | Marked | Worst segment | Outcome |
+| --- | ---: | ---: | --- |
+| R3 alone | 28.26 | 26.50 | inside noise, kept for the stack |
+| R3 + R4 | 28.37 | 26.46 | ahead, segment 4 alone +0.69 |
+| **R1 + R3 + R4 + R5** | **29.01** | **27.00** | **7/7 ahead, promoted** |
+
+- R3: the bus gets the two fighter images (`image`, `image_base`,
+  `image_stride`, `image_size`) and checks them right after the AI block,
+  before the word table, memo and window loop: the Ymir profile had 255 of
+  1,236 reads a frame falling through to the window loop and assembling
+  bytes. The same bytes as windows 0 and 1; off while a trace listens, so the
+  read counts are unchanged. **GCC 13 trap found on the way:** `rd4` had no
+  aligned path at all. The bswap pass turns the byte-assembly fallback into
+  an unaligned load of the same address and then reuses it for the aligned
+  arm, so every 32-bit read was four byte loads. A barrier on the pointer
+  (`__asm__("":"+r"(p))`) in the aligned arm keeps the single `mov.l`; a
+  barrier on the loaded value does not. Look for this wherever an aligned
+  load and a byte fallback share an address.
+- R4: `t3_div32` (`src/game/sh2_divide.h`), the sign-extended 64/32 divide
+  on the on-chip divider, for the camera's `cdiv` and the two IK divides
+  (68 of the ≈82 `__sdivsi3` calls a frame); zero and INT32_MIN/−1 stay on
+  `cdiv`'s own path, and IK's divisors are proven non-zero.
+- R5: FK writes its matrices straight into `out` (nothing fails past its
+  checks) and zeroes the 8 other slots; compose and slots keep their private
+  result (failure still writes nothing, and slots runs in place) but zero
+  only the parts not written, and compose zeroes a written joint's padding
+  (`world_pose_cache_exact_and_bounded` compares joints as bytes).
+- R1: `append_screen_culled` in lib-saturn `faces.cpp`, a `noinline` copy of
+  the screen-cull fast loop for projected entries with count, gap, entries,
+  keys and order in locals and `scene->count` stored once per instance.
+  `submit_instance<true>` keeps the old loop for other queues and grew
+  0x1F1C → 0x205C; the new loop is ≈80 instructions per visible face.
 
 **Stop rule.** If R1–R8 are done and the rate is still under 30, write down
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and

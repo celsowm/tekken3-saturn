@@ -1,5 +1,6 @@
 #include "sim_profile.h"
 #include "psx_ik.h"
+#include "sh2_divide.h"
 #include <saturn/int_math.h>
 #include <stdint.h>
 
@@ -155,7 +156,7 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
     if(sq<=0)return 0;
     if(!square_root0((uint32_t)sq,table,&length))return -1;
     if(length<=0)return 0;
-    inv=0x400000/length;
+    inv=t3_div32(0x400000,length);
     ux=ASR(mul(x,inv),10u);
     uy=ASR(mul(y,inv),10u);
     uz=ASR(mul(z,inv),10u);
@@ -166,7 +167,7 @@ static int solve(const int32_t target[3],int16_t swivel,int arm,
         e=-ONE;
     } else {
         if(k<0x2000) {
-            k=-0x1000000/k;
+            k=t3_div32(-0x1000000,k);
             a=ASR(mul(k,uy),12u);
         } else {
             k=-0x800;

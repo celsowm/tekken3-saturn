@@ -77,14 +77,27 @@ static inline uint32_t le32(uint32_t v) {
 /* Each access size has its own copy of the bus walk (rd1, rd2, rd4 and the
  * writers), so the size tests fold and part-word shifts are constant: the AI
  * makes about 156 reads an update. */
+/* The barrier on the pointer keeps GCC 13 from turning the byte path below
+ * into a load of the same address and reusing it for the aligned case too
+ * (four byte loads for every word). */
+static inline __attribute__((always_inline)) uint32_t host_n(const uint8_t* p,uint32_t r,unsigned n) {
+    if(n==1u)return p[0];
+    if(!(r&(n-1u))) {
+        __asm__("":"+r"(p));
+        return n==2u?le16(*(const alias16_t*)p):le32(*(const alias32_t*)p);
+    }
+    return n==2u?(uint32_t)p[0]|(uint32_t)p[1]<<8:
+           (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+}
 static inline __attribute__((always_inline)) uint32_t rd_n(const t3_psx_ai_bus_t* b,uint32_t a,unsigned n) {
     const uint32_t r=a-b->ram_base;
-    if(r<b->ram_size && n<=b->ram_size-r) {
-        const uint8_t* p=b->ram+r;
-        if(n==1u)return p[0];
-        if(!(r&(n-1u)))return n==2u?le16(*(const alias16_t*)p):le32(*(const alias32_t*)p);
-        return n==2u?(uint32_t)p[0]|(uint32_t)p[1]<<8:
-               (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+    if(r<b->ram_size && n<=b->ram_size-r)return host_n(b->ram+r,r,n);
+    /* The fighter images are a fifth of the reads; before the word table. */
+    if(b->image[0]) {
+        uint32_t o=a-b->image_base;
+        unsigned i=0;
+        if(o>=b->image_stride) {o-=b->image_stride;i=1;}
+        if(o<b->image_size && n<=b->image_size-o)return host_n(b->image[i]+o,o,n);
     }
     if(b->words) {
         const uint32_t w=a&~3u;

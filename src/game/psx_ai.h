@@ -49,6 +49,10 @@ typedef struct t3_psx_ai_bus {
     /* Optional, with picks: each fighter's last full candidate collection, reused
      * while its inputs match. The bus zeroes them whenever it empties the picks. */
     struct t3_psx_ai_collect* collect;
+    /* Optional: the two fighters' low fields as read-only little-endian host
+     * bytes, image_size from image_base+image_stride*i; each image is 4-aligned
+     * and image_base and image_stride are multiples of 4. */
+    const uint8_t* image[2];uint32_t image_base,image_stride,image_size;
 } t3_psx_ai_bus_t;
 /* What a candidate collection depends on: the walk's inputs, the frames over
  * which every window test it made has the same result, and the BranchCondition
