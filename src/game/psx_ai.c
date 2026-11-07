@@ -74,8 +74,10 @@ static inline uint32_t le32(uint32_t v) {
     return v;
 #endif
 }
-static __attribute__((noinline)) uint32_t rd(const ctx_t* c,uint32_t a,unsigned n) {
-    const t3_psx_ai_bus_t* b=c->bus;
+/* Each access size has its own copy of the bus walk (rd1, rd2, rd4 and the
+ * writers), so the size tests fold and part-word shifts are constant: the AI
+ * makes about 156 reads an update. */
+static inline __attribute__((always_inline)) uint32_t rd_n(const t3_psx_ai_bus_t* b,uint32_t a,unsigned n) {
     const uint32_t r=a-b->ram_base;
     if(r<b->ram_size && n<=b->ram_size-r) {
         const uint8_t* p=b->ram+r;
@@ -87,8 +89,13 @@ static __attribute__((noinline)) uint32_t rd(const ctx_t* c,uint32_t a,unsigned 
     if(b->words) {
         const uint32_t w=a&~3u;
         const t3_psx_ai_word_t* e=b->words+((w>>2^w>>9)&b->word_mask);
-        if(e->address==w && (a&3u)+n<=4u)
-            return *e->host>>(8u*(a&3u))&(n==4u?~0u:(1u<<(8u*n))-1u);
+        if(e->address==w && (a&3u)+n<=4u) {
+            uint32_t v=*e->host;
+            if(n==4u)return v;
+            if(a&2u)v>>=16;
+            if(a&1u)v>>=8;
+            return n==2u?v&0xFFFFu:v&0xFFu;
+        }
     }
     if(b->memo && a>=b->memo_from) {
         const t3_psx_ai_memo_t* m=b->memo+2u*((a^a>>8^n)&b->memo_mask);
@@ -97,7 +104,7 @@ static __attribute__((noinline)) uint32_t rd(const ctx_t* c,uint32_t a,unsigned 
         if(m[1].key==key)return m[1].value;
     }
     const t3_psx_ai_window_t* w=b->windows;
-    for(unsigned k=c->bus->window_count;k;--k,++w) {
+    for(unsigned k=b->window_count;k;--k,++w) {
         const uint32_t o=a-w->base;
         if(o<w->size && n<=w->size-o) {
             const uint8_t* p=w->data+o;
@@ -105,8 +112,11 @@ static __attribute__((noinline)) uint32_t rd(const ctx_t* c,uint32_t a,unsigned 
                    (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
         }
     }
-    return c->bus->read(c->bus->user,a,n);
+    return b->read(b->user,a,n);
 }
+static __attribute__((noinline)) uint32_t rd1(const t3_psx_ai_bus_t* b,uint32_t a) {return rd_n(b,a,1u);}
+static __attribute__((noinline)) uint32_t rd2(const t3_psx_ai_bus_t* b,uint32_t a) {return rd_n(b,a,2u);}
+static __attribute__((noinline)) uint32_t rd4(const t3_psx_ai_bus_t* b,uint32_t a) {return rd_n(b,a,4u);}
 /* A constant guest range as host bytes, or NULL. */
 static const uint8_t* flat(const ctx_t* c,uint32_t a,uint32_t n) {
     const t3_psx_ai_window_t* w=c->bus->windows;
@@ -116,8 +126,7 @@ static const uint8_t* flat(const ctx_t* c,uint32_t a,uint32_t n) {
     }
     return 0;
 }
-static __attribute__((noinline)) void wr(const ctx_t* c,uint32_t a,unsigned n,uint32_t v) {
-    const t3_psx_ai_bus_t* b=c->bus;
+static inline __attribute__((always_inline)) void wr_n(const t3_psx_ai_bus_t* b,uint32_t a,unsigned n,uint32_t v) {
     const uint32_t r=a-b->ram_base;
     if(r<b->ram_size && n<=b->ram_size-r) {
         uint8_t* p=b->ram+r;
@@ -135,21 +144,27 @@ static __attribute__((noinline)) void wr(const ctx_t* c,uint32_t a,unsigned n,ui
         const uint32_t w=a&~3u;
         const t3_psx_ai_word_t* e=b->words+((w>>2^w>>9)&b->word_mask);
         if(e->address==w && (a&3u)+n<=4u) {
-            const uint32_t m=(n==4u?~0u:(1u<<(8u*n))-1u)<<(8u*(a&3u));
-            *e->host=(*e->host&~m)|(v<<(8u*(a&3u))&m);
+            if(n==4u) {*e->host=v;return;}
+            uint32_t m=n==2u?0xFFFFu:0xFFu;
+            if(a&2u) {m<<=16;v<<=16;}
+            if(a&1u) {m<<=8;v<<=8;}
+            *e->host=(*e->host&~m)|(v&m);
             return;
         }
     }
     b->write(b->user,a,n,v);
 }
-#define U8(a) rd(c,(uint32_t)(a),1)
-#define U16(a) rd(c,(uint32_t)(a),2)
-#define S16(a) ((int32_t)(int16_t)rd(c,(uint32_t)(a),2))
-#define U32(a) rd(c,(uint32_t)(a),4)
-#define S32(a) ((int32_t)rd(c,(uint32_t)(a),4))
-#define P8(a,v) wr(c,(uint32_t)(a),1,(uint32_t)(v))
-#define P16(a,v) wr(c,(uint32_t)(a),2,(uint32_t)(v))
-#define P32(a,v) wr(c,(uint32_t)(a),4,(uint32_t)(v))
+static __attribute__((noinline)) void wr1(const t3_psx_ai_bus_t* b,uint32_t a,uint32_t v) {wr_n(b,a,1u,v);}
+static __attribute__((noinline)) void wr2(const t3_psx_ai_bus_t* b,uint32_t a,uint32_t v) {wr_n(b,a,2u,v);}
+static __attribute__((noinline)) void wr4(const t3_psx_ai_bus_t* b,uint32_t a,uint32_t v) {wr_n(b,a,4u,v);}
+#define U8(a) rd1(c->bus,(uint32_t)(a))
+#define U16(a) rd2(c->bus,(uint32_t)(a))
+#define S16(a) ((int32_t)(int16_t)rd2(c->bus,(uint32_t)(a)))
+#define U32(a) rd4(c->bus,(uint32_t)(a))
+#define S32(a) ((int32_t)rd4(c->bus,(uint32_t)(a)))
+#define P8(a,v) wr1(c->bus,(uint32_t)(a),(uint32_t)(v))
+#define P16(a,v) wr2(c->bus,(uint32_t)(a),(uint32_t)(v))
+#define P32(a,v) wr4(c->bus,(uint32_t)(a),(uint32_t)(v))
 #define REC(off) (c->rec+(off))
 
 static int32_t h16(int32_t v) {return (int16_t)(uint16_t)(uint32_t)v;}

@@ -60,7 +60,8 @@ of record.
 | W5 pose topology | **PROMOTED**: bit-exact digest; primary +0.13/+0.16 (6/7 spans), pair 7,4 +0.11/+0.23; default is ON |
 | W6 panorama | **CLOSED**: profile captured (fit ≈70% of a 2.28 ms panorama); no exact rewrite with a measurable gain; keep the code |
 | N3 slow-image skin share | **PROMOTED (2026-11-07)**: the Master skins all of actor 1 on images with 3+ deferred ticks; whole fight 27.05 → 27.50 marked, worst segment 25.24 → 25.90, 7/7 segments ahead, 0 differing vertices over 1,184 split images |
-| Base rate | 27.50 marked / 25.90 worst segment (2026-11-07, N3; cache 8: 26.41/24.50) — the 30 img/s target is still open |
+| P1 exact tick cuts | **PROMOTED (2026-11-07)**: size-specialised AI bus reads and writes, ground angles in place; whole fight 27.50 → 27.85 marked, worst segment 25.90 → 26.10, pad hash unchanged |
+| Base rate | 27.85 marked / 26.10 worst segment (2026-11-07, P1; cache 8: 26.41/24.50) — the 30 img/s target is still open |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -722,6 +723,34 @@ at and dropped: the pre phase is not audio (sound and CD-DA together cost
 under 0.5 % on Ymir) and not leading ticks (`DEFERRED_TICKS` is 4), and an
 earlier dispatch is unsafe because `prepare_scene` reads the live simulation
 state (pose publication, camera, joint copies) before the worker starts.
+
+**P1: exact cuts to the Slave tick (2026-11-07).** The Ymir PC profile of the
+N1 run (`assets/imported/perf-n1-profile-ymir`) puts the AI's bus read `rd` at
+≈140 FRT/128 a tick (1,236 calls a profile frame, 57 % RAM, 10 % word table,
+11 % memo, 21 % windows) and `wr` at ≈43, together about half the AI. Every
+call tested the access size at run time, and the word table's part-word
+access called libgcc's variable shift. `rd1/rd2/rd4` and `wr1/wr2/wr4` are
+now one copy of the walk per size (`rd_n`/`wr_n` always inline), with part-word
+shifts as two constant tests; code is 484 bytes smaller. `t3_psx_ground_angles`
+works in place instead of copying the ≈180-byte ground state in and out (its
+one failure, atan2, comes before any write). Whole fight on Mednafen, 280 s,
+pad hash `0xb99cc280` on every run:
+
+| Step | Marked img/s | Worst segment |
+| --- | ---: | ---: |
+| N3 default (control) | 27.50 | 25.90 |
+| + AI reads/writes by size | 27.81 | 26.00 |
+| + ground angles in place | **27.85** | **26.10** |
+
+Rejected: reading the spline weight words with one range test instead of two
+byte reads (`psx_motion.c` `get_word`) measured 27.85 → 27.76 (all 7 segments
+behind), most likely code placement; reverted. Both promoted changes are
+simulation-only, so the frozen-pixel bench (no ticks) cannot see them; the
+host tests (103, including the AI and ground traces) pass and the pad hash
+holds over the whole fight. Next Master candidate: the face loop of
+`submit_instance<true>` (31 % of the Master on Ymir) scales each 16-bit index
+(`extu.w`, two shifts, a base add) per corner, twice for visible faces, and
+spills five values to the stack; pre-scaled indices would remove ≈15 % of it.
 
 Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's

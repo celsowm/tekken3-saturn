@@ -131,26 +131,29 @@ static uint8_t quadrant(uint16_t delta) {
 static uint16_t folded(uint16_t angle) {return angle&0x8000u?(uint16_t)~angle:angle;}
 int t3_psx_ground_angles(t3_psx_ground_state_t* state,const t3_psx_ground_state_t* opp,
                          const t3_psx_ground_tables_t* t) {
-    t3_psx_ground_state_t n;
+    /* In place: the only failure (atan2) comes before any write, and copying
+     * the whole state in and out cost a tick about 13 FRT/128. */
+    t3_psx_ground_state_t* n=state;
+    uint16_t target;
     if(!state || !opp || !valid(t))return 0;
-    n=*state;
-    if(!n.fixed_facing) {
-        if(!t3_psx_atan2(t,w32((int64_t)opp->root.z-n.root.z),
-                         w32((int64_t)opp->root.x-n.root.x),&n.target_dir))return 0;
-        n.opp_to_self_dir=(uint16_t)(n.target_dir-0x8000u);n.opp_heading=opp->heading;
+    if(!n->fixed_facing) {
+        if(!t3_psx_atan2(t,w32((int64_t)opp->root.z-n->root.z),
+                         w32((int64_t)opp->root.x-n->root.x),&target))return 0;
+        n->target_dir=target;
+        n->opp_to_self_dir=(uint16_t)(target-0x8000u);n->opp_heading=opp->heading;
     } else {
-        n.target_dir=n.fixed_facing_side?(uint16_t)-0x4000:0x4000u;
-        n.opp_to_self_dir=n.opp_heading=(uint16_t)(n.target_dir-0x8000u);
+        n->target_dir=n->fixed_facing_side?(uint16_t)-0x4000:0x4000u;
+        n->opp_to_self_dir=n->opp_heading=(uint16_t)(n->target_dir-0x8000u);
     }
-    n.heading_delta=(uint16_t)(n.heading-n.target_dir);
-    n.opp_heading_delta=(uint16_t)(n.opp_heading-n.opp_to_self_dir);
-    n.facing_quadrant=quadrant(n.heading_delta);n.opponent_quadrant=quadrant(n.opp_heading_delta);
-    n.relative_angle=folded(n.heading_delta);n.opp_relative_angle=folded(n.opp_heading_delta);
-    if(n.distance>512u) {
-        n.aim_dir=n.relative_angle<0x4000u?n.target_dir:(uint16_t)(n.target_dir-0x8000u);
-        n.opp_aim_dir=n.opp_relative_angle<0x4000u?n.opp_to_self_dir:(uint16_t)(n.opp_to_self_dir-0x8000u);
+    n->heading_delta=(uint16_t)(n->heading-n->target_dir);
+    n->opp_heading_delta=(uint16_t)(n->opp_heading-n->opp_to_self_dir);
+    n->facing_quadrant=quadrant(n->heading_delta);n->opponent_quadrant=quadrant(n->opp_heading_delta);
+    n->relative_angle=folded(n->heading_delta);n->opp_relative_angle=folded(n->opp_heading_delta);
+    if(n->distance>512u) {
+        n->aim_dir=n->relative_angle<0x4000u?n->target_dir:(uint16_t)(n->target_dir-0x8000u);
+        n->opp_aim_dir=n->opp_relative_angle<0x4000u?n->opp_to_self_dir:(uint16_t)(n->opp_to_self_dir-0x8000u);
     }
-    *state=n;return 1;
+    return 1;
 }
 static int16_t clamp(int32_t n,int32_t limit) {
     int32_t v=s16(n);
