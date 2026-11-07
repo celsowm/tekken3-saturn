@@ -34,8 +34,13 @@ sat_result_t t3_stage_particle_multi_begin(uint32_t frame);
 sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,const uint8_t* pattern,const uint16_t palette[16]);
 /* A false result guarantees an HUD mask cannot change this cell. */
 int t3_stage_particle_multi_has_cell(unsigned tile_x,unsigned tile_y);
-#if defined(T3_PARTICLE_COMPOSE_CHECK)
+#if defined(T3_PARTICLE_COMPOSE_CHECK) || defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+/* Every cell's position and pixels, in list order. */
 uint32_t t3_stage_particle_multi_checksum(void);
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+/* The number of cells the image currently being prepared holds. */
+unsigned t3_stage_particle_multi_cell_count(void);
+#endif
 #endif
 /* Mask pixels covered by a later opaque face in painter order. */
 sat_result_t t3_stage_particle_multi_occlude(unsigned tile_x,unsigned tile_y,const uint8_t coverage[8]);

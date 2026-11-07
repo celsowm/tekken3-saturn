@@ -90,7 +90,7 @@ def decode(raw):
         raise ValueError('truncated diagnostics')
     values = list(struct.unpack_from('>' + 'I' * WORDS, raw))
     result = dict(zip(PREFIX, values[:len(PREFIX)]))
-    if result['magic'] != 0x54334431 or result['version'] not in range(12,25):
+    if result['magic'] != 0x54334431 or result['version'] not in range(12,27):
         raise ValueError('unsupported diagnostics magic/version')
     at = len(PREFIX)
     for name in PAIRS:
@@ -146,8 +146,10 @@ def symbols(elf, nm):
 
 
 def decode_panic(raw):
-    if len(raw)!=44:raise ValueError('truncated native panic record')
-    magic,code,line,filename=struct.unpack('>Iii32s',raw)
+    # The record grew from 44 to 80 bytes when sat_panic_info_t gained the
+    # last-refusal origin; the prefix is unchanged and enough to identify it.
+    if len(raw)<44:raise ValueError('truncated native panic record')
+    magic,code,line,filename=struct.unpack('>Iii32s',raw[:44])
     if magic!=0x50414E43:return None
     return dict(code=code,line=line,file=filename.split(b'\0',1)[0].decode('utf-8',errors='replace'))
 

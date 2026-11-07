@@ -99,6 +99,19 @@ static t3_psx_fight_camera_config_t g_camera_config;
 static t3_psx_ai_game_t g_ai;
 /* AiUpdate cost on the Slave, in FRT ticks (prescaler /128: 3,728 per 60 Hz frame). */
 volatile uint32_t g_t3_ai_calls,g_t3_ai_ticks,g_t3_ai_max_ticks,g_t3_ai_reads,g_t3_ai_conditions;
+#if defined(T3_AI_RING)
+/* W2.1 of docs/POST_VRAM_FRAME_RATE_PLAN.md (P2): the eight slowest AiUpdate
+ * calls of the run plus a slow-call histogram, sampled from the same FRT
+ * bracket. The median update is cheap; the question is what the rare ~0.85
+ * field call is doing, which a last-N ring cannot answer after 8,000 updates. */
+typedef struct {
+    uint32_t spent,tick,reads,conditions,misses;
+    uint16_t fighter,slot,window,picks,held,pressed;
+} t3_ai_ring_event_t;
+volatile t3_ai_ring_event_t g_t3_ai_ring[8];
+volatile uint32_t g_t3_ai_ring_events,g_t3_ai_ring_over_half,g_t3_ai_ring_over_field;
+static uint32_t g_ai_ring_reads[2],g_ai_ring_conditions[2],g_ai_ring_misses[2];
+#endif
 /* Hash of the pads of the first 2,000 updates: an AI speed-up must leave it unchanged. */
 volatile uint32_t g_t3_ai_pad_hash;
 static uint16_t g_ai_started;
@@ -114,14 +127,82 @@ static void t3_cpu_tape_step(uint32_t tick,t3_input_t in) {
     g_t3_cpu_tape_count=n+1u;
 }
 #endif
+#if defined(T3_AI_TRACE)
+/* W2.2: every bus read of every AiUpdate lands in a rolling ring; when an
+ * update beats the worst-FRT record, the reads of that update are copied out.
+ * The save state then shows exactly which addresses the ~0.85-field scan hit. */
+#define T3_AI_TRACE_ENTRIES 1024u
+volatile uint32_t g_t3_ai_trace_ring[T3_AI_TRACE_ENTRIES*2];
+volatile uint32_t g_t3_ai_trace_worst[T3_AI_TRACE_ENTRIES*2];
+volatile uint32_t g_t3_ai_trace_pos,g_t3_ai_trace_worst_reads,g_t3_ai_trace_worst_spent;
+volatile uint32_t g_t3_ai_trace_worst_fighter,g_t3_ai_trace_worst_tick;
+static uint32_t g_ai_trace_start[2];
+static void ai_trace(t3_psx_ai_game_t* ai,uint32_t address,unsigned size,uint32_t value) {
+    (void)ai;(void)value;
+    const uint32_t slot=g_t3_ai_trace_pos&(T3_AI_TRACE_ENTRIES-1u);
+    g_t3_ai_trace_ring[slot*2u]=address;
+    g_t3_ai_trace_ring[slot*2u+1u]=size;
+    ++g_t3_ai_trace_pos;
+}
+#endif
 static void ai_clock(t3_psx_ai_game_t* ai,unsigned fighter,int after) {
     (void)fighter;
-    if(!after){g_ai_started=sat_time_frc();return;}
+    if(!after){
+        g_ai_started=sat_time_frc();
+#if defined(T3_AI_TRACE)
+        g_ai_trace_start[fighter<2u?fighter:0u]=g_t3_ai_trace_pos;
+#endif
+        return;
+    }
     const uint32_t spent=(uint16_t)(sat_time_frc()-g_ai_started);
+#if defined(T3_AI_TRACE)
+    if(spent>g_t3_ai_trace_worst_spent){
+        const unsigned f=fighter<2u?fighter:0u;
+        const uint32_t start=g_ai_trace_start[f];
+        uint32_t count=g_t3_ai_trace_pos-start;
+        if(count>T3_AI_TRACE_ENTRIES)count=T3_AI_TRACE_ENTRIES;
+        for(uint32_t i=0;i<count;++i){
+            const uint32_t slot=(start+i)&(T3_AI_TRACE_ENTRIES-1u);
+            g_t3_ai_trace_worst[i*2u]=g_t3_ai_trace_ring[slot*2u];
+            g_t3_ai_trace_worst[i*2u+1u]=g_t3_ai_trace_ring[slot*2u+1u];
+        }
+        g_t3_ai_trace_worst_reads=count;
+        g_t3_ai_trace_worst_spent=spent;
+        g_t3_ai_trace_worst_fighter=f;
+        g_t3_ai_trace_worst_tick=ai->match?(uint32_t)ai->match->ticks:0u;
+    }
+#endif
     if(g_t3_ai_calls<2000u)g_t3_ai_pad_hash=g_t3_ai_pad_hash*31u+((uint32_t)ai->held<<16|ai->pressed);
     ++g_t3_ai_calls;g_t3_ai_ticks+=spent;
     g_t3_ai_reads=ai->reads;g_t3_ai_conditions=ai->conditions;
     if(spent>g_t3_ai_max_ticks)g_t3_ai_max_ticks=spent;
+#if defined(T3_AI_RING)
+    {
+        const unsigned f=fighter<2u?fighter:0u;
+        const uint32_t reads=ai->reads,conditions=ai->conditions,misses=ai->misses;
+        const uint32_t tick=ai->match?(uint32_t)ai->match->ticks:0u;
+        unsigned victim=0u;
+        ++g_t3_ai_ring_events;
+        if(spent>=1864u)++g_t3_ai_ring_over_half;
+        if(spent>=3728u)++g_t3_ai_ring_over_field;
+        for(unsigned i=1u;i<8u;++i)
+            if(g_t3_ai_ring[i].spent<g_t3_ai_ring[victim].spent)victim=i;
+        if(spent>g_t3_ai_ring[victim].spent){
+            g_t3_ai_ring[victim].spent=spent;
+            g_t3_ai_ring[victim].tick=tick;
+            g_t3_ai_ring[victim].reads=reads-g_ai_ring_reads[f];
+            g_t3_ai_ring[victim].conditions=conditions-g_ai_ring_conditions[f];
+            g_t3_ai_ring[victim].misses=misses-g_ai_ring_misses[f];
+            g_t3_ai_ring[victim].fighter=(uint16_t)f;
+            g_t3_ai_ring[victim].slot=(uint16_t)(uint8_t)ai->slot[f];
+            g_t3_ai_ring[victim].window=(uint16_t)ai->window_count;
+            g_t3_ai_ring[victim].picks=(uint16_t)ai->pick_index[f];
+            g_t3_ai_ring[victim].held=ai->held;
+            g_t3_ai_ring[victim].pressed=ai->pressed;
+        }
+        g_ai_ring_reads[f]=reads;g_ai_ring_conditions[f]=conditions;g_ai_ring_misses[f]=misses;
+    }
+#endif
 }
 static uint8_t g_cpu_mask=2u,g_cpu_level=4u;
 static uint16_t g_cpu_difficulty=1u;
@@ -566,6 +647,9 @@ void t3_move_probe_reset(unsigned round) {
         t3_psx_ai_game_place_banks(&g_ai,g_bank.bank_type,g_bank.bank_type,1);
 #endif
         g_ai.observe=ai_clock;
+#if defined(T3_AI_TRACE)
+        g_ai.trace=ai_trace;
+#endif
         g_owned_config.ai=&g_ai;
     }
 #endif

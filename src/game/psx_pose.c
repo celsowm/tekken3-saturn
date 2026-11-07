@@ -177,12 +177,38 @@ int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PART
     if (!parts || !slots || !root || !out || !valid_parts ||
         !valid_vec(root->origin) || (valid_slots>>T3_PSX_ROTATION_SLOTS))
         return 0;
+#if defined(T3_POSE_TOPOLOGY_FAST)
+    /* W5.2/W5.3 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the part table is
+     * imported, immutable data. The parent/slot/offset checks cannot change
+     * between ticks, so they run once per array address and the per-tick loop
+     * keeps only the pose checks. Failure still returns 0 before any output. */
+    static const t3_psx_part_t* checked_parts;
+    static uint32_t checked_ok;
+    if(parts!=checked_parts) {
+        for(i=0;i<T3_PSX_DRAW_PARTS;++i) {
+            const t3_psx_part_t* p=&parts[i];
+            if(p->parent < -1 || p->parent >= (int)i ||
+               p->slot>=T3_PSX_DRAW_PARTS || !valid_vec(p->offset)) {
+                checked_ok=0u;checked_parts=parts;
+                return 0;
+            }
+        }
+        checked_ok=1u;checked_parts=parts;
+    }
+    const uint32_t topology_ok=checked_ok;
+#endif
     for(i=0;i<T3_PSX_DRAW_PARTS;++i) {
         const t3_psx_part_t* p=&parts[i];
         const t3_psx_joint_t* par;
+#if !defined(T3_POSE_TOPOLOGY_FAST)
         if(p->parent < -1 || p->parent >= (int)i ||
            p->slot>=T3_PSX_DRAW_PARTS || !valid_vec(p->offset))
             return 0;
+#else
+        if(!topology_ok && (p->parent < -1 || p->parent >= (int)i ||
+           p->slot>=T3_PSX_DRAW_PARTS || !valid_vec(p->offset)))
+            return 0;
+#endif
         /* Slots 18..21 are costume-attachment rotations: no IK/FK
          * equivalent until attachment dynamics are implemented. */
         if(p->slot>=T3_PSX_ROTATION_SLOTS ||

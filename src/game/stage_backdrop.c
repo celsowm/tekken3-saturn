@@ -8,6 +8,16 @@
  * no FPU. Values are 32-bit, products go through the SH-2's 32x32->64
  * multiplier, and every division through its 64/32 divider. */
 #include "stage_backdrop.h"
+#if defined(__sh__) && defined(T3_STAGE_SPLIT_PROBE)
+/* W6.1 detail: keys (fit) versus the per-line interpolation, FRT /128. */
+volatile uint32_t g_t3_backdrop_split[2];
+extern uint16_t sat_time_frc(void);
+#define BD_SPLIT_START(name) const uint16_t name=sat_time_frc()
+#define BD_SPLIT_ADD(slot,name) (g_t3_backdrop_split[slot]+=(uint16_t)(sat_time_frc()-(name)))
+#else
+#define BD_SPLIT_START(name) do{}while(0)
+#define BD_SPLIT_ADD(slot,name) do{}while(0)
+#endif
 
 #define ONE 65536
 /* |right.y| above this (16.16) is a rolled camera, as in the VDP2 floor. */
@@ -244,6 +254,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
     }
     /* Fitted lines at 0, KEY, 2 KEY, ... up to the last screen line. */
     key_count=(b->height-1u+KEY-1u)/KEY+1u;
+    BD_SPLIT_START(fit_started);
     for(unsigned j=0;j<key_count;++j) {
         keys[j]=fit(&w,(int32_t)(2*KEY*j)+2*vertical_offset);
         if(keys[j].ok && !keys[first_ok].ok)first_ok=j;
@@ -253,6 +264,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
             keys[j].column=before->column+nearest(keys[j].column-before->column,w.wrap);
         }
     }
+    BD_SPLIT_ADD(0,fit_started);
     if(!keys[first_ok].ok) {
         for(unsigned n=0;n<b->height/step;++n) {
             lines[n]=(t3_stage_backdrop_line_t){0,0,ONE};
@@ -270,6 +282,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
     count=b->height/step;
     top=(int32_t)(step-1)*ONE/2;bottom=((int32_t)b->rows-1)*ONE-top;
     /* One segment between fitted lines j and j + 1 at a time. */
+    BD_SPLIT_START(interp_started);
     for(unsigned n=0;n<count;) {
         /* Screen line y (in half dots) at the group's centre. */
         const unsigned y2=2*n*step+step-1;
@@ -307,6 +320,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
             for(unsigned i=first;i<end;++i,depth_at+=depth_step)wall_depth[i]=depth_at;
         }
     }
+    BD_SPLIT_ADD(1,interp_started);
     return 1;
 }
 int t3_stage_backdrop_lines(const t3_stage_backdrop_t* b,const int32_t m[16],const int32_t eye[3],

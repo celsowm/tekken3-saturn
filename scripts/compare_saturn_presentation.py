@@ -14,7 +14,7 @@ VARIABLE_FIELDS = frozenset((
     'frame_work_ms', 'render_work_ms', 'skin_work_ms', 'submitted_frames',
     'snapshot_epoch', 'late_swaps', 'draw_waits', 'commands_used',
     'elapsed_fields_last', 'observed_fields', 'discarded_fields', 'scheduled_ticks',
-    'local_pose_cache'))
+    'local_pose_cache', 'images_at_tick_mark', 'fields_at_tick_mark'))
 MODEL_CROP = (0, 61, 320, 196)
 BOOT_FIELDS = ('sh2_cache_emulation', 'nominal_refresh_hz',
                'sh2_clock_factor_num', 'sh2_clock_factor_den')

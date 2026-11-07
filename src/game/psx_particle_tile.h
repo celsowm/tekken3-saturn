@@ -37,6 +37,13 @@ typedef enum { T3_PARTICLE_TILE_UNSUPPORTED=0, T3_PARTICLE_TILE_OK=1,
                T3_PARTICLE_TILE_CAPACITY=2 } t3_particle_tile_status_t;
 t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_probe_t* out,
     const t3_psx_particle_quad_t* quad,const uint8_t pattern[128],const uint16_t palette[16]);
+/* As above, with map[y][x] holding each allocated cell's index (0xFF when
+ * absent) for the canvas as it is on entry. The map is read only before the
+ * list changes (after a compaction the lookups scan the list), so the caller
+ * updates it after the call. NULL scans the list. */
+t3_particle_tile_status_t t3_particle_tile_accumulate_mapped(t3_particle_tile_probe_t* out,
+    const t3_psx_particle_quad_t* quad,const uint8_t pattern[128],const uint16_t palette[16],
+    const uint8_t (*map)[40]);
 /* Clear accumulated additive pixels covered by a later opaque fighter face.
  * Each mask row covers one 8-pixel cell, bit 7 first. An absent particle
  * tile is a successful no-op. The caller supplies actual opaque coverage;

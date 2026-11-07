@@ -209,19 +209,65 @@ volatile uint32_t g_t3_slave_sim_wait_ms,g_t3_slave_sim_max_wait_ms;
 #endif
 /* T3_SLAVE_FRT_PROBE: Slave FRT (/128) totals, read from a Mednafen save
  * state (scripts/mednafen_state.py): [0] ticks, [1] actor preparation,
- * [2] stage tables, [3] stage builds by the Slave, [4] by the Master. Off by
- * default: High WRAM has no room for the code. */
+ * [2] stage tables, [3] stage builds by the Slave, [4] by the Master,
+ * [5] the cache purge at simulation entry, [6] its call count, [7] its worst
+ * call. Off by default: the probe is a measurement build, never a release. */
 #if defined(T3_SLAVE_FRT_PROBE)
-volatile uint32_t g_t3_slave_frt[5] __attribute__((section(".wram_l")));
+volatile uint32_t g_t3_slave_frt[8] __attribute__((section(".wram_l")));
 #define SLAVE_FRT_START(name) const uint16_t name=sat_time_frc()
 #define SLAVE_FRT_ADD(slot,name) (g_t3_slave_frt[slot]+=(uint16_t)(sat_time_frc()-(name)))
 #define SLAVE_FRT_COUNT(slot) (++g_t3_slave_frt[slot])
-#define SLAVE_FRT_RESET() do{for(unsigned i_=0;i_<5u;++i_)g_t3_slave_frt[i_]=0;}while(0)
+#define SLAVE_FRT_RESET() do{for(unsigned i_=0;i_<8u;++i_)g_t3_slave_frt[i_]=0;}while(0)
 #else
 #define SLAVE_FRT_START(name) do{}while(0)
 #define SLAVE_FRT_ADD(slot,name) do{}while(0)
 #define SLAVE_FRT_COUNT(slot) do{}while(0)
 #define SLAVE_FRT_RESET() do{}while(0)
+#endif
+#if defined(T3_EFFECT_RING)
+/* W3.2 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the cost of every effect image
+ * (an image with visible hit particles), keeping the worst 32 by total FRT.
+ * One record is EFFECT_RING_FIELDS words:
+ *  0 tick, 1 image serial, 2 particles total, 3 particles visible,
+ *  4 live fighter faces, 5 sorted OT entries, 6 mixed-OT FRT,
+ *  7 coverage FRT, 8 OT sort FRT, 9 compose FRT, 10 particle prepare FRT,
+ *  11 flush FRT, 12 VDP1 commands, 13 faces submitted, 14 sim ticks,
+ *  15 original projection calls, 16 faces examined, 17 faces in front of
+ * the farthest particle. */
+enum { EFFECT_RING_FIELDS=20u, EFFECT_RING_SLOTS=32u };
+volatile uint32_t g_t3_effect_ring[EFFECT_RING_FIELDS*EFFECT_RING_SLOTS];
+volatile uint32_t g_t3_effect_ring_count,g_t3_effect_ring_worst,g_t3_effect_ring_images;
+static uint32_t g_effect_prev_projection;
+static uint32_t effect_ring_cost(const uint32_t* rec) {
+    return rec[6]+rec[10]+rec[11];
+}
+static void effect_ring_add(const uint32_t* rec) {
+    ++g_t3_effect_ring_images;
+    const uint32_t cost=effect_ring_cost(rec);
+    if(g_t3_effect_ring_count<EFFECT_RING_SLOTS) {
+        uint32_t* slot=&g_t3_effect_ring[g_t3_effect_ring_count*EFFECT_RING_FIELDS];
+        for(unsigned i=0;i<EFFECT_RING_FIELDS;++i)slot[i]=rec[i];
+        ++g_t3_effect_ring_count;
+        if(g_t3_effect_ring_count==EFFECT_RING_SLOTS) {
+            uint32_t min=0xffffffffu;
+            for(unsigned s=0;s<EFFECT_RING_SLOTS;++s) {
+                const uint32_t c=effect_ring_cost(&g_t3_effect_ring[s*EFFECT_RING_FIELDS]);
+                if(c<min)min=c;
+            }
+            g_t3_effect_ring_worst=min;
+        }
+        return;
+    }
+    if(cost<=g_t3_effect_ring_worst)return;
+    unsigned slot=0;uint32_t min=cost;
+    for(unsigned s=0;s<EFFECT_RING_SLOTS;++s) {
+        const uint32_t c=effect_ring_cost(&g_t3_effect_ring[s*EFFECT_RING_FIELDS]);
+        if(c<min){min=c;slot=s;}
+    }
+    uint32_t* dst=&g_t3_effect_ring[slot*EFFECT_RING_FIELDS];
+    for(unsigned i=0;i<EFFECT_RING_FIELDS;++i)dst[i]=rec[i];
+    g_t3_effect_ring_worst=min;
+}
 #endif
 static sat_scene_t g_scene;
 /* Scene scratch uses the Saturn's existing second MiB. Keep authored banks
@@ -522,6 +568,17 @@ static void floor_tiles(void) {
  * flushed the scene and drawn the HUD, the Slave once its ticks are done. */
 static uint8_t g_stage_on_worker,g_stage_by_master;
 static volatile uint8_t g_stage_claim;
+/* The image's deferred-tick count: read by the W4.2 policies and by the W4.1
+ * probe. One store per image when no probe is built in. */
+static uint8_t g_stage_deferred;
+#if defined(T3_STAGE_OWNER_PROBE)
+/* W4.1 of docs/POST_VRAM_FRAME_RATE_PLAN.md: per deferred-tick bucket, who
+ * built the stage tables and how long it took (FRT /128). Row 0 is the
+ * Master, row 1 the Slave; read from a Mednafen save state. */
+volatile uint32_t g_stage_owner_claims[2][7],g_stage_owner_ftr[2][7];
+volatile uint32_t g_stage_owner_worst[2];
+#define STAGE_OWNER_BUCKET() (g_stage_deferred>6u?6u:g_stage_deferred)
+#endif
 static sat_result_t stage_build(void) {
     return t3_stage_vdp2_prepare(&g_camera,g_stage_input[0],g_stage_input[1],g_stage_input[2]);
 }
@@ -539,19 +596,56 @@ static void stage_prepare(void) {
     if(!g_stage_on_worker)SAT_PANIC_IF_ERROR(stage_build());
 }
 static sat_result_t stage_worker(void) {
+#if T3_STAGE_SLAVE_SKIP_DEFERRED > 0
+    /* W4.2 prototype: on images that deferred few ticks, leave the stage to
+     * the Master's window and keep this short chain free of the (~4.6 ms)
+     * build. 0 disables the policy. */
+    if(g_stage_deferred<=T3_STAGE_SLAVE_SKIP_DEFERRED)return SAT_OK;
+#endif
     if(!stage_claim())return SAT_OK;
+#if defined(T3_STAGE_OWNER_PROBE)
+    const uint16_t owner_started=sat_time_frc();
+#endif
     SLAVE_FRT_START(started);
     const sat_result_t st=stage_build();
     SLAVE_FRT_ADD(2,started);
     SLAVE_FRT_COUNT(3);
+#if defined(T3_STAGE_OWNER_PROBE)
+    {
+        const uint8_t bucket=STAGE_OWNER_BUCKET();
+        const uint32_t spent=(uint16_t)(sat_time_frc()-owner_started);
+        ++g_stage_owner_claims[1][bucket];
+        g_stage_owner_ftr[1][bucket]+=spent;
+        if(spent>g_stage_owner_worst[1])g_stage_owner_worst[1]=spent;
+    }
+#endif
     return st;
 }
 static void stage_before_join(void) {
 #if defined(T3_STAGE_FORCE_SLAVE_PROBE)
     g_stage_by_master=0;
 #else
+#if T3_STAGE_MASTER_MIN_DEFERRED > 1
+    /* W4.2 prototype: leave the stage to the Slave's chain unless this image
+     * deferred at least T3_STAGE_MASTER_MIN_DEFERRED ticks to it. */
+    if(g_stage_deferred<T3_STAGE_MASTER_MIN_DEFERRED)g_stage_by_master=0;
+    else
+#endif
     g_stage_by_master=stage_claim();
-    if(g_stage_by_master){SAT_PANIC_IF_ERROR(stage_build());SLAVE_FRT_COUNT(4);}
+    if(g_stage_by_master){
+#if defined(T3_STAGE_OWNER_PROBE)
+        const uint16_t stage_started=sat_time_frc();
+#endif
+        SAT_PANIC_IF_ERROR(stage_build());
+        SLAVE_FRT_COUNT(4);
+#if defined(T3_STAGE_OWNER_PROBE)
+        const uint32_t spent=(uint16_t)(sat_time_frc()-stage_started);
+        const uint8_t bucket=STAGE_OWNER_BUCKET();
+        ++g_stage_owner_claims[0][bucket];
+        g_stage_owner_ftr[0][bucket]+=spent;
+        if(spent>g_stage_owner_worst[0])g_stage_owner_worst[0]=spent;
+#endif
+    }
 #endif
 }
 static sat_result_t stage_sync(void) {return g_stage_by_master?SAT_OK:t3_stage_vdp2_sync();}
@@ -1121,7 +1215,20 @@ static sat_parallel_handle_t g_prepare_handle;
 extern void t3_prepare_worker_entry(void);
 static sat_result_t prepare_simulation_entry(const void* input,uint32_t bytes,void* output,
         uint32_t capacity,uint32_t* written) {
+#if defined(T3_SLAVE_FRT_PROBE)
+    /* W1.1: is the unconditional purge recoverable latency? One FRT tick is
+     * 1/28.636 MHz; a field is 3,728 ticks. */
+    SLAVE_FRT_START(purge_started);
     sat_parallel_purge_cache(); /* the worker reads the Master's cached data */
+    SLAVE_FRT_ADD(5,purge_started);
+    SLAVE_FRT_COUNT(6);
+    {
+        const uint32_t purge=(uint16_t)(sat_time_frc()-purge_started);
+        if(purge>g_t3_slave_frt[7])g_t3_slave_frt[7]=purge;
+    }
+#else
+    sat_parallel_purge_cache(); /* the worker reads the Master's cached data */
+#endif
     SLAVE_FRT_START(prep_started);
     t3_prepare_worker_entry();
     SLAVE_FRT_ADD(1,prep_started);
@@ -2064,6 +2171,7 @@ int main(void) {
         const sat_pad_state_t simulation_pads[2]={pad0,pad1};
         const uint32_t deferred=g_game.total_ticks==0?0u:(ticks<DEFERRED_TICKS?ticks:DEFERRED_TICKS);
         const uint32_t leading=ticks-deferred;
+        g_stage_deferred=(uint8_t)(deferred>6u?6u:deferred);
         sat_parallel_handle_t simulation_handle=0;
         if(leading) {
             SAT_PANIC_IF_ERROR(simulation_submit(simulation_pads,0,leading,&simulation_handle));
@@ -2131,8 +2239,17 @@ int main(void) {
                 SAT_PANIC_IF_ERROR(simulation_submit(simulation_pads,leading,deferred,&simulation_handle));
         }
 #endif
+#if defined(T3_EFFECT_RING)
+        uint32_t particle_prepare_frt=0u,mixed_ot_frt=0u,flush_frt=0u;
+#endif
 #if defined(T3_PARTICLE_PREPARE)
+#if defined(T3_EFFECT_RING)
+        const uint16_t particle_prepare_started_frc=sat_time_frc();
+#endif
         SAT_PANIC_IF_ERROR(t3_particle_prepare_image());
+#if defined(T3_EFFECT_RING)
+        particle_prepare_frt=(uint16_t)(sat_time_frc()-particle_prepare_started_frc);
+#endif
 #if defined(T3_PARTICLE_TICK_AUDIT)
         if(g_t3_prepared_particles.visible && g_t3_particle_tick_audit_count<32u) {
             const unsigned i=g_t3_particle_tick_audit_count++;
@@ -2142,14 +2259,26 @@ int main(void) {
         }
 #endif
 #if defined(T3_MIXED_OT_DIAGNOSTIC)
+#if defined(T3_EFFECT_RING)
+        const uint16_t mixed_ot_started_frc=sat_time_frc();
+#endif
         SAT_PANIC_IF_ERROR(t3_characters_mixed_ot(&g_scene,g_t3_prepared_particles.draw,
                                                    g_t3_prepared_particles.count));
+#if defined(T3_EFFECT_RING)
+        mixed_ot_frt=(uint16_t)(sat_time_frc()-mixed_ot_started_frc);
+#endif
 #endif
 #endif
 #if defined(T3_NATIVE_WAIT_PROBE)
         const uint16_t native_flush_started=sat_time_frc();
 #endif
+#if defined(T3_EFFECT_RING)
+        const uint16_t flush_started_frc=sat_time_frc();
+#endif
         flush_scene();
+#if defined(T3_EFFECT_RING)
+        flush_frt=(uint16_t)(sat_time_frc()-flush_started_frc);
+#endif
 #if defined(T3_OVERLAY_RESERVATION_SELFTEST)
         if(!g_t3_overlay_reservation_selftest[0] && g_game.total_ticks>=45u)
             SAT_PANIC_IF_ERROR(overlay_reservation_selftest());
@@ -2205,6 +2334,40 @@ int main(void) {
             publish_diagnostics(work_started_ms, ticks, pads);
         }
         T3_PERF_ADD(diagnostics,diagnostics_started);
+#if defined(T3_EFFECT_RING)
+        /* One record per effect image (an image with visible hit particles).
+         * The commands and face counts are the ones just published. */
+        if(g_t3_prepared_particles.visible) {
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+            const uint32_t projections=g_t3_original_projected[0]+g_t3_original_projected[1];
+#else
+            const uint32_t projections=g_effect_prev_projection;
+#endif
+            uint32_t rec[EFFECT_RING_FIELDS];
+            rec[0]=g_game.total_ticks;
+            rec[1]=g_render_submissions;
+            rec[2]=g_t3_prepared_particles.count;
+            rec[3]=g_t3_prepared_particles.visible;
+            rec[4]=g_t3_mixed_ot_faces_last;
+            rec[5]=g_t3_mixed_ot_entries_last;
+            rec[6]=mixed_ot_frt;
+            rec[7]=g_t3_mixed_ot_frt[0];
+            rec[8]=g_t3_mixed_ot_frt[1];
+            rec[9]=g_t3_mixed_ot_frt[2];
+            rec[10]=particle_prepare_frt;
+            rec[11]=flush_frt;
+            rec[12]=g_t3_diagnostics.commands_used;
+            rec[13]=g_t3_diagnostics.faces_submitted;
+            rec[14]=ticks;
+            rec[15]=projections-g_effect_prev_projection;
+            rec[16]=g_t3_mixed_ot_considered_last;
+            rec[17]=g_t3_mixed_ot_depth_last;
+            rec[18]=g_t3_mixed_ot_cover_particles_frt;
+            rec[19]=g_t3_mixed_ot_compose_faces_frt;
+            g_effect_prev_projection=projections;
+            effect_ring_add(rec);
+        }
+#endif
         T3_PERF_START(present_started);
         const uint32_t end_frame_started=sat_time_ms();
 #if defined(T3_VDP2_FLOOR)

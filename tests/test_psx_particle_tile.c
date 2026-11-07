@@ -139,8 +139,52 @@ static void check_intersects_reference(void) {
         assert(t3_particle_tile_intersects(&tiles,0,left,top,right,bottom)==want);
     }
 }
+/* The mapped lookup must build the same canvas as the list scan, through
+ * random sprites, occlusions that empty cells, and the compactions they allow.
+ * The map is maintained the way stage_vdp2.c does it. */
+static void rebuild_map(uint8_t map[28][40],const t3_particle_tile_probe_t* canvas) {
+    memset(map,0xff,28*40);
+    for(unsigned i=0;i<canvas->count;++i)map[canvas->tile_y[i]][canvas->tile_x[i]]=(uint8_t)i;
+}
+static void check_mapped_lookup(void) {
+    static t3_particle_tile_probe_t scanned,mapped;uint8_t map[28][40];
+    uint32_t rng=0x1234567u;unsigned compactions=0;
+    uint8_t pattern[128];uint16_t palette[16];
+    for(unsigned i=0;i<128;++i)pattern[i]=(uint8_t)(i*53u+7u);
+    for(unsigned i=0;i<16;++i)palette[i]=i?(uint16_t)(0x8000u+i*97u):0;
+    for(unsigned trial=0;trial<200;++trial) {
+        memset(&scanned,0,sizeof scanned);memset(&mapped,0,sizeof mapped);rebuild_map(map,&mapped);
+        for(unsigned event=0;event<80;++event) {
+            rng=rng*1664525u+1013904223u;
+            if((rng>>28)<5u && mapped.count) {
+                /* Clear a whole cell, as a face covering it does. */
+                const unsigned tile=(rng>>8)%mapped.count;uint8_t full[8];memset(full,0xff,sizeof full);
+                assert(t3_particle_tile_occlude_index(&scanned,tile,full));
+                assert(t3_particle_tile_occlude_index(&mapped,tile,full));
+                continue;
+            }
+            t3_psx_particle_quad_t q={0};q.visible=1;
+            const int x=(int)((rng>>4)%400u)-20,y=(int)((rng>>13)%470u)+10,w=(int)((rng>>22)%28u)+4;
+            q.xy[0][0]=q.xy[2][0]=(int16_t)x;q.xy[1][0]=q.xy[3][0]=(int16_t)(x+w);
+            q.xy[0][1]=q.xy[1][1]=(int16_t)y;q.xy[2][1]=q.xy[3][1]=(int16_t)(y+w);
+            const unsigned before=mapped.compactions,old_count=mapped.count;
+            const t3_particle_tile_status_t a=t3_particle_tile_accumulate_status(&scanned,&q,pattern,palette);
+            const t3_particle_tile_status_t b=t3_particle_tile_accumulate_mapped(&mapped,&q,pattern,palette,
+                (const uint8_t (*)[40])map);
+            assert(a==b);
+            if(mapped.compactions!=before){++compactions;rebuild_map(map,&mapped);}
+            else for(unsigned i=old_count;i<mapped.count;++i)map[mapped.tile_y[i]][mapped.tile_x[i]]=(uint8_t)i;
+            assert(scanned.count==mapped.count && scanned.compactions==mapped.compactions);
+            assert(!memcmp(scanned.tile_x,mapped.tile_x,sizeof scanned.tile_x));
+            assert(!memcmp(scanned.tile_y,mapped.tile_y,sizeof scanned.tile_y));
+            assert(!memcmp(scanned.pixels,mapped.pixels,sizeof scanned.pixels));
+        }
+    }
+    assert(compactions>0);
+}
 int main(void) {
     check_intersects_reference();
+    check_mapped_lookup();
     assert(t3_psx_viewport_x(0)==0 && t3_psx_viewport_x(192)==167 && t3_psx_viewport_x(368)==320);
     assert(t3_psx_viewport_y(20)==0 && t3_psx_viewport_y(240)==110 && t3_psx_viewport_y(468)==224);
     uint8_t patch[64]={0},coverage[8]={0};patch[0]=1;patch[7]=255;patch[12]=8;

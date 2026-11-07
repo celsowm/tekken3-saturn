@@ -67,6 +67,7 @@ def main():
     # Images per second between consecutive reached marks: the same stretch of the deterministic
     # fight in every build, without the loading time a whole-lifetime rate includes.
     segments = []
+    reached = []
     if marks:
         at_images, at_fields = diagnostics[-2 * marks:-marks], diagnostics[-marks:]
         reached = [(i, f) for i, f in zip(at_images, at_fields) if i]
@@ -76,6 +77,7 @@ def main():
                     marked_images_per_second=round((reached[-1][0] - reached[0][0]) * 60 / span, 2) if span else None,
                     worst_segment=min(segments) if segments else None)
     report = dict(seconds=args.seconds, images=images, **vdp1,
+                  marks=reached,
                   images_per_second=round(images * 60 / observed, 2) if observed else None,
                   observed_fields=observed, discarded_fields=discarded,
                   discarded_percent=round(discarded * 100 / observed, 2) if observed else None, ticks=ticks,

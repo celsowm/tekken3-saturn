@@ -796,7 +796,8 @@ static void census_particle_faces(const sat_scene_t* scene,const t3_psx_particle
 #endif
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,
-    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first);
+    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first,
+    const uint16_t* face_slots,unsigned face_entries);
 volatile uint32_t g_t3_ordered_mask_images,g_t3_ordered_mask_fallbacks,g_t3_ordered_mask_particles;
 volatile uint32_t g_t3_ordered_mask_drawn_images,g_t3_ordered_mask_drawn_particles;
 volatile uint32_t g_t3_ordered_mask_face_failures,g_t3_ordered_mask_particle_failures;
@@ -816,6 +817,35 @@ static sat_result_t ordered_particle_result(sat_result_t status,unsigned* drawn)
 #endif
 volatile uint32_t g_t3_mixed_ot_frames,g_t3_mixed_ot_particles,g_t3_mixed_ot_shared,g_t3_mixed_ot_last;
 volatile uint32_t g_t3_mixed_ot_verified,g_t3_mixed_ot_peak;
+#if defined(T3_EFFECT_RING)
+/* W3.2 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the last image's mixed-OT
+ * counts (live fighter faces, sorted entries) and the FRT split of the
+ * three phases (coverage test, OT sort, compose). Read from a save state. */
+volatile uint32_t g_t3_mixed_ot_faces_last,g_t3_mixed_ot_entries_last;
+volatile uint32_t g_t3_mixed_ot_frt[3];
+/* W3.2 split of the coverage phase: the particle bounds loop (the rest is the
+ * face loop), ring field 18. Split of compose: the face masks, ring field 19
+ * (the rest is the particle cells and the HUD occlusion). */
+volatile uint32_t g_t3_mixed_ot_cover_particles_frt,g_t3_mixed_ot_compose_faces_frt;
+/* The faces the mixed OT examined, and those that reached the coverage test
+ * (in front of the farthest particle). The rest are dropped by depth alone. */
+volatile uint32_t g_t3_mixed_ot_considered_last,g_t3_mixed_ot_depth_last;
+#endif
+#if defined(T3_MIXED_OT_LIVE_ENTRIES)
+/* W3.3 of docs/POST_VRAM_FRAME_RATE_PLAN.md: only the faces that survive
+ * the coverage test enter the OT, so the entry list is short. The slot of
+ * every live face is kept: the compacted entry index is not the face index. */
+static uint16_t g_mixed_ot_face_slots[MIXED_OT_CAP];
+#endif
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+/* W3.4 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the compacted entry list must
+ * publish the same cells as the full list. Both lists are built, sorted
+ * and composed in the same image, in the same field, and the published
+ * cells are compared; the compacted image is the one that stays up. */
+volatile uint32_t g_t3_live_entries_check_images,g_t3_live_entries_check_mismatch;
+volatile uint32_t g_t3_live_entries_check_sum[2],g_t3_live_entries_check_entries[2];
+volatile uint32_t g_t3_live_entries_check_faces[2],g_t3_live_entries_check_cells[2];
+#endif
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
 volatile uint32_t g_t3_mixed_ot_empty_frames;
 #endif
@@ -838,10 +868,53 @@ static void particle_coverage_add(uint32_t coverage[PARTICLE_COVER_ROWS],const t
     const uint32_t columns=cover_columns(b.left,b.right);
     for(int row=b.top>>4;row<=b.bottom>>4;++row)coverage[row]|=columns;
 }
+#if defined(T3_MIXED_OT_OUTCODES)
+/* W3.4 of docs/POST_VRAM_FRAME_RATE_PLAN.md: one outcode per projected
+ * vertex against the rectangle of the covered cells. A face whose four
+ * vertices share an outside side cannot reach a covered cell, which the full
+ * test below would also find; only the other faces take the full test. */
+enum { OUTCODE_LEFT=1,OUTCODE_RIGHT=2,OUTCODE_TOP=4,OUTCODE_BOTTOM=8 };
+static uint8_t g_mixed_ot_outcodes[2][T3_PROJECTED_VERTEX_COUNT];
+#if defined(T3_MIXED_OT_OUTCODES_CHECK)
+/* Faces tested, faces the outcodes reject, and rejected faces that reach a
+ * covered cell (must stay 0). */
+volatile uint32_t g_t3_outcodes_check_faces,g_t3_outcodes_check_rejected,g_t3_outcodes_check_mismatch;
+#endif
+static void vertex_outcodes(const uint32_t coverage[PARTICLE_COVER_ROWS]) {
+    uint32_t columns=0;int top=-1,bottom=-1;
+    for(int row=0;row<PARTICLE_COVER_ROWS;++row)if(coverage[row]) {
+        columns|=coverage[row];if(top<0)top=row;bottom=row;
+    }
+    int first=0,last=19;
+    while(!(columns&(1u<<first)))++first;
+    while(!(columns&(1u<<last)))--last;
+    /* Screen pixels, with the +160/+112 centre folded into the bounds. */
+    const int left=first*16-160,right=last*16+15-160,up=top*16-112,down=bottom*16+15-112;
+    for(unsigned actor=0;actor<2u;++actor) {
+        const sat_projected_vertex_t* p=g_actors[actor].projected;uint8_t* out=g_mixed_ot_outcodes[actor];
+        for(unsigned v=0,n=g_actors[actor].original_mesh.vertex_count;v<n;++v) {
+            const int x=p[v].x,y=p[v].y;
+            out[v]=(uint8_t)((x<left?OUTCODE_LEFT:0)|(x>right?OUTCODE_RIGHT:0)|
+                             (y<up?OUTCODE_TOP:0)|(y>down?OUTCODE_BOTTOM:0));
+        }
+    }
+}
+#endif
 /* entry is the face's index in insertion order, as in the composition. */
 static int face_reaches_particles(const uint32_t coverage[PARTICLE_COVER_ROWS],unsigned entry,unsigned split) {
     const unsigned actor=entry<split?0u:1u,f=entry<split?entry:entry-split;
     const actor_t* a=&g_actors[actor];const uint16_t* index=&a->original_mesh.indices[4*f];
+#if defined(T3_MIXED_OT_OUTCODES)
+    const uint8_t* oc=g_mixed_ot_outcodes[actor];
+#if defined(T3_MIXED_OT_OUTCODES_CHECK)
+    /* The full test still decides; a face the outcodes reject but the full
+     * test lets through is a mismatch. */
+    const int rejected=(oc[index[0]]&oc[index[1]]&oc[index[2]]&oc[index[3]])!=0;
+    ++g_t3_outcodes_check_faces;g_t3_outcodes_check_rejected+=(uint32_t)rejected;
+#else
+    if(oc[index[0]]&oc[index[1]]&oc[index[2]]&oc[index[3]])return 0;
+#endif
+#endif
     const sat_projected_vertex_t* p=a->projected;
     int left=p[index[0]].x+160,right=left,top=p[index[0]].y+112,bottom=top;
     for(unsigned j=1;j<4;++j) {
@@ -857,7 +930,12 @@ static int face_reaches_particles(const uint32_t coverage[PARTICLE_COVER_ROWS],u
     if(right>319)right=319;
     if(bottom>223)bottom=223;
     const uint32_t columns=cover_columns(left,right);
-    for(int row=top>>4;row<=bottom>>4;++row)if(coverage[row]&columns)return 1;
+    for(int row=top>>4;row<=bottom>>4;++row)if(coverage[row]&columns) {
+#if defined(T3_MIXED_OT_OUTCODES_CHECK)
+        g_t3_outcodes_check_mismatch+=(uint32_t)rejected;
+#endif
+        return 1;
+    }
     return 0;
 }
 #endif
@@ -869,6 +947,10 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
         SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
         t3_stage_particle_multi_end();++g_t3_ordered_mask_fallbacks;
+#endif
+#if defined(T3_EFFECT_RING)
+        g_t3_mixed_ot_faces_last=0u;g_t3_mixed_ot_entries_last=0u;
+        g_t3_mixed_ot_frt[0]=0u;g_t3_mixed_ot_frt[1]=0u;g_t3_mixed_ot_frt[2]=0u;
 #endif
         return SAT_OK;
     }
@@ -884,6 +966,10 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
         t3_stage_particle_multi_end();
         ++g_t3_ordered_mask_images;++g_t3_mixed_ot_frames;++g_t3_mixed_ot_empty_frames;
         g_t3_mixed_ot_last=0;
+#if defined(T3_EFFECT_RING)
+        g_t3_mixed_ot_faces_last=0u;g_t3_mixed_ot_entries_last=0u;
+        g_t3_mixed_ot_frt[0]=0u;g_t3_mixed_ot_frt[1]=0u;g_t3_mixed_ot_frt[2]=0u;
+#endif
         return SAT_OK;
     }
 #endif
@@ -893,43 +979,117 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
     t3_psx_scene_ot_entry_t* entries=(t3_psx_scene_ot_entry_t*)(void*)g_stage_world_scratch[0];
     uint16_t* order=(uint16_t*)(void*)g_stage_world_scratch[1];uint16_t* next=order+MIXED_OT_CAP;
     unsigned n=0,visible=0,expected=0,shared=0;
+    unsigned considered=0,depth_live=0;
+#if defined(T3_EFFECT_RING)
+    const uint16_t coverage_started=sat_time_frc();
+#endif
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
     /* Faces that cannot change a particle pixel stay out of the sort: those
      * entirely behind the farthest particle, which the composition skips, and
      * those that overlap no particle's bounds, at 16-pixel resolution. */
     uint32_t coverage[PARTICLE_COVER_ROWS]={0};int farthest=-1;
+#if defined(T3_EFFECT_RING)
+    const uint16_t cover_particles_started=sat_time_frc();
+#endif
     for(unsigned i=0;i<count;++i)if(particles[i].quad.visible) {
         if(particles[i].quad.bucket>farthest)farthest=particles[i].quad.bucket;
         particle_coverage_add(coverage,&particles[i].quad);
     }
+#if defined(T3_MIXED_OT_OUTCODES)
+    /* any_visible holds, so a visible particle covered a cell unless all of
+     * them are off screen; then no face can reach one. */
+    int covered=0;
+    for(int row=0;row<PARTICLE_COVER_ROWS;++row)covered|=coverage[row]!=0;
+    if(covered)vertex_outcodes(coverage);
+    else farthest=-1;
+#endif
+#if defined(T3_EFFECT_RING)
+    g_t3_mixed_ot_cover_particles_frt=(uint16_t)(sat_time_frc()-cover_particles_started);
+#endif
     const unsigned split_at=g_fused_actors.original_after[0]-first;
 #endif
-#if defined(T3_PARTICLE_COMPOSE_CHECK)
-    /* The reference pass lets every live face through; the second is the
-     * normal one, so what is published is unchanged by the check. */
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK) || defined(T3_PARTICLE_COMPOSE_CHECK)
+    /* Two passes over the same image, in the same field. The first is the
+     * reference and the second the variant under test; the second is the one
+     * that stays on screen, so the check does not change the published image.
+     *  - T3_PARTICLE_COMPOSE_CHECK: the reference lets every face through, the
+     *    second applies the coverage test.
+     *  - T3_MIXED_OT_LIVE_ENTRIES_CHECK: the reference is the full entry list
+     *    (every face, with its live flag), the second is the compacted list
+     *    (only the live faces). */
     uint32_t reference_sum=0;
-    for(int filter_faces=0;filter_faces<2;++filter_faces) {
-    n=0;visible=0;expected=0;
+    for(int pass=0;pass<2;++pass) {
+    const int filter_faces=
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+        1;
+#else
+        (pass==0)?0:1;
 #endif
+    const int compact=
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+        (pass!=0);
+#else
+        0;
+#endif
+    n=0;visible=0;expected=0;considered=0;depth_live=0;
+#else
+    const int filter_faces=1;
+#if defined(T3_MIXED_OT_LIVE_ENTRIES)
+    const int compact=1;
+#else
+    const int compact=0;
+#endif
+#endif
+    (void)filter_faces;(void)compact;
     /* The fighter queue was reversed for the SDK; restore insertion order. */
-    for(unsigned i=end;i-->first;) {
-        uint32_t key=scene->faces.keys[i];
+    unsigned face_index=0;
+    for(unsigned i=end;i-->first;++face_index) {
+        const uint32_t key=scene->faces.keys[i];
         uint8_t live=(uint8_t)(key!=0xffffffffu);
+        ++considered;
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE) && !defined(T3_ORDERED_MASK_SELFTEST) && !defined(T3_FACE_PARTICLE_CENSUS)
-#if defined(T3_PARTICLE_COMPOSE_CHECK)
-        if(filter_faces)
+        if(filter_faces&&live) {
+            if((int)(key&1023u)>farthest)live=0;
+            else {
+                ++depth_live;
+                if(!face_reaches_particles(coverage,face_index,split_at))live=0;
+            }
+        }
 #endif
-        if(live && ((int)(key&1023u)>farthest || !face_reaches_particles(coverage,n,split_at)))live=0;
+#if defined(T3_MIXED_OT_LIVE_ENTRIES)
+        /* Only the faces that can change a particle pixel enter the sort.
+         * Their relative order is the insertion order, so the chain the
+         * sort builds is the same one the full list would build. */
+        if(compact) {
+            if(live) {
+                g_mixed_ot_face_slots[n]=(uint16_t)face_index;
+                entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),1u,0u};
+                ++expected;
+            }
+        } else
 #endif
-        entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),live,0};
-        expected+=live;
+        {
+            entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)(key&1023u),live,0};
+            expected+=live;
+        }
     }
+    const unsigned face_entries=n;
     for(unsigned i=0;i<count;++i) {
         const t3_psx_particle_quad_t* q=&particles[i].quad;
         if(q->visible && (q->bucket<0 || q->bucket>1023))return SAT_ERR_INVALID_ARG;
         entries[n++]=(t3_psx_scene_ot_entry_t){(uint16_t)q->bucket,q->visible,1};visible+=q->visible!=0;
     }
+#if defined(T3_EFFECT_RING)
+    /* The coverage phase ends here: the face loop and its per-face bounds. */
+    g_t3_mixed_ot_frt[0]=(uint16_t)(sat_time_frc()-coverage_started);
+    g_t3_mixed_ot_faces_last=expected;g_t3_mixed_ot_entries_last=n;
+    g_t3_mixed_ot_considered_last=considered;g_t3_mixed_ot_depth_last=depth_live;
+    const uint16_t sort_started=sat_time_frc();
+#endif
     int sorted=t3_psx_scene_ot_order(entries,n,order,next);if(sorted<0)return SAT_ERR_INVALID_ARG;
+#if defined(T3_EFFECT_RING)
+    g_t3_mixed_ot_frt[1]=(uint16_t)(sat_time_frc()-sort_started);
+#endif
     expected+=visible;if((unsigned)sorted!=expected)return SAT_ERR_VERIFY_FAILED;
     shared=0;
     for(int i=1;i<sorted;++i) {
@@ -938,14 +1098,44 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
         if(a->bucket==b->bucket && a->kind!=b->kind)++shared;
     }
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
-    SAT_TRY(ordered_particle_compose(scene,particles,count,entries,order,(unsigned)sorted,first));
+#if defined(T3_EFFECT_RING)
+    const uint16_t compose_started=sat_time_frc();
 #endif
-#if defined(T3_PARTICLE_COMPOSE_CHECK)
+    SAT_TRY(ordered_particle_compose(scene,particles,count,entries,order,(unsigned)sorted,first,
+#if defined(T3_MIXED_OT_LIVE_ENTRIES)
+        compact?g_mixed_ot_face_slots:NULL,
+#else
+        NULL,
+#endif
+        face_entries
+        ));
+#if defined(T3_EFFECT_RING)
+    g_t3_mixed_ot_frt[2]=(uint16_t)(sat_time_frc()-compose_started);
+#endif
+#endif
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK) || defined(T3_PARTICLE_COMPOSE_CHECK)
+    /* The checksum covers every cell's position and every pixel of it, in
+     * list order: equal checksums mean the published cells are identical. */
     const uint32_t sum=t3_stage_particle_multi_checksum();
-    if(!filter_faces)reference_sum=sum;
-    else {
+    if(pass==0) {
+        reference_sum=sum;
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+        g_t3_live_entries_check_sum[0]=sum;g_t3_live_entries_check_entries[0]=n;
+        g_t3_live_entries_check_faces[0]=expected-visible;
+        g_t3_live_entries_check_cells[0]=t3_stage_particle_multi_cell_count();
+#endif
+    } else {
+#if defined(T3_PARTICLE_COMPOSE_CHECK)
         ++g_t3_compose_check_images;
         if(sum!=reference_sum)++g_t3_compose_check_mismatch;
+#endif
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+        ++g_t3_live_entries_check_images;
+        g_t3_live_entries_check_sum[1]=sum;g_t3_live_entries_check_entries[1]=n;
+        g_t3_live_entries_check_faces[1]=expected-visible;
+        g_t3_live_entries_check_cells[1]=t3_stage_particle_multi_cell_count();
+        if(sum!=reference_sum)++g_t3_live_entries_check_mismatch;
+#endif
     }
     }
 #endif
@@ -957,10 +1147,12 @@ sat_result_t t3_characters_mixed_ot(const sat_scene_t* scene,
 #endif
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
 static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_psx_particle_draw_t* particles,
-    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first) {
+    unsigned count,const t3_psx_scene_ot_entry_t* entries,const uint16_t* order,unsigned sorted,unsigned first,
+    const uint16_t* face_slots,unsigned face_entries) {
     (void)scene;
 #if defined(T3_ORDERED_MASK_SELFTEST)
     (void)particles;(void)count;(void)entries;(void)order;(void)sorted;(void)first;
+    (void)face_slots;(void)face_entries;
 #if defined(T3_PARTICLE_80_SELFTEST)
     uint8_t pattern[128];uint16_t palette[16]={0};
     for(unsigned i=0;i<128;++i)pattern[i]=0x11u;
@@ -1021,9 +1213,12 @@ static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_p
     t3_stage_particle_multi_end();++g_t3_ordered_mask_images;return SAT_OK;
 #endif
 #else
-    const unsigned faces=g_fused_actors.original_after[1]-first;
+    const unsigned faces=face_entries;
     const unsigned split=g_fused_actors.original_after[0]-first;
     unsigned drawn=0;
+#if defined(T3_EFFECT_RING)
+    uint32_t face_frt=0;g_t3_mixed_ot_compose_faces_frt=0;
+#endif
     SAT_TRY(t3_stage_particle_multi_begin(g_t3_prepared_particles.frame_counter));
     for(unsigned k=0;k<sorted;++k) {
         const unsigned entry=order[k];sat_result_t st;
@@ -1035,13 +1230,22 @@ static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_p
             /* Before the first particle, the freshly begun overlay has no
              * cells to occlude. Keep the sorted traversal but skip the face. */
             if(!drawn)continue;
-            const unsigned actor=entry<split?0u:1u,f=entry<split?entry:entry-split;
+            /* The compacted entry list keeps the face slot of every live
+             * face: the entry index is not the face index. */
+            const unsigned slot=face_slots?face_slots[entry]:entry;
+            const unsigned actor=slot<split?0u:1u,f=slot<split?slot:slot-split;
             const actor_t* a=&g_actors[actor];const uint16_t* index=&a->original_mesh.indices[4*f];
             int16_t x[4],y[4];
             for(unsigned j=0;j<4;++j){x[j]=(int16_t)(a->projected[index[j]].x+160);y[j]=(int16_t)(a->projected[index[j]].y+112);}
             const unsigned material=a->instance.face_materials[f];
             const sat_model_texture_asset_t* texture=material<a->asset->model.texture_count?&a->asset->model.textures[material]:NULL;
+#if defined(T3_EFFECT_RING)
+            const uint16_t face_started=sat_time_frc();
+#endif
             st=t3_stage_particle_multi_face(texture,x,y);
+#if defined(T3_EFFECT_RING)
+            face_frt+=(uint16_t)(sat_time_frc()-face_started);
+#endif
         }
         if(st!=SAT_OK) {
             if(entries[entry].kind)++g_t3_ordered_mask_particle_failures;
@@ -1052,6 +1256,9 @@ static sat_result_t ordered_particle_compose(const sat_scene_t* scene,const t3_p
             t3_stage_particle_multi_end();++g_t3_ordered_mask_fallbacks;return SAT_OK;
         }
     }
+#if defined(T3_EFFECT_RING)
+    g_t3_mixed_ot_compose_faces_frt=face_frt;
+#endif
     if(drawn)SAT_TRY(t3_original_hud_occlude_particles());
     t3_stage_particle_multi_end();++g_t3_ordered_mask_images;
     if(drawn){++g_t3_ordered_mask_drawn_images;g_t3_ordered_mask_drawn_particles+=drawn;}

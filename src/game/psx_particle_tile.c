@@ -145,8 +145,18 @@ static int tile_nonempty(const t3_particle_tile_probe_t* out,unsigned tile) {
     for(unsigned i=0;i<64;++i)if(out->pixels[tile][i])return 1;
     return 0;
 }
+/* With a map, the cell lookup is one read instead of a scan of the list. */
+static unsigned lookup_tile(const t3_particle_tile_probe_t* out,const uint8_t (*map)[40],unsigned x,unsigned y) {
+    if(!map)return find_tile(out,x,y);
+    const unsigned i=map[y][x];
+    return i==0xFFu?out->count:i;
+}
 t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_probe_t* out,const t3_psx_particle_quad_t* q,
                                 const uint8_t pattern[128],const uint16_t palette[16]) {
+    return t3_particle_tile_accumulate_mapped(out,q,pattern,palette,NULL);
+}
+t3_particle_tile_status_t t3_particle_tile_accumulate_mapped(t3_particle_tile_probe_t* out,const t3_psx_particle_quad_t* q,
+                                const uint8_t pattern[128],const uint16_t palette[16],const uint8_t (*map)[40]) {
     if(!out || !q || !pattern || !palette || !q->visible || out->count>T3_PARTICLE_PROBE_MAX_TILES)return 0;
     if(q->xy[0][1]!=q->xy[1][1] || q->xy[2][1]!=q->xy[3][1] ||
        q->xy[0][0]!=q->xy[2][0] || q->xy[1][0]!=q->xy[3][0])return 0;
@@ -167,7 +177,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
     unsigned needed=0;
     for(int ty=ty0;ty<=ty1;++ty)for(int tx=tx0;tx<=tx1;++tx) {
         const unsigned at=(unsigned)(ty-ty0)*5u+(unsigned)(tx-tx0);
-        const unsigned tile=find_tile(out,(unsigned)tx,(unsigned)ty);
+        const unsigned tile=lookup_tile(out,map,(unsigned)tx,(unsigned)ty);
         tile_cache[at]=tile==out->count?255u:(uint8_t)tile;
         if(tile==out->count) {
             color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,width,height,u_map,v_map,pattern,palette);
@@ -180,7 +190,7 @@ t3_particle_tile_status_t t3_particle_tile_accumulate_status(t3_particle_tile_pr
         unsigned live=0,new_needed=0;
         for(unsigned i=0;i<out->count;++i)live+=(unsigned)tile_nonempty(out,i);
         for(int ty=ty0;ty<=ty1;++ty)for(int tx=tx0;tx<=tx1;++tx) {
-            unsigned tile=find_tile(out,(unsigned)tx,(unsigned)ty);
+            unsigned tile=lookup_tile(out,map,(unsigned)tx,(unsigned)ty);
             if(tile==out->count || !tile_nonempty(out,tile)) {
                 const unsigned at=(unsigned)(ty-ty0)*5u+(unsigned)(tx-tx0);
                 if(color_cache[at]==2)color_cache[at]=(uint8_t)tile_has_color(tx,ty,x0,y0,x1,y1,left,top,width,height,u_map,v_map,pattern,palette);

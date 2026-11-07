@@ -36,6 +36,18 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 sat_result_t t3_characters_reset(void);
 sat_result_t t3_characters_tick(const t3_match_t* game);
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game);
+#if defined(T3_EFFECT_RING)
+/* W3.2 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the last image's mixed-OT
+ * counts (live fighter faces, sorted entries) and the FRT split of its
+ * phases (coverage test, OT sort, compose). */
+extern volatile uint32_t g_t3_mixed_ot_faces_last,g_t3_mixed_ot_entries_last;
+extern volatile uint32_t g_t3_mixed_ot_frt[3];
+extern volatile uint32_t g_t3_mixed_ot_cover_particles_frt,g_t3_mixed_ot_compose_faces_frt;
+extern volatile uint32_t g_t3_mixed_ot_considered_last,g_t3_mixed_ot_depth_last;
+#if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+extern volatile uint32_t g_t3_original_projected[2];
+#endif
+#endif
 /* Fused preparation normally splits the actors with sat_parallel_for. With a
  * start function, render calls it just before actor 1 is needed; it must
  * start a task whose worker calls t3_characters_prepare_worker() first (that

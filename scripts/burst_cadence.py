@@ -29,7 +29,7 @@ def run_watch(args, out, name, address, last, start=0):
     log = out / f'{name}.log'
     with log.open('w') as stream:
         subprocess.run([str(args.probe), '--iso', str(args.disc), '--bin', str(args.bin), '--bios', str(args.bios),
-                        '--frames', str(last), '--device-script', str(out / 'none.devices'),
+                        '--frames', str(last), '--device-script', str(args.device_script or out / 'none.devices'),
                         '--watch-write', f'{address:#x}:4:{start}', '--out', str(out / f'{name}.json')],
                        stdout=stream, stderr=subprocess.STDOUT, check=False)
     return [(int(m[1]), int(m[2], 16)) for line in log.read_text().splitlines() if (m := EVENT.match(line))]
@@ -69,6 +69,8 @@ def main():
     parser.add_argument('--bios', type=Path,
                         default=ROOT / 'assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin')
     parser.add_argument('--nm', default=shutil.which('sh2eb-elf-nm') or str(ROOT.parent / 'saturn-tools/bin/sh2eb-elf-nm'))
+    parser.add_argument('--device-script', type=Path,
+                        help='input script for the fight program (defaults to neutral pads; a boot-to-fight build makes it hit)')
     args = parser.parse_args()
     args.disc = args.build / 'disc/music.cue'
     args.bin = args.bin or args.build / 'tekken3_saturn.app.bin'

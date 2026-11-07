@@ -104,6 +104,19 @@ static int same_camera(const sat_camera3d_t* camera) {
     return 1;
 }
 volatile uint32_t g_t3_vdp2_floor_updates, g_t3_stage_boot_step;
+#if defined(T3_STAGE_SPLIT_PROBE)
+/* W6.1 of docs/POST_VRAM_FRAME_RATE_PLAN.md: FRT (/128) per stage component.
+ * [0] panorama lines, [1] line-table encode, [2] floor coefficients,
+ * [3] rotation parameters, [4] prepared stages. Read from a save state. */
+volatile uint32_t g_t3_stage_split[5];
+#define STAGE_SPLIT_START(name) const uint16_t name=sat_time_frc()
+#define STAGE_SPLIT_ADD(slot,name) (g_t3_stage_split[slot]+=(uint16_t)(sat_time_frc()-(name)))
+#define STAGE_SPLIT_COUNT() (++g_t3_stage_split[4])
+#else
+#define STAGE_SPLIT_START(name) do{}while(0)
+#define STAGE_SPLIT_ADD(slot,name) do{}while(0)
+#define STAGE_SPLIT_COUNT() do{}while(0)
+#endif
 #if defined(T3_PARTICLE_SWAP_PROBE)
 /* Master fills one image while the other may still await a VDP1 swap. */
 #if defined(T3_PARTICLE_POSITION_PROBE)
@@ -155,7 +168,14 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
     const unsigned old_count=g_probe_tiles[slot].count,old_compactions=g_probe_tiles[slot].compactions;
 #endif
+#if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
+    /* g_particle_cell is exact for the list on entry (it is updated below),
+     * so cells are found by one read instead of a scan (W3.4). */
+    const t3_particle_tile_status_t result=t3_particle_tile_accumulate_mapped(&g_probe_tiles[slot],quad,pattern,palette,
+        (const uint8_t (*)[40])g_particle_cell);
+#else
     const t3_particle_tile_status_t result=t3_particle_tile_accumulate_status(&g_probe_tiles[slot],quad,pattern,palette);
+#endif
     if(result!=T3_PARTICLE_TILE_OK) {
         g_t3_particle_multi_fail_tiles=g_probe_tiles[slot].count;
         g_t3_particle_multi_fail_particles=g_probe_particle_count[slot];
@@ -183,7 +203,7 @@ sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,cons
 #endif
     ++g_probe_particle_count[slot];return SAT_OK;
 }
-#if defined(T3_PARTICLE_COMPOSE_CHECK)
+#if defined(T3_PARTICLE_COMPOSE_CHECK) || defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
 /* Diagnostic: every cell's position and pixels, in list order. */
 uint32_t t3_stage_particle_multi_checksum(void) {
     const t3_particle_tile_probe_t* tiles=&g_probe_tiles[g_probe_slot];
@@ -194,6 +214,9 @@ uint32_t t3_stage_particle_multi_checksum(void) {
     }
     return sum;
 }
+#if defined(T3_MIXED_OT_LIVE_ENTRIES_CHECK)
+unsigned t3_stage_particle_multi_cell_count(void) {return g_probe_tiles[g_probe_slot].count;}
+#endif
 #endif
 volatile uint32_t g_t3_hud_occluded_cells;
 int t3_stage_particle_multi_has_cell(unsigned x,unsigned y) {
@@ -615,9 +638,11 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(g_valid && center_x==g_previous_center[0] && center_z==g_previous_center[1] &&
        turn==g_previous_turn && same_camera(camera))return SAT_OK;
 #endif
+    STAGE_SPLIT_COUNT();
     /* The panorama follows the fighters' centre, turned by the original's
      * backdrop angle; the floor ends where its lines meet the walls. */
     const int32_t eye[3]={camera->eye.x,camera->eye.y,camera->eye.z};
+    STAGE_SPLIT_START(pano_started);
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     sat_mat4_t backdrop_view=camera->view_proj;
     for(unsigned i=4;i<8;++i)backdrop_view.m[i]=(int32_t)((int64_t)backdrop_view.m[i]*15/14);
@@ -627,8 +652,10 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(!t3_stage_backdrop_lines(&g_cylinder,camera->view_proj.m,eye,turn,1,g_backdrop,g_wall_depth))
         return SAT_ERR_UNSUPPORTED;
 #endif
+    STAGE_SPLIT_ADD(0,pano_started);
     tables_t* tables=&g_tables[g_slot];
     /* Straight into the slot's Low WRAM words, one store per word pair. */
+    STAGE_SPLIT_START(lines_started);
     uint32_t* line_words=(uint32_t*)(void*)tables->lines;
     for(unsigned y=0;y<HEIGHT;++y,line_words+=3) {
         int32_t column=g_backdrop[y].x;
@@ -642,6 +669,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         line_words[1]=line_word(g_backdrop[y].y,0x7FFu);
         line_words[2]=line_word((int32_t)g_backdrop[y].zoom,0x7u);
     }
+    STAGE_SPLIT_ADD(1,lines_started);
     /* A floor tile is 64 dots and 1,800 PS1 units. The skin's world is 96 fx16
      * per PS1 unit around the fighters' centre, x and -z. The bitmap's repeat
      * differs per axis, so the map position wraps below, not through `period`. */
@@ -661,14 +689,18 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     for(unsigned i=0;i<4;++i)far_lines[i]=0;
     for(unsigned i=0;i<HEIGHT;++i)far_lines[i+4]=g_wall_depth[i];
     floor.height=HEIGHT+4;floor.far_lines=far_lines;
+    STAGE_SPLIT_START(floor_started);
     sat_result_t st=sat_vdp2_floor_from_view(&floor,&floor_view,&camera->eye,
         camera->near_z,camera->far_z,&g_params,tables->coefficients);
+    STAGE_SPLIT_ADD(2,floor_started);
     if(st!=SAT_OK)return st;
     for(unsigned i=0;i<HEIGHT;++i)tables->coefficients[i]=tables->coefficients[i+4];
     g_params.yst+=4*g_params.dyst;
 #else
+    STAGE_SPLIT_START(floor_started);
     sat_result_t st=sat_vdp2_floor_from_view(&floor,&camera->view_proj,&camera->eye,
         camera->near_z,camera->far_z,&g_params,tables->coefficients);
+    STAGE_SPLIT_ADD(2,floor_started);
     if(st!=SAT_OK)return st;
 #endif
     g_params.mx&=(int32_t)(T3_STAGE_FLOOR_W*SAT_FX16_ONE-1);
@@ -677,7 +709,10 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     g_params.xst-=(t3_psx_viewport_x(192)-WIDTH/2)*SAT_FX16_ONE;
 #endif
     g_params.coefficient_address=COEFFICIENT_A;
-    if((st=sat_vdp2_rotation_encode_params(&g_params,tables->params))!=SAT_OK)return st;
+    STAGE_SPLIT_START(params_started);
+    st=sat_vdp2_rotation_encode_params(&g_params,tables->params);
+    STAGE_SPLIT_ADD(3,params_started);
+    if(st!=SAT_OK)return st;
     g_previous_camera=*camera;g_previous_center[0]=center_x;g_previous_center[1]=center_z;
     g_previous_turn=turn;
     g_valid=g_dirty=1;
