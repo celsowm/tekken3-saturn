@@ -611,7 +611,38 @@ fields 4,000–4,119 of the boot-to-fight script, mid round 1).** Evidence:
   cannot fit two fields. The Slave runs the divide-heavy code (panorama fit,
   floor, AI), which fits a cost Ymir does not charge.
 
-Next (N2): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
+**N2: which CPU limits on Mednafen (2026-11-07).** Current defaults plus
+`T3_NATIVE_WAIT_PROBE_SILENT` and `T3_SLAVE_FRT_PROBE`, 280 s, same fight
+(probe build 26.79 marked / 25.04 worst, pad hash `0xb99cc280`; evidence
+`assets/imported/perf-n2-wait-280/fight.json`). Master phases, mean FRT/128
+per image (3,728 per field, 7,465 for two):
+
+| Image | Count | Pre | Prepare | Flush | HUD + join | Join | Post | Master's own work |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 ticks | 1,597 | 171 | 5,131 | 1,257 | 545 | 351 | 90 | 6,672 |
+| 3+ ticks | 729 | 451 | 5,524 | 1,314 | 3,046 | **2,859** | 88 | 7,113 |
+
+Slave: a simulation tick costs **2,152** (12,552,402 over 5,832 ticks), its
+share of actor 1 **822** per image, a stage build 1,036 (1,693 by the Slave,
+817 by the Master). The Slave is dispatched at ≈466 (two ticks) / ≈477 (three).
+
+The fight runs in two regimes. A two-tick image fits: the Slave needs
+466 + 2×2,152 + 822 (+1,036 when it builds the stage) ≈ 6,600 and the Master
+≈6,700 of 7,465. A three-tick image cannot: 477 + 3×2,152 + 822 ≈ 7,755, so the
+Master waits 2,859 at the join and the image takes a third field. Three fields
+mean three ticks for the next image, so the slow regime sustains itself (729
+images, about a third). The Master is not the limit there (own work 7,113).
+
+**Target: a three-tick image must fit two fields.** The Master finishes ≈275
+after the join, so the Slave must end by ≈7,190: 3 T + 822 + 477 ≤ 7,190 gives
+**T ≤ 1,964, a 9 % cut of the tick (≈0.85 ms)**, or the same total from the
+Slave's actor-1 share. The tick has no single hotspot (Ymir slave profile, tick
+functions only): `t3_psx_mul_rot` 4.8 %, motion `sample_one` 4.8 %, AI bus
+reads `rd` 4.0 % and writes `wr` 1.2 %, memcpy 3.5 %, `compose_parts` 2.1 %,
+IK 1.9 %, FK 1.6 %, `advance_core` 1.1 %, `vector_normal` 1.0 %, then a long
+tail under 1 % each.
+
+Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's
 tick (pose/IK/motion ≈22 % of its work, AI 8 %) if it still does, or the
 Master's face submission if it does not.
