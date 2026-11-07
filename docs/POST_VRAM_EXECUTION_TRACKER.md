@@ -697,6 +697,32 @@ Master after every split image and counts differing vertices: over the 280 s
 fight **1,184 split images, 0 vertices differ**. Which CPU skins a vertex does
 not change it, so no share changes a pixel.
 
+*Where the time goes after N3* (wait probe on the new default, 280 s, probe
+build 27.35 / 25.71; evidence `assets/imported/perf-n3-wait-280`). Mean
+FRT/128 per image:
+
+| Image | Count | Pre | Prepare | Flush | HUD + join | Join | Post |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 ticks | 1,753 (was 1,597) | 169 | 5,150 | 1,267 | 590 | 398 | 89 |
+| 3+ ticks | 646 (was 729) | 406 | 6,004 | 1,312 | 2,016 | 1,828 | 94 |
+
+Three-tick images are fewer and wait 1,031 less at the join, and the
+Master's preparation grew by the 480 of actor 1's extra 35 %. Both CPUs are
+now over two fields on a three-tick image: the Master's own work
+(pre + prepare + flush + HUD + post) is ≈8,000 of 7,465, and the Slave still
+ends ≈1,800 after the Master reaches the join, the join including the
+Master's stage build there (the Master builds the stage on ≈687 images, about
+the three-tick count). The Slave's remaining actor-1 work on those images
+(≈389 per image) is the original projection of effect images, which still
+builds the whole mesh on one CPU. To fit a three-tick image in two fields
+the two CPUs together must lose ≈700 on it (the share now lets either CPU's
+saving count): real cuts to the tick (AI 17 %, motion sample, compose parts,
+IK) and to the Master's face submission and skinning. Two levers were looked
+at and dropped: the pre phase is not audio (sound and CD-DA together cost
+under 0.5 % on Ymir) and not leading ticks (`DEFERRED_TICKS` is 4), and an
+earlier dispatch is unsafe because `prepare_scene` reads the live simulation
+state (pose publication, camera, joint copies) before the worker starts.
+
 Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's
 tick (pose/IK/motion ≈22 % of its work, AI 8 %) if it still does, or the
