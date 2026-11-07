@@ -103,7 +103,7 @@ static void compose_tests(void) {
     assert(world[6].origin.y==230);
     verify_matrix(world[3].rotation,(const int[3][3]){{0,0,0},{0,0,0},{0,0,0}});
     /* Malformed hierarchy and numeric overflow fail, without output write. */
-    parts[7].parent=8;
+    parts[7].parent=8;t3_psx_pose_topology_reset(); /* the table changed in place */
     assert(!t3_psx_compose_parts(parts,slots,valid,&root,world,&mask));
     assert(t3_psx_count_parts(mask)==5);
     parts[7].parent=0;

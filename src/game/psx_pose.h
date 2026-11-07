@@ -92,6 +92,11 @@ int t3_psx_mul_rot(const t3_psx_matrix_t* a, const t3_psx_matrix_t* b,
  * fallback is applied. 'root' supplies fighter world position and heading.
  * Returns 1 success or 0 on malformed parents/unsafe coordinates; results
  * are published only on success. */
+/* With T3_POSE_TOPOLOGY_FAST the table's parents, slots and offsets are
+ * checked once per table address. A caller that rewrites a table in place
+ * (a new fighter loaded into the same buffer) calls this first; the world
+ * pose cache reset calls it too. Without the fast path it does nothing. */
+void t3_psx_pose_topology_reset(void);
 int t3_psx_compose_parts(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          const t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],
                          uint32_t valid_slots, const t3_psx_joint_t* root,

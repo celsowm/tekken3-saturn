@@ -3,6 +3,8 @@
 void t3_psx_world_pose_cache_init(t3_psx_world_pose_cache_t* c,
     t3_psx_world_pose_entry_t* entries,unsigned capacity) {
     if(!c)return;
+    /* A reset is how a reloaded table is announced (see psx_pose.h). */
+    t3_psx_pose_topology_reset();
     *c=(t3_psx_world_pose_cache_t){.entries=entries,
         .capacity=entries && capacity>=4u && !(capacity&(capacity-1u))?capacity:0u};
     for(unsigned i=0;i<c->capacity;++i)entries[i].valid=0;

@@ -493,6 +493,9 @@ void t3_move_probe_reset(unsigned round) {
     unsigned i;
     if (!g_active) return;
     g_round=(uint8_t)round;
+    /* A new match can load other fighters' part tables into the same buffers;
+     * the once-per-table topology check must see them (psx_pose.h). */
+    t3_psx_pose_topology_reset();
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config=(t3_psx_match_config_t){0};
     g_owned_config.bank=&g_bank;g_owned_config.common=&g_common;

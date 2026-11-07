@@ -166,6 +166,16 @@ static int place(const t3_psx_joint_t* parent,const t3_vec3i_t* delta,
     out->z=coords[2];
     return 1;
 }
+#if defined(T3_POSE_TOPOLOGY_FAST)
+/* The part table whose topology was last checked, and the result. */
+static const t3_psx_part_t* checked_parts;
+static uint32_t checked_ok;
+#endif
+void t3_psx_pose_topology_reset(void) {
+#if defined(T3_POSE_TOPOLOGY_FAST)
+    checked_parts=0;checked_ok=0u;
+#endif
+}
 int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PARTS],
                          const t3_psx_matrix_t slots[T3_PSX_ROTATION_SLOTS],
                          uint32_t valid_slots,const t3_psx_joint_t* root,
@@ -182,8 +192,6 @@ int T3_SIM_IMPL(t3_psx_compose_parts)(const t3_psx_part_t parts[T3_PSX_DRAW_PART
      * imported, immutable data. The parent/slot/offset checks cannot change
      * between ticks, so they run once per array address and the per-tick loop
      * keeps only the pose checks. Failure still returns 0 before any output. */
-    static const t3_psx_part_t* checked_parts;
-    static uint32_t checked_ok;
     if(parts!=checked_parts) {
         for(i=0;i<T3_PSX_DRAW_PARTS;++i) {
             const t3_psx_part_t* p=&parts[i];

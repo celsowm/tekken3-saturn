@@ -55,11 +55,11 @@ of record.
 | W0 config/memory | **DONE**: cache-128 promoted; all W0.7 gates pass (primary +0.31/+0.54, second encounter +0.54/+0.70, Ymir equal hash, frozen pixels 2000/3000, 24 combat cases, 441-pair arena) |
 | W1 purge | **CLOSED**: 2,502 purges = 3,264 FRT total (0.876 fields); no selective invalidation |
 | W2 AI spikes | **MEASURED, NO CHANGE**: 39/8,684 updates over half a field, 0 over a field; spikes scan ~250 words vs a 4.5 mean; the trace hook disables the pick cache, so attribution needs a new trace; next step recorded |
-| W3 strong hits | **IN PROGRESS (2026-11-07)**: fixture valid (arcade path reaches a fight: 55 effect images, 40 mixed-OT frames); per-effect-image costs measured; the entry-list compaction is pixel-identical in-build (28 + 21 effect images, 0 mismatches) and cuts the OT sort 43.24 → 3.67 ms and the worst effect image 31.35 → 27.63 ms; the whole-fight effect is ≈+0.014 img/s, below the ±0.04 run noise, so the gate is judged on the burst |
+| W3 strong hits | **PROMOTED, GATES PASS (2026-11-07)**: fixtures `chain` and `two-chains`; entry-list compaction (OT sort 43.24 → 3.67 ms) and cell-map lookup (worst image 32.62 → 32.17 ms) promoted; outcodes measured, left OFF; face-mask hoist rejected; whole fight 26.84 → 26.89 marked, combat suite 24/24, frozen 2000/3000 equal, host tests pass (8 skip) |
 | W4 stage ownership | **CLOSED**: two policies rejected (mid −0.07/−0.18, aggressive −1.89/−1.48); keep the first-come race |
 | W5 pose topology | **PROMOTED**: bit-exact digest; primary +0.13/+0.16 (6/7 spans), pair 7,4 +0.11/+0.23; default is ON |
 | W6 panorama | **CLOSED**: profile captured (fit ≈70% of a 2.28 ms panorama); no exact rewrite with a measurable gain; keep the code |
-| Base rate | 26.85 marked / 25.20 worst (cache 8: 26.41/24.50) — the 30 img/s target is still open |
+| Base rate | 26.89 marked / 25.26 worst segment (2026-11-07 head; cache 8: 26.41/24.50) — the 30 img/s target is still open |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -232,6 +232,9 @@ python3 scripts/saturn_probe.py --build <b> --disc <b>/disc/music.cue \
   --device-script <tofight.devices> --sh2-cache on --port2 none \
   --screenshot-frame 4900
 ```
+
+Tick 3000 needs `--frames 6200 --screenshot-frame 6100`: 5,000 frames end at
+`sim_ticks` ≈2,163, before the freeze, and the comparison then fails.
 
 Harness fix found while running the Ymir gate: `sat_panic_info_t` grew from 44
 to 80 bytes (it now carries the last `SAT_REFUSE` origin), so
@@ -534,6 +537,41 @@ reaction slots (`high-hit` expects 2250), and `perf-w3-boot` boots the pair
 11;9, whose defender reacts with slot 2321. The hit itself is as expected (one
 hit, 18 damage, `first_error 0`). The suite still has to run on a build of
 its own pair.
+
+**W3 gates for the promoted head (2026-11-07):**
+
+| Gate | Result |
+| --- | --- |
+| Whole fight (Mednafen, 280 s) | marked 26.84 → 26.89 img/s, worst segment 25.14 → 25.26, images 2,520 → 2,525, pad hash `0xb99cc280` on both |
+| Combat suite (`--with-ko`, `T3_BOOT_FIGHTERS='0;1'` build) | **PASS**: 24 live cases |
+| Frozen pixels 2000 (cache 128, 5,000 frames) | **PASS**: 104 fields, model pixels `4b1e8b36…` |
+| Frozen pixels 3000 (cache 128, 6,200 frames) | **PASS**: 104 fields, model pixels `838c0a15…` |
+| Host tests | 103/103 pass, 8 of them skipped (private trace data); after the W5 topology reset fix |
+
+The first tick-3000 attempt looked like a stall: every build (head, the
+previous commit, topology off, live) stopped at `sim_ticks` 2,161–2,163. The
+cause was the capture length. The baseline was captured with `--frames 6200`
+(screenshot 6,100), and 5,000 frames end before the replay reaches tick 3000.
+The command above now notes this. The gains are real per image but stay
+within whole-fight noise; the base rate stays ≈26.9, and 30 img/s is still open.
+
+**Rejected: shape check once per face (2026-11-07).** `t3_face_quad_tile_coverage`
+runs `t3_face_quad_supported` (a walk of every scanline) for each cell a face
+reaches. Checking it once per face changed nothing measurable: face masks
+112.97 → 113.87 ms on `two-chains`, worst image 32.17 → 32.22 ms, the 31
+same-state images equal to 0.01 ms. Most faces reach one cell. The code was
+removed.
+
+**W5 fix: the topology check and tables rewritten in place (2026-11-07).**
+With `T3_POSE_TOPOLOGY_FAST=ON` two host tests failed
+(`world_pose_cache_exact_and_bounded`, `ps1_euler_fk_partial_joints`): the
+check is kept per table address, and both tests rewrite a table in place and
+expect the new, malformed table to fail. `t3_psx_pose_topology_reset()` forgets
+the checked table. The world pose cache reset calls it (that reset is already
+the documented way to announce reloaded tables), the match setup in
+`move_probe.c` calls it on every match and round (a new fighter can be loaded
+into the same buffer), and the test calls it after its edit. All 103 host
+tests pass (95 run, 8 skip without the private trace data).
 
 **W3.3 finding (2026-11-07): no duplicate reprojection to remove.** The ring's
 counters per image are: original projection calls 2–6 (`proj`), faces
