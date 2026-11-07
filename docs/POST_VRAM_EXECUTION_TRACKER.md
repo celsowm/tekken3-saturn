@@ -62,7 +62,8 @@ of record.
 | N3 slow-image skin share | **PROMOTED (2026-11-07)**: the Master skins all of actor 1 on images with 3+ deferred ticks; whole fight 27.05 → 27.50 marked, worst segment 25.24 → 25.90, 7/7 segments ahead, 0 differing vertices over 1,184 split images |
 | P1 exact tick cuts | **PROMOTED (2026-11-07)**: size-specialised AI bus reads and writes, ground angles in place; whole fight 27.50 → 27.85 marked, worst segment 25.90 → 26.10, pad hash unchanged |
 | P2 constant shifts in the tick | **PROMOTED (2026-11-07)**: sound-table reads, IK square root and the FK slot mask without libgcc variable shifts; 27.85 → 27.93 marked, worst segment 26.10 → 26.10 |
-| Base rate | 27.93 marked / 26.10 worst segment (2026-11-07, P2; cache 8: 26.41/24.50) — the 30 img/s target is still open |
+| P3 one-word entry header | **PROMOTED (2026-11-07)**: lib-saturn writes a projected entry's `kind`, `cached_projected` and `reserved` as one aligned word; 27.93 → 28.26 marked, worst segment 26.10 → 26.36; frozen pixels match |
+| Base rate | 28.26 marked / 26.36 worst segment (2026-11-07, P3; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -778,6 +779,16 @@ at and left: `project_q15` is bound by its two hardware divides a vertex
 (≈83 cycles a vertex, ≈78 of them divider), and the panorama fit already uses
 the on-chip divider (W6 closed it).
 
+**P3: one store for the entry header (lib-saturn, 2026-11-07).** Work RAM is
+write-through on the SH-2, so every store is a bus write. The projected-entry
+append in `faces.cpp` wrote `kind`, `cached_projected` and `reserved` as three
+stores; they are adjacent in one aligned word (checked by a `static_assert`),
+and `store_kind` now writes them as one, in either byte order. Two stores
+fewer a face: whole fight 27.93 → **28.26** marked, worst segment 26.10 →
+26.36, pad hash unchanged; frozen pixels at ticks 2000 and 3000 match
+(`perf-p3-kind`); lib host tests pass. Segment 4 read −0.19 against +0.26 to
++0.65 elsewhere; its worst-segment ranking is unchanged.
+
 Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's
 tick (pose/IK/motion ≈22 % of its work, AI 8 %) if it still does, or the
@@ -1068,6 +1079,146 @@ The candidate's base run for this profile measured 26.78 marked / 25.04 worst
 
 Files: `src/game/stage_backdrop.c`, `src/saturn/stage_vdp2.c`,
 `libsaturn/src/graphics/vdp2/floor.cpp`. Do not widen the 32-line key interval.
+
+## 2b. Plan to 30 img/s on Mednafen (2026-11-07)
+
+**Where it stands.** 28.26 marked / 26.36 worst segment (P3, packed entry
+word). The gap is +1.74 img/s. Measured conversion this session: P1 removed
+≈216 FRT/128 from a three-tick image and gave +0.35 img/s, so **≈0.16 img/s
+per 100 FRT/128 removed from the limiting path**. 30 img/s therefore needs
+≈1,100 more on that path. Both CPUs are over two fields on three-tick
+images, so a cut counts only while its CPU is the one that limits; the
+slow-image skin share (N3) moves work to whichever CPU is ahead, so cuts on
+either side can be cashed by re-tuning it.
+
+**Rules every step keeps.**
+
+1. Exact: same pixels, same game state. Simulation changes need the pad hash
+   `0xb99cc280` over the whole 280 s fight and the 103 host tests; render
+   changes also need the frozen-pixel gate (ticks 2000 and 3000 equal to
+   `perf-p0-cache128-frozen-*`). A change that touches rounding, order or
+   failure atomicity is out unless it is proven equal.
+2. Never slower: the whole-fight A/B is ahead in marked img/s and the worst
+   segment is not worse. Below +0.10 marked, run the A/B a second time before
+   deciding (code placement alone moved a run by −0.09 this session).
+3. Look at the generated code before a run. A lib-saturn face-loop change once
+   grew `submit_instance<true>` by 1.3 KB and cost −2.4 img/s; check the
+   function size and the hot loop's instruction count first and drop any
+   change that grows the hot loop.
+4. One candidate, one control, in place (`build/perf-n3-simprof` is the
+   candidate, the last promoted run's `fight.json` the control). Delete
+   `run.mov` after each run. Commit and push each promoted step at once, in
+   lib-saturn too, with its row in this tracker.
+5. lib-saturn: build `build/sdk` with `saturn-tools/bin` on PATH, run
+   `build/host-tests`, install to the one prefix, relink the game. The shipped
+   SDK has `LIBSATURN_NATIVE_SCENE_COMMANDS=OFF`; the live emit is the
+   projected-entry path.
+
+**Steps, in order (estimates per three-tick image, FRT/128).**
+
+| # | Step | CPU | Estimate | Why exact | Risk |
+| --- | --- | --- | ---: | --- | --- |
+| R1 | Screen-cull loop as its own function in `faces.cpp`: count, keys, entry and order pointers in registers, `scene->count` written once per instance | Master | 100–200 | Same entries, keys, order and counts; only where they are held | Register pressure; check code first |
+| R2 | Pre-scaled corner offsets (index × 8) for the fighter meshes, used by R1's loop | Master | 150–200 | Same vertex addresses | 13 KB of the ≈30 KB High WRAM headroom |
+| R3 | AI fighter-record reads through one host pointer per update (`situation` and neighbours read 20+ fields of the same record through the bus) | Slave | 200–300 | Same bytes, read without the bus walk; the bus stays for every other address | Must keep the bus's view (word table) for fields it overrides |
+| R4 | On-chip divider for 32-bit signed divides in the tick (`cdiv` in `psx_ai_game.c`, IK, owned step) | Slave | 50–100 | Same quotient; zero and INT_MIN/−1 kept on the C path | Divider shared with nothing on the Slave tick; check no interrupt uses it |
+| R5 | Transactional buffers without full zero-fill and copy (`compose_parts`, `pose_fk`, `parts_to_slots`, hurt, match hits) | Slave | ≈100 | Same output; untouched entries still zero; failure still writes nothing | Low |
+| R6 | Re-tune the N3 share after R1–R5 (the CPU that is ahead takes more of actor 1) | both | cashes the imbalance | Which CPU skins a vertex does not change it | Sweep only |
+| R7 | `project_q15`: start the x divide before the next vertex's rows | Master | 50–100 | Same divides, reordered | Mednafen divider timing unverified |
+| R8 | Cache invalidation (`invalidate_range`, ≈3 % of the Master on Ymir): fewer, larger ranges or a whole purge where cheaper | Master | 50–150 | Same coherence points | Must keep every Slave-written range coherent |
+
+R1–R5 add up to ≈600–900; with R6–R8, ≈1,100 is in reach but not assured.
+Order: the Slave steps (R3, R4, R5) and R1 first, because they are
+independent and cheap to prove; then R2 (memory check), R6, R8, R7.
+
+**Step details.** Figures come from the Ymir PC profile
+(`perf-n1-profile-ymir`) and the per-tick sim profile; Mednafen charges more
+for memory access, so the memory-bound steps (R1, R2, R3, R5) should gain
+somewhat more there.
+
+*R1 — fewer bus writes per face (Master, lib-saturn).*
+- Now: Work RAM is write-through (4 KB, 4-way, 16 B lines; the cache never
+  holds a store), so every store per face is a bus write. P3 packed `kind`,
+  `cached_projected` and `reserved` into one word: two stores fewer per face
+  gave +0.33 img/s, the best ratio this session.
+- Still stored per face: `scene->count` (read, incremented, written back on
+  every appended face), plus the key and order entry. The count is the
+  avoidable one, about 2 accesses per face.
+- Change: a separate, small screen-cull loop for the `CULL_SCREEN` case
+  (`faces.cpp`, near the current loop at line ≈1318) that keeps count, key,
+  entry and order pointers in registers and writes `scene->count` once per
+  instance. It has to be its own function: editing `submit_instance<true>`
+  directly once grew it from 7,952 to 9,304 bytes and cost −2.4 img/s
+  (corner-refs, reverted).
+- Exact: same entries, same keys, same order; only where the count lives
+  during the loop changes. Gate: frozen pixels, pad hash, host tests,
+  `submit_instance<true>` size not larger.
+- Fallback: if the new function spills inside the loop, keep only the count
+  hoist in the existing loop.
+
+*R2 — pre-scaled corner offsets (Master, lib-saturn).*
+- Now: each face corner turns a vertex index into an address in 5
+  instructions (extend, shift, add). Storing indices already multiplied by 8
+  makes it 2: about 12 instructions saved per face in the cull test and 12
+  more per visible face, roughly 20 % of face submission, 150–200 per image.
+- Cost: about 13 KB for the fighter meshes, out of ≈30 KB High WRAM free.
+  Check the linker map before building; the cull loop must read them from
+  R1's function, not from the big one.
+- Exact: same vertex addresses. Gate: as R1. Fallback: if memory does not
+  fit, pre-scale only the two fighters' meshes.
+
+*R3 — AI reads in bulk (Slave).*
+- Now: the AI makes ≈156 bus calls per update; 352 FRT/128 per tick after P1.
+  `situation` and its neighbours read 20+ fields in a row from the same
+  fighter record, each through the address decode in `rd1/rd2/rd4`.
+- Change: resolve the record once per update to a host pointer and read the
+  fields directly; everything else still goes through the bus.
+- Estimate: AI 352 → ≈250 per tick, ≈300 per slow image. The biggest Slave
+  lever left.
+- Exact: same bytes from the same host memory. Risk: fields that the bus
+  serves from the word table or overrides must stay on the bus; list them
+  from the bus map before the change. Gate: pad hash over the whole fight
+  and the AI host tests.
+
+*R4 — hardware divider instead of libgcc (Slave).*
+- Now: ≈80 `__sdivsi3` calls per profile frame (mostly the AI's `cdiv` and
+  IK) and `__divdi3` in the owned step. The on-chip divider takes 39 cycles
+  against ≈80 for the software routine; the panorama already uses it.
+- Exact: same quotient for every input; divide by zero and INT_MIN/−1 keep
+  their current C results through an explicit branch. `__divdi3` only where
+  the operands provably fit 32/32 or 64/32 on the divider.
+- Risk: no interrupt handler on the Slave may use the divider during the
+  tick; check before shipping. Estimate 50–100.
+
+*R5 — zero-fill and copy buffers (Slave).*
+- Now: `compose_parts`, `pose_fk`, `parts_to_slots` and the hit code each
+  zero a ≈800-byte array and then copy it out, at ≈250 cycles per `memset`.
+- Change: write only the computed parts and zero only the skipped ones,
+  keeping the transactional rule (a failure still writes nothing).
+- Estimate ≈33 per tick, ≈100 per slow image. Low risk.
+
+*R6 — re-tune the slow-image share (both CPUs).*
+- After R1–R5 one CPU will be ahead on three-tick images. The N3 share moves
+  actor-1 skinning to the Master; re-run the wait probe and move the share
+  toward the CPU that waits. Which CPU skins a vertex does not change it.
+
+*R7 — overlapping the skinning divides (Master).*
+- `project_q15` is bound by its two divides per vertex (≈83 cycles, ≈78 of
+  them in the divider). Starting the x divide while the next vertex's rows
+  are computed saves ≈10 of 83, ≈12 % of skinning.
+- A single divide per vertex (reciprocal plus an exact correction) would save
+  ≈40 % but needs a proof that it always gives the same result; only after
+  R1–R6, and only with an exhaustive check over the input range.
+
+*R8 — cache invalidation (Master).*
+- `invalidate_range` is ≈3 % of the Master (2,078 calls per profile run).
+  Check whether it still clears line by line where purging the whole cache
+  (or one larger range) is cheaper. Every Slave-written range must still be
+  coherent when the Master reads it; the frozen gate catches a miss.
+
+**Stop rule.** If R1–R8 are done and the rate is still under 30, write down
+where each CPU's time goes on three-tick images (wait probe, both CPUs) and
+stop: no fidelity or cadence trade is taken to close the gap.
 
 ## 3. Order and parallelism
 
