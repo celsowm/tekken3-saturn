@@ -114,12 +114,17 @@ static int square_root0(uint32_t a,const t3_psx_ik_tables_t* table,int32_t* out)
     if(a==0u){*out=0;return 1;}
     /* Shift the value, not the mask: the SH-2 has no variable shift. */
     while(!(probe&0x80000000u) && lz<31u){probe<<=1;++lz;}
+    /* probe is a << lz with no bit lost; an odd lz rounds down to even, so
+     * x = (a << lz) >> 24 for either branch of a >> (24 - lz) / a << (lz - 24). */
+    if(lz&1u)probe>>=1;
     lz&=~1u;
-    x=lz<24u?a>>(24u-lz):a<<(lz-24u);
+    x=probe>>24;
     if(x<SQRT_FIRST || x>0xFFu)return 0;
     shift=(31u-lz)>>1u;
     mant=(uint32_t)(int32_t)read16(table->ik_blob+(x-SQRT_FIRST)*2u);
-    value=(mant<<shift)>>12u; /* shift <= 15: the low 32 bits of the 64-bit form */
+    /* shift <= 15: the low 32 bits of the 64-bit form; a multiply by
+     * 1 << shift, as a variable shift is a libgcc call on the SH-2. */
+    value=(mant*t3_psx_bit(shift))>>12u;
     *out=(int32_t)value;
     return 1;
 }

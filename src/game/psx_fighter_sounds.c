@@ -16,8 +16,12 @@ static unsigned opponent(const reader* r,unsigned p){(void)r;return 1u-p;}
 static uint32_t readn(reader* r,uint32_t at,unsigned n) {
     const t3_psx_sound_tables_t* t=&r->c->tables;
     if(at>t->size || n>t->size-at){r->ok=0;return 0;}
+    /* Constant shifts: a loop's 8*i is a libgcc call on the SH-2. */
+    const uint8_t* p=t->data+at;
+    if(n==4u)return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;
+    if(n==2u)return (uint32_t)p[0]|(uint32_t)p[1]<<8;
     uint32_t value=0;
-    for(unsigned i=0;i<n;++i)value|=(uint32_t)t->data[at+i]<<(8*i);
+    for(unsigned i=0;i<n;++i)value|=(uint32_t)p[i]<<(8*i);
     return value;
 }
 static uint32_t r32(reader* r,uint32_t at){return readn(r,at,4);}

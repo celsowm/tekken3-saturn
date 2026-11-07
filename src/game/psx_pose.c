@@ -63,7 +63,7 @@ int T3_SIM_IMPL(t3_psx_pose_fk)(const int16_t pose[T3_PSX_POSE_CHANNELS],
     for(i=0;i<10u;++i) {
         unsigned ch=19u+3u*i;
         t3_psx_euler_matrix(pose[ch],pose[ch+1u],pose[ch+2u],table,&result[k_slots[i]]);
-        mask|=(uint32_t)1u<<k_slots[i];
+        mask|=t3_psx_bit(k_slots[i]);
     }
     __builtin_memcpy(out,result,sizeof(result)); /* one call, not one per matrix */
     *valid_slots=mask;

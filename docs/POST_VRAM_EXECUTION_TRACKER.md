@@ -61,7 +61,8 @@ of record.
 | W6 panorama | **CLOSED**: profile captured (fit ≈70% of a 2.28 ms panorama); no exact rewrite with a measurable gain; keep the code |
 | N3 slow-image skin share | **PROMOTED (2026-11-07)**: the Master skins all of actor 1 on images with 3+ deferred ticks; whole fight 27.05 → 27.50 marked, worst segment 25.24 → 25.90, 7/7 segments ahead, 0 differing vertices over 1,184 split images |
 | P1 exact tick cuts | **PROMOTED (2026-11-07)**: size-specialised AI bus reads and writes, ground angles in place; whole fight 27.50 → 27.85 marked, worst segment 25.90 → 26.10, pad hash unchanged |
-| Base rate | 27.85 marked / 26.10 worst segment (2026-11-07, P1; cache 8: 26.41/24.50) — the 30 img/s target is still open |
+| P2 constant shifts in the tick | **PROMOTED (2026-11-07)**: sound-table reads, IK square root and the FK slot mask without libgcc variable shifts; 27.85 → 27.93 marked, worst segment 26.10 → 26.10 |
+| Base rate | 27.93 marked / 26.10 worst segment (2026-11-07, P2; cache 8: 26.41/24.50) — the 30 img/s target is still open |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -751,6 +752,31 @@ holds over the whole fight. Next Master candidate: the face loop of
 `submit_instance<true>` (31 % of the Master on Ymir) scales each 16-bit index
 (`extu.w`, two shifts, a base add) per corner, twice for visible faces, and
 spills five values to the stack; pre-scaled indices would remove ≈15 % of it.
+
+**P1 tick profile (Mednafen, 280 s, `T3_SIM_PROFILE`, evidence
+`assets/imported/perf-p2-simprof-280`).** The tick fell from 2,284 to 2,212
+FRT/128: AI 394 → 352, step 231 → 218; the other stages are unchanged
+(sample 249, parts 229, IK 224, blend 160). About 216 of the ≈700 a
+three-tick image needs.
+
+**P2: constant shifts (2026-11-07).** The Ymir slave profile has ≈700 calls
+a profile frame to libgcc's `__ashlsi3_r0` and ≈300 to `__lshrsi3_r0`. The
+game-side ones are now constant: `readn` in `psx_fighter_sounds.c` (195 a
+frame: a byte loop shifting by `8*i`) reads 2 and 4 bytes with fixed shifts;
+`square_root0` in `psx_ik.c` takes x from the already-shifted probe and
+scales the mantissa by a multiply with `t3_psx_bit(shift)`; the FK slot mask
+uses `t3_psx_bit`. Whole fight 27.85 → **27.93** marked, worst segment
+26.10 → 26.10, pad hash unchanged; host tests pass.
+
+**Rejected: corners as references in `submit_instance` (lib-saturn,
+2026-11-07).** Passing the four corner references the screen cull already
+computed to the append step, instead of re-indexing, grew
+`submit_instance<true>` from 7,952 to 9,304 bytes and cost the whole fight
+27.85 → 25.45 (all segments −2.1 to −2.8). Reverted. A face-loop change has to
+be checked in the generated code before any run. Two other leads were looked
+at and left: `project_q15` is bound by its two hardware divides a vertex
+(≈83 cycles a vertex, ≈78 of them divider), and the panorama fit already uses
+the on-chip divider (W6 closed it).
 
 Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's
