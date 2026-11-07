@@ -31,9 +31,25 @@ static sample_t current;
 static sat_profile_t profile;
 static sat_profile_span_t spans[DEPTH];
 static uint32_t actor=2,enabled;
+#if defined(T3_SLAVE_SIMULATION)
+/* The Slave runs the ticks: time them on its own FRT (/128), extended to 32
+ * bits. Reads inside one tick are far closer than one 16-bit wrap. */
+static uint32_t clock_high;
+static uint16_t clock_last;
+static uint32_t now(void) {
+    const uint16_t t=sat_time_frc();
+    if(t<clock_last)clock_high+=0x10000u;
+    clock_last=t;return clock_high|t;
+}
+/* FRT/128 counts per second: 3,728 per NTSC field. */
+#define FREQUENCY() (3728u*60u)
+#else
+#define now() ((uint32_t)sat_time_ticks())
+#define FREQUENCY() sat_time_frequency_hz()
+#endif
 void t3_sim_init(void) {
     g_t3_sim_profile.magic=0x54335350u;g_t3_sim_profile.version=1;
-    g_t3_sim_profile.frequency=sat_time_frequency_hz();
+    g_t3_sim_profile.frequency=FREQUENCY();
     g_t3_sim_profile.count=g_t3_sim_profile.cursor=g_t3_sim_profile.epoch=0;
     g_t3_sim_profile.after_field=300;g_t3_sim_profile.stages=T3_SIM_STAGES;
     g_t3_sim_profile.actors=ACTORS;g_t3_sim_profile.capacity=CAPACITY;
@@ -45,11 +61,11 @@ void t3_sim_init(void) {
 uint32_t t3_sim_enter(unsigned stage) {
     if(!enabled)return UINT32_MAX;
     uint32_t token=actor*T3_SIM_STAGES+stage;
-    sat_profile_enter(&profile,token,(uint32_t)sat_time_ticks());return token;
+    sat_profile_enter(&profile,token,now());return token;
 }
 void t3_sim_leave(uint32_t token) {
     if(token!=UINT32_MAX)
-        sat_profile_leave(&profile,token,(uint32_t)sat_time_ticks());
+        sat_profile_leave(&profile,token,now());
 }
 unsigned t3_sim_actor(unsigned value) {
     unsigned previous=actor;actor=value<2u?value:2u;return previous;

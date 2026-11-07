@@ -1107,10 +1107,16 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
 #if defined(T3_REPLAY_INPUT_TAPE)
         t3_input_tape_step(view->total_ticks,&p1,&p2);
 #endif
+        /* T3_SIM_PROFILE times the Slave's ticks; the tick count stands in
+         * for the field (the warm-up skips the first 300). */
+        t3_sim_tick_begin(view->total_ticks,view->total_ticks);
         const sat_result_t st=t3_move_probe_owned_step(p1,p2,view);
         if(st!=SAT_OK)return st;
+        T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
         t3_move_probe_tick(view);
         t3_combat_events_tick(view->total_ticks);
+        T3_SIM_END(bridge_started);
+        t3_sim_tick_end();
     }
     SLAVE_FRT_ADD(0,ticks_started);
     g_t3_slave_sim_ticks=view->total_ticks;
@@ -2222,6 +2228,12 @@ int main(void) {
             g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch};
             t3_characters_set_worker_start(start_prepare_simulation);
         }
+#if defined(T3_MASTER_SKIN_PERCENT_SLOW)
+        /* The Slave's chain is actor 1 and then the deferred ticks; with three
+         * ticks it outlasts two fields while the Master waits at the join, so
+         * the Master skins more of actor 1 (POST_VRAM_EXECUTION_TRACKER.md, N3). */
+        t3_characters_set_master_skin_percent(deferred>=3u?T3_MASTER_SKIN_PERCENT_SLOW:T3_MASTER_SKIN_PERCENT);
+#endif
 #endif
         prepare_scene();
 #if defined(T3_NATIVE_WAIT_PROBE)

@@ -59,7 +59,8 @@ of record.
 | W4 stage ownership | **CLOSED**: two policies rejected (mid −0.07/−0.18, aggressive −1.89/−1.48); keep the first-come race |
 | W5 pose topology | **PROMOTED**: bit-exact digest; primary +0.13/+0.16 (6/7 spans), pair 7,4 +0.11/+0.23; default is ON |
 | W6 panorama | **CLOSED**: profile captured (fit ≈70% of a 2.28 ms panorama); no exact rewrite with a measurable gain; keep the code |
-| Base rate | 26.89 marked / 25.26 worst segment (2026-11-07 head; cache 8: 26.41/24.50) — the 30 img/s target is still open |
+| N3 slow-image skin share | **PROMOTED (2026-11-07)**: the Master skins all of actor 1 on images with 3+ deferred ticks; whole fight 27.05 → 27.50 marked, worst segment 25.24 → 25.90, 7/7 segments ahead, 0 differing vertices over 1,184 split images |
+| Base rate | 27.50 marked / 25.90 worst segment (2026-11-07, N3; cache 8: 26.41/24.50) — the 30 img/s target is still open |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -641,6 +642,60 @@ functions only): `t3_psx_mul_rot` 4.8 %, motion `sample_one` 4.8 %, AI bus
 reads `rd` 4.0 % and writes `wr` 1.2 %, memcpy 3.5 %, `compose_parts` 2.1 %,
 IK 1.9 %, FK 1.6 %, `advance_core` 1.1 %, `vector_normal` 1.0 %, then a long
 tail under 1 % each.
+
+**N3: the tick on Mednafen, and the Master skins actor 1 on slow images
+(2026-11-07).**
+
+*Tick breakdown.* `T3_SIM_PROFILE` now also runs with the Slave simulation:
+`sim_profile.c` times the Slave's own ticks on its FRT (/128, extended to 32
+bits) and the Slave task loop calls the tick hooks. Read it with
+`mednafen_fight.py --symbol _g_t3_sim_profile` and
+`analyze_simulation_profile.py --fight fight.json` (evidence
+`assets/imported/perf-n3-simprof-280`, capacity 1, 5,524 ticks after the
+300-tick warm-up). Per tick, FRT/128, exclusive:
+
+| Stage | FRT/128 | Share |
+| --- | ---: | ---: |
+| AI (`AiUpdate`, 1.52 calls per tick) | 394 | 17.3 % |
+| motion sample | 251 | 11.0 % |
+| match step (own code) | 231 | 10.1 % |
+| compose parts | 229 | 10.0 % |
+| IK | 224 | 9.8 % |
+| blend | 160 | 7.0 % |
+| FK, camera, compose, contacts, bodies, local pose, slots, hits, root, ground | 41–83 each | 2–4 % each |
+| whole tick (inclusive) | 2,284 | |
+
+The instrumented tick is 2,284 against the 2,152 of N2 (hook cost). The AI
+costs ≈32,000 cycles per update on Mednafen against ≈22,900 on Ymir, and the
+pose stages differ by a similar 1.4–1.6×: Mednafen charges memory more
+everywhere, not one function. The AI's 4.5 bus misses per update are not the
+cost; `rd` is called ≈156 times per update and takes the guest-RAM path 57 %
+of the time.
+
+*Load balance instead of a faster tick.* On a three-tick image the Master
+waits ≈2,859 at the join while the Slave runs actor 1's 35 % share and then
+three ticks. `T3_MASTER_SKIN_PERCENT_SLOW` gives the Master a different share
+of actor 1 on images that defer three or more ticks
+(`t3_characters_set_master_skin_percent`, set before `prepare_scene`); two-tick
+images keep 65 %. Whole fight, 280 s, pad hash `0xb99cc280` on every run
+(control = current defaults; evidence `assets/imported/perf-n3-*-280`):
+
+| Slow-image share | Marked | Worst segment | Segments ahead |
+| ---: | ---: | ---: | ---: |
+| 65 (control) | 27.05 | 25.24 | |
+| 80 | 27.11 | 25.50 | 5 of 7 |
+| 90 | 27.27 | 25.70 | 5 of 7 |
+| **100** | **27.50** | **25.90** | **7 of 7** |
+
+At 100 the Slave skins none of actor 1 on those images (`deform_actor` returns
+at once on an empty range). **100 is the default** whenever the Slave
+simulation and a Master share are on.
+
+*Pixels.* The frozen-pixel bench runs no ticks, so it never takes the worker
+path. `T3_MASTER_SKIN_CHECK` (diagnostic, off) re-projects actor 1 on the
+Master after every split image and counts differing vertices: over the 280 s
+fight **1,184 split images, 0 vertices differ**. Which CPU skins a vertex does
+not change it, so no share changes a pixel.
 
 Earlier step (N2 plan): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
 Mednafen on this base to confirm which CPU limits now, then cut the Slave's

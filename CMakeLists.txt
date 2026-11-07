@@ -820,7 +820,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     option(T3_SLAVE_SIMULATION "Experimental serial simulation overlapped with painter flush" OFF)
     if(T3_SLAVE_SIMULATION)
         # Input tapes only read or record inputs; the Slave loop replays them (CPU capture: move_probe.c).
-        if(NOT T3_FUSED_ACTOR_PREPARATION OR T3_SIM_PROFILE OR T3_PERF_SAMPLES OR T3_POSE_TRACE)
+        # T3_SIM_PROFILE times the Slave's own ticks on its FRT (sim_profile.c).
+        if(NOT T3_FUSED_ACTOR_PREPARATION OR T3_PERF_SAMPLES OR T3_POSE_TRACE)
             message(FATAL_ERROR "Slave simulation requires fused actors without intrusive simulation instrumentation")
         endif()
         enable_language(ASM)
@@ -852,6 +853,33 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         message(FATAL_ERROR "T3_FIGHTER_HAND_VARIANTS needs T3_MASTER_SKIN_PERCENT=0")
     endif()
     target_compile_definitions(tekken3_saturn PRIVATE T3_MASTER_SKIN_PERCENT=${T3_MASTER_SKIN_PERCENT}u)
+    # Images that defer three or more ticks to the Slave give the Master this
+    # share instead (empty: always T3_MASTER_SKIN_PERCENT). 100 is the default
+    # with a Master share: whole fight 27.05 -> 27.50 marked, worst segment
+    # 25.24 -> 25.90, no vertex differs (T3_MASTER_SKIN_CHECK). See
+    # POST_VRAM_EXECUTION_TRACKER.md, N3.
+    if(T3_SLAVE_SIMULATION AND T3_MASTER_SKIN_PERCENT GREATER 0)
+        set(_t3_master_skin_slow_default 100)
+    else()
+        set(_t3_master_skin_slow_default "")
+    endif()
+    set(T3_MASTER_SKIN_PERCENT_SLOW "${_t3_master_skin_slow_default}" CACHE STRING "Master's share of actor 1 on images with 3+ deferred ticks (empty, or 0 to 100)")
+    if(NOT T3_MASTER_SKIN_PERCENT_SLOW STREQUAL "")
+        if(NOT T3_MASTER_SKIN_PERCENT_SLOW MATCHES "^[0-9]+$" OR T3_MASTER_SKIN_PERCENT_SLOW GREATER 100)
+            message(FATAL_ERROR "T3_MASTER_SKIN_PERCENT_SLOW must be empty or between 0 and 100")
+        endif()
+        if(NOT T3_SLAVE_SIMULATION OR T3_MASTER_SKIN_PERCENT EQUAL 0)
+            message(FATAL_ERROR "T3_MASTER_SKIN_PERCENT_SLOW needs Slave simulation and a Master share")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE T3_MASTER_SKIN_PERCENT_SLOW=${T3_MASTER_SKIN_PERCENT_SLOW}u)
+    endif()
+    option(T3_MASTER_SKIN_CHECK "Diagnostic: re-project actor 1 on the Master after a split image and count differing vertices" OFF)
+    if(T3_MASTER_SKIN_CHECK)
+        if(NOT T3_SKIN_TO_SCREEN OR T3_MASTER_SKIN_PERCENT EQUAL 0)
+            message(FATAL_ERROR "T3_MASTER_SKIN_CHECK needs screen skinning and a Master share")
+        endif()
+        target_compile_definitions(tekken3_saturn PRIVATE T3_MASTER_SKIN_CHECK=1)
+    endif()
     if(T3_FUSED_ACTOR_PREPARATION AND T3_VDP2_FLOOR AND
        T3_LOCAL_CHARACTER_ARC AND T3_LOCAL_DIVMOT)
         set(_t3_branch_default ON)

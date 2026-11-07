@@ -113,8 +113,13 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--capture',type=Path,help='saturn_probe output with symbol dumps')
     p.add_argument('--raw',type=Path,help='raw g_t3_sim_profile bytes, e.g. mednafen_state.py --dump')
+    p.add_argument('--fight',type=Path,help='mednafen_fight.py fight.json run with --symbol _g_t3_sim_profile')
     p.add_argument('--out',type=Path,required=True)
     a=p.parse_args()
-    if bool(a.capture)==bool(a.raw):p.error('give exactly one of --capture and --raw')
-    report=analyze(a.capture) if a.capture else summarize(decode(a.raw.read_bytes()))
+    if sum(map(bool,(a.capture,a.raw,a.fight)))!=1:p.error('give exactly one of --capture, --raw and --fight')
+    if a.capture:report=analyze(a.capture)
+    elif a.raw:report=summarize(decode(a.raw.read_bytes()))
+    else:
+        words=json.loads(a.fight.read_text())['symbols']['_g_t3_sim_profile']
+        report=summarize(decode(struct.pack('>%dI'%len(words),*words)))
     a.out.write_text(json.dumps(report,indent=2)+'\n')

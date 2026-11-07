@@ -1680,6 +1680,11 @@ void t3_characters_prepare_worker(void) {
 #if defined(T3_FIGHTER_HAND_VARIANTS) && T3_MASTER_SKIN_PERCENT
 #error "hand variants rewrite actor 1's skin on the Slave alone: no Master share"
 #endif
+static uint32_t g_master_skin_percent=T3_MASTER_SKIN_PERCENT;
+void t3_characters_set_master_skin_percent(unsigned percent) {
+    /* No share at all keeps the build's choice (hand variants need none). */
+    if(T3_MASTER_SKIN_PERCENT)g_master_skin_percent=percent>100u?100u:percent;
+}
 #if defined(T3_SKIN_TO_SCREEN)
 /* Both shares must be on screen; otherwise the whole actor goes to world, as
  * a refusal on one CPU does (skin_to_world_after). */
@@ -1692,10 +1697,34 @@ static sat_result_t settle_lead(actor_t* worker,sat_result_t lead_result) {
 }
 #endif
 
+#if defined(T3_SKIN_TO_SCREEN) && defined(T3_MASTER_SKIN_CHECK)
+/* T3_MASTER_SKIN_CHECK: after a split image, the Master projects all of
+ * actor 1 again and counts the vertices that differ from the two CPUs'
+ * result. Zero means the split cannot change a pixel. Diagnostic only. */
+volatile uint32_t g_t3_master_skin_check[3]; /* images checked, vertices differing, images differing */
+static sat_projected_vertex_t g_split_projected[T3_VERTEX_COUNT];
+static sat_result_t check_split(actor_t* worker) {
+    sat_result_t st=sat_parallel_cache_sync_range(worker->projected,worker->vertex_count*sizeof(*worker->projected));
+    if(st!=SAT_OK)return st;
+    __builtin_memcpy(g_split_projected,worker->projected,worker->vertex_count*sizeof(*worker->projected));
+    if((st=project_lead(&g_fused_actors,worker,worker->vertex_count))!=SAT_OK)return st;
+    uint32_t differing=0;
+    for(uint32_t v=0;v<worker->vertex_count;++v) {
+        const sat_projected_vertex_t* a=&g_split_projected[v];
+        const sat_projected_vertex_t* b=&worker->projected[v];
+        differing+=a->x!=b->x || a->y!=b->y || a->w!=b->w;
+    }
+    ++g_t3_master_skin_check[0];
+    g_t3_master_skin_check[1]+=differing;
+    g_t3_master_skin_check[2]+=differing!=0;
+    return SAT_OK;
+}
+#endif
+
 static sat_result_t prepare_with_worker(void) {
     actor_t* worker=&g_actors[1];
 #if defined(T3_COMPILED_RENDERER)
-    const uint32_t lead=worker->compiled_active?0u:worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
+    const uint32_t lead=worker->compiled_active?0u:worker->vertex_count*g_master_skin_percent/100u;
 #elif defined(T3_SKIN_TO_SCREEN)
     /* The original projection builds the whole mesh on one CPU. */
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
@@ -1703,9 +1732,9 @@ static sat_result_t prepare_with_worker(void) {
 #else
     const int whole=!worker->instance.pre_projected;
 #endif
-    const uint32_t lead=whole?0u:worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
+    const uint32_t lead=whole?0u:worker->vertex_count*g_master_skin_percent/100u;
 #else
-    const uint32_t lead=worker->vertex_count*T3_MASTER_SKIN_PERCENT/100u;
+    const uint32_t lead=worker->vertex_count*g_master_skin_percent/100u;
 #endif
     g_fused_actors.lead=(uint16_t)lead;
     sat_result_t st=g_worker_start();
@@ -1727,6 +1756,9 @@ static sat_result_t prepare_with_worker(void) {
     st=sat_parallel_cache_sync_range(&g_actor_geometry[1],sizeof(g_actor_geometry[1]));
 #if defined(T3_SKIN_TO_SCREEN)
     if(st==SAT_OK && lead && shared->result[1]==SAT_OK)st=settle_lead(worker,lead_result);
+#if defined(T3_MASTER_SKIN_CHECK)
+    if(st==SAT_OK && lead && lead<worker->vertex_count && worker->instance.pre_projected)st=check_split(worker);
+#endif
 #endif
     (void)lead_result;
     return st;

@@ -56,6 +56,10 @@ extern volatile uint32_t g_t3_original_projected[2];
 typedef sat_result_t (*t3_characters_worker_start_t)(void);
 void t3_characters_set_worker_start(t3_characters_worker_start_t start);
 void t3_characters_prepare_worker(void);
+/* Percent of actor 1's vertices the Master skins in the next preparation
+ * (0 to 100; T3_MASTER_SKIN_PERCENT until changed). The vertices are the same
+ * whichever CPU skins them. */
+void t3_characters_set_master_skin_percent(unsigned percent);
 /* FRT durations are owned by the actor CPU and published after the fused
  * worker join. Dispatch includes both actors and must not be added to them. */
 typedef struct {
