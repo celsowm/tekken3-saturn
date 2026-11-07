@@ -583,6 +583,39 @@ against only 15 CPU waits on the VDP1. Late swaps alone do not say whether the
 VDP1 draw or a late submit is the cause; the next package splits that per
 image (CPU build end vs. VDP1 draw end) before choosing a target.
 
+**N1: ordinary-image profile (2026-11-07, Ymir cache on, default build,
+fields 4,000–4,119 of the boot-to-fight script, mid round 1).** Evidence:
+`assets/imported/perf-n1-profile-ymir` (`--debug-profile --trace-from 4000
+--trace-frames 120`; at 2,600 the script is still on the VS screen).
+
+- **The VDP1 is not the limit.** Every draw ends 31,000–39,000 system cycles
+  after it begins, about 7–9 % of a field (≈1.2–1.5 ms). 68 draws in 120 fields.
+- **Ymir runs this window at 34 img/s** (68 images / 120 fields); the arcade
+  Ymir gate of W0.7 gave 1,778 images in 3,160 fields (33.8). Mednafen gives
+  26.9 for the same fight. Ymir's profile records
+  `division_timing_model: immediate-result-no-busy-wait`, i.e. divisions are
+  free, so the two emulators disagree on the CPU cost and on which CPU
+  limits. The 30 img/s target is judged on Mednafen; hardware decides.
+- **Ymir per CPU** (cycles per field, 449,204 per field):
+  - Master ≈95 % busy: LibSaturn `faces.cpp` 44.6 % (`submit_instance`
+    30.9 %, `faces_flush` 7.4 %, paint-order buckets 5.9 %), `skin.cpp` 32.8 %
+    (`project_q15` 25.1 %, clip joints 5.7 %), cache invalidation 3.5 %.
+  - Slave ≈75 % busy (FRT polling, mailbox and signal waits ≈25 %): skin
+    11.3 %, `psx_pose` 9.4 %, `psx_ai` 8.4 %, `stage_backdrop` 6.6 %,
+    `psx_motion` 6.3 %, memcpy/memset 5.4 % (290 memcpy calls per field from
+    41 sites, led by `t3_history_at`), `psx_ik` 3.4 %, SDK floor 3.1 %,
+    blend math 2.6 %.
+- On Mednafen the last measurement (THIRTY_IMAGE_GATE.md, "Stage tables
+  written once") had the opposite balance: the Slave sets the rate, a
+  simulation tick costs it ≈2,242 FRT/128 (0.6 field), and three-tick images
+  cannot fit two fields. The Slave runs the divide-heavy code (panorama fit,
+  floor, AI), which fits a cost Ymir does not charge.
+
+Next (N2): re-run the silent wait probe (`T3_NATIVE_WAIT_PROBE_SILENT`) on
+Mednafen on this base to confirm which CPU limits now, then cut the Slave's
+tick (pose/IK/motion ≈22 % of its work, AI 8 %) if it still does, or the
+Master's face submission if it does not.
+
 **Rejected: shape check once per face (2026-11-07).** `t3_face_quad_tile_coverage`
 runs `t3_face_quad_supported` (a walk of every scanline) for each cell a face
 reaches. Checking it once per face changed nothing measurable: face masks
