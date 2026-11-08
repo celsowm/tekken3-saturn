@@ -646,3 +646,8 @@ the shared preparation also lowers the third actor's cost.
   compared. That makes the spawn path (level runner to fighter init, model swap, costume key) part of
   what step 2 proves, and puts Force's own start-of-level init ahead of the rules in the inventory.
   `scripts/force_oracle_export.py --seed-at FRAME` writes the globals and frames for such a run.
+- **Step 1 done: four recordings, roles exact on all of them.** `check_force_roles_trace.py --fixed`:
+  `force` 5,994 frames, `force_run` 37,757, `force_bosses` 38,367, `force_final` 49,528; 0 differ in
+  each (131,646 frames). The last three carry the comparator's seed ranges (`force_flow_record.py`);
+  `force_run` and `force_bosses` are 40,000 frames, `force_final` 57,729; together 1.4 GB under
+  `third_party/Tekken3Remake/work/traces` (git-ignored).
