@@ -772,3 +772,15 @@ made dynamic as in the original (throw partner, else the last attacker when hit,
 roles' choice) and `last_hit_target` kept, **2,389 frames (262-2,650)** match. The first difference is the player's
 `distance` at frame 2,651: it starts a throw on the enemy it is not facing, which is the throw skip / throw link of the
 inventory (three-fighter `MoveStartAll`, `count_throws`, `update_throw_link`).
+
+Update: **2,562 frames (262-2,823)** of `force_run` match. Closed since the last note: `dist` for the opponent as it is when
+MoveStep runs (this frame's hits may have changed it); `+0x1F` is the opponent index the roles pass stored (the AI and the
+move starts read that, not the live one); the records are hit in MoveStep's order (even frames the second record first),
+so an enemy that took the alternate KO (attack class 1) gives the record stepped after it no move reaction; the hit
+direction is copied whether or not a reaction is chosen; the level runner reads each enemy's throw flag, hit flag and
+forced-hit flag (`+0xC4`, `+0xCE`, `+0xE7`), which decide when a defeated enemy turns invulnerable.
+
+The first difference (frame 2,824) is a single-frame `aim_dir` of the player (it should be recomputed, fixed-facing, because
+that frame's PairwiseDistances sees an off-screen enemy: the screen x it reads is the one this frame's draw writes, which
+needs the owned projection of step 5; the evaluator only has the last frame's). Without the fight camera's projection the
+evaluator cannot reproduce it; the long comparison continues past it (2,701 of the first 6,000 rows match).

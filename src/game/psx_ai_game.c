@@ -161,7 +161,7 @@ static void fill_image(t3_psx_ai_game_t* b,unsigned i) {
     /* Init zeroed the image and every field below is written each call. */
     put(p+0x16,2,fighter_bank(b,i)->bank_type);
     put(p+0x18,2,m->config->character[i]);
-    p[0x1E]=(uint8_t)i;p[0x1F]=(uint8_t)T3_PSX_OPP(m,i);
+    p[0x1E]=(uint8_t)i;p[0x1F]=(uint8_t)T3_PSX_CUR_OPP(m,i);
     put(p+0x2E,2,g->heading_delta);put(p+0x30,2,g->relative_angle);put(p+0x32,2,(uint32_t)g->facing_quadrant);
     put(p+0x3C,2,g->opp_heading_delta);put(p+0x3E,2,g->opp_relative_angle);
     put(p+0x40,2,(uint32_t)g->opponent_quadrant);

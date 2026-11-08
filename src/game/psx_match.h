@@ -31,6 +31,7 @@
 #endif
 #if T3_PSX_FIGHTERS==2
 #define T3_PSX_OPP(match,i) (1u-(i))
+#define T3_PSX_CUR_OPP(match,i) (1u-(i))
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_distance)
 #else
 /* FighterOpponentIndex (0x80045E50): the throw partner in a throw, else the last attacker when this move was
@@ -38,6 +39,7 @@
 struct t3_psx_match;
 static inline unsigned t3_psx_opponent(const struct t3_psx_match* match,unsigned i);
 #define T3_PSX_OPP(match,i) t3_psx_opponent(match,i)
+#define T3_PSX_CUR_OPP(match,i) ((unsigned)(match)->cur_opponent[i])
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_dist[i])
 #include "psx_force_walls.h"
 #include "psx_force_level.h"
@@ -186,6 +188,7 @@ typedef struct t3_psx_match {
     const t3_psx_match_config_t* config;
 #if T3_PSX_FIGHTERS>2
     uint8_t opponent[T3_PSX_FIGHTERS]; /* the fighter each one faces (FUN_800B5EC0 in Tekken Force) */
+    uint8_t cur_opponent[T3_PSX_FIGHTERS]; /* +0x1F: FighterOpponentIndex as the roles pass last stored it */
     /* Tekken Force: set for an enemy whose slot is free and while its level still runs (FUN_800B2EEC), which
      * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
     uint8_t off_screen_extra[T3_PSX_FIGHTERS];

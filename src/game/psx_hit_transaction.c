@@ -34,6 +34,14 @@ static int16_t abs_damage(int16_t n) {
 #define HIT_ATTACKER(match,i) T3_PSX_OPP(match,i)
 #endif
 #define GATE_APPLIES(match,i,a) 1
+/* HitApply copies the attacker's AttackVelocity (0x80040CF8): its first attack segment's end minus its start; the
+ * attacker is that of the last slot used. */
+static void set_hit_dir(staged_t* s,const t3_psx_fighter_t* attacker) {
+    const t3_world_segment_t* g=&attacker->strike.segments[0];
+    s->ground.hit_dir=attacker->projectile_hit?(t3_vec3i_t){0,0,0}:
+        (t3_vec3i_t){(int32_t)((uint32_t)g->end.x-(uint32_t)g->start.x),
+        (int32_t)((uint32_t)g->end.y-(uint32_t)g->start.y),(int32_t)((uint32_t)g->end.z-(uint32_t)g->start.z)};
+}
 /* HitSelectReaction for a staged defender that took a hit: the reaction record's move, queued over what was pending. */
 static int select_reaction(const t3_psx_match_config_t* c,staged_t* s,const t3_psx_fighter_t* f,const t3_psx_fighter_t* attacker,int air) {
     t3_psx_hit_candidate_t forced=s->hit.slots[(unsigned)s->hit.best_slot];
@@ -42,14 +50,7 @@ static int select_reaction(const t3_psx_match_config_t* c,staged_t* s,const t3_p
     t3_psx_reaction_facts_t reaction_facts={0};
     reaction_facts.defender_state=(uint16_t)s->ground.state;
     reaction_facts.facing_quadrant=s->ground.facing_quadrant;reaction_facts.in_air=s->ground.in_air;
-    /* HitApply copies the attacker's AttackVelocity (0x80040CF8):
-     * its first attack segment's end minus its start. */
-    {
-        const t3_world_segment_t* g=&attacker->strike.segments[0];
-        s->ground.hit_dir=attacker->projectile_hit?(t3_vec3i_t){0,0,0}:
-            (t3_vec3i_t){(int32_t)((uint32_t)g->end.x-(uint32_t)g->start.x),
-            (int32_t)((uint32_t)g->end.y-(uint32_t)g->start.y),(int32_t)((uint32_t)g->end.z-(uint32_t)g->start.z)};
-    }
+    /* (HitApply's hit_dir, the attacker's AttackVelocity, was copied before this: see set_hit_dir) */
     reaction_facts.defender_slot=f->vm.slot;reaction_facts.defender_pose_frame=f->vm.clock.pose_frame;
     reaction_facts.defender_root_y=s->ground.root.y;reaction_facts.hit_dir_y=s->ground.hit_dir.y;
     reaction_facts.attacker_bank=attacker->vm.bank?attacker->vm.bank->bank_type:0u;
@@ -85,7 +86,18 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     const t3_psx_match_config_t* c;
     if(!match || !match->config || !match->config->enable_combat)return 0;
     c=match->config;
-    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+#if T3_PSX_FIGHTERS>2
+    /* MoveStepAll steps the records in this order, each defender reading what the ones before it left (an enemy
+     * that took the alternate KO has attack class 1, which gives its opponent no move reaction). */
+    uint8_t ko_alt[T3_PSX_FIGHTERS]={0};
+    static const uint8_t step_odd[3]={0,1,2},step_even[3]={1,0,2};
+#endif
+    for(unsigned idx=0;idx<T3_PSX_FIGHTERS;++idx) {
+#if T3_PSX_FIGHTERS>2
+        const unsigned i=(match->frame_counter&1u)?step_odd[idx]:step_even[idx];
+#else
+        const unsigned i=idx;
+#endif
         const unsigned a=HIT_ATTACKER(match,i);
         const t3_psx_fighter_t *f=&match->fighter[i],*attacker=&match->fighter[a];
         t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t slot_facts[2]={{0},{0}};unsigned slot_attacker[2]={a,a};t3_move_record_t slot_move[2];
@@ -136,28 +148,38 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         if(!t3_psx_hit_apply_preview(&frame,&s->hit))return 0;
         s->ground.last_damage=abs_damage(s->hit.slot_damage);
         s->ground.hit_clean=s->hit.hit_clean;
-        if(s->got_hit && !select_reaction(c,s,f,&match->fighter[slot_attacker[(unsigned)s->hit.best_slot]],0))return 0;
+        if(s->got_hit) {
+            set_hit_dir(s,&match->fighter[slot_attacker[frame.slots[1].used?1u:0u]]);
+            const unsigned atk=slot_attacker[(unsigned)s->hit.best_slot];
+#if T3_PSX_FIGHTERS>2
+            const int no_reaction=c->start_force && ko_alt[atk];
+#else
+            const int no_reaction=0;
+#endif
+            if(!no_reaction && !select_reaction(c,s,f,&match->fighter[atk],0))return 0;
+        }
         s->attacker=(uint8_t)slot_attacker[s->got_hit?(unsigned)s->hit.best_slot:0u];
+#if T3_PSX_FIGHTERS>2
+        if(c->start_force && !c->collapse_on_ko && s->hit.health_q16==0 && s->hit.hit_clean) {
+            /* Without the USA versus collapse, a KO from a standing or crouching stance is thrown into the air:
+             * the in-air reaction is selected again (MoveStep's alternate KO). */
+            const t3_move_record_t* next=s->vm.pending_valid?&s->vm.pending_move:&s->vm.move;
+            if(next->stance_slot==3u || next->stance_slot==40u) {
+                const __typeof__(s->hit.prior_pending_valid) valid=s->hit.prior_pending_valid;
+                const __typeof__(s->hit.prior_pending_slot) slot=s->hit.prior_pending_slot;
+                s->ground.in_air=1;s->hit.guarded=0;s->hit.hit_clean=1;s->ground.guard=0;
+                if(!select_reaction(c,s,f,&match->fighter[s->attacker],1))return 0;
+                s->hit.prior_pending_valid=valid;s->hit.prior_pending_slot=slot;
+                ko_alt[i]=1;
+            }
+        }
+#endif
     }
     /* USA VS FighterCollapse runs immediately in MoveStepAll on a clean KO,
      * after selecting the ordinary reaction. It does not wait for next tick. */
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         staged_t* s=&staged[i];
-        if(c->start_force) {
-            /* Without the USA versus collapse (collapse_on_ko 0), a KO from a standing or crouching stance is
-             * thrown into the air: the in-air reaction is selected again (MoveStep's alternate KO). */
-            if(!c->collapse_on_ko && s->hit.health_q16==0 && s->hit.hit_clean) {
-                const t3_move_record_t* next=s->vm.pending_valid?&s->vm.pending_move:&s->vm.move;
-                if(next->stance_slot==3u || next->stance_slot==40u) {
-                    const __typeof__(s->hit.prior_pending_valid) valid=s->hit.prior_pending_valid;
-                    const __typeof__(s->hit.prior_pending_slot) slot=s->hit.prior_pending_slot;
-                    s->ground.in_air=1;s->hit.guarded=0;s->hit.hit_clean=1;s->ground.guard=0;
-                    if(!select_reaction(c,s,&match->fighter[i],&match->fighter[s->attacker],1))return 0;
-                    s->hit.prior_pending_valid=valid;s->hit.prior_pending_slot=slot;
-                }
-            }
-            continue;
-        }
+        if(c->start_force)continue; /* the alternate KO was taken in the loop above, in MoveStep's order */
         if(s->hit.health_q16==0 && s->hit.hit_clean) {
             const t3_move_record_t* next=s->vm.pending_valid?&s->vm.pending_move:&s->vm.move;
             int collapse=next->stance_slot==3u || next->stance_slot==40u ||

@@ -1042,7 +1042,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
                v->queued.transition==33u && v->queued.entry_frame<=v->clock.pose_frame)list[count++]=i;
         }
         if(count) {
-            const unsigned thrower=list[n->ticks%count];
+            const unsigned thrower=list[n->frame_counter%count];
             order[0]=T3_PSX_OPP(n,thrower);order[1]=thrower;order[2]=3u-order[0]-order[1];
             if(!throw_victim_start(n,order[0],order[1]))return 0;
         }
@@ -1073,7 +1073,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             CLEAR_HIT_DONE(f);
             if(!f->contact)f->contact_this_move=0;
             int count=t3_attack_joint_pairs(f->vm.active_bank,&f->vm.move);
-            if(count<0 || !t3_psx_ground_start(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,
+            if(count<0 || !t3_psx_ground_start(&f->ground,&n->fighter[f->ground.in_throw?T3_PSX_OPP(n,i):T3_PSX_CUR_OPP(n,i)].ground,
                     &f->vm,&before,&c->ground_tables,flags,
                     (uint8_t)(f->vm.current_branch_kind==3u || f->vm.current_branch_kind==4u),
                     facts,&f->reaction,(uint8_t)count))return 0;
@@ -1244,14 +1244,21 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         /* MoveStepAll: fighters 0 and 1 alternate by frame parity, the third goes last and only while the
          * level runs. */
         if(j==2u && n->level_ended)break;
-        unsigned i=j<2u?(j+(n->ticks&1u))&1u:j;
+        unsigned i=j<2u?((n->frame_counter&1u)==0u?1u-j:j):j; /* even frames step the second record first */
 #endif
         t3_psx_fighter_t *f=&n->fighter[i],*opp=&n->fighter[T3_PSX_OPP(n,i)];
         t3_branch_context_t facts={0};
         if(!t3_psx_ground_angles(&f->ground,&opp->ground,&c->ground_tables))return 0;
         /* MoveStep (0x800454E0) then takes `dist` from the pair table, without
          * PairwiseDistances' off-screen stand-in. */
+#if T3_PSX_FIGHTERS>2
+        {   /* `dist` from the pair table, for the opponent as it is now: this frame's hits may have changed it */
+            const unsigned o=T3_PSX_OPP(n,i),small=i<o?i:o,big=i<o?o:i;
+            f->ground.distance=n->pair_all[small+big-1u];
+        }
+#else
         f->ground.distance=T3_PSX_PAIR_DIST(n,i);
+#endif
         if(c->enable_combat) {
             t3_psx_match_branch_facts(n,i,&facts);
             facts.tap_condition_used=&f->taps.condition_used;
@@ -1508,6 +1515,7 @@ static int force_roles(t3_psx_match_t* n,const t3_psx_match_frame_t* frame) {
     uint8_t both;
     t3_force_roles(&n->force_target,&in,&r,n->opponent[0],n->opponent,&both);
     n->fighter[0].ground.fixed_facing=both;n->fighter[0].ground.fixed_facing_side=0;
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n->cur_opponent[i]=(uint8_t)T3_PSX_OPP(n,i);
     return 1;
 }
 static int force_level_frame(t3_psx_match_t* n) {
@@ -1527,6 +1535,7 @@ static int force_level_frame(t3_psx_match_t* n) {
         r->anchor_x=f->ground.anchor.x;r->anchor_z=f->ground.anchor.z;
         r->root_x=f->ground.root.x;r->root_z=f->ground.root.z;
         r->f04=f->ground.anchor.y;r->owner=f->last_attacker;r->health_max=f->health_max;
+        r->fc4=f->ground.in_throw;r->fce=f->got_hit;r->fe7=f->ground.forced_hit_in; /* +0xC4, +0xCE, +0xE7: read by the slot's states */
     }
     t3_force_level_step(s,c->force_tables,c->force_script);
     n->flow.timer=s->timer;
