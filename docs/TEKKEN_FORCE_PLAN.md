@@ -911,3 +911,11 @@ tally flag, level-ended flag, key flag and scroll mode every frame. That showed 
 per damage the player or a forced hit did to an enemy, twice the extra damage); it is in the hit transaction now. All three
 recordings pass every fighter field and these runner fields: `force_run` 7,522, `force_bosses` 9,578, `force_final` 7,882
 frames. The two-record `app.bin` stays 498,560 bytes.
+
+### Where the recordings continue (for the next comparison runs)
+
+The live Force chunks of `force_run` (the player's record live in mode 8) start at frames 261 (level 1, compared: 7,522 frames),
+7,799, 18,935 (level word 1) and 35,785 (level word 2). Comparing a later chunk needs the evaluator to start from that
+frame's carried state (score, keys, health, the hi-score, the timer, the random state — the owned start derives its random
+state from the boot seed, which only fits the first chunk) and the matching `LEVn.BIN`, so the first thing to add is a
+"start from these globals" mode next to `T3_ORIGINAL_MATCH_START`.
