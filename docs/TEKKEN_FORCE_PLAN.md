@@ -637,3 +637,12 @@ the shared preparation also lowers the third actor's cost.
   The older `flow_force.bin` stays valid for the roles, the camera and the level runner.
 - Still to write: the exporter from a wide trace (seed from the frame before the first running frame,
   `frame-N.ranges` after), a Force round flow in the evaluator, and the rule fixes themselves.
+- **The comparator cannot seed from a neutral frame.** In the recorded game the player is standing
+  neutral (slot 3, blend idle) on 8 frames out of 7,000, and never with an enemy on screen except
+  frame 2106; the enemies spawn mid-fight. The versus evaluator's neutral seed (it rebuilds the move
+  and blend state from a standing pose) therefore does not apply. The Force comparator instead
+  follows the evaluator's `T3_ORIGINAL_MATCH_START` mode: no original fighter state is copied, the
+  owned code initializes the player at level start and spawns each enemy itself, and every frame is
+  compared. That makes the spawn path (level runner to fighter init, model swap, costume key) part of
+  what step 2 proves, and puts Force's own start-of-level init ahead of the rules in the inventory.
+  `scripts/force_oracle_export.py --seed-at FRAME` writes the globals and frames for such a run.
