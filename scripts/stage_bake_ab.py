@@ -29,7 +29,7 @@ def install(bake, build):
     for name in ('PAUL.STG', 'manifest.json'):
         shutil.copyfile(bake/name, generated/name)
     subprocess.run(['cmake', '--build', str(build), '-j8'], check=True, stdout=subprocess.DEVNULL)
-    if not filecmp.cmp(bake/'PAUL.STG', build/'disc/iso_root/PAUL.STG', shallow=False):
+    if not filecmp.cmp(bake/'PAUL.STG', build/'disc/tekken3_saturn.iso_root/PAUL.STG', shallow=False):
         raise ValueError(f'the disc did not take the picture of {bake}')
     return hashlib.sha256((build/'tekken3_saturn.elf').read_bytes()).hexdigest()
 

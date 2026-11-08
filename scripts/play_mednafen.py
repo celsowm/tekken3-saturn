@@ -21,9 +21,12 @@ REQUIRED = {'INTRO.MOV': 'the Tekken 3 opening movie (-DT3_LOCAL_INTRO_MOVIE)',
 
 
 def missing_features(disc):
-    """The REQUIRED files absent from the unpacked disc next to this cue, or None if it has no iso_root."""
-    iso_root = disc.parent / 'iso_root'
-    if not iso_root.is_dir():
+    """The REQUIRED files absent from the unpacked disc next to this cue, or None if it has no
+    staging root. LibSaturn stages each disc in <name>.iso_root; the mixed-mode music.cue is built
+    from tekken3_saturn's."""
+    roots = [disc.parent / f'{disc.stem}.iso_root', disc.parent / 'tekken3_saturn.iso_root']
+    iso_root = next((r for r in roots if r.is_dir()), None)
+    if iso_root is None:
         return None
     return [f'{name}: {what}' for name, what in REQUIRED.items() if not (iso_root / name).exists()]
 

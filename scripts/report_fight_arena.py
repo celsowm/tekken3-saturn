@@ -5,7 +5,7 @@ The arena (fighter_pack.c g_arena) holds the DIVMOT banks and camera streams of 
 worst pairing. Any other pairing leaves a tail unused. This reports that tail, and the pairings that leave less than
 --need bytes, so a feature that borrows the tail can say whether it fits for every pair.
 
-    python3 scripts/report_fight_arena.py --iso-root build/disc/iso_root --need 116000"""
+    python3 scripts/report_fight_arena.py --iso-root build/disc/tekken3_saturn.iso_root --need 116000"""
 import argparse
 import struct
 from pathlib import Path

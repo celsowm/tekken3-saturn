@@ -68,7 +68,8 @@ of record.
 | R8 worker-written span | **PROMOTED (2026-11-07)**: the join invalidates only the bytes of actor 1's geometry the Slave wrote, not all 14.8 KB; 29.01 → 29.06 marked, worst segment 27.00 → 27.05; frozen pixels match |
 | GCC 16.2 toolchain | **REJECTED (2026-11-07)**: SDK and game rebuilt with GCC 16.2 / binutils 2.47 (same options): 29.06 → 28.76 marked, worst segment 27.05 → 26.70; with its one 64-bit divide regression fixed, 28.84 / 26.71. GCC 13.2 stays |
 | R10 camera divides | **PROMOTED (2026-11-07)**: the 12 int64 divides per image that map the SDK camera to the original viewport (`main.c`) run on the on-chip 64/32 divider (`t3_div64_32`); 29.06 → 29.19 marked, worst segment 27.05 → 27.20, no segment down; frozen pixels match |
-| Base rate | 29.19 marked / 27.20 worst segment (2026-11-07, R10; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
+| R11 lib-saturn divides | **PROMOTED (2026-11-07)**: `fx_div` and `sat_time_ms` on the on-chip divider when the quotient provably fits (lib-saturn `32d86c96`); 29.19 → 29.40 marked, worst segment 27.20 → 27.40, 7/7 segments ahead; frozen pixels match |
+| Base rate | 29.40 marked / 27.40 worst segment (2026-11-07, R11; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -188,7 +189,7 @@ unchanged. Reject and delete a variant the moment it loses the worst segment.
 ### W0.7 gates for the cache-128 candidate
 | Gate | Command | Result |
 | --- | --- | --- |
-| 441-pair arena | `python3 scripts/report_fight_arena.py --iso-root build/perf-p0-cache128/disc/iso_root` | 21 packs, arena 734,672 B for the worst pairing; **0 of 441** leave less than 0 B. The pose cache lives in High WRAM, not the arena. |
+| 441-pair arena | `python3 scripts/report_fight_arena.py --iso-root build/perf-p0-cache128/disc/tekken3_saturn.iso_root` (`disc/iso_root` before the per-disc staging fix of 2026-11-07) | 21 packs, arena 734,672 B for the worst pairing; **0 of 441** leave less than 0 B. The pose cache lives in High WRAM, not the arena. |
 | High WRAM | map | `__bss_end 0x060f3330`; 36,048 B free above the 16,384 B stack reserve |
 | Low WRAM | map | `__wram_l_end 0x002ffd60` (same as control); 160 B to the linker limit |
 | Ymir cache-on | `scripts/ai_cost.py --scenario arcade --frames 6000` on control and candidate | control: pad hash `0xb99cc280`, 1,769 frames / 3,162 fields, max AI 0.71 field; candidate: same hash, 1,778 / 3,160, max AI 0.708, `first_error 0`, 1 discarded field each || Frozen pixels 2000 | `T3_RENDER_BENCH_TICK` capture pair | **PASS**: `sim_ticks 2000`, 104 stable fields + model pixels equal (`4b1e8b36…`); shots frozen |
@@ -1322,6 +1323,30 @@ otherwise; the divider's signed quotient truncates as C, as `t3_div32`
 already relies on. The `/112` and `/160` terms always fit; `*15/14` falls
 back only for |m| above ≈2.0e9. Whole fight 29.06 → 29.19 marked, worst
 segment 27.05 → 27.20, pad hash same, frozen pixels match.
+
+**R11: lib-saturn divides (2026-11-07).** After R10 the Master still made
+≈41 `__divdi3` calls a field from `fx_div` (`mat4_look_at`,
+`sat_mat4_perspective`, normalize: `(a << 16) / b` in int64) and 34
+`__udivdi3` from `sat_time_ms` (`ticks * 1000 / rate`, every perf timer).
+Both now use the SH7604 divider when the quotient provably fits:
+`|q| <= INT32_MAX - 1` for `fx_div`, computed from magnitudes (no overflow,
+including the manual's two-negatives case at the maximum), and below 2^31 ms
+for the clock; anything wider keeps libgcc. No interrupt handler uses the
+divider (only the built-in VBlank handler is installed, and it only extends
+the tick count), and the overlapped projection divides (`project_axis_start`)
+have only `fx_mul` between start and finish. Whole fight 29.19 → 29.40
+marked, worst segment 27.20 → 27.40, 7/7 ahead; frozen pixels match.
+
+*Disc staging race (fixed with R11).* `libsaturn_add_disc` staged every disc
+of a build directory in one `disc/iso_root` and one `aip.o`; with the SDK
+change relinking every ELF, ninja built the game and force-probe discs at
+once and the force-probe check saw the game's `0.BIN`. Each disc now stages
+in `disc/<name>.iso_root`; `play_mednafen.py`, `stage_bake_ab.py` and
+`report_fight_arena.py` follow (`music.cue` is built from
+`tekken3_saturn.iso_root`). The frozen gate also gained `FRAME_SHIFT`: at
+field 5000 the faster build stops during diagnostic publication, so the
+tick-2000 capture is taken at 5004 (the bench holds one tick, so the image is
+the same).
 
 **Stop rule.** If R1–R8 are done and the rate is still under 30, write down
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and
