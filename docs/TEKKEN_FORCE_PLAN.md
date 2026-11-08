@@ -893,3 +893,13 @@ linked throw now moves the partner for any two of the three records. `force_run`
 
 Versus A/B on this state (280 s Mednafen attract fight, same AI pad hash 0xb99cc280): marked **29.46** images/s, worst
 segment **27.45**, 5,835 ticks, no discarded fields — equal to R13's 29.46 / 27.45. The two-record `app.bin` is 498,560 bytes.
+
+### Step 4, first measurement: the versus program rebuilt with three records (2026-11-08)
+
+`cmake -DT3_PSX_FIGHTERS_COUNT=3` on the versus target links (no source change): `.text` 522,972 against 498,048 bytes, `.bss`
+447,520 against 442,080, `.data` 512; `app.bin` 520,512 against 498,560. High WRAM ends at 0x06100000: the versus program leaves
+91,504 bytes, the three-record build **61,136** bytes (before the third actor's own buffers: `T3_DRAW_ACTORS=3` compiles but its
+vertex, pose-cache and command memory are not counted, and the versus-only code and data a Force program drops are not
+subtracted). The device program itself (a `tekken3_force` target that builds the three-record config from the level's
+files, loads the player's and one enemy pack, runs `psx_force_level.c` and draws three actors) is the next piece of work;
+`move_probe.c` (the versus config and asset loading, about 600 lines) is its model.
