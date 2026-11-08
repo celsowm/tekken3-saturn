@@ -659,3 +659,23 @@ the shared preparation also lowers the third actor's cost.
   start before Force-specific placement (positions from the level, enemies inactive with health 0 and
   invulnerable until their slots spawn them) is added on top. The enemies' records stay zero until
   spawned.
+
+### Step 2 result: the level start and the first player moves are exact (2026-11-08)
+
+`scripts/force_oracle_export.py --seed-at 261` + the three-fighter evaluator (`scripts/build_oracle_pair_evaluator.py
+--fighters 4 21 22`, `T3_FORCE_START=1 T3_ORIGINAL_MATCH_START=<rand at the seed> T3_ORIGINAL_START_PADS="0 0"`)
+compare every field of all three records against `force_run`. **Rows 262-463 (202 frames) pass with zero
+differences**: the 150-frame intro, the stand, and the player's first 50 frames of play on the human pad. Rules
+this closed (all behind `config.start_force`, three fighters only):
+
+- the start: the player alone at the origin, no intro camera, the Force clock (3600), one round to win, one
+  human; the enemies wait inactive (stance queued for the first, the first move for the third, no random draw),
+  health 0, invulnerable, with their body spheres from the unposed load, and nothing strikes or is struck;
+- the roles fix the player's facing while both enemies are invulnerable (`fixed_facing`); `no_look_at` follows
+  mode 8 (`FighterPhysics`); the round flow validates only the records on the field and ends the round on the
+  player alone until the level has ended; no replay KO mark; the HUD record is not compared (Force draws its own).
+- a latent three-fighter bug: the match core indexed the round flow's two-entry pad arrays and the KO-mark
+  health array with the third fighter, which clobbered the flow facts.
+
+First failing row: **202 (frame 464), the first enemy spawn.** Next: wire the verified level runner
+(`psx_force_level.c`) into the match so its model and spawn events initialize the enemy records, then compare on.
