@@ -27,7 +27,9 @@ static t3_divmot_t bank,common,second;
 static t3_psx_replay_storage_t history;
 static t3_motion_sample_cache_t samples;
 static unsigned differences;
+#if T3_PSX_FIGHTERS>2
 static int ai_block_check;
+#endif
 static int original_round_flow;
 static int reference_exclude_values;
 static FILE* reference_debug_labels;
