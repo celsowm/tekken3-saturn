@@ -1,6 +1,7 @@
 # Tekken Force: plan
 
-Status (2026-11-06): phases 0-2 done, phase 3 partly, phase 4 and 5 started; **the mode does not play yet**.
+Status (2026-11-07): phases 0-2 done, phase 3 partly, phase 4 and 5 started; **the mode does not play yet**.
+The plan to finish it is [Plan to finish](#plan-to-finish-2026-11-07); it supersedes the old resume list.
 In the shipping build the menu still lists TEKKEN FORCE and does nothing (`docs/ROSTER.md`, `docs/ROADMAP.md`);
 with the private levels configured it starts a Force demo program (the level script, camera, items and the
 tally on a scrolling panorama, enemies and the player as boxes). Done and checked: the research harness, the
@@ -350,36 +351,226 @@ on Mednafen with `scripts/play_mednafen.py` accepting the disc.
 **6. Performance gate and polish.** Meet the frame-rate bar chosen after phase 0,
 document in `docs/THIRTY_IMAGE_GATE.md`, update `ROADMAP.md` and `ROSTER.md`.
 
-## Where to resume (2026-11-06)
+## Plan to finish (2026-11-07)
 
-The remaining work in dependency order, each step with its own exit test. None of it is started beyond what the
-dated notes above record.
+This replaces the 2026-11-06 resume list. It is in dependency order. Every step has its own exit test, and
+the mode ships only when the last step passes.
 
-1. **Three-fighter reference fixture.** The duel's oracle runs `t3_psx_match_step_original` over a sparse
-   reference fixture (per frame: move banks, tables, camera, pads). Add a Force exporter on the
-   Tekken3Remake side (`flow_trace.py force` already records the three 6,284-byte fighter records, the pads and
-   the bank epochs per frame) that writes the same fixture shape for three fighters, then an importer in `tests/`.
-   Exit: the fixture loads and frame 0 equals the recorded records.
-   Finding (read from `docs/FIGHT_ORACLE.md`): the duel oracle is **self-driven**. It starts from the original seed,
-   the pads, the side flags and the per-tick screen x, runs the C match from a round start, and compares the
-   output with the original after each tick; no per-tick fighter state is fed in. For Force that means the
-   fixture also needs (a) the level start state (three fighters placed, the enemy bank type 20, the walls and
-   the level runner's inputs) and (b) the enemies' pads. The enemies are CPU fighters, so their pads come from
-   the original AI: record them as an `ai.bin` tape (as `--cpu-mask` does for the duel) and the comparator can
-   run **before** the Force AI port; step 3 then replaces the tape with the C AI and is checked against the
-   same fixture.
-2. **Comparator, in the order the original runs:** pair distances (done), MoveStartAll order, MoveStepAll order
-   and parity, the body phase on the three pairs, hit application (the attacker choice is still my reading),
-   then the roles' 77 unexplained frames. Exit: 0 differences over a recorded level-1 section.
-3. **Force AI.** Map `FORCE_TARGETS`, `FORCE_WORDS`, `AI_MULTI`, `FORCE_LAYOUT` and the leader return on the AI
-   bus, three fighter images and the Force bank placement; verify with `verify_ai_sim.py`.
-4. **Real `FORCE.BIN`** with `T3_PSX_FIGHTERS=3`: memory map, enemy packs F21-F24, the third actor in the
-   Master/Slave split. Exit: a measured frame cost of two enemies at the attract-fight workload (go/no-go
-   from phase 0).
-5. **Screens and levels:** the original HUD, NOW LOADING and tally text, level 4's staircase (vertical cell
-   scroll), music, keys and Doctor B.
-6. **Disc and gate:** a full game disc played from the menu through `scripts/play_mednafen.py`, then the
-   Mednafen A/B against the no-regression rule, `docs/THIRTY_IMAGE_GATE.md`, ROADMAP and ROSTER.
+### What changed since the last plan
+
+- **The remake already plays Tekken Force exactly.** Tekken3Remake's milestone M4 is done. Its `GameFlow`
+  matches the original game run from boot, frame for frame, in four flow scenarios:
+  - `force`: 7,000 frames;
+  - `force_run` and `force_bosses`: 40,000 frames each, the levels with their real boss fights;
+  - `force_final`: 57,729 frames, all four levels, the Doctor B. level, the Force result and the ranking.
+
+  It compares all three records field by field, plus the level script, enemy slots, items, score, timer,
+  targeting and walls. So every three-fighter rule already has a verified, readable reading:
+  - `remake/core/force/tekken_force.gd`: 1,063 lines;
+  - `remake/core/combat/combat.gd`: walls, throw link, forced hits, Force score, the three-record body phase;
+  - `remake/core/ai/ai_decision.gd`: the Force AI timers and words;
+  - `remake/core/fight/fight_simulation.gd`: the record count, the enemy and boss model swaps, `_force_fighters`;
+  - `round_flow.gd`, `round_hud.gd`, `vibration.gd`, `result_screens.gd`, `vs_screen.gd`.
+
+  "My reading" is no longer needed anywhere: each rule is adapted into C from these files and the research
+  docs, with attribution and never copying GDScript, and is checked against the same traces.
+- **The traces fix game bug #47.** `tools/research/game_harness.py` (`OVERLAY_PATCHES["force"]`) patches
+  `FUN_800B598C`'s save and restore of the player's angle fields `+0x2A..+0x42`. Those are exactly the fields
+  the 77 role frames that differ depend on. `force_sim.py` is bit-exact with the unpatched original, so the
+  comparison was between two different programs. #47 has no visible effect, and the remake does not reproduce
+  it. Policy: the C port follows the traces (the bug fixed), with a note in the file and in
+  `docs/research/code/game-bugs.md`'s terms.
+- **Memory is measured.** The versus program has 672 bytes free in Low WRAM (`.wram_l` 1,047,904 of 1 MiB)
+  and about 40 KB in High WRAM (`__bss_end` 0x060F60A0). The probe uses 13 KB and 68 KB. A third actor still
+  cannot be added to the versus program (decision 0 stands).
+- **The frame rate is higher.** Versus is now 29.46 marked / 27.45 worst segment, against 26 when phase 0
+  ran, so there is more room for the third actor.
+
+### Rules inventory (step 0, first)
+
+Before any code, add a table to this file: every mode-8 rule with its original address, the remake
+file and function, our C file, and its status (verified / written but unverified / missing). Taken from
+`modes.md` ("The resident code in mode 8") and the remake files above, the C core is **missing**:
+
+| Rule | Original | Remake |
+|---|---|---|
+| Throw link dropped when the pair drifts apart in Force | `FUN_800432B0` | `combat.gd` throw-link function |
+| Forced hits: a CPU body thrown faster than 0x59 from frame 11, and the player's power moves (flag 16, cost 10 health), hit whoever they touch; contact at the defender's root, sound `0x4951`, forced reaction, `+0xC9` | `FighterMovePhysics`, `HitTest` 0x80044304 | `combat.gd` 671-707, 842 |
+| Force score in `HitApply`: 10 points per damage, twice the extra; no KO replay | `HitApply` | `combat.gd` `_force_score`, 865 |
+| Round over: the player's health while the level runs, the first or second record's in the boss fight, then the time | `FUN_8003E608` | `round_flow.gd` |
+| The human's pad `0x800B70D8`: `CpuOrPadInput`, Start, vibration (bug #16), COMMAND page, music pick | resident | `fighter_input.gd`, `vibration.gd` |
+| The enemy variant and boss model swaps during the fight (slot states 3-4, sub-state 23) and the area change (round state 7, sub-states 21-23) | `FUN_800363FC`, `FUN_800B2B3C` | `fight_simulation.gd` |
+| The Force AI state | `0x8009F6A8`, `0x80023210`, `0x8009F6A4`, `0x800AE3D8`, `FUN_800B2E60` | `ai_decision.gd` 157, 1160-1167, 1681-1685 |
+
+The C core has these written but **unverified at 3 fighters**: MoveStartAll / MoveStepAll order, the body
+phase on three pairs with throw doubling, the hit application's attacker choice, the mode-8 hit gate, and the
+sound facts. Exit: the table is in this file and every row points at code or at a step below.
+
+### Step 1: traces and the role frames
+
+- Record the long flow traces with the `pair_table` range, in the background, one at a time:
+  - `force_run`: 40,000 frames, about 90 minutes;
+  - `force_bosses`: 40,000 frames;
+  - `force_final`: 57,729 frames, about 2 hours.
+
+  Each is about 130-200 MB in `work/traces/` (git-ignored). Check `du` first. Keep only these four traces.
+- Re-run `check_force_flow_trace.py`'s roles check with the #47 fix applied to the C roles (a build option of
+  `psx_force_target.c` that is on in the game too). Exit: 6,776 of 6,776 frames equal. If frames still
+  differ, the inventory gets a row for the cause before going on.
+
+### Step 2: three-fighter comparator (the correctness gate)
+
+- **Fixture.** A Force exporter (venv, `scripts/`) turns a flow trace's Force section into the duel oracle's
+  self-driven fixture shape:
+  - the level start state: three records placed, bank type 20, walls, the level runner's start;
+  - the seed;
+  - the human's pads;
+  - the enemies' AI output as an `ai.bin` tape, as `--cpu-mask` does for the duel;
+  - the bank epochs and the model-swap frames.
+
+  An importer and host test are in `tests/`. Exit: the fixture loads and frame 0 equals the recorded records.
+- **Comparator.** A host program steps `t3_psx_match_step` at `T3_PSX_FIGHTERS=3`, with `psx_force_level.c`,
+  roles, walls and the Force camera in the loop. It compares the three records and the Force globals after
+  every frame, and stops at the first difference with the field list (as `fight_oracle_eval.py` does).
+- **Close the differences in the original's order.** That order is the pair table (done), MoveStartAll,
+  MoveStepAll, the body phase, the throw link, hits and forced hits, the score, then round over. Each
+  missing rule from step 0 goes in as it is reached, adapted from the remake's reading.
+- After every change at 2 fighters: the versus `app.bin` stays byte-identical, or an attract-fight A/B shows
+  img/s and worst segment no worse.
+- Exit, in three parts:
+  - 0 differences over `force`'s level-1 section (about 6,000 frames);
+  - then over `force_run`'s levels 1-3;
+  - then over `force_bosses`' boss fights: slot 0 as a type-4 boss, mode-8 round over, no KO replay.
+
+### Step 3: Force AI in C
+
+- On the AI bus (`psx_ai_game.c`), map:
+  - `FORCE_TARGETS`, `FORCE_WORDS` (per group and level), `AI_MULTI` = 1, `FORCE_LAYOUT` and the leader
+    return;
+  - three fighter images;
+  - two CPU fighters (`cpu_mask` beyond 3);
+  - the Force bank placement: the enemies share bank type 20, read from the remake's `_force_fighters` and
+    `force.ovl`.
+- Exit, in two parts:
+  - the step 2 comparator with the `ai.bin` tape replaced by the C AI: still 0 differences over the same
+    sections;
+  - the duel AI's oracle cases unchanged, and the versus binary unchanged or A/B no worse.
+
+### Step 4: the real `FORCE.BIN`, measured early
+
+Do this in parallel with steps 2-3 as soon as step 0 is done, because it is the go/no-go.
+
+- A new target `tekken3_force`, built with `T3_PSX_FIGHTERS=3` and `T3_DRAW_ACTORS=3`, replaces the probe
+  as `FORCE.BIN`. It drops the versus-only code and data (arcade ladder, VS records, endings, replay
+  tables), keeps the probe's stage layer, and loads the player's pack and one enemy pack. All four
+  costumes share bank 20 (107 KB); the texture set is per variant.
+- **Memory map.** Record `.wram_l`, `.bss` and VDP1 texture room with the player's largest pack against
+  the measured `vdp1_vram_free` (about 146 KB).
+- **Boss decision.** If the largest roster pack also fits beside them, load the boss in the same run, as
+  the original does with its model reload (sub-state 23): the flow and timing stay the original's. Only if
+  it does not fit, keep decision 1 (two runs) and record the extra load time.
+- **The third actor's preparation split.** Measure three ways with the wait probe on both CPUs:
+  - (a) the Slave prepares both enemies (342 faces each);
+  - (b) the Master prepares the player and one enemy;
+  - (c) the enemies are split by vertex range.
+
+  R8's cache sync covers only actor 1's span (`note_worker_write`). Generalise it to every actor the worker
+  writes, with the same exact span.
+- **Level loading.** One sector-aligned read per level file (the probe took about 20 s with many reads),
+  done while NOW LOADING shows.
+- Exit:
+  - level 1 runs with the real player and two enemies (scripted pads at first) on Mednafen;
+  - a deterministic pad tape gives the same pad hash twice;
+  - the frame rate with two enemies on screen is measured at the attract-fight workload.
+
+  **Bar (recommended):** two-enemy segments at or above the versus fight's current worst segment (27.45),
+  the same 30-field cadence, and no fidelity trade. If it misses, the 30 img/s tracker's tools (profile,
+  divider, cache-sync cuts) are used on `FORCE.BIN` before any other option.
+
+### Step 5: rendering
+
+- The tile panorama behind the real camera, using the original's rules:
+  - one dot per 20 units of view-space x;
+  - the top edge at the projection of (camera x, 0, 2,500) minus 64 × the map height;
+  - transparent colour 0.
+- The Force floor and lighting:
+  - the levels' floor descriptor;
+  - the spotlight floors if a level uses them;
+  - the pick-up back-colour flash;
+  - the Doctor B. level lit by stage 12's record (`0x800B70F4`).
+- Items as two camera-facing VDP1 quads at the item's depth, with the shadow semi-transparent.
+- Shadows for three fighters.
+- The four enemy texture sets.
+- Level 4's staircase as a vertical cell scroll table, with its black fill tiles.
+- Exit, in two parts:
+  - frozen-pixel screenshots at fixed ticks for levels 1-4 and the Doctor B. level, kept as the new baseline;
+  - each compared by eye with the original's ordering-table pictures (`gpu_raster.py`) of the same trace
+    frames.
+
+### Step 6: HUD, screens and flow
+
+- **The Force HUD:**
+  - name plates and bars (`FUN_800B34B0`);
+  - the progress bar with its CLUT colours and blend modes;
+  - the key icons (`KEYS.BIN`);
+  - the timer;
+  - `LIFE UP!` and `+n SEC`;
+  - the 5…1 announcer.
+- **The Force screens:**
+  - the Force VS screen: the player's portrait, the enemy names, `TEKKEN FORCE` with `STAGE n` / `FINAL STAGE`,
+    the caption colour (144, 112, 248) at width 232;
+  - NOW LOADING and the remaining time over the player;
+  - the tally, one line every 30 frames with its sounds, and its bonus-time rule;
+  - STAGE CLEAR;
+  - game over, with no continue;
+  - the Force result screen (state 15) with its picture (overlay archive `0x800D8A20`) and its keys, saved and
+    boss-list branches;
+  - then the ranking.
+- USA wording from `usa-version.md`. The menu entry is no longer a demo.
+- Exit:
+  - the flow from the menu through level 1, the boss, the tally and level 2 on Mednafen;
+  - screens checked against `gpu_raster.py` pictures of the flow trace's frames.
+
+### Step 7: progress, secrets and the final level
+
+- **Saving.** The game has no save code yet (`sat_save_*` is unused). Add one save block with:
+  - the keys (save `+0x28`, saturating at 255);
+  - the hi-score;
+  - the Doctor B. flag (`0x800982D0` bit 19).
+
+  Use internal memory, then the cartridge, with no RAM cartridge required.
+- **Keys and the final level.**
+  - The key award at the end of level 4 sets the result flags;
+  - three keys give `CHALLENGE FINAL STAGE!!` and the Doctor B. level;
+  - beating him unlocks him in the select screen.
+- **The secret.** The manual target switch (the four held buttons at the start) is read on the physical
+  buttons, before the key configuration.
+- Exit: `force_final`'s path (four levels, Doctor B., the result) is played on Mednafen. Then a cold boot shows
+  the saved keys and the unlock, and the save survives a power cycle in Mednafen.
+
+### Step 8: disc, gate and docs
+
+- The game disc carries `FORCE.BIN`, `F21-F24.BIN`, `LEV1-4.BIN`, `TRIG.BIN`, `TABLES.BIN`, `BOSS.BIN` and
+  `KEYS.BIN`.
+- `scripts/play_mednafen.py` `missing_features` requires them, and the release configure
+  (`scripts/print_release_configure.py`) sets `T3_LOCAL_FORCE_LEVELS`.
+- A whole run, levels 1-4, recorded with the shortest windows that answer each question. Delete the videos
+  after reading them.
+- The versus attract-fight A/B against the last promoted control: marked and worst segment no worse.
+- Update `docs/THIRTY_IMAGE_GATE.md` (with the Force rate), `ROADMAP.md`, `ROSTER.md` and this file's status
+  header.
+- Exit: `play_mednafen.py` accepts the disc, and the menu's TEKKEN FORCE plays the mode.
+
+### Order and parallel tracks
+
+1. Step 0, then step 1, which mostly waits on the background trace exports.
+2. Steps 2-3 (correctness, host only) and step 4 (device, the go/no-go) run alternately. Never benchmark
+   while a build or export runs.
+3. Steps 5-7 after step 4 passes its bar.
+4. Step 8 last.
+
+The 30 img/s tracker's open items (R2, R7, the small cache-sync calls) continue between steps. Any win in
+the shared preparation also lowers the third actor's cost.
 
 ## Risks
 
