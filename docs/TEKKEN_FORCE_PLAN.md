@@ -870,5 +870,7 @@ index) and addressed by object by the AI bus. The host evaluator builds the boss
 (`build_oracle_pair_evaluator.py --boss 5 --boss-slot 11`, the costume slot from the key table) and reads its bank at run time
 (`T3_FORCE_BOSS_BANK=<NN.t3logic>`); `build_local_divmot_assets.py --extra-bank` makes the combat tables cover it. With Nina
 (character 5, costume 1) as Doctor B's boss, `force_bosses` runs through the boss's entrance and 530 frames of its fight.
-Open at row 8118: the boss's first hit on the player ends the step in the hit transaction (phase 180); the reaction
-selection for that hit (counter hit, zone 4, record 453) is the place to look.
+All 9,578 rows pass (Doctor B vs the level's Nina boss, to the end of the contiguous run). The failure at row 8118 was the
+player's VM still playing the original bank object while the AI and the merged move index used the linked copies: the
+reaction move could not be queued. The player's VM now plays its own copy, and after an atomic step the pointers into the
+staged copies follow the struct (the copies live in the match).

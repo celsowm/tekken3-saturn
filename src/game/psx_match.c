@@ -1343,6 +1343,19 @@ int t3_psx_match_step(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1) {
     if(!advance_core(&n,p0,p1,0,NULL))return 0;
     T3_SIM_START(copy_out,T3_SIM_COPY);
     *match=n;
+#if T3_PSX_FIGHTERS>2
+    if(match->boss_swapped) {   /* the bank copies moved with the struct: the pointers into the staged one follow */
+        const t3_divmot_t* from[2]={&n.boss_bank,&n.player_bank};
+        const t3_divmot_t* to[2]={&match->boss_bank,&match->player_bank};
+        const t3_divmot_t** slots[]={&match->boss_bank.linked,&match->player_bank.linked};
+        for(unsigned k=0;k<2;++k)for(unsigned s=0;s<2;++s)if(*slots[s]==from[k])*slots[s]=to[k];
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+            t3_move_vm_t* v=&match->fighter[i].vm;
+            const t3_divmot_t** ptr[]={&v->bank,&v->active_bank,&v->root_bank,&v->pending_bank};
+            for(unsigned p=0;p<4;++p)for(unsigned k=0;k<2;++k)if(*ptr[p]==from[k])*ptr[p]=to[k];
+        }
+    }
+#endif
     T3_SIM_END(copy_out);return 1;
 }
 /* Normal VS's later-round FighterPlace. Records persist across rounds; a
@@ -1542,8 +1555,14 @@ static int force_boss(t3_psx_match_t* n) {
     if(!c->force_boss_like && !c->force_boss_bank)return 1;
     if(c->force_boss_bank) {
         /* the boss's bank and the player's, each linked to the other (the merged move index), as copies of their own */
-        n->player_bank=*t3_psx_match_bank(c,0);n->boss_bank=*c->force_boss_bank;
+        const t3_divmot_t* old=t3_psx_match_bank(c,0);
+        n->player_bank=*old;n->boss_bank=*c->force_boss_bank;
         n->player_bank.linked=&n->boss_bank;n->boss_bank.linked=&n->player_bank;
+        t3_move_vm_t* pv=&n->fighter[0].vm; /* the player's VM now plays its copy */
+        if(pv->bank==old)pv->bank=&n->player_bank;
+        if(pv->active_bank==old)pv->active_bank=&n->player_bank;
+        if(pv->root_bank==old)pv->root_bank=&n->player_bank;
+        if(pv->pending_bank==old)pv->pending_bank=&n->player_bank;
     } else n->boss_bank=*t3_psx_match_bank(c,c->force_boss_like-1u); /* a copy of its own: the AI addresses banks by object */
     n->boss_swapped=1;boss_overrides(n);
     t3_psx_fighter_t* f=&n->fighter[1];
