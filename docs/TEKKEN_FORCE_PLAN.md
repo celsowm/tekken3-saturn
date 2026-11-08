@@ -874,3 +874,11 @@ All 9,578 rows pass (Doctor B vs the level's Nina boss, to the end of the contig
 player's VM still playing the original bank object while the AI and the merged move index used the linked copies: the
 reaction move could not be queued. The player's VM now plays its own copy, and after an atomic step the pointers into the
 staged copies follow the struct (the copies live in the match).
+
+### Update: `force_final` (Jin, costume slot 19; boss Paul costume 1): 5,398 of 7,882 rows exact
+
+`build_oracle_pair_evaluator.py --fighters 9 21 22 --player-slot 19 --boss 0 --boss-slot 1` (seed 15). Open at row 5398: the
+player starts a throw on enemy 2 (slots 2795/2999, both at the player's new anchor) and the bystander, enemy 1, is pushed
+away by the body separation of that frame: the original moves it (+52, +12), the port (+228, +52). The pair (1,2) is the one
+that pushes; the overlap there depends on the thrown victim's body spheres in its first throw frame (its radii rule reads
+`was_hit_this_move` and `in_air`), which is where to look. `force_bosses` passes all 9,578 rows and `force_run` all 7,522.
