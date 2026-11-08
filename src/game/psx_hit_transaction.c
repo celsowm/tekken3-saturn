@@ -31,7 +31,14 @@ static unsigned hit_attacker(const t3_psx_match_t* match,unsigned i) {
         if(j!=i && T3_PSX_OPP(match,j)==i && match->fighter[j].hit_gate.status==T3_HIT_GATE_ACCEPT)return j;
     return T3_PSX_OPP(match,i);
 }
+/* Whether a fighter's gate was tested against defender i (its opponent): only that gate can hit it. */
+static int gate_applies(const t3_psx_match_t* match,unsigned i,unsigned a) {return a!=i && T3_PSX_OPP(match,a)==i;}
 #define HIT_ATTACKER(match,i) hit_attacker(match,i)
+#endif
+#if T3_PSX_FIGHTERS==2
+#define GATE_APPLIES(match,i,a) 1
+#else
+#define GATE_APPLIES(match,i,a) gate_applies(match,i,a)
 #endif
 int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     staged_t staged[T3_PSX_FIGHTERS];
@@ -50,7 +57,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
-        if(gate->status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<i))) {
+        if(gate->status==T3_HIT_GATE_ACCEPT && GATE_APPLIES(match,i,a) && !(match->reversal_cancelled&(1u<<i))) {
             if(gate->hit_slot<0 || gate->hit_slot>1 || gate->zone<0 || gate->zone>=14)return 0;
             s->ground.fixed_facing=0;
             if(!t3_psx_ground_angles(&s->ground,&attacker->ground,&c->ground_tables))return 0;
@@ -120,6 +127,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
      * after selecting the ordinary reaction. It does not wait for next tick. */
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         staged_t* s=&staged[i];
+        if(c->start_force)continue; /* the USA versus KO collapse is not Tekken Force's: a KO takes the ordinary reaction */
         if(s->hit.health_q16==0 && s->hit.hit_clean) {
             const t3_move_record_t* next=s->vm.pending_valid?&s->vm.pending_move:&s->vm.move;
             int collapse=next->stance_slot==3u || next->stance_slot==40u ||
