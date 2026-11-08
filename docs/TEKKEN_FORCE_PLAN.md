@@ -621,3 +621,19 @@ the shared preparation also lowers the third actor's cost.
   and the boss; the original also shows NOW LOADING between levels, but not
   inside one. Acceptable if short; otherwise preload the boss pack in the same
   run for level 1 only and measure.
+
+### Step 2 progress (2026-11-07)
+
+- The replay evaluator now builds at three fighters. `T3_PSX_FIGHTERS_COUNT` (CMake) sets the owned
+  match's record count; `scripts/build_oracle_pair_evaluator.py --fighters 4 21 22` builds a player and
+  two Force enemies (pack ids 21-24 are `FORCE_ENEMIES`). The seed and compare loops follow
+  `T3_PSX_FIGHTERS`; the two-fighter evaluators still build. Inputs: the player's raw records from
+  `tekken3-usa-full`, the enemies' from `force-import`, banks `04` and `21` in one logic directory.
+- **A finding that cost a re-record.** The flow trace does not hold what the evaluator seeds from (the
+  ground step accumulators, the body's previous roots, the arena ramp, the HUD bars, the sound timers).
+  `scripts/force_flow_record.py` runs the pinned `flow_trace.py` with its range list widened by the
+  spans `fight_oracle_export.py` reads (mapped USA to Rev.1) and the regions around them, so the
+  recordings carry them. The first `force_run` was discarded 13 minutes in and restarted with it.
+  The older `flow_force.bin` stays valid for the roles, the camera and the level runner.
+- Still to write: the exporter from a wide trace (seed from the frame before the first running frame,
+  `frame-N.ranges` after), a Force round flow in the evaluator, and the rule fixes themselves.
