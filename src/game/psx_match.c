@@ -1522,6 +1522,13 @@ static int force_start_move(t3_psx_match_t* n,unsigned i,unsigned slot) {
  * starts its stance. Host runs name the boss's data by an existing actor (config->force_boss_like). */
 static void boss_overrides(t3_psx_match_t* n) {
     t3_psx_match_config_t* c=&n->force_cfg;
+    if(c->force_boss_bank) {
+        c->actor_bank[0]=&n->player_bank;c->actor_bank[1]=&n->boss_bank;
+        c->character[1]=c->force_boss_character;c->sound_voice_set[1]=c->force_boss_voice;
+        c->parts[1]=c->force_boss_parts;c->actor_body_shapes[1]=c->force_boss_shapes;
+        c->actor_scale_percent[1]=c->force_boss_scale;
+        return;
+    }
     const unsigned a=c->force_boss_like-1u;
     c->actor_bank[1]=&n->boss_bank;c->character[1]=c->character[a];
     c->sound_voice_set[1]=c->sound_voice_set[a];c->parts[1]=c->parts[a];
@@ -1532,8 +1539,12 @@ static void boss_overrides(t3_psx_match_t* n) {
 }
 static int force_boss(t3_psx_match_t* n) {
     t3_psx_match_config_t* c=&n->force_cfg;
-    if(!c->force_boss_like)return 1;
-    n->boss_bank=*t3_psx_match_bank(c,c->force_boss_like-1u); /* a copy of its own: the AI addresses banks by object */
+    if(!c->force_boss_like && !c->force_boss_bank)return 1;
+    if(c->force_boss_bank) {
+        /* the boss's bank and the player's, each linked to the other (the merged move index), as copies of their own */
+        n->player_bank=*t3_psx_match_bank(c,0);n->boss_bank=*c->force_boss_bank;
+        n->player_bank.linked=&n->boss_bank;n->boss_bank.linked=&n->player_bank;
+    } else n->boss_bank=*t3_psx_match_bank(c,c->force_boss_like-1u); /* a copy of its own: the AI addresses banks by object */
     n->boss_swapped=1;boss_overrides(n);
     t3_psx_fighter_t* f=&n->fighter[1];
     if(!t3_move_vm_start_phased(&f->vm,&n->boss_bank,c->common,3u))return 0;

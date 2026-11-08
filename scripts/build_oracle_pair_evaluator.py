@@ -18,10 +18,20 @@ from fighter_roster import COMMON_RECORD, FORCE_ENEMIES, FORCE_FIRST_ID, ROSTER,
 from kmd_to_ska import parse_kmd  # noqa: E402
 
 
-def write_character(out, fighters, raw):
+def write_character(out, fighters, raw, boss=None):
     models = [parse_kmd((raw / f"{records(f)['kmd']:03}.bin").read_bytes()) for f in fighters]
     radii = ','.join('{' + ','.join(str(b) for b in struct.pack('<8h', *body_radii(f))) + '}' for f in fighters)
     out.mkdir(parents=True, exist_ok=True)
+    boss_header = boss_source = ''
+    if boss is not None:
+        bm = parse_kmd((raw / f"{records(boss)['kmd']:03}.bin").read_bytes())
+        brad = ','.join(str(b) for b in struct.pack('<8h', *body_radii(boss)))
+        boss_header = (f'#define T3_PRIVATE_BOSS_SCALE {bm.scale_percent}u\n#define T3_PRIVATE_BOSS_RADII {{{brad}}}\n'
+                       f'#define T3_PRIVATE_BOSS_CHARACTER {boss.id}u\n#define T3_PRIVATE_BOSS_VOICE {boss.voice_set}u\n'
+                       'extern const t3_psx_part_t* const t3_private_boss_parts;\n')
+        boss_source = ['static const t3_psx_part_t boss_parts[T3_PSX_DRAW_PARTS] = {'] + \
+            ['    {%d,%du,{%d,%d,%d}},' % (p, s, x, y, z) for p, s, (x, y, z) in skeleton_parts(bm)] + \
+            ['};', 'const t3_psx_part_t* const t3_private_boss_parts = boss_parts;']
     (out / 't3_generated_character.h').write_text(f"""#ifndef T3_GENERATED_CHARACTER_H
 #define T3_GENERATED_CHARACTER_H
 #include "psx_pose.h"
@@ -29,7 +39,7 @@ def write_character(out, fighters, raw):
 #define T3_PRIVATE_ACTOR_SCALES {{{','.join(f'{m.scale_percent}u' for m in models)}}}
 #define T3_PRIVATE_ACTOR_RADII {{{radii}}}
 extern const t3_psx_part_t* const t3_private_actor_parts[{len(models)}];
-#endif
+{boss_header}#endif
 """)
     rows = ['#include "t3_generated_character.h"', '/* PRIVATE BUILD ONLY. */']
     for i, model in enumerate(models):
@@ -37,6 +47,8 @@ extern const t3_psx_part_t* const t3_private_actor_parts[{len(models)}];
         rows += ['    {%d,%du,{%d,%d,%d}},' % (p, s, x, y, z) for p, s, (x, y, z) in skeleton_parts(model)]
         rows.append('};')
     rows.append('const t3_psx_part_t* const t3_private_actor_parts[%d] = {%s};' % (len(models), ','.join(f'actor{i}_parts' for i in range(len(models)))))
+    if boss_source:
+        rows += boss_source
     (out / 't3_generated_character.c').write_text('\n'.join(rows) + '\n')
 
 
@@ -46,6 +58,8 @@ def main():
                         help='two roster ids, or three for Tekken Force: the player, then two enemy pack ids (21-24)')
     parser.add_argument('--banks', type=int, nargs=2, metavar=('P1', 'P2'),
                         help='fighter ids whose banks they play, when a Mokujin copies another')
+    parser.add_argument('--boss', type=int, help='Tekken Force: the roster id of the level\'s boss (its model, radii, scale and voice are generated; its bank is read at run time from T3_FORCE_BOSS_BANK)')
+    parser.add_argument('--boss-slot', type=int, help='the boss\'s costume slot')
     parser.add_argument('--player-slot', type=int, help='the player\'s costume slot (its KMD record) when the recording plays another costume than 0')
     parser.add_argument('--assets', type=Path, required=True, help='prepared private import')
     parser.add_argument('--logic', type=Path, required=True, help='directory of NN.t3logic roster banks')
@@ -71,10 +85,12 @@ def main():
                '--rsqrt-table', str(tables / 'psx_rsqrt.bin'), '--combat-reactions', str(tables / 'psx_reactions.bin'),
                '--ai-tables', str(tables / 'psx_ai.bin'), '--sound-tables', str(tables / 'psx_sounds.bin'),
                '--effect-tables', str(tables / 'psx_effects.bin'), '--output', str(logic)]
+    if args.boss is not None:
+        command += ['--extra-bank', str(args.logic / f'{args.boss:02}.t3logic')]
     if fighter_of(banks[0]).bank_type != fighter_of(banks[1]).bank_type:
         command += ['--second-bank', str(args.logic / f'{banks[1]:02}.t3logic')]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-    write_character(args.out / 'generated' / 'characters', fighters, args.assets / 'raw')
+    write_character(args.out / 'generated' / 'characters', fighters, args.assets / 'raw', (ROSTER[args.boss]._replace(slot=args.boss_slot) if args.boss_slot is not None else ROSTER[args.boss]) if args.boss is not None else None)
     host = args.out / 'host'
     raw = args.assets.resolve() / 'raw'
     configure = ['cmake', '-S', str(ROOT), '-B', str(host), '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',

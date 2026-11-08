@@ -861,3 +861,14 @@ The recording plays character 19 in costume slot 45 (the costume key table maps 
 Open at row 7593: the level's boss is character 5 (Nina, costume 1, bank type 5) for this player, so the host shortcut
 `force_boss_like` does not apply: the evaluator needs a third bank (the boss's, linked to the player's), its model, body
 radii, scale and AI image. That is also what BOSS.BIN supplies on the device.
+
+### Update: the boss from its own bank (`force_bosses`: 8,118 of 9,578 rows exact)
+
+The level's boss now comes from its own data when the config names it (`force_boss_bank`, `_parts`, `_shapes`, `_scale`,
+`_character`, `_voice`): the match keeps copies of the player's and the boss's banks, linked to each other (the merged move
+index) and addressed by object by the AI bus. The host evaluator builds the boss's model, radii, scale and voice
+(`build_oracle_pair_evaluator.py --boss 5 --boss-slot 11`, the costume slot from the key table) and reads its bank at run time
+(`T3_FORCE_BOSS_BANK=<NN.t3logic>`); `build_local_divmot_assets.py --extra-bank` makes the combat tables cover it. With Nina
+(character 5, costume 1) as Doctor B's boss, `force_bosses` runs through the boss's entrance and 530 frames of its fight.
+Open at row 8118: the boss's first hit on the player ends the step in the hit transaction (phase 180); the reaction
+selection for that hit (counter hit, zone 4, record 453) is the place to look.

@@ -68,6 +68,15 @@ static int select_reaction(const t3_psx_match_config_t* c,staged_t* s,const t3_p
         if(!t3_psx_reaction_select_sparse(&record,&reaction_facts,c->forced_reaction,44u,
                           c->ground_tables.air_kinds,&s->hit.reaction))return 0;
     } else
+#ifdef T3_PSX_FIGHTERS
+    if(best->reaction_kind==T3_HIT_REACTION_THROW_SLOT) {
+        /* a throw that reaches the hit: the victim's slot comes from the throw table */
+        t3_psx_reaction_tables_t tables={0};
+        tables.throw_victim_slots=c->throw_victim_slots;tables.throw_slots_size=c->throw_victim_slots_size;
+        tables.air_kinds=c->ground_tables.air_kinds;
+        if(!t3_psx_reaction_select(best,&reaction_facts,&tables,&s->hit.reaction))return 0;
+    } else
+#endif
     if(!t3_psx_reaction_select_sparse(best,&reaction_facts,c->reactions,c->reactions_size,
                       c->ground_tables.air_kinds,&s->hit.reaction))return 0;
     if(s->hit.reaction.air) {

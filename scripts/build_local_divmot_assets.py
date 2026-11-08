@@ -56,11 +56,12 @@ def cold_file(bank,common,second=b""):
     if second:image=image.ljust(second_at,b'\0')+second
     return image,bank_at,common_at,second_at,digest
 
-def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None,cold=False,second_path=None,ai_tables_path=None,sound_tables_path=None,effect_tables_path=None,roster_path=None):
+def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig_path=None,ik_path=None,common_branches_path=None,ground_path=None,body_path=None,reactions_path=None,rsqrt_path=None,cold=False,second_path=None,ai_tables_path=None,sound_tables_path=None,effect_tables_path=None,roster_path=None,extra_paths=()):
     bank=bank_path.read_bytes()
     # With fighter packs the banks load at run time: the tables they index must
     # cover every roster bank, and MOTION.BIN holds only the common bank.
     roster=[p.read_bytes() for p in sorted(roster_path.glob('*.t3logic'))] if roster_path else []
+    extra=[p.read_bytes() for p in extra_paths]   # banks the tables must also cover (a Tekken Force boss), not linked here
     if roster_path and (not roster or not cold):raise ValueError('a roster needs its banks and --cold-file')
     # The CPU opponent's EXE tables (scripts/extract_psx_ai_tables.py).
     ai_tables=ai_tables_path.read_bytes() if ai_tables_path else b""
@@ -81,7 +82,7 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig
         if second[1]==99:raise ValueError("second bank must be a character bank, not type 99")
     if sounds:
         scripts=set()
-        for data in (bank,*(d for d in (common_path.read_bytes() if common_path else b'',second) if d),*roster):
+        for data in (bank,*(d for d in (common_path.read_bytes() if common_path else b'',second) if d),*roster,*extra):
             count, offsets=sections_of(data)
             for row in range(count):
                 index=struct.unpack_from('<I',data,offsets[1]+56*row+28)[0]
@@ -121,7 +122,7 @@ def generate(bank_path,common_path,out,sequences_path=None,spline_path=None,trig
         # Every record a move row of either bank can name (+50 below 633);
         # higher words are throw slots, not records.
         indices=set()
-        for data in (bank,*(d for d in (common,second) if d),*roster):
+        for data in (bank,*(d for d in (common,second) if d),*roster,*extra):
             rows_at=sections_of(data)[1][1]
             for index in range(struct.unpack_from('<H',data,2)[0]):
                 reaction,close_index=struct.unpack_from('<HH',data,rows_at+56*index+50)
@@ -287,6 +288,7 @@ def main():
     p.add_argument("--rsqrt-table",type=Path,help="private original 768-byte blend reciprocal-sqrt window")
     p.add_argument("--combat-reactions",type=Path,help="private original 633-row reaction table; embeds only supported rows")
     p.add_argument("--second-bank",type=Path,help="private opponent character bank for host evaluators")
+    p.add_argument("--extra-bank",type=Path,action="append",default=[],help="a further bank the combat tables must cover")
     p.add_argument("--roster-banks",type=Path,help="directory of every roster logic bank (build_fighter_packs.py); the banks load from packs")
     p.add_argument("--ai-tables",type=Path,help="private CPU opponent tables (extract_psx_ai_tables.py)")
     p.add_argument("--sound-tables",type=Path,help="private fighter sound tables (extract_psx_sound_tables.py)")
@@ -294,6 +296,6 @@ def main():
     p.add_argument("--cold-file",action="store_true",
                    help="write the two DIVMOT banks to MOTION.BIN and emit Low WRAM storage instead of embedding them")
     a=p.parse_args()
-    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table,a.cold_file,a.second_bank,a.ai_tables,a.sound_tables,a.effect_tables,a.roster_banks)
+    try:generate(a.bank,a.common,a.output,a.sequences,a.spline_tables,a.trig_table,a.ik_tables,a.common_branches,a.ground_tables,a.body_tables,a.combat_reactions,a.rsqrt_table,a.cold_file,a.second_bank,a.ai_tables,a.sound_tables,a.effect_tables,a.roster_banks,a.extra_bank)
     except (OSError,ValueError) as e:p.exit(1,f"private DIVMOT embed failed: {e}\n")
 if __name__=="__main__":main()

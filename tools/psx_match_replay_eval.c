@@ -94,6 +94,26 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     }
 #endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)config.parts[i]=t3_private_actor_parts[i];
+#if defined(T3_PRIVATE_BOSS_SCALE)
+    if(getenv("T3_FORCE_BOSS_BANK")) {
+        /* the level's boss: its own bank (read here), model, body shapes, scale, character and voice */
+        static t3_divmot_t boss_bank;static uint8_t boss_shapes[48];
+        static const uint8_t boss_radii[16]=T3_PRIVATE_BOSS_RADII;
+        FILE* bf=fopen(getenv("T3_FORCE_BOSS_BANK"),"rb");
+        if(!bf)return 0;
+        fseek(bf,0,SEEK_END);long bn=ftell(bf);fseek(bf,0,SEEK_SET);
+        uint8_t* bd=malloc((size_t)bn);
+        if(!bd || fread(bd,1,(size_t)bn,bf)!=(size_t)bn){fclose(bf);return 0;}
+        fclose(bf);
+        if(!t3_divmot_open(&boss_bank,bd,(size_t)bn) ||
+           !t3_divmot_set_common_branches(&boss_bank,t3_local_common_branches,T3_LOCAL_COMMON_BRANCH_BYTES))return 0;
+        if(T3_LOCAL_COMBAT_ATTACK_BYTES==T3_BUILTIN_ATTACK_BYTES)boss_bank.builtin_attacks=t3_local_combat_attacks;
+        memcpy(boss_shapes,t3_local_body_blob+384u,32u);memcpy(boss_shapes+32u,boss_radii,16u);
+        config.force_boss_bank=&boss_bank;config.force_boss_parts=t3_private_boss_parts;config.force_boss_shapes=boss_shapes;
+        config.force_boss_scale=T3_PRIVATE_BOSS_SCALE;config.force_boss_character=T3_PRIVATE_BOSS_CHARACTER;
+        config.force_boss_voice=T3_PRIVATE_BOSS_VOICE;
+    }
+#endif
     config.ik=(t3_psx_ik_tables_t){
         {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     config.body_tables=t3_local_body_blob;config.body_tables_size=T3_LOCAL_BODY_BYTES;
