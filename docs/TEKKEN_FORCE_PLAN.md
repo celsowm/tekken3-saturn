@@ -219,8 +219,8 @@ Checked against the code, the docs and the local tools before any work:
   the frame are not in the trace. **Update:** with the pair-distance table recorded too (`flow_trace.py` now has
   a `pair_table` range at `0x8009EA08`; the trace is re-recorded, 14 minutes) and everything taken from the
   previous frame's records, 6,699 of 6,776 frames (98.9%) equal the original; 77 still differ, again both
-  enemies close and within 400 units. The cause is not found; the roles stay verified on random states and on
-  98.9% of a real game. (The submodule fixes, `force_sim.py`'s `ds._s32` and this range, are in
+  enemies close and within 400 units. **Resolved 2026-11-07:** the check's RAM lacked the overlay's quadrant-order
+  table (`0x800B0F04`); with it loaded the roles are exact over the whole trace (see Plan to finish). (The submodule fixes, `force_sim.py`'s `ds._s32` and this range, are in
   `scripts/patches/tekken3remake-research-fixes.patch`.)
 - **The level runner runs on the Saturn (2026-11-06).** The probe now also runs `psx_force_level.c` with the real
   level script read from `LEV1.BIN` and the tables from `TABLES.BIN`: the player walks right and waits while the
@@ -374,12 +374,14 @@ the mode ships only when the last step passes.
 
   "My reading" is no longer needed anywhere: each rule is adapted into C from these files and the research
   docs, with attribution and never copying GDScript, and is checked against the same traces.
-- **The traces fix game bug #47.** `tools/research/game_harness.py` (`OVERLAY_PATCHES["force"]`) patches
-  `FUN_800B598C`'s save and restore of the player's angle fields `+0x2A..+0x42`. Those are exactly the fields
-  the 77 role frames that differ depend on. `force_sim.py` is bit-exact with the unpatched original, so the
-  comparison was between two different programs. #47 has no visible effect, and the remake does not reproduce
-  it. Policy: the C port follows the traces (the bug fixed), with a note in the file and in
-  `docs/research/code/game-bugs.md`'s terms.
+- **The 77 role frames are explained (2026-11-07): exact.** They were a flaw in the check, not in the rules:
+  the facing-quadrant order table (`0x800B0F04`, 2, 0, 1, 0) is overlay data that the trace does not record, so
+  the test RAM held zeros and every tie between two close enemies fell to the second one.
+  `scripts/check_force_roles_trace.py` (new, replaces the earlier ad-hoc run) loads the table and steps
+  `fighter_roles` from the previous frame's records and pair table (the roles run first in `FightFrame`):
+  **5,994 frames, 0 differ**. Game bug #47 (the harness that recorded the traces patches it; `force_sim.py`
+  reproduces it) does not change the target on this trace, with or without `--fixed`; it only matters for the
+  opponent-side angle fields, which the comparator (step 2) will show. Policy: the C port follows the traces.
 - **Memory is measured.** The versus program has 672 bytes free in Low WRAM (`.wram_l` 1,047,904 of 1 MiB)
   and about 40 KB in High WRAM (`__bss_end` 0x060F60A0). The probe uses 13 KB and 68 KB. A third actor still
   cannot be added to the versus program (decision 0 stands).
@@ -414,9 +416,8 @@ sound facts. Exit: the table is in this file and every row points at code or at 
   - `force_final`: 57,729 frames, about 2 hours.
 
   Each is about 130-200 MB in `work/traces/` (git-ignored). Check `du` first. Keep only these four traces.
-- Re-run `check_force_flow_trace.py`'s roles check with the #47 fix applied to the C roles (a build option of
-  `psx_force_target.c` that is on in the game too). Exit: 6,776 of 6,776 frames equal. If frames still
-  differ, the inventory gets a row for the cause before going on.
+- Roles against the recorded game are done (exact, above). Run `check_force_roles_trace.py` over each new
+  trace too; expect 0 differences. Any frame that differs gets an inventory row for its cause before going on.
 
 ### Step 2: three-fighter comparator (the correctness gate)
 
@@ -433,7 +434,7 @@ sound facts. Exit: the table is in this file and every row points at code or at 
   roles, walls and the Force camera in the loop. It compares the three records and the Force globals after
   every frame, and stops at the first difference with the field list (as `fight_oracle_eval.py` does).
 - **Close the differences in the original's order.** That order is the pair table (done), MoveStartAll,
-  MoveStepAll, the body phase, the throw link, hits and forced hits, the score, then round over. Each
+  MoveStepAll, the body phase, the throw link, hits and forced hits, the score, then round over. (The roles are exact already.) Each
   missing rule from step 0 goes in as it is reached, adapted from the remake's reading.
 - After every change at 2 fighters: the versus `app.bin` stays byte-identical, or an attract-fight A/B shows
   img/s and worst segment no worse.
