@@ -1099,7 +1099,8 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(140+i);
         t3_psx_fighter_t* f=&n->fighter[i];
-        if(parked(n,f))continue; /* not on the field: the load's state stands */
+        /* not on the field and never started: the load's state stands (an enemy that blinks out still steps) */
+        if(parked(n,f) && !f->vm.move.length)continue;
         const t3_command_frame_t input=t3_history_at(&f->input,0);
 #if T3_PSX_FIGHTERS>2
         if(c->start_force)force_forced_hit(n,i);

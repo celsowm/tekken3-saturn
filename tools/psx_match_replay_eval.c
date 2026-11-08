@@ -44,6 +44,7 @@ static void check(unsigned i,const char* category,const char* field,int64_t got,
 }
 #include "psx_match_reference.inc"
 #include "psx_ai_tape.h"
+static void force_ai_trace_off(t3_psx_ai_game_t* ai,uint32_t address,unsigned size,uint32_t value){(void)ai;(void)address;(void)size;(void)value;}
 static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint32_t ramp) {
     if(!snapshot_full(path) || !t3_divmot_open(&bank,t3_local_bank,T3_LOCAL_DIVMOT_BANK_BYTES) ||
        !t3_divmot_open(&common,t3_local_common,T3_LOCAL_DIVMOT_COMMON_BYTES) ||
@@ -188,6 +189,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
            !t3_psx_ai_game_init(&ai_game,ai_tables,tsize,6u,
                (uint16_t)strtoul(getenv("T3_FORCE_AI_DIFFICULTY")?getenv("T3_FORCE_AI_DIFFICULTY"):"1",NULL,0),
                (uint8_t)strtoul(getenv("T3_FORCE_AI_LEVEL")?getenv("T3_FORCE_AI_LEVEL"):"0",NULL,0)))return 0;
+        if(getenv("T3_AI_NOCACHE"))ai_game.trace=force_ai_trace_off; /* a listener switches the bus's caches off */
         ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;ai_block_check=getenv("T3_AI_BLOCK_CHECK")!=NULL;
         config.ai=&ai_game;
     }

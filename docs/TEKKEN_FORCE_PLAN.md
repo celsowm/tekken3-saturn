@@ -754,3 +754,11 @@ The first difference now is `recover_mash` of a downed enemy hit a second time (
 sends the AI generator off at 2,475. Still to do from the inventory: the throw skip and throw link for the third
 record, the forced hit's sound and score, `no_look_at` for the bosses, round over (`FUN_8003E608`) and the other
 levels' items, tally and stage clear against `force_bosses` and `force_final`.
+
+Update: a dead enemy that blinks out (its active flag alternating) still takes its ground step (its `recover_mash`
+counts down while the pose is frozen); only a record that never started stays as the load left it. With that,
+**2,213 frames (262-2,474)** match. The first difference is now the CPU opponent's generator at frame 2,475: the
+second enemy (a stunned fighter, AI slot 1) draws 8 numbers where the original draws 6, with the AI's own memory
+equal before and after, and not a cache effect (`T3_AI_NOCACHE=1` gives the same). It needs the original's AI
+inputs at that call (an AI tape of the Force recordings, `fight_oracle_export.AiTape`), or a Python
+`ai_update` run from a mid-frame state.
