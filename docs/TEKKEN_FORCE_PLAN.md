@@ -679,3 +679,27 @@ this closed (all behind `config.start_force`, three fighters only):
 
 First failing row: **202 (frame 464), the first enemy spawn.** Next: wire the verified level runner
 (`psx_force_level.c`) into the match so its model and spawn events initialize the enemy records, then compare on.
+
+### Step 2 result, continued: 427 frames, through the first kill (2026-11-08)
+
+The level runner, the roles, the side-scrolling camera and the walls now run inside the three-fighter match
+(`config.start_force`; `force_tables`/`force_script`/`force_trig`/`force_level`), and the evaluator feeds the
+recorded pads of all three records (`flow_<scenario>.pads`, written by `force_flow_record.py`: every
+`FighterInputPush`, the AI's included) and the camera's view x. **Rows 262-688 of `force_run` (427 frames) pass
+with zero differences on all three records**: the intro, the first spawn (the level runner's health, position
+and `FighterStartMove` with the enemy as its own opponent), the walk in against the Force wall, the player's
+attack, the hit, the kill (the ordinary reaction, not the versus collapse) and the timer bonus.
+
+Found on the way: a hit may only reach the defender the attacking fighter's gate was tested against (the
+third record was being struck by the player's gate); the round flow's pad and KO-mark arrays were indexed with
+the third fighter.
+
+**What stops the comparison next: the shared generator.** The original draws five numbers at the round start
+(the stance of records 0 and 1, `AiInitRound` for three records), which the match now reproduces, and then one
+per frame from frame 465 on: the enemy AI (`AiUpdate`). Without the AI the generator diverges from the first
+enemy action, and with it the shouts (`voice_cooldown`, rows 427-429). So the next step is the Force AI (step 3)
+on the owned AI bus (`psx_ai_game.c`, which runs the original `AiUpdate` over typed fighters; it has two
+records and `force_layout`): three records, the two enemy slots' countdowns (`0x8009F6A8`, `0x8009F6B0`), the
+pattern words (`0x80023210`) and `AiInitRound`'s odd-slot flag. The comparison checks `rand` every frame.
+
+The recordings are being redone with the pad side files (`flow_force_run`, `_bosses`, `_final`).
