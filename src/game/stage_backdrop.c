@@ -219,12 +219,15 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
     unsigned count,key_count,first_ok=0;
     int64_t fx,fy,fl;
     int32_t top,bottom;
+    unsigned step_shift;
     /* Columns are a power of two: the layer wraps at its bitmap width. */
     if(!b || !m || !eye || !lines || !b->columns || b->columns>1024 || (b->columns&(b->columns-1)) ||
        b->rows<9 || b->width<2 || b->width>1024 || b->height<2 || b->height>MAX_HEIGHT ||
        b->box_half<=0 || b->box_half>MAX_BOX_HALF || b->rows_per_tan<=0 ||
        b->rows_per_tan>(INT32_MAX/(2*TAN_LIMIT/ONE)) || vertical_offset< -MAX_HEIGHT || vertical_offset>MAX_HEIGHT ||
        (step!=1 && step!=2 && step!=4 && step!=8))return 0;
+    /* step is 1, 2, 4 or 8: dividing by it is a shift, exactly. */
+    step_shift=(unsigned)__builtin_ctz(step);
     w.b=b;
     w.wrap=(int32_t)b->columns*ONE;
     w.wall=b->box_half<<8;
@@ -266,7 +269,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
     }
     BD_SPLIT_ADD(0,fit_started);
     if(!keys[first_ok].ok) {
-        for(unsigned n=0;n<b->height/step;++n) {
+        for(unsigned n=0;n<(unsigned)b->height>>step_shift;++n) {
             lines[n]=(t3_stage_backdrop_line_t){0,0,ONE};
             if(wall_depth)wall_depth[n]=0;
         }
@@ -279,7 +282,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
             const fit_t* near=j?&keys[j-1]:&keys[first_ok];
             keys[j]=(fit_t){near->column,near->zoom,near->row,0,0};
         }
-    count=b->height/step;
+    count=(unsigned)b->height>>step_shift;
     top=(int32_t)(step-1)*ONE/2;bottom=((int32_t)b->rows-1)*ONE-top;
     /* One segment between fitted lines j and j + 1 at a time. */
     BD_SPLIT_START(interp_started);
@@ -288,7 +291,8 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
         const unsigned y2=2*n*step+step-1;
         const unsigned j=y2/(2*KEY);
         /* The first group past the segment, whose y2 reaches 2 KEY (j + 1). */
-        const unsigned end=(2*KEY*(j+1)+step)/(2*step)<count?(2*KEY*(j+1)+step)/(2*step):count;
+        const unsigned past=(2*KEY*(j+1)+step)>>(step_shift+1u);
+        const unsigned end=past<count?past:count;
         const unsigned first=n;
         const fit_t* k0=&keys[j];
         const fit_t* k1=&keys[j+1<key_count?j+1:j];

@@ -7,6 +7,7 @@
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "psx_match.h"
+#include "sh2_divide.h"
 #include "move_index.h"
 #include "attack_records.h"
 #include "psx_contact.h"
@@ -67,7 +68,13 @@ static uint32_t isqrt(uint32_t n) {
     uint32_t guess=1,rest=n;
     if(!n)return 0;
     while(guess<rest){guess<<=1;rest>>=1;}
-    for(;;){uint32_t before=guess;guess=(n/before+before)>>1;if(guess>=before)return before;}
+    /* The callers' x^2 + z^2 stays below 2^31: there the signed divider
+     * gives the same quotient. */
+    for(;;){
+        const uint32_t before=guess;
+        const uint32_t q=n<=(uint32_t)INT32_MAX?(uint32_t)t3_div32((int32_t)n,(int32_t)before):n/before;
+        guess=(q+before)>>1;if(guess>=before)return before;
+    }
 }
 /* SituationClassify (0x800313B0): the throw situation code of branch
  * conditions 2..0x17. The tables are indexed by the opponent quadrant

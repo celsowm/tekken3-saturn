@@ -69,7 +69,8 @@ of record.
 | GCC 16.2 toolchain | **REJECTED (2026-11-07)**: SDK and game rebuilt with GCC 16.2 / binutils 2.47 (same options): 29.06 → 28.76 marked, worst segment 27.05 → 26.70; with its one 64-bit divide regression fixed, 28.84 / 26.71. GCC 13.2 stays |
 | R10 camera divides | **PROMOTED (2026-11-07)**: the 12 int64 divides per image that map the SDK camera to the original viewport (`main.c`) run on the on-chip 64/32 divider (`t3_div64_32`); 29.06 → 29.19 marked, worst segment 27.05 → 27.20, no segment down; frozen pixels match |
 | R11 lib-saturn divides | **PROMOTED (2026-11-07)**: `fx_div` and `sat_time_ms` on the on-chip divider when the quotient provably fits (lib-saturn `32d86c96`); 29.19 → 29.40 marked, worst segment 27.20 → 27.40, 7/7 segments ahead; frozen pixels match |
-| Base rate | 29.40 marked / 27.40 worst segment (2026-11-07, R11; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
+| R12+R13 Slave divides | **PROMOTED (2026-11-07)**: floor-from-view on the on-chip divider (lib-saturn `e14e1c5b`), backdrop step divides as shifts, `t3_psx_atan2`, `isqrt` and the health readout on the divider; 29.40 → 29.46 marked, worst segment 27.40 → 27.45, 7/7 segments ahead; frozen pixels match. R12 alone was 29.44 with segment 6 at −0.05, so it was not promoted alone |
+| Base rate | 29.46 marked / 27.45 worst segment (2026-11-07, R13; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -1347,6 +1348,25 @@ in `disc/<name>.iso_root`; `play_mednafen.py`, `stage_bake_ab.py` and
 field 5000 the faster build stops during diagnostic publication, so the
 tick-2000 capture is taken at 5004 (the bench holds one tick, so the image is
 the same).
+
+**R12 and R13: Slave divides (2026-11-07).** The Slave still made about
+56 `__udivsi3` and 49 `__divdi3` calls a field. R12 (lib-saturn) adds
+`div_s64_fast`: the 64/32 divider when the divisor fits int32 and the
+quotient is at most INT32_MAX − 1 in magnitude, libgcc otherwise. All of
+`sat_vdp2_floor_from_view`'s divides use it. R13 changes four game sites,
+each giving the same quotient:
+- the backdrop divides by `step`, which the validation keeps at 1, 2, 4 or 8,
+  so the divide is a shift by `ctz(step)`;
+- `t3_psx_atan2` divides two magnitudes of at most 0x8000, so `x << 12` fits
+  a positive int32;
+- `isqrt` takes x² + z² below 2³¹ from its callers and keeps the unsigned
+  divide above that;
+- the health readout uses `t3_div64_32` when `max_health` is positive.
+
+Measured on its own, R12 was 29.40 → 29.44 with segment 6 at −0.05, just
+outside the ±0.04 noise, so it was held. Together with R13 the fight is
+29.40 → 29.46 marked, worst segment 27.40 → 27.45, with every segment ahead.
+The frozen pixels match at ticks 2000 and 3000.
 
 **Stop rule.** If R1–R8 are done and the rate is still under 30, write down
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and

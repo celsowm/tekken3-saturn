@@ -28,6 +28,7 @@ static uint32_t g_t3_pose_trace_tick;
 #include "psx_shadow_combat.h"
 #include "psx_root.h"
 #include "psx_match.h"
+#include "sh2_divide.h"
 #include "t3_generated_character.h"
 #if defined(T3_FIGHTER_PACKS)
 #include "fighter_pack.h"
@@ -1432,7 +1433,11 @@ reference_complete:;
         *v=(t3_fighter_t){0};
         v->x=(int32_t)(((int64_t)f->ground.root.x-t3_move_probe_world_center(0))*3/8);
         v->z=(int32_t)(-((int64_t)f->ground.root.z-t3_move_probe_world_center(2))*3/8);
-        v->health=(int16_t)((int64_t)f->health_q16*T3_MAX_HEALTH/g_owned_config.max_health_q16);
+        {
+            const int64_t scaled=(int64_t)f->health_q16*T3_MAX_HEALTH;
+            const int32_t max=g_owned_config.max_health_q16;
+            v->health=(int16_t)(max>0?t3_div64_32(scaled,max):scaled/max);
+        }
         v->facing=f->ground.root.x<=g_owned_match.fighter[1u-i].ground.root.x?1:-1;
         v->guarding=f->ground.guard!=0u;v->crouching=(f->ground.state&7u)==1u;
         v->stun=f->ground.recover_frames;

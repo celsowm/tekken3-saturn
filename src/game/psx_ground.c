@@ -9,6 +9,7 @@
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "psx_ground.h"
+#include "sh2_divide.h"
 #include <saturn/int_math.h>
 
 static int16_t s16(int32_t n) {
@@ -110,8 +111,10 @@ int t3_psx_atan2(const t3_psx_ground_tables_t* t,int32_t dz,int32_t dx,uint16_t*
     uint16_t u,r;
     if(!valid(t) || !out)return 0;
     if(a==b)s=0x200u;
-    else if(b<a)s=atan_value(t,(b<<12)/a);
-    else s=0x400u-atan_value(t,(a<<12)/b);
+    /* Both are at most 0x8000, so b << 12 fits a positive int32 and the
+     * divisor is non-zero: the signed divider gives the same quotient. */
+    else if(b<a)s=atan_value(t,(uint32_t)t3_div32((int32_t)(b<<12),(int32_t)a));
+    else s=0x400u-atan_value(t,(uint32_t)t3_div32((int32_t)(a<<12),(int32_t)b));
     u=(uint16_t)(s*16u);
     if(z<0)r=x<0?(uint16_t)(u+0x8000u):(uint16_t)(0x7FFFu-u);
     else r=x<0?(uint16_t)~u:u;
