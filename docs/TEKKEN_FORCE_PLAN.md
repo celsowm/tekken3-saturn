@@ -882,3 +882,11 @@ player starts a throw on enemy 2 (slots 2795/2999, both at the player's new anch
 away by the body separation of that frame: the original moves it (+52, +12), the port (+228, +52). The pair (1,2) is the one
 that pushes; the overlap there depends on the thrown victim's body spheres in its first throw frame (its radii rule reads
 `was_hit_this_move` and `in_air`), which is where to look. `force_bosses` passes all 9,578 rows and `force_run` all 7,522.
+
+### Update: `force_final` exact; all three recordings pass every compared row (24,982 frames)
+
+`scripts/force_separate_trace.py` (the original's BodySeparate calls in one frame: the three records' anchor, root and facing)
+showed that in the first frame of a throw the victim's root already comes from the anchor its start set, so the throw anchor
+moves the root only from the second frame on; with that the bystander's push is the original's. The wall correction of a
+linked throw now moves the partner for any two of the three records. `force_run` 7,522, `force_bosses` 9,578 and
+`force_final` 7,882 contiguous frames match on every field.

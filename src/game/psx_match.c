@@ -796,7 +796,11 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
         } else
 #endif
         if(!t3_psx_arena_bounds(&pair[i],&pair[T3_PSX_OPP(match,i)],&tables))return 0;
+#if T3_PSX_FIGHTERS>2
+        if(match->throw_link && match->fighter[i].ground.in_throw && match->fighter[T3_PSX_OPP(match,i)].ground.in_throw) {
+#else
         if(match->throw_link && match->fighter[0].ground.in_throw && match->fighter[1].ground.in_throw) {
+#endif
             /* ArenaBounds moves a linked throw partner by the same correction. */
             t3_psx_body_actor_t* o=&pair[T3_PSX_OPP(match,i)];
             const int32_t dx=(int32_t)((uint32_t)pair[i].root.x-(uint32_t)before.x);
@@ -828,7 +832,9 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
             const int32_t dx=(int32_t)((uint32_t)pair[o].anchor.x-(uint32_t)pair[i].anchor.x);
             const int32_t dz=(int32_t)((uint32_t)pair[o].anchor.z-(uint32_t)pair[i].anchor.z);
             pair[i].anchor.x=pair[o].anchor.x;pair[i].anchor.z=pair[o].anchor.z;
-            pair[i].root.x=(int32_t)((uint32_t)pair[i].root.x+(uint32_t)dx);pair[i].root.z=(int32_t)((uint32_t)pair[i].root.z+(uint32_t)dz);
+            /* The root follows the anchor, except in the first frame of the throw: the victim's start has set its anchor and
+             * the root already comes from it (force_final 5660). */
+            if(f->vm.clock.move_frame>1){pair[i].root.x=(int32_t)((uint32_t)pair[i].root.x+(uint32_t)dx);pair[i].root.z=(int32_t)((uint32_t)pair[i].root.z+(uint32_t)dz);}
         }
     }
 #endif
