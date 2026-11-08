@@ -444,6 +444,24 @@ adapted from its remake reading with attribution (never copying GDScript).
   - the bank epochs and the model-swap frames.
 
   An importer and host test are in `tests/`. Exit: the fixture loads and frame 0 equals the recorded records.
+- **Design findings (2026-11-07), from reading the duel evaluator and the trace.**
+  - The `flow_force` trace's player is character 4 (bank type 4, 130 health); both enemies are character 21,
+    bank type 20, costumes 84 and 85 (`0x54 + costume`). The first running Force frame is 412.
+  - The duel evaluator (`tools/psx_match_replay_eval.c`, built by `T3_PRIVATE_REPLAY_ASSET_DIR` against
+    `generated/private_logic` and `generated/characters`) already picks each fighter's bank by its seed bank
+    type from a main bank plus an optional second (`build_local_divmot_assets.py --bank … --second-bank …`).
+    Force needs the player's bank as main and type 20 as second; a boss run needs a third. That is the only
+    bank change.
+  - What the evaluator hard-codes to two and must take from `T3_PSX_FIGHTERS` for a `tools/psx_force_replay_eval.c`
+    sibling: the seed loops (`i<2`, the linked-bank pairing), the per-fighter comparisons, the
+    `0x800A9228` USA fighter base and its stride, the pad and AI tape (`psx_ai_tape.h`) per fighter, and the
+    Force globals the match reads (`force_view_x`, `force_stage`, `level_ended`, `opponent[]`, the walls).
+  - The trace is Rev.1 layout and the evaluator is USA layout: reuse `fight_oracle_export.py`'s mapping through
+    `tools/remake_import/layouts/usa.json`. A Force exporter takes the seed from the trace frame before the
+    first running frame (the records, the globals, the pair table) and the later frames as `frame-N.ranges`.
+  - The enemies' pads come from the original AI (the `ai.bin` tape). `flow_trace.py` does not record
+    `AiUpdate` calls; add that to the Force scenarios (as `fight_harness` does with `--cpu`), or read the pads
+    from the records' own pad fields after each frame, which is simpler and enough before step 3.
 - **Comparator.** A host program steps `t3_psx_match_step` at `T3_PSX_FIGHTERS=3`, with `psx_force_level.c`,
   roles, walls and the Force camera in the loop. It compares the three records and the Force globals after
   every frame, and stops at the first difference with the field list (as `fight_oracle_eval.py` does).
