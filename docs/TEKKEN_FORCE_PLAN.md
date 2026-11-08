@@ -723,3 +723,20 @@ three scenarios (about 135,000 frames: all four levels, the bosses, the final fi
 pad files and will extend the same check. Still open for steps 2-3: whatever the longer runs show (items, the
 tally and stage clear, area changes, the bosses' own records, the Doctor B. level), and the Force-specific `rand`
 users beyond these 430 frames.
+
+### Step 2/3, the long run: 1,001 frames exact, then the hit rules (2026-11-08)
+
+With the full `force_run` recording (40,000 frames, pads included) the same comparison now runs **1,001
+frames (262-1,262) with zero differences**, up to the first of three hit-related differences. Fixed on the
+way: FighterStartMove keeps the blend mode (a respawned enemy); the walls read the camera's view x as the
+*previous* frame left it (the camera moves first); Tekken Force's pattern words (`0x80023210`) are in the AI
+blob (`extract_psx_ai_tables.py --force` writes `psx_ai_force.bin`; the versus blob is unchanged); a KO with
+`collapse_on_ko` 0 is thrown into the air by selecting the in-air reaction again (MoveStep's alternate KO).
+
+Open, in order of the run: (1) `hit_done` is one flag per fighter; the original keeps one per attacker and
+defender (`+0x83 + defender index`), and HitTest tests every pair of the three records, each defender holding
+two hit slots. The owned core tests an attacker against its opponent only and picks one attacker per defender
+(the first whose gate accepted), which gives `last_attacker` 1 where the original has 2 when both enemies strike
+the player in one frame (frame 1,304). (2) The body push of a fighter after the pair separation (frame 1,078).
+(3) The voice cooldown after a hit sequence (frame 1,290). (1) is the "unverified: hit gate and hit application
+at three fighters" row of the inventory; it needs the gate and the transaction per attacker-defender pair.

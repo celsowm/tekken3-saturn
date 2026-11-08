@@ -13,6 +13,7 @@ game data a repository may keep; the output stays under build/. Run with the Tek
 """
 import argparse
 import json
+import os
 import struct
 import sys
 from pathlib import Path
@@ -35,6 +36,9 @@ def usa_spans(layout, header, ranges, records):
     """[(USA address, bytes)] of one frame: the recorded ranges and the three fighter records."""
     out = []
     for (name, address), data in ranges.items():
+        if name in ('ai_globals', 'ai_records'):   # the AI's memory is addressed as the Rev.1 executable has it
+            out.append((address, data))
+            continue
         try:
             out.append((layout.to_usa(address), data))
         except (ValueError, IndexError):
@@ -48,7 +52,7 @@ def clip(spans):
     """Only the bytes the evaluator reads (fight_oracle_export.GLOBALS and the fighter records), in at most
     64 spans: the snapshot reader's limit."""
     # the third record doubles the per-fighter tables: the step accumulators and the body's previous roots
-    wanted = sorted(ox.GLOBALS) + [(0x8009E5F8, 0x48), (0x8009E6F8, 0x48)] + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
+    wanted = sorted(ox.GLOBALS) + [(0x8009E5F8, 0x48), (0x8009E6F8, 0x48), (0x8009F690, 0x690)] + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
     bytes_at = {}
     for address, data in spans:
         for w_address, w_size in wanted:
@@ -93,6 +97,7 @@ def main():
     rows = []
     previous = None
     last_pad = 0
+    view_prev = None
     for k, (pads, ranges, records) in enumerate(cf.frames(header, body)):
         running = len(records) == 3 and cf.build_ram(header, ranges, records).s32(0x800AFF50) == 8
         if seeded is None:
@@ -113,7 +118,9 @@ def main():
         # the evaluator's row: path, mapped pads (not known here), call, frame, physical pads, edges
         edge = pads[0] & ~last_pad & 0xFFFF
         counter = struct.unpack_from('<I', ranges[('mode', 0x800AFF00)], 0x14)[0]   # 0x800AFF14, the main loop's frame
-        view_x = struct.unpack_from('<i', ranges[('force_mode', 0x800B69F0)], 0x800B70F0 - 0x800B69F0)[0]   # 0x800B70F0
+        view_now = struct.unpack_from('<i', ranges[('force_mode', 0x800B69F0)], 0x800B70F0 - 0x800B69F0)[0]   # 0x800B70F0
+        view_x = view_now if os.environ.get('T3_VIEW_SAME') else (view_prev if view_prev is not None else view_now)
+        view_prev = view_now
         if pushes:
             # every fighter's pad as the game pushed it (the AI's with side 0), mapped like the human's
             words = [ox.mapped_pad(*pushes.get((k, f), (0, 0)), records[f][0xC6] if f == 0 else 0) for f in range(3)]

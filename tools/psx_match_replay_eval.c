@@ -27,6 +27,7 @@ static t3_divmot_t bank,common,second;
 static t3_psx_replay_storage_t history;
 static t3_motion_sample_cache_t samples;
 static unsigned differences;
+static int ai_block_check;
 static int original_round_flow;
 static int reference_exclude_values;
 static FILE* reference_debug_labels;
@@ -94,7 +95,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0
     config.rsqrt=(t3_psx_rsqrt_t){t3_local_rsqrt_blob,T3_LOCAL_RSQRT_BYTES};
 #endif
-    config.enable_body=config.enable_combat=1;config.collapse_on_ko=u8(0x800AFA93u);
+    config.enable_body=config.enable_combat=1;config.collapse_on_ko=getenv("T3_FORCE_START")?0:u8(0x800AFA93u); /* Tekken Force takes the alternate KO */
     config.all_attacks=getenv("T3_QUALIFIED_ATTACKS")==NULL;
     config.enable_rounds=original_round_flow?2:0;
     config.replay_storage=original_round_flow?&history:0;
@@ -180,7 +181,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
            !t3_psx_ai_game_init(&ai_game,ai_tables,tsize,6u,
                (uint16_t)strtoul(getenv("T3_FORCE_AI_DIFFICULTY")?getenv("T3_FORCE_AI_DIFFICULTY"):"1",NULL,0),
                (uint8_t)strtoul(getenv("T3_FORCE_AI_LEVEL")?getenv("T3_FORCE_AI_LEVEL"):"0",NULL,0)))return 0;
-        ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;
+        ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;ai_block_check=getenv("T3_AI_BLOCK_CHECK")!=NULL;
         config.ai=&ai_game;
     }
 #endif
@@ -304,6 +305,16 @@ int main(int argc,char** argv) {
         if(reference_hashes){t3_sha256_init(&reference_digest);reference_value_count=0;}
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)compare(i,sx,sz);
         compare_round();
+#if T3_PSX_FIGHTERS>2
+        if(ai_block_check && config.ai && has(0x8009F690u,0x690u)) {
+            /* The CPU opponent's own memory (the index, the countdowns, both records) against the recorded game's */
+            for(unsigned k=0;k<0x690u;++k)
+                if(config.ai->block[k]!=u8(0x8009F690u+k) && !(k>=0x0 && 0)) {
+                    char name[32];snprintf(name,sizeof name,"block+%x",k);
+                    check(0,"ai",name,config.ai->block[k],u8(0x8009F690u+k));
+                }
+        }
+#endif
         if(config.start_force && has(0x800A39B8u,4))check(0,"rng","rand",game.camera.rand,u32(0x800A39B8u)); /* the shared generator */
         const int hud_checked=config.start_intro && !config.start_force && has(0x80097D10u,0x20u);
         /* Tekken Force draws its own bars: the versus HUD record is not compared. */

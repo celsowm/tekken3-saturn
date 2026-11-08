@@ -24,6 +24,8 @@ BASE, HEADER = 0x80010000, 0x800
 # come from psx_common_branches.bin.
 WINDOWS = ((0x8001006C, 0x6D0), (0x80022E90, 0x270), (0x80023288, 0xE78),
            (0x800958F4, 0x1A0), (0x80098610, 0x300))
+# Tekken Force's pattern words (0x80023210: 15 words a group, 3 a level), for the Force program's blob (--force)
+FORCE_WINDOWS = ((0x80023210, 0x78),)
 MAGIC = b'T3AI'
 
 
@@ -58,10 +60,10 @@ def window_bytes(raw, segments, address, size):
 
 
 def inside(address):
-    return any(a <= address < a + n for a, n in WINDOWS) or 0x80017C78 <= address < 0x80017C78 + 672 * 12
+    return any(a <= address < a + n for a, n in WINDOWS + FORCE_WINDOWS) or 0x80017C78 <= address < 0x80017C78 + 672 * 12
 
 
-def extract(exe, layout_file, rev1=None):
+def extract(exe, layout_file, rev1=None, windows=WINDOWS):
     raw = exe.read_bytes()
     layout = json.loads(layout_file.read_text())['blocks']['exe']
     if hashlib.sha256(raw[HEADER:]).hexdigest() != layout['sha256']:
@@ -69,7 +71,7 @@ def extract(exe, layout_file, rev1=None):
     segments = layout['segments']
     end = BASE + len(raw) - HEADER
     blobs, pointers, outside = [], 0, []
-    for address, size in WINDOWS:
+    for address, size in windows:
         data = window_bytes(raw, segments, address, size)
         for at in range(0, size - 3, 4):
             word = struct.unpack_from('<I', data, at)[0]
@@ -88,10 +90,10 @@ def extract(exe, layout_file, rev1=None):
                 first = next(i for i in range(size) if ref[i] != data[i])
                 raise TableError(f'window {address:#x} differs from Rev.1 at {address + first:#x}')
         blobs.append(bytes(data))
-    head = MAGIC + struct.pack('<I', len(WINDOWS))
-    offset = len(head) + 12 * len(WINDOWS)
+    head = MAGIC + struct.pack('<I', len(windows))
+    offset = len(head) + 12 * len(windows)
     table, body = b'', b''
-    for (address, size), data in zip(WINDOWS, blobs):
+    for (address, size), data in zip(windows, blobs):
         table += struct.pack('<III', address, size, offset + len(body))
         body += data
     return head + table + body, pointers, outside
@@ -102,10 +104,12 @@ def main():
     p.add_argument('--exe', type=Path, default=ROOT / 'assets/imported/tekken3-usa/SLUS_004.02')
     p.add_argument('--layout', type=Path,
                    default=ROOT / 'third_party/Tekken3Remake/tools/remake_import/layouts/usa.json')
+    p.add_argument('--force', action='store_true', help="also hold Tekken Force's pattern words (write psx_ai_force.bin)")
     p.add_argument('--rev1', type=Path, help='Japan Rev.1 executable to compare with')
     p.add_argument('--output', type=Path, default=ROOT / 'assets/imported/tekken3-usa/pose-tables/psx_ai.bin')
     a = p.parse_args()
-    blob, pointers, outside = extract(a.exe, a.layout, a.rev1.read_bytes() if a.rev1 else None)
+    blob, pointers, outside = extract(a.exe, a.layout, a.rev1.read_bytes() if a.rev1 else None,
+                                      WINDOWS + FORCE_WINDOWS if a.force else WINDOWS)
     a.output.write_bytes(blob)
     # Code addresses (hooks) and tables the AI does not read land outside.
     for at, target in outside:

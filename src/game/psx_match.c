@@ -1348,7 +1348,7 @@ static int replay_render(t3_psx_match_t* n) {
 static int force_start_move(t3_psx_match_t* n,unsigned i,unsigned slot) {
     t3_psx_fighter_t* f=&n->fighter[i];
     t3_move_start_facts_t start={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,(int16_t)f->vm.clock.pose_frame};
-    f->blend.mode=0;
+    /* (FighterStartMove leaves the blend mode as the last move left it) */
     const unsigned kind=kept_branch_kind(&f->vm);
     f->vm.pending_valid=0;f->vm.clock.pose_frame=1;
     /* FACE_OPPONENT (0), started with the fighter as its own opponent: FighterStartMove calls MoveStartOrAdvance(f, f) */
