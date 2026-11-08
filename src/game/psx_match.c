@@ -1006,6 +1006,12 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
         }
 #endif
         if(!place_original_round(&n,1))return 0;
+#if T3_PSX_FIGHTERS>2
+        if(config->start_force) {
+            n.force.score=config->force_carry_score;n.force.hiscore_run=config->force_carry_hiscore;
+            if(config->force_carry_health)n.fighter[0].health_q16=config->force_carry_health;
+        }
+#endif
     } else if(config->camera && !t3_psx_match_camera_round(&n,1))return 0;
     if(config->ai) {
         if(config->enable_rounds!=2 || !config->enable_combat)return 0;

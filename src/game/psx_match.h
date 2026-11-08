@@ -107,6 +107,8 @@ typedef struct {
     uint8_t force_boss_like;
     /* Or the boss's own data (host evaluators): bank, model, body shapes (48 bytes), scale, character and voice set. */
 #if T3_PSX_FIGHTERS>2
+    /* A level after the first starts with the score, hi-score and health of the last (health 0: full). */
+    uint32_t force_carry_score,force_carry_hiscore;int32_t force_carry_health;
     const t3_divmot_t* force_boss_bank;const t3_psx_part_t* force_boss_parts;const uint8_t* force_boss_shapes;
     unsigned force_boss_scale;uint8_t force_boss_character,force_boss_voice;
 #endif
