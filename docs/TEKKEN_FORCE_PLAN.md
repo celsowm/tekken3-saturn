@@ -926,3 +926,9 @@ mid-level after the player's defeat. The owned start (a level start from the boo
 it needs a "seed from the recorded state" mode that copies the three fighter records and the level runner's globals (the
 versus evaluator's way), not only a start from globals. The stretches at 18,935 and 35,785 (levels 2 and 3) are real level
 starts and need only the carried score, keys, hi-score and the right `LEVn.BIN`.
+
+Tried the stretch at frame 18,935 (the third level, `LEV3.BIN`, with the carried score 55,570, hi-score and health 57): it is
+not a clean level start either — the player is placed at x 36,940 (a level's start position is its own, the level origin
+`START_X`, not zero) and the round flags still hold the previous win. The evaluator now accepts enemy records that still hold
+the last boss (it plays them as the enemy bank) and carries score, hi-score and health (`T3_FORCE_CARRY="score hiscore health"`),
+but the owned start has to take the level's origin and start position from the level before such a stretch can be compared.

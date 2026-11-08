@@ -65,7 +65,9 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         config.character[i]=(uint8_t)i16(base+0x18);
         if(type==bank.bank_type)config.actor_bank[i]=NULL;
         else if(second.data && type==second.bank_type)config.actor_bank[i]=&second;
-        else return 0;
+        else if(getenv("T3_FORCE_START") && i>0 && second.data) {   /* a level start after a boss: the enemy records still hold the boss */
+            config.actor_bank[i]=&second;config.character[i]=21;
+        } else return 0;
     }
     /* The merged move index links each fighter's bank to the other's. */
     {
@@ -135,13 +137,18 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #if defined(T3_LOCAL_SOUND_TABLE_BYTES) && T3_LOCAL_SOUND_TABLE_BYTES > 0
     if(start_seed) {
         config.sound_tables=(t3_psx_sound_tables_t){t3_local_sound_tables,T3_LOCAL_SOUND_TABLE_BYTES};
-        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)config.sound_voice_set[i]=(uint8_t)i16(0x800A9228u+i*0x188Cu+0x1Au);
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)config.sound_voice_set[i]=(getenv("T3_FORCE_START") && i>0)?22u:(uint8_t)i16(0x800A9228u+i*0x188Cu+0x1Au);
     }
 #endif
     if(start_seed) {
         if(!original_round_flow)return 0;
         config.start_intro=1;config.start_seed=(uint32_t)strtoul(start_seed,NULL,0);
         config.start_force=getenv("T3_FORCE_START")!=NULL;
+        if(getenv("T3_FORCE_CARRY")) {   /* "score hiscore health" of the level before */
+            char* e=getenv("T3_FORCE_CARRY");
+            config.force_carry_score=(uint32_t)strtoul(e,&e,0);config.force_carry_hiscore=(uint32_t)strtoul(e,&e,0);
+            config.force_carry_health=(int32_t)strtol(e,&e,0);
+        }
         if(getenv("T3_FORCE_BOSS_LIKE"))config.force_boss_like=(uint8_t)strtoul(getenv("T3_FORCE_BOSS_LIKE"),NULL,0);
 #if T3_PSX_FIGHTERS>2 && defined(T3_LOCAL_EFFECT_TABLE_BYTES) && T3_LOCAL_EFFECT_TABLE_BYTES > 0
         if(config.start_force && !getenv("T3_REPLAY_NO_EFFECTS")) {
