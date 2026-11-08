@@ -5,7 +5,7 @@
 enum {
     T3_ROUND_INTRO=0,T3_ROUND_FIGHT=1,T3_ROUND_RESULT=2,
     T3_ROUND_REPLAY=3,T3_ROUND_REPLAY_DONE=4,T3_ROUND_WIN_POSES=5,
-    T3_ROUND_WIN_WAIT=6,T3_ROUND_END=9
+    T3_ROUND_WIN_WAIT=6,T3_ROUND_AREA_CHANGE=7,T3_ROUND_STAGE_CLEAR=8,T3_ROUND_END=9
 };
 /* Normal VS RoundFlow only. Replay playback, camera progression, move starts
  * and the outer FightMain round reset are separate owners. Call this before

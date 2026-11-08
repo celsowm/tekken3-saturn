@@ -815,3 +815,18 @@ and the field-by-field comparison:
 Versus: the shared changes are compiled only for the three-record build (`#ifdef T3_PSX_FIGHTERS`); the two-record
 `app.bin` grows from 497,944 (before the Force work) to 498,528 bytes (the transaction and a few shared loops). The
 Mednafen A/B on the attract fight is still to be run.
+
+### Update: area change, the versus A/B, and what is next
+
+- The level runner's area change sets round state 7 (back to the fight a frame later); the exporter drops the three idle
+  frames MatchFlow spends on it (display off, display on, `force_boss`). `force_run`: 6,050 contiguous frames of the
+  first level are exact up to the area change; the next frame is the level's boss (record 1 becomes a roster fighter:
+  here character 4, costume 16, health 130 at 4,096 units ahead of the camera), which the port does not do yet.
+  Without it the round "ends" at once (fighter 1 has no health), so everything after is the missing boss.
+- Versus: the two-record program is 498,528 bytes against 497,944 before the Force work (shared transaction loops and a
+  few `i<T3_PSX_FIGHTERS` loops; the Force-only branches are behind `T3_PSX_FIGHTERS`). Attract fight, 280 s Mednafen,
+  same AI pad hash 0xb99cc280: marked **29.44** images/s, worst segment **27.45** (R13: 29.46 and 27.45; the same build
+  varies by 0.1 on single segments between runs). No loss.
+- A three-record `tekken3_saturn` links (520,512 bytes, `T3_PSX_FIGHTERS=3`); it does not start a Force level yet.
+- Next: `force_boss` (identity, bank, hurt radii, AI bank of the boss, music, health from the level table), then run
+  `force_bosses` and `force_final`; then plan step 4 (the device program), rendering, HUD, saving, disc.

@@ -91,6 +91,11 @@ static int result(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2]) {
     return 1;
 }
 #ifdef T3_PSX_FIGHTERS
+#define ROUND_FORCE_STATE(s) ((s)==T3_ROUND_AREA_CHANGE)
+#else
+#define ROUND_FORCE_STATE(s) 0
+#endif
+#ifdef T3_PSX_FIGHTERS
 #define ROUND_HEALTH_OVER(h,m,f) ((h)>(m) && !(f)->force)   /* an item lifts Force health above the maximum */
 #else
 #define ROUND_HEALTH_OVER(h,m,f) ((h)>(m))
@@ -102,7 +107,7 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
     t3_psx_round_flow_actions_t x={{-1,-1},0,0,0,0,0};
     if(!out || !actors || !f || !actions)return 0;
     s=*out;a[0]=actors[0];a[1]=actors[1];
-    if(s.state<0 || (s.state>6 && s.state!=9) || s.counter<0 || s.counter==INT32_MAX ||
+    if(s.state<0 || (s.state>6 && s.state!=9 && !ROUND_FORCE_STATE(s.state)) || s.counter<0 || s.counter==INT32_MAX ||
        s.frame<0 || s.frame==INT32_MAX || s.played<1 || s.played>9 || s.timer<0 ||
        s.to_win<1 || s.to_win>5 || s.max_rounds<0 || s.max_rounds>9 ||
        s.human_mask<0 || s.human_mask>3 || s.tie_choice<0 || s.tie_choice>1 ||
@@ -162,6 +167,9 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
     case T3_ROUND_WIN_POSES:win_start(&s,a,f);break;
     case T3_ROUND_WIN_WAIT:win_wait(&s,a,f);break;
     case T3_ROUND_END:break;
+#ifdef T3_PSX_FIGHTERS
+    case T3_ROUND_AREA_CHANGE:s.state=T3_ROUND_FIGHT;break;   /* Tekken Force: the level runner's area change, back to the fight */
+#endif
     default:return 0;
     }
     *out=s;actors[0]=a[0];actors[1]=a[1];*actions=x;return 1;

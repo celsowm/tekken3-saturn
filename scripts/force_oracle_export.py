@@ -98,6 +98,7 @@ def main():
     previous = None
     last_pad = 0
     view_prev = None
+    last_state = None
     for k, (pads, ranges, records) in enumerate(cf.frames(header, body)):
         running = len(records) == 3 and cf.build_ram(header, ranges, records).s32(0x800AFF50) == 8
         if seeded is None:
@@ -111,6 +112,14 @@ def main():
             continue
         if len(rows) >= args.ticks or not running:
             break
+        # Round state 7 (the level runner's area change): FightFrame is not run while the screen turns off, on, and
+        # the boss is set up (MatchFlow AREA_DISPLAY_OFF, AREA_DISPLAY_ON, FORCE_BOSS); the frame that ends in state 7
+        # and the one that leaves it are the fight's.
+        state = cf.build_ram(header, ranges, records).s32(0x80097350)
+        idle = state == 7 and last_state == 7
+        last_state = state
+        if idle:
+            continue
         path = args.out / f'frame-{k}.ranges'
         chunks = usa_spans(layout, header, ranges, records)
         path.write_bytes(b'T3RANGES' + struct.pack('<I', len(chunks))

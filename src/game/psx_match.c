@@ -1600,6 +1600,7 @@ static int force_level_frame(t3_psx_match_t* n) {
     n->level_ended=s->flag_70e8!=0;
     for(unsigned e=0;e<s->event_count;++e) {
         const t3_force_event_t* ev=&s->events[e];
+        if(ev->kind==T3_FORCE_EVENT_AREA_CHANGE)n->flow.state=T3_ROUND_AREA_CHANGE; /* FightFrame: round state 7 */
         if(ev->kind==T3_FORCE_EVENT_MODEL_BIND && ev->a>=0 && ev->a<(int)T3_FORCE_SLOTS) {
             /* reload_enemy: the record gets a fresh body, its eyes restart */
             n->fighter[(unsigned)ev->a+1u].blink=(t3_psx_blink_t){0};
@@ -1676,7 +1677,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
             for(unsigned k=0;k<3;++k)n->fighter[i].blend.root_delta[k]=0;
         }
     }
-    int old_camera=n->flow.camera;uint8_t old_active[2]={n->fighter[0].body.active,n->fighter[1].body.active};
+    int old_camera=n->flow.camera;uint8_t old_active[T3_PSX_FIGHTERS];for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)old_active[i]=n->fighter[i].body.active;
     facts.replay_mode=n->replay.mode;facts.replay_skip=n->replay_skip;facts.frame_counter=frame->frame_counter;
     facts.team_round=1; /* Normal VS setup keeps g_teamRound at 1. */
 #if T3_PSX_FIGHTERS>2
