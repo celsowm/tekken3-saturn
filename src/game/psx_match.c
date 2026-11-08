@@ -1221,7 +1221,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         v->pending_valid=0;
         unsigned slot=1;
 #if T3_PSX_FIGHTERS>2
-        if(n->config->start_force && i)slot=i==1?2:0; /* the enemy records wait: the first in its stance, the third on its first move; no random draw */
+        if(n->config->start_force && i==2)slot=0; /* the third record is only cleared by the load: its first move, no random draw */
         else
 #endif
         if(first) {
