@@ -9,6 +9,8 @@ and the third record doubles them). Usage, with the Tekken3Remake venv:
 
     third_party/Tekken3Remake/work/venv/bin/python scripts/force_flow_record.py force_run --jobs 1
 """
+import os
+import struct
 import sys
 from pathlib import Path
 
@@ -31,6 +33,40 @@ def extra_ranges():
     for k, (usa, size) in enumerate(ox.GLOBALS):
         out.append((f'oracle{k}', layout.to_jp(usa, size), size))
     return tuple(out)
+
+
+INPUT_PUSH = 0x8002C7D4   # FighterInputPush(fighter, ?, held, pressed): the pads of every fighter, the AI's included
+
+
+def record_with_pads(scenario):
+    """flow_trace.record plus a side file `flow_<scenario>.pads` of every input push: u32 frame, u8 fighter,
+    u8 pad, u16 held, u16 pressed (the trace's frame index; the first frame is not hooked)."""
+    from unicorn import UC_HOOK_CODE
+    from unicorn.mips_const import UC_MIPS_REG_A0, UC_MIPS_REG_A2, UC_MIPS_REG_A3
+    limit = int(os.environ.get('T3_FLOW_MAX_FRAMES', '0'))
+    pushes, frame, hooked = [], [0], [False]
+    try:
+        for h, pads in _record(scenario):
+            if not hooked[0]:
+                hooked[0] = True
+
+                def push(uc, _address, _size, _data):
+                    f = uc.reg_read(UC_MIPS_REG_A0)
+                    if f in flow_trace.FIGHTERS:
+                        pushes.append((frame[0], flow_trace.FIGHTERS.index(f), uc.reg_read(UC_MIPS_REG_A2) & 0xFFFF,
+                                       uc.reg_read(UC_MIPS_REG_A3) & 0xFFFF))
+                h.cpu.uc.hook_add(UC_HOOK_CODE, push, begin=INPUT_PUSH, end=INPUT_PUSH)
+            frame[0] += 1
+            yield h, pads
+            if limit and frame[0] >= limit:
+                break
+    finally:
+        out = flow_trace.OUT_DIR / f'flow_{scenario.name}.pads'
+        out.write_bytes(b''.join(struct.pack('<IBxHH', *p[:2], *p[2:]) for p in pushes))
+
+
+_record = flow_trace.record
+flow_trace.record = record_with_pads
 
 
 if __name__ == '__main__':

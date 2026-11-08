@@ -116,6 +116,21 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         if(!original_round_flow)return 0;
         config.start_intro=1;config.start_seed=(uint32_t)strtoul(start_seed,NULL,0);
         config.start_force=getenv("T3_FORCE_START")!=NULL;
+        /* A Force level: T3_FORCE_TABLES (TABLES.BIN), T3_FORCE_LEVEL (LEVn.BIN) with T3_FORCE_LEVEL_INDEX, T3_FORCE_TRIG (TRIG.BIN). */
+        if(config.start_force && getenv("T3_FORCE_TABLES")) {
+            static uint8_t tables[T3_FORCE_TABLE_BYTES],script[T3_FORCE_SCRIPT_BYTES],trig[0x2800];
+            uint8_t head[52];FILE* f;
+            if(!(f=fopen(getenv("T3_FORCE_TABLES"),"rb")) || fread(tables,1,sizeof tables,f)!=sizeof tables){return 0;}fclose(f);
+            if(!(f=fopen(getenv("T3_FORCE_LEVEL"),"rb")) || fread(head,1,sizeof head,f)!=sizeof head){return 0;}
+            {   /* the stage archive: big-endian header, the script's offset and size at words 11 and 12 */
+                uint32_t at=(uint32_t)head[44]<<24|head[45]<<16|head[46]<<8|head[47],size=(uint32_t)head[48]<<24|head[49]<<16|head[50]<<8|head[51];
+                if(size>sizeof script || fseek(f,(long)at,SEEK_SET) || fread(script,1,size,f)!=size){return 0;}
+            }
+            fclose(f);
+            if(!(f=fopen(getenv("T3_FORCE_TRIG"),"rb")) || fread(trig,1,sizeof trig,f)!=sizeof trig){return 0;}fclose(f);
+            config.force_tables=tables;config.force_script=script;config.force_trig=trig;
+            config.force_level=(uint8_t)strtoul(getenv("T3_FORCE_LEVEL_INDEX")?getenv("T3_FORCE_LEVEL_INDEX"):"0",NULL,0);
+        }
         const char* pads=getenv("T3_ORIGINAL_START_PADS");
         if(pads) {
             char* end;
@@ -196,14 +211,15 @@ int main(int argc,char** argv) {
     if(reference_output && (!original_round_flow || !reference_export_seed(ram,sx,sz,prev,ramp)))return 2;
     input=fopen(argv[2],"r");if(!input)return 2;
     while(fgets(line,sizeof(line),input)) {
-        char path[2048];unsigned held0,pressed0,held1,pressed1,call,frame,physical0=0,physical1=0,edge0=0,edge1=0,side0=0,side1=0;
-        int fields=sscanf(line,"%2047[^\t] %u %u %u %u %u %u %u %u %u %u %u %u",path,&held0,&pressed0,&held1,&pressed1,&call,&frame,
-                          &physical0,&physical1,&edge0,&edge1,&side0,&side1);
+        char path[2048];unsigned held0,pressed0,held1,pressed1,call,frame,physical0=0,physical1=0,edge0=0,edge1=0,side0=0,side1=0,held2=0,pressed2=0,side2=0;int view_x=0;
+        int fields=sscanf(line,"%2047[^\t] %u %u %u %u %u %u %u %u %u %u %u %u %u %u %d %u",path,&held0,&pressed0,&held1,&pressed1,&call,&frame,
+                          &physical0,&physical1,&edge0,&edge1,&side0,&side1,&held2,&pressed2,&view_x,&side2);
         /* Original-flow tapes may append each fighter's side (no camera here). */
-        if((original_round_flow?fields!=11 && fields!=13:fields!=7) || physical0>65535 || physical1>65535 || edge0>65535 || edge1>65535 ||
+        if((original_round_flow?fields!=11 && fields!=13 && fields!=15 && fields!=16 && fields!=17:fields!=7) || physical0>65535 || physical1>65535 || edge0>65535 || edge1>65535 ||
            side0>1 || side1>1 ||
            (held0&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed0>2047 ||
-           (held1&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed1>2047){fclose(input);return 2;}
+           (held1&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed1>2047 ||
+           (held2&~(2047u|T3_PSX_INPUT_CLEAR)) || pressed2>2047){fclose(input);return 2;}
         t3_input_t p0={(uint16_t)held0,(uint16_t)pressed0},p1={(uint16_t)held1,(uint16_t)pressed1};
 #ifdef T3_REPLAY_OWN_CAMERA
         p0=p1=(t3_input_t){0};
@@ -222,13 +238,25 @@ int main(int argc,char** argv) {
             view.h=i32(0x800A8CD4u);
         }
         t3_psx_match_frame_t video={frame,{(uint16_t)physical0,(uint16_t)physical1},{(uint16_t)edge0,(uint16_t)edge1},
-                                          fields==13,{(uint8_t)side0,(uint8_t)side1},
+                                          fields>=13,{(uint8_t)side0,(uint8_t)side1
+#if T3_PSX_FIGHTERS>2
+                                          ,(uint8_t)(fields==17?side2:side1)
+#endif
+                                          },
                                           !getenv("T3_REPLAY_NO_SCREEN"),
-                                          {config.camera?0:i16(0x800A9228u+0x1278u),config.camera?0:i16(0x800A9228u+0x188Cu+0x1278u)},
-                                          viewed?&view:NULL,0};
+                                          {config.camera?0:i16(0x800A9228u+0x1278u),config.camera?0:i16(0x800A9228u+0x188Cu+0x1278u)
+#if T3_PSX_FIGHTERS>2
+                                           ,config.camera?0:i16(0x800A9228u+2u*0x188Cu+0x1278u)
+#endif
+                                          },
+                                          viewed?&view:NULL,0,{(uint16_t)held2,(uint16_t)pressed2}};
 #ifdef T3_REPLAY_OWN_CAMERA
         video.side_known=0;video.screen_known=0;video.fighter_view=NULL;video.physical_inputs=1;
         video.screen_x[0]=video.screen_x[1]=0;
+#endif
+        /* Tekken Force: the camera's view-space x the walls read (the owned build computes it from its view) */
+#if T3_PSX_FIGHTERS>2
+        if(config.start_force && fields>=16)game.force_view_x=view_x;
 #endif
         ai_frame=call;
         int ok=original_round_flow?

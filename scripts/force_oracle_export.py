@@ -65,6 +65,18 @@ def clip(spans):
     return [(a, bytes(d)) for a, d in out]
 
 
+def load_pushes(trace):
+    """{(frame, fighter): (held, pressed)} from the recorder's side file `<trace>.pads`; the last push of a frame."""
+    path = trace.with_suffix('.pads')
+    out = {}
+    if path.exists():
+        data = path.read_bytes()
+        for at in range(0, len(data), 10):
+            frame, fighter, held, pressed = struct.unpack_from('<IBxHH', data, at)
+            out[(frame, fighter)] = (held, pressed)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--trace', type=Path, required=True)
@@ -76,6 +88,7 @@ def main():
     layout = ox.Layout(ox.LAYOUT)
     header, body = cf.load_trace(args.trace)
     args.out.mkdir(parents=True, exist_ok=True)
+    pushes = load_pushes(args.trace)
     seeded = None
     rows = []
     previous = None
@@ -100,8 +113,14 @@ def main():
         # the evaluator's row: path, mapped pads (not known here), call, frame, physical pads, edges
         edge = pads[0] & ~last_pad & 0xFFFF
         counter = struct.unpack_from('<I', ranges[('mode', 0x800AFF00)], 0x14)[0]   # 0x800AFF14, the main loop's frame
-        held, pressed = ox.mapped_pad(pads[0], edge, records[0][0xC6])   # the human's pad (the enemies' come from the AI)
-        rows.append(f'{path}\t{held}\t{pressed}\t0\t0\t{k}\t{counter}\t{pads[0]}\t{pads[1]}\t{edge}\t0\t{records[0][0xC6]}\t{records[1][0xC6]}\n')
+        view_x = struct.unpack_from('<i', ranges[('force_mode', 0x800B69F0)], 0x800B70F0 - 0x800B69F0)[0]   # 0x800B70F0
+        if pushes:
+            # every fighter's pad as the game pushed it (the AI's with side 0), mapped like the human's
+            words = [ox.mapped_pad(*pushes.get((k, f), (0, 0)), records[f][0xC6] if f == 0 else 0) for f in range(3)]
+        else:
+            words = [ox.mapped_pad(pads[0], edge, records[0][0xC6]), (0, 0), (0, 0)]   # the human's physical pad only
+        rows.append(f'{path}\t{words[0][0]}\t{words[0][1]}\t{words[1][0]}\t{words[1][1]}\t{k}\t{counter}\t{pads[0]}\t{pads[1]}\t{edge}\t0'
+                    f'\t{records[0][0xC6]}\t{records[1][0xC6]}\t{words[2][0]}\t{words[2][1]}\t{view_x}\t{records[2][0xC6]}\n')
         last_pad = pads[0]
     if seeded is None:
         raise SystemExit('no neutral running Force frame to seed from')

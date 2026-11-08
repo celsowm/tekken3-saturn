@@ -387,3 +387,14 @@ void t3_force_level_save(const t3_force_level_t* s,int32_t* v){
     v[n++]=s->player.x;v[n++]=s->player.z;v[n++]=s->player.db;v[n++]=s->player.screen_x;v[n++]=s->player.screen_z;
 }
 #undef SAVE
+
+void t3_force_level_setup(t3_force_level_t* s,int level){
+    *s=(t3_force_level_t){0};
+    s->level=level;
+    for(int i=0;i<T3_FORCE_SLOTS;++i){
+        s->slot[i].loaded=(int16_t)i;
+        s->fighter[i].fc2=1;
+        s->fighter[i].index=(uint8_t)(i+1);
+    }
+    if(level>3)s->state=8;
+}

@@ -21,6 +21,8 @@ volatile uint32_t g_t3_match_failure_phase;
 #else
 #define T3_MATCH_PHASE(value) ((void)0)
 #endif
+/* The round flow keeps the input mode of the first two records; Tekken Force's third follows the second. */
+#define FLOW_INPUT(n,i) ((n)->flow.input[(i)<2u?(i):1u])
 static int replay_playing(const t3_psx_match_t* m) {
     return m->config->enable_rounds==2 && m->replay.mode>=1 && m->replay.mode<=4;
 }
@@ -848,6 +850,16 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
             f->vm.clock=(t3_move_clock_t){0};
             f->ground.anchor=f->ground.root=(t3_vec3i_t){config->start_force?0:i?1000:-1000,0,0};
         }
+#if T3_PSX_FIGHTERS>2
+        if(config->start_force) {
+            /* FUN_800B15EC and the camera's setup (FUN_800B545C) at the level's start. */
+            t3_force_level_setup(&n.force,config->force_level);
+            n.force_roll=t3_force_camera_setup(&n.force_cam,0,config->force_level==3,&n.force.origin);
+            n.force_walls=t3_force_walls_for_level(config->force_level);n.force_walls_on=1;
+            n.force_stage=config->force_level==3?0x12u:0u; /* the staircase level's stage */
+            if(config->force_level>3)n.flow.timer=0xE10;
+        }
+#endif
         if(!place_original_round(&n,1))return 0;
     } else if(config->camera && !t3_psx_match_camera_round(&n,1))return 0;
     if(config->ai) {
@@ -877,6 +889,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     T3_MATCH_PHASE(100);
     const t3_psx_match_config_t* c;
     t3_input_t pads[T3_PSX_FIGHTERS]={p0,p1};
+#if T3_PSX_FIGHTERS>2
+    if(n)pads[2]=n->third_pad;
+#endif
     if(!n || !n->config || n->ticks==UINT32_MAX)return 0;
     c=n->config;
     if(c->enable_rounds==1 && n->round.done) {
@@ -1092,14 +1107,14 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         /* CpuOrPadInput calls FighterUpdateSide again for human input,
          * after FighterAnimate projected this frame's joint 11. The earlier
          * update before CameraFrame is still needed for the camera/CPU. */
-        if(c->camera && c->enable_rounds==2 && n->flow.input[i]==1 && !cpu) {
+        if(c->camera && c->enable_rounds==2 && FLOW_INPUT(n,i)==1 && !cpu) {
             t3_psx_fighter_t* f=&n->fighter[i];
             f->side_flag=f->ground.fixed_facing?f->ground.fixed_facing_side:
                 n->camera.screen_x[T3_PSX_OPP(n,i)]<=n->camera.screen_x[i];
             if(physical && physical->physical_inputs)
                 pads[i]=physical_pad(f->side_flag,physical->physical[i],physical->pressed[i],pads[i]);
         }
-        if(cpu && c->enable_rounds==2 && n->flow.input[i]==1) {
+        if(cpu && c->enable_rounds==2 && FLOW_INPUT(n,i)==1) {
             T3_SIM_START(ai,T3_SIM_AI);
             const int fed=t3_psx_ai_game_input(c->ai,n,i,&pads[i]);
             T3_SIM_END(ai);
@@ -1330,6 +1345,91 @@ static int replay_render(t3_psx_match_t* n) {
 }
 /* One original step on `n` in place. A failure (0) may leave `n` partly
  * advanced; callers needing the old state step a copy. */
+#if T3_PSX_FIGHTERS>2
+/* Tekken Force: FighterStartMove (the level runner's "start move"): the move at once, as RoundFlow's starts. */
+static int force_start_move(t3_psx_match_t* n,unsigned i,unsigned slot) {
+    t3_psx_fighter_t* f=&n->fighter[i];
+    t3_move_start_facts_t start={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,(int16_t)f->vm.clock.pose_frame};
+    f->blend.mode=0;
+    const unsigned kind=kept_branch_kind(&f->vm);
+    f->vm.pending_valid=0;f->vm.clock.pose_frame=1;
+    /* FACE_OPPONENT (0), started with the fighter as its own opponent: FighterStartMove calls MoveStartOrAdvance(f, f) */
+    if(!t3_move_vm_queue(&f->vm,slot,0,kind,1,f->vm.branch_window) || t3_move_vm_begin(&f->vm,start)!=1 ||
+       !t3_psx_ground_start(&f->ground,&f->ground,&f->vm,&f->vm.move,
+           &n->config->ground_tables,0,0,start,&f->reaction,0))return 0;
+    f->hit_done=0;f->taps.condition_used=0;
+    return 1;
+}
+/* The camera runs first in the frame, from the player's root as the last frame left it. */
+static void force_camera_frame(t3_psx_match_t* n) {
+    if(!n->config->force_trig)return;
+    const t3_vec3i_t r=n->fighter[0].ground.root;
+    t3_force_camera_frame(&n->force_cam,n->config->force_trig,n->force_roll,r.x,r.z);
+}
+/* The level runner closes the frame (force.ovl FUN_800B1778): its inputs from the fight and the camera,
+ * its writes back to the records; the records of its two slots are fighters 1 and 2. */
+/* FUN_800B5EC0 at the start of the frame, from the state the last frame left: who the player faces. */
+static int force_roles(t3_psx_match_t* n,const t3_psx_match_frame_t* frame) {
+    t3_force_target_inputs_t in={0};
+    t3_force_roles_in_t r={{0}};
+    in.player_index=0;
+    in.pad_pressed=(int16_t)frame->pressed[0];
+    in.pair[1]=(int32_t)n->pair_all[0];in.pair[2]=(int32_t)n->pair_all[1];in.pair[3]=(int32_t)n->pair_all[2];
+    static const int32_t order[4]={2,0,1,0}; /* force.ovl 0x800B0F04 */
+    for(unsigned k=0;k<4;++k)in.quadrant_order[k]=order[k];
+    for(unsigned i=0;i<3;++i) {
+        r.hidden[i]=n->fighter[i].body.invulnerable!=0;r.screen_x[i]=(uint16_t)n->screen_x[i];r.index[i]=(uint8_t)i;
+        if(i) {
+            /* FighterRelativeAngles(player, candidate) on a copy: its quadrant and relative angle */
+            t3_psx_ground_state_t scratch=n->fighter[0].ground;
+            if(!t3_psx_ground_angles(&scratch,&n->fighter[i].ground,&n->config->ground_tables))return 0;
+            r.quadrant[i]=(int16_t)scratch.facing_quadrant;r.rel[i]=(int16_t)scratch.relative_angle;
+        }
+    }
+    uint8_t both;
+    t3_force_roles(&n->force_target,&in,&r,n->opponent[0],n->opponent,&both);
+    n->fighter[0].ground.fixed_facing=both;n->fighter[0].ground.fixed_facing_side=0;
+    return 1;
+}
+static int force_level_frame(t3_psx_match_t* n) {
+    const t3_psx_match_config_t* c=n->config;
+    t3_force_level_t* s=&n->force;
+    if(!c->force_tables || !c->force_script)return 1;
+    s->frozen=n->flow.freeze;s->text_off=0;s->round_state=n->flow.state;
+    s->camera_x=s->lock_x=n->force_cam.x;
+    s->scroll_mode=n->force_cam.mode;
+    s->bound[0]=n->force_cam.left;s->bound[1]=n->force_cam.right;s->bound[2]=n->force_cam.min;s->bound[3]=n->force_cam.max;
+    s->player_health=n->fighter[0].health_q16;s->dr_b=0;s->player_index=0;
+    s->timer=n->flow.timer;
+    s->player.x=n->fighter[0].ground.root.x;s->player.z=n->fighter[0].ground.root.z;
+    for(unsigned k=0;k<T3_FORCE_SLOTS;++k) {
+        const t3_psx_fighter_t* f=&n->fighter[k+1];t3_force_fighter_t* r=&s->fighter[k];
+        r->health=f->health_q16;r->fc2=f->body.invulnerable!=0;r->fc3=f->body.active;
+        r->anchor_x=f->ground.anchor.x;r->anchor_z=f->ground.anchor.z;
+        r->root_x=f->ground.root.x;r->root_z=f->ground.root.z;
+        r->f04=f->ground.anchor.y;r->owner=f->last_attacker;
+    }
+    t3_force_level_step(s,c->force_tables,c->force_script);
+    n->flow.timer=s->timer;
+    n->force_cam.mode=s->scroll_mode;
+    n->force_cam.left=s->bound[0];n->force_cam.right=s->bound[1];n->force_cam.min=s->bound[2];n->force_cam.max=s->bound[3];
+    for(unsigned k=0;k<T3_FORCE_SLOTS;++k) {
+        t3_psx_fighter_t* f=&n->fighter[k+1];const t3_force_fighter_t* r=&s->fighter[k];
+        f->health_q16=r->health;f->body.invulnerable=r->fc2;f->body.active=r->fc3;
+        f->ground.anchor.x=r->anchor_x;f->ground.anchor.z=r->anchor_z;f->ground.anchor.y=r->f04;
+        f->ground.root.x=r->root_x;f->ground.root.z=r->root_z;
+        n->round_actor[k+1].active=r->fc3;
+        n->off_screen_extra[k+1]=(uint8_t)(s->slot[k].state==1 && !s->flag_70e8);
+    }
+    n->level_ended=s->flag_70e8!=0;
+    for(unsigned e=0;e<s->event_count;++e) {
+        const t3_force_event_t* ev=&s->events[e];
+        if(ev->kind==T3_FORCE_EVENT_START_MOVE && ev->a>=0 && ev->a<(int)T3_FORCE_SLOTS &&
+           !force_start_move(n,(unsigned)ev->a+1u,(unsigned)ev->b))return 0;
+    }
+    return 1;
+}
+#endif
 static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
                          const t3_psx_match_frame_t* frame) {
     T3_MATCH_PHASE(1);
@@ -1342,11 +1442,18 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
      * original main 0x80028DF4). Camera random draws advance it separately. */
     if(n->config->camera)n->camera.camera_rand=(n->camera.camera_rand+1u)*0x10DCDu;
     n->frame_view_used=0;
+#if T3_PSX_FIGHTERS>2
+    if(n->config->start_force) {
+        force_camera_frame(n);
+        if(!force_roles(n,frame))return 0;
+    }
+#endif
     t3_sim_context((uint32_t)n->flow.state,(uint32_t)n->replay.mode,
         (uint32_t)n->fighter[0].body.active|((uint32_t)n->fighter[1].body.active<<1));
     if(n->config->replay_storage && n->config->replay_storage->epoch!=n->replay.epoch)return 0;
     if(!n->config->camera && frame->screen_known) {
-        n->screen_x[0]=frame->screen_x[0];n->screen_x[1]=frame->screen_x[1];n->screen_known=1;
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n->screen_x[i]=frame->screen_x[i];
+        n->screen_known=1;
     }
     if(n->flow.state==T3_ROUND_END && n->flow.match_result) {
         /* Port result screen: preserve the terminal fight while its input
@@ -1388,7 +1495,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     facts.replay_mode=n->replay.mode;facts.replay_skip=n->replay_skip;facts.frame_counter=frame->frame_counter;
     facts.team_round=1; /* Normal VS setup keeps g_teamRound at 1. */
 #if T3_PSX_FIGHTERS>2
-    facts.force=n->config->start_force;
+    facts.force=n->config->start_force;facts.force_level_ended=n->level_ended;
 #endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(10+i);
@@ -1497,7 +1604,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         t3_psx_fighter_t* f=&n->fighter[i];
         if(f->ground.fixed_facing)f->side_flag=f->ground.fixed_facing_side;
         else if(n->config->camera)f->side_flag=n->camera.screen_x[T3_PSX_OPP(n,i)]<=n->camera.screen_x[i];
-        else if(frame->side_known)f->side_flag=frame->side[i<2u?i:1u]!=0; /* the third record follows the second's */
+        else if(frame->side_known)f->side_flag=frame->side[i]!=0;
     }
     T3_MATCH_PHASE(60);
     T3_SIM_START(camera,T3_SIM_CAMERA);
@@ -1511,13 +1618,22 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         n->flow.camera=--n->intro_camera_left?1:2;
     }
     t3_input_t pads[T3_PSX_FIGHTERS]={p0,p1};
+#if T3_PSX_FIGHTERS>2
+    pads[2]=frame->third;
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
-        if(!n->flow.input[i])pads[i]=(t3_input_t){T3_PSX_INPUT_CLEAR,0};
-        else if(n->flow.input[i]==2)pads[i]=(t3_input_t){
+        if(!FLOW_INPUT(n,i))pads[i]=(t3_input_t){T3_PSX_INPUT_CLEAR,0};
+        else if(FLOW_INPUT(n,i)==2)pads[i]=(t3_input_t){
             (uint16_t)(n->round_actor[i].script_input&0x1000?T3_IN_LEFT:0),0};
     }
+#if T3_PSX_FIGHTERS>2
+    n->third_pad=pads[2];
+#endif
     T3_MATCH_PHASE(70);
     if(!advance_core(n,pads[0],pads[1],n->replay.mode==7?record:0,frame))return 0;
+#if T3_PSX_FIGHTERS>2
+    if(n->config->start_force && !force_level_frame(n))return 0;
+#endif
     T3_SIM_START(after,T3_SIM_CAMERA);
     const int placed=t3_psx_match_camera_after(n,1);
     T3_SIM_END(after);

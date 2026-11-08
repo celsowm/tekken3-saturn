@@ -101,6 +101,11 @@ typedef struct {
  * (little-endian, as in the stage archive). Events are appended to s->events (cleared first). */
 void t3_force_level_step(t3_force_level_t* s,const uint8_t* tables,const uint8_t* script);
 
+/* FUN_800B15EC at a level's start (as tekken_force.gd level_setup): the slots empty and their enemies
+ * invulnerable with no health, the script from its start, the Doctor B. level (4) with its boss from the
+ * start (state 8). The caller keeps the fight clock (the Doctor B. level's is 0xE10). */
+void t3_force_level_setup(t3_force_level_t* s,int level);
+
 /* The flat vector of the golden cases: the state's fields in the order of tests/test_psx_force_level.c. */
 void t3_force_level_load(t3_force_level_t* s,const int32_t* v);
 void t3_force_level_save(const t3_force_level_t* s,int32_t* v);

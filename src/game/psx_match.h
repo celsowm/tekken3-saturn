@@ -36,6 +36,9 @@
 #define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_dist[i])
 #include "psx_force_walls.h"
+#include "psx_force_level.h"
+#include "psx_force_camera.h"
+#include "psx_force_target.h"
 #endif
 
 /* Throw situation code (0x800313B0), branch conditions 2..0x17. */
@@ -88,6 +91,10 @@ typedef struct {
      * mid-fight initializer used by existing oracle seeds. */
     uint8_t start_intro;
     uint8_t start_force; /* with start_intro: Tekken Force's level start (three fighters): the player alone, at the origin */
+    /* With start_force: the constant tables (T3_FORCE_TABLE_BYTES), the level's script (T3_FORCE_SCRIPT_BYTES),
+     * the level (0..3) and the executable's sine table (the camera's); null tables run no level. */
+    const uint8_t *force_tables,*force_script,*force_trig;
+    uint8_t force_level;
     uint16_t start_physical[T3_PSX_FIGHTERS]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */
     /* With start_intro: the score of a match carried over (the arcade's True Ogre
@@ -174,6 +181,10 @@ typedef struct t3_psx_match {
     t3_force_walls_t force_walls;int32_t force_view_x;uint8_t force_stage,force_walls_on;
     uint32_t pair_all[3]; /* the pair table's distances for pairs (0,1), (0,2), (1,2) */
     uint8_t level_ended; /* 0x800B70E8: the level's enemies are over, the third fighter no longer steps */
+    t3_force_level_t force;     /* the level runner's state (psx_force_level.c) */
+    t3_force_camera_t force_cam;int32_t force_roll;
+    t3_force_target_t force_target; /* the roles' wait and manual switch */
+    t3_input_t third_pad;
 #endif
     t3_psx_fighter_t fighter[T3_PSX_FIGHTERS];
     t3_psx_sound_state_t sound[T3_PSX_FIGHTERS];
@@ -220,6 +231,7 @@ typedef struct {
     /* Default PS1 physical controls mapped at InputSource, after drawing.
      * Requires the owned camera; p0/p1 retain only optional port aliases. */
     uint8_t physical_inputs;
+    t3_input_t third; /* Tekken Force: the third record's pad (the first two are the arguments) */
 } t3_psx_match_frame_t;
 int t3_psx_match_effects_update(t3_psx_match_t* match,int replay);
 int t3_psx_match_effects_hit(t3_psx_match_t* match,unsigned defender);
