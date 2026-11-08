@@ -19,6 +19,7 @@ static const uint8_t* at(uint32_t address,unsigned size) {
             return ram+(address-0x80000000u);
         }
     }
+    if(!bad && getenv("T3_RAM_DEBUG"))fprintf(stderr,"RAM read outside the snapshot: %08x+%u\n",address,size);
     bad=1;return ram;
 }
 /* Whether the snapshot holds the bytes, without marking it bad. */

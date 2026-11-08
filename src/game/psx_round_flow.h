@@ -27,6 +27,10 @@ typedef struct {
     uint32_t frame_counter;
     uint16_t physical[2],pressed[2]; /* Original PsyQ word, not port pad bits. */
     uint8_t team_round; /* g_teamRound: 1 in normal VS; suppresses loser camera. */
+    /* Tekken Force (FUN_8003E608): the round watches the player alone while the enemies come, and the
+     * first two records once the level has ended (its boss fight). An enemy record that is not on the
+     * field has no health, move or pose to validate. */
+    uint8_t force,force_level_ended;
 } t3_psx_round_flow_facts_t;
 typedef struct {
     int16_t start_slot[2]; /* -1 means no move start. Resolve with original VM. */

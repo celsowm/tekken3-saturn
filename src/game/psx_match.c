@@ -7,6 +7,7 @@
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "psx_match.h"
+#include <string.h>
 #include "sh2_divide.h"
 #include "move_index.h"
 #include "attack_records.h"
@@ -538,6 +539,10 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     const t3_move_vm_t* vm=&f->vm;
     const unsigned index=(unsigned)(f-match->fighter);
     const unsigned character=match->config->character[index];
+#if T3_PSX_FIGHTERS>2
+    /* An enemy record the level runner has not spawned holds no move: it has no attack to place. */
+    if(match->config->start_force && !f->body.active)return 1;
+#endif
     int decoded=t3_attack_sample(vm->active_bank,&vm->move,
         vm->move.active_first,0,&sample);
     if(decoded<0)return 0;
@@ -576,10 +581,22 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
 }
 static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES];
-    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(!t3_psx_hurt_from_parts(match->fighter[i].world,
-                              match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+#if T3_PSX_FIGHTERS>2
+        if(match->config->start_force && !match->fighter[i].body.active){memset(hurt[i],0,sizeof hurt[i]);continue;}
+#endif
+        if(!t3_psx_hurt_from_parts(match->fighter[i].world,
+               match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
+    }
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[T3_PSX_OPP(match,i)];
+#if T3_PSX_FIGHTERS>2
+        if(match->config->start_force && !f->body.active) {
+            /* Not on the field: nothing strikes and nothing is struck. */
+            f->projectile_hit=0;f->geometry=(t3_psx_shadow_result_t){T3_SHADOW_INACTIVE,0,-1,0};
+            continue;
+        }
+#endif
         t3_psx_hit_test_facts_t facts={0};t3_world_attack_t active=f->strike;
         unsigned segment=0;int zone=-1,any=0;
         uint8_t descriptor[4];
@@ -758,15 +775,15 @@ static void replay_store(const t3_psx_fighter_t* f,t3_psx_replay_frame_t* r) {
     r->power=(uint8_t)f->ground.power_timer;
 }
 static int place_original_round(t3_psx_match_t* n,int first);
+static int actor_scales_valid(const t3_psx_match_config_t* c) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(c->actor_scale_percent[i]>200u)return 0;
+    return 1;
+}
 #if defined(__sh__)
 /* Startup only: keep the diagnostic build's full Master stack reserve.
  * Per-tick combat and pose code retain their measured optimization level. */
 __attribute__((optimize("Os")))
 #endif
-static int actor_scales_valid(const t3_psx_match_config_t* c) {
-    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(c->actor_scale_percent[i]>200u)return 0;
-    return 1;
-}
 int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     t3_psx_match_t n={0};
     if(!out || !config || !config->bank || !config->ground_tables.atan ||
@@ -805,6 +822,12 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     if(config->start_intro) {
         if(config->start_played>8u || config->start_wins[0]>=n.flow.to_win || config->start_wins[1]>=n.flow.to_win)return 0;
         n.flow.played=config->start_played;
+#if T3_PSX_FIGHTERS>2
+        /* Tekken Force's single round: one win ends it, one human, the level's own clock. */
+        if(config->start_force) {
+            n.flow.to_win=n.flow.max_rounds=1;n.flow.human_mask=1;n.flow.draw_wins=0;n.flow.timer=3600;
+        }
+#endif
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n.round_actor[i].wins=config->start_wins[i];
         n.camera.rand=config->start_seed;
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
@@ -979,7 +1002,11 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     }
     T3_MATCH_PHASE(160);
     if(!t3_psx_match_effects_update(n,0))return 0;
-    if(c->enable_body && (!bodies(n) || !contacts(n)))return 0;
+    T3_MATCH_PHASE(161);
+    if(c->enable_body && !bodies(n))return 0;
+    T3_MATCH_PHASE(162);
+    if(c->enable_body && !contacts(n))return 0;
+    T3_MATCH_PHASE(163);
     if(c->enable_combat) {
         if(!t3_psx_match_reversals(n))return 0;
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
@@ -1147,6 +1174,12 @@ static int place_original_round(t3_psx_match_t* n,int first) {
     if(n->replay.epoch==UINT32_MAX)return 0;
     t3_psx_replay_reset(&n->replay,n->replay.epoch+1);
     n->replay_skip=0;n->intro_camera_left=first?120:53;
+#if T3_PSX_FIGHTERS>2
+    if(n->config->start_force) {
+        /* Tekken Force has no intro camera (the side-scroller frames the level) and its own clock. */
+        n->intro_camera_left=0;r->camera=2;r->timer=3600;
+    }
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&n->fighter[i];t3_psx_ground_state_t* g=&f->ground;
         t3_move_vm_t* v=&f->vm;
@@ -1193,6 +1226,10 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         g->turn_frames=g->turn_step=g->recover_mash=g->recover_frames=0;
         g->push_repeat=g->push_repeat_timer=g->power_timer=g->last_damage=0;
         g->anchor_dirty=g->slide_to_point=g->fixed_facing=0;g->in_throw=0; /* throw_state is kept */
+#if T3_PSX_FIGHTERS>2
+        /* The roles pass (FUN_800B5EC0) fixes the player's facing while both enemies are invulnerable. */
+        if(n->config->start_force)g->fixed_facing=1;
+#endif
         f->blend_guarded_previous=f->blend_in_reaction=0;
         f->hit.guarded=f->hit.hit_clean=0;f->ko_collapse=0;
         f->contact=f->whiffed=f->got_hit=0;f->hit_freeze_in=0;
@@ -1320,6 +1357,9 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     int old_camera=n->flow.camera;uint8_t old_active[2]={n->fighter[0].body.active,n->fighter[1].body.active};
     facts.replay_mode=n->replay.mode;facts.replay_skip=n->replay_skip;facts.frame_counter=frame->frame_counter;
     facts.team_round=1; /* Normal VS setup keeps g_teamRound at 1. */
+#if T3_PSX_FIGHTERS>2
+    facts.force=n->config->start_force;
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(10+i);
         t3_psx_fighter_t* f=&n->fighter[i];t3_psx_round_actor_t* a=&n->round_actor[i];

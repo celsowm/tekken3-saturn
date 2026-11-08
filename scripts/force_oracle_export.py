@@ -47,14 +47,22 @@ def usa_spans(layout, header, ranges, records):
 def clip(spans):
     """Only the bytes the evaluator reads (fight_oracle_export.GLOBALS and the fighter records), in at most
     64 spans: the snapshot reader's limit."""
-    wanted = sorted(ox.GLOBALS) + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
-    out = {}
+    # the third record doubles the per-fighter tables: the step accumulators and the body's previous roots
+    wanted = sorted(ox.GLOBALS) + [(0x8009E5F8, 0x48), (0x8009E6F8, 0x48)] + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
+    bytes_at = {}
     for address, data in spans:
         for w_address, w_size in wanted:
             lo, hi = max(address, w_address), min(address + len(data), w_address + w_size)
-            if lo < hi:
-                out[lo] = data[lo - address:hi - address]
-    return sorted(out.items())
+            for a in range(lo, hi):
+                bytes_at[a] = data[a - address]
+    out, run = [], None
+    for a in sorted(bytes_at):
+        if run and a == run[0] + len(run[1]):
+            run[1].append(bytes_at[a])
+        else:
+            run = [a, bytearray([bytes_at[a]])]
+            out.append(run)
+    return [(a, bytes(d)) for a, d in out]
 
 
 def main():
@@ -91,7 +99,9 @@ def main():
                          + b''.join(struct.pack('<II', a, len(d)) + d for a, d in chunks))
         # the evaluator's row: path, mapped pads (not known here), call, frame, physical pads, edges
         edge = pads[0] & ~last_pad & 0xFFFF
-        rows.append(f'{path}\t0\t0\t0\t0\t{k}\t{k}\t{pads[0]}\t{pads[1]}\t{edge}\t0\n')
+        counter = struct.unpack_from('<I', ranges[('mode', 0x800AFF00)], 0x14)[0]   # 0x800AFF14, the main loop's frame
+        held, pressed = ox.mapped_pad(pads[0], edge, records[0][0xC6])   # the human's pad (the enemies' come from the AI)
+        rows.append(f'{path}\t{held}\t{pressed}\t0\t0\t{k}\t{counter}\t{pads[0]}\t{pads[1]}\t{edge}\t0\n')
         last_pad = pads[0]
     if seeded is None:
         raise SystemExit('no neutral running Force frame to seed from')

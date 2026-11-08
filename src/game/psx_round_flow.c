@@ -102,9 +102,9 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
        s.to_win<1 || s.to_win>5 || s.max_rounds<0 || s.max_rounds>9 ||
        s.human_mask<0 || s.human_mask>3 || s.tie_choice<0 || s.tie_choice>1 ||
        s.draw_wins<0 || s.draw_wins>1 || s.match_result<0 || s.match_result>3)return 0;
-    for(unsigned i=0;i<2;++i)if(a[i].health<0 || a[i].maximum<1 || a[i].health>a[i].maximum ||
+    for(unsigned i=0;i<2;++i)if(!(f->force && !a[i].active) && (a[i].health<0 || a[i].maximum<1 || a[i].health>a[i].maximum ||
        a[i].wins<0 || a[i].wins>6 || a[i].length<1 || a[i].pose<0 ||
-       a[i].costume==0x26 || (a[i].is_cpu!=0 && a[i].is_cpu!=1))return 0;
+       a[i].costume==0x26 || (a[i].is_cpu!=0 && a[i].is_cpu!=1)))return 0;
     if(s.state>1)++s.counter;
     switch(s.state) {
     case T3_ROUND_INTRO:
@@ -112,7 +112,9 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
         if(s.frame>=(s.played==1?151:91)){s.input[0]=s.input[1]=1;s.state=T3_ROUND_FIGHT;}
         break;
     case T3_ROUND_FIGHT:
-        ++s.frame;s.no_damage=!a[0].health || !a[1].health || s.timer<1;
+        ++s.frame;
+        if(f->force && !f->force_level_ended)s.no_damage=!a[0].health || s.timer<1;
+        else s.no_damage=!a[0].health || !a[1].health || s.timer<1;
         if(s.no_damage){if(!result(&s,a))return 0;}
         else {if(!s.timer_stopped)--s.timer;x.fight_clock_advance=1;}
         break;
