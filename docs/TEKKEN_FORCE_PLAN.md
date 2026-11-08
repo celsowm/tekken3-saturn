@@ -890,3 +890,6 @@ showed that in the first frame of a throw the victim's root already comes from t
 moves the root only from the second frame on; with that the bystander's push is the original's. The wall correction of a
 linked throw now moves the partner for any two of the three records. `force_run` 7,522, `force_bosses` 9,578 and
 `force_final` 7,882 contiguous frames match on every field.
+
+Versus A/B on this state (280 s Mednafen attract fight, same AI pad hash 0xb99cc280): marked **29.46** images/s, worst
+segment **27.45**, 5,835 ticks, no discarded fields — equal to R13's 29.46 / 27.45. The two-record `app.bin` is 498,560 bytes.
