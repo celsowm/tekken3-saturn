@@ -942,3 +942,9 @@ owned start must take a level start position was wrong. Comparing this stretch (
 first one after frame 7,800 is 20,479) needs the evaluator's RAM-seed path to accept three fighter records and the runner's
 globals: today it refuses a Force seed ("invalid or unsupported neutral seed"). That seed mode (records, enemy slots, runner
 globals, camera, AI banks, random state, copied from the RAM image) is the next host task, before the `FORCE.BIN` skeleton.
+
+### Versus A/B on the current source (2026-11-08)
+
+`build/perf-n3-simprof` (the A/B's build, two records) rebuilt from the current tree: 280 s Mednafen attract fight, AI pad hash
+`0xb99cc280`, marked **29.46** images/s, worst segment **27.45**, `vdp1_vram_free` 145,824: equal to the earlier control.
+(The full-game disc in `build/`, `T3_DEMO_CPU_MASK=3`, plays a different fight, hash `0x640e32c0`, and is not comparable.) No loss.
