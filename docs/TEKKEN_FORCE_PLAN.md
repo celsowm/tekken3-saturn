@@ -932,3 +932,13 @@ not a clean level start either — the player is placed at x 36,940 (a level's s
 `START_X`, not zero) and the round flags still hold the previous win. The evaluator now accepts enemy records that still hold
 the last boss (it plays them as the enemy bank) and carries score, hi-score and health (`T3_FORCE_CARRY="score hiscore health"`),
 but the owned start has to take the level's origin and start position from the level before such a stretch can be compared.
+
+### Correction: the 18,935 stretch is not a level start (level origin is 0)
+
+Read from the exported seed and frames: at 18,935 the runner has `level_ended` (0x800B70E8) set, origin (0x800B70E4) 0 and the
+camera at 0; from frame 18,936 on `level_ended` is clear, the origin stays 0, and the player's record keeps its x (36,940), health
+and round flags from the previous level. So the new level does not place the player at a `START_X`; the earlier guess that the
+owned start must take a level start position was wrong. Comparing this stretch (and 7,799, and every later neutral frame, e.g. the
+first one after frame 7,800 is 20,479) needs the evaluator's RAM-seed path to accept three fighter records and the runner's
+globals: today it refuses a Force seed ("invalid or unsupported neutral seed"). That seed mode (records, enemy slots, runner
+globals, camera, AI banks, random state, copied from the RAM image) is the next host task, before the `FORCE.BIN` skeleton.
