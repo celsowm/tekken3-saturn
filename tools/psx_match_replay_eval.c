@@ -378,6 +378,17 @@ int main(int argc,char** argv) {
                 }
         }
 #endif
+#if T3_PSX_FIGHTERS>2
+        if(config.start_force && has(0x800B70ECu,4)) {   /* the level runner's globals (force.ovl) */
+            check(0,"force","score",game.force.score,u32(0x800B70ECu));
+            check(0,"force","clock",game.force.clock,u32(0x800B70D4u));
+            check(0,"force","state",game.force.state,u32(0x800B70DCu));
+            check(0,"force","tally_done",game.force.tally_done,u32(0x800B70E0u));
+            check(0,"force","level_ended",game.force.flag_70e8,u32(0x800B70E8u));
+            check(0,"force","key_earned",game.force.key_earned,u32(0x800B70FCu));
+            check(0,"force","scroll_mode",game.force.scroll_mode,u32(0x800B70B4u));
+        }
+#endif
         if(config.start_force && has(0x800A39B8u,4))check(0,"rng","rand",game.camera.rand,u32(0x800A39B8u)); /* the shared generator */
         if(config.start_force && has(0x800ADCA0u,4))check(0,"rng","ai_rand",game.camera.ai_rand,u32(0x800ADCA0u)); /* the CPU opponent's */
         const int hud_checked=config.start_intro && !config.start_force && has(0x80097D10u,0x20u);

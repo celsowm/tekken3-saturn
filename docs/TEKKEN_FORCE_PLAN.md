@@ -903,3 +903,11 @@ vertex, pose-cache and command memory are not counted, and the versus-only code 
 subtracted). The device program itself (a `tekken3_force` target that builds the three-record config from the level's
 files, loads the player's and one enemy pack, runs `psx_force_level.c` and draws three actors) is the next piece of work;
 `move_probe.c` (the versus config and asset loading, about 600 lines) is its model.
+
+### Update: the level runner's own state is compared too (HitApply's score added)
+
+The exporter now carries force.ovl's globals (`0x800B69F0..`), and the evaluator compares the runner's score, clock, state,
+tally flag, level-ended flag, key flag and scroll mode every frame. That showed the missing mode-8 score of HitApply (ten points
+per damage the player or a forced hit did to an enemy, twice the extra damage); it is in the hit transaction now. All three
+recordings pass every fighter field and these runner fields: `force_run` 7,522, `force_bosses` 9,578, `force_final` 7,882
+frames. The two-record `app.bin` stays 498,560 bytes.

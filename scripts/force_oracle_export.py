@@ -39,6 +39,9 @@ def usa_spans(layout, header, ranges, records):
         if name in ('ai_globals', 'ai_records'):   # the AI's memory is addressed as the Rev.1 executable has it
             out.append((address, data))
             continue
+        if name == 'force_mode':   # force.ovl's globals (targeting, slots, items, script, score, camera): the overlay loads at the same address
+            out.append((address, data))
+            continue
         try:
             out.append((layout.to_usa(address), data))
         except (ValueError, IndexError):
@@ -52,7 +55,7 @@ def clip(spans):
     """Only the bytes the evaluator reads (fight_oracle_export.GLOBALS and the fighter records), in at most
     64 spans: the snapshot reader's limit."""
     # the third record doubles the per-fighter tables: the step accumulators and the body's previous roots
-    wanted = sorted(ox.GLOBALS) + [(0x8009E5F8, 0x48), (0x8009E6F8, 0x48), (0x8009F690, 0x690)] + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
+    wanted = sorted(ox.GLOBALS) + [(0x8009E5F8, 0x48), (0x8009E6F8, 0x48), (0x8009F690, 0x690), (0x800B69F0, 0x720)] + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
     bytes_at = {}
     for address, data in spans:
         for w_address, w_size in wanted:

@@ -15,6 +15,9 @@ typedef struct {
     t3_psx_ground_state_t ground;
     t3_psx_hit_apply_result_t hit;
     uint8_t got_hit,collapsed,attacker,forced_in;
+#if T3_PSX_FIGHTERS>2
+    int32_t score; /* Tekken Force: the points this hit adds (before the x10) */
+#endif
     int16_t freeze;
 } staged_t;
 static int16_t abs_damage(int16_t n) {
@@ -161,6 +164,18 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         }
         if(!t3_psx_hit_apply_preview(&frame,&s->hit))return 0;
         s->ground.last_damage=abs_damage(s->hit.slot_damage);
+#if T3_PSX_FIGHTERS>2
+        /* HitApply in mode 8 (combat.gd _force_score): an enemy's damage taken from the player or a forced hit, and twice
+         * the extra damage, scored ten points each. */
+        s->score=0;
+        if(c->start_force && f->ground.is_cpu) {
+            if(s->got_hit)
+                for(unsigned k=0;k<2u;++k)
+                    if(frame.slots[k].used && (slot_attacker[k]==0u || match->fighter[slot_attacker[k]].ground.forced_hit))
+                        s->score+=(int16_t)slot_facts[k].attacker_damage;
+            if(s->hit.extra_damage>0)s->score+=2*s->hit.extra_damage;
+        }
+#endif
         s->ground.hit_clean=s->hit.hit_clean;
         if(s->got_hit) {
             set_hit_dir(s,&match->fighter[slot_attacker[frame.slots[1].used?1u:0u]]);
@@ -225,6 +240,9 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         /* FightFrame clears +0xCF/+0xD3 immediately before HitApply. A hit
          * writes this frame's outcome; without one the flags stay clear. */
         f->last_guarded=s->hit.guarded;f->last_counter=s->hit.counter;
+#if T3_PSX_FIGHTERS>2
+        if(s->score)match->force.score=(uint32_t)((int32_t)match->force.score+s->score*10);
+#endif
         if(s->got_hit){if(s->hit.guarded)++f->registered_blocks;else ++f->registered_hits;}
         if(s->got_hit)f->last_attacker=s->attacker;
         if(s->collapsed)f->last_guarded=0;
