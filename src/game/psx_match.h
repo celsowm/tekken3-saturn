@@ -102,6 +102,9 @@ typedef struct {
     const uint8_t *force_tables,*force_script,*force_trig;
     const uint8_t* forced_reaction; /* the 44-byte sparse record of a forced hit (psx_forced_reaction.bin) */
     uint8_t force_level;
+    /* The level's boss takes record 1 over (FightMain's area change): host runs name an existing actor (1 + index) whose
+     * character, bank, model and sounds the boss uses; the device program will look the boss up in BOSS.BIN. */
+    uint8_t force_boss_like;
     uint16_t start_physical[T3_PSX_FIGHTERS]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */
     /* With start_intro: the score of a match carried over (the arcade's True Ogre
@@ -201,7 +204,7 @@ typedef struct t3_psx_match {
     uint32_t pair_all[3]; /* the pair table's distances for pairs (0,1), (0,2), (1,2) */
     uint8_t level_ended; /* 0x800B70E8: the level's enemies are over, the third fighter no longer steps */
     t3_force_level_t force;     /* the level runner's state (psx_force_level.c) */
-    t3_force_camera_t force_cam;int32_t force_roll;int16_t force_screen[T3_PSX_FIGHTERS];t3_psx_camera_matrix_t force_view;
+    t3_force_camera_t force_cam;t3_divmot_t boss_bank;t3_psx_match_config_t force_cfg;uint8_t boss_swapped;/* a private copy of the config while a step runs: the boss changes record 1's data */int32_t force_roll;int16_t force_screen[T3_PSX_FIGHTERS];t3_psx_camera_matrix_t force_view;
     t3_force_target_t force_target; /* the roles' wait and manual switch */
     t3_input_t third_pad;
 #endif

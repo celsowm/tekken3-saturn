@@ -830,3 +830,18 @@ Mednafen A/B on the attract fight is still to be run.
 - A three-record `tekken3_saturn` links (520,512 bytes, `T3_PSX_FIGHTERS=3`); it does not start a Force level yet.
 - Next: `force_boss` (identity, bank, hurt radii, AI bank of the boss, music, health from the level table), then run
   `force_bosses` and `force_final`; then plan step 4 (the device program), rendering, HUD, saving, disc.
+
+### Update: the level's boss and STAGE CLEAR are exact (7,522 frames of `force_run`)
+
+`force_boss` (FUN_800B2B3C, adapted from the remake's `force_boss`): at the area change record 1 becomes the level's boss — its
+bank (a copy of its own: the AI addresses banks by object), character, sounds, model data, a stance queued and begun at the
+next MoveStartAll facing the player, boss health from the level table, placed 4,096 units ahead of the camera; the player's
+root goes to its anchor and both records' eyes restart. The step runs on a private copy of the config while a three-record
+match plays, so record 1's data can change. Host runs name the boss's data by an existing actor
+(`config->force_boss_like`, `T3_FORCE_BOSS_LIKE`; `force_run`'s boss is the player's own character); the device program
+will look it up in BOSS.BIN. STAGE CLEAR (round state 8) replaces the replay when the player wins; it ends on Start after
+the tally, or after 300 frames. All 7,522 contiguous frames of `force_run` — the first level, its boss, the KO and the
+stage-clear — pass on every field. `force_bosses` starts with another character (19, costume 1): the evaluator needs that
+character's banks and costume model (`build_oracle_pair_evaluator.py --fighters 19 21 22` builds, but the model is the default
+costume's: sphere centres differ by the costume's scale), so it is not compared yet. `scripts/force_first_running.py` finds a
+recording's first live frame (261 in all three).

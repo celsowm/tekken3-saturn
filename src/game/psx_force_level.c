@@ -398,3 +398,7 @@ void t3_force_level_setup(t3_force_level_t* s,int level){
     }
     if(level>3)s->state=8;
 }
+
+int32_t t3_force_enemy_health(const t3_force_level_t* s,const uint8_t* t,int type){
+    return (int32_t)tab32(t,ENEMY_HEALTH+20*(int64_t)s->level+4*(int64_t)type);
+}

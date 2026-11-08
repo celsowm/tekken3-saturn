@@ -122,6 +122,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         if(!original_round_flow)return 0;
         config.start_intro=1;config.start_seed=(uint32_t)strtoul(start_seed,NULL,0);
         config.start_force=getenv("T3_FORCE_START")!=NULL;
+        if(getenv("T3_FORCE_BOSS_LIKE"))config.force_boss_like=(uint8_t)strtoul(getenv("T3_FORCE_BOSS_LIKE"),NULL,0);
 #if T3_PSX_FIGHTERS>2 && defined(T3_LOCAL_EFFECT_TABLE_BYTES) && T3_LOCAL_EFFECT_TABLE_BYTES > 0
         if(config.start_force && !getenv("T3_REPLAY_NO_EFFECTS")) {
             static t3_psx_effect_pool_t force_effects;

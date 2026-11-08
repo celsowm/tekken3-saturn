@@ -1511,6 +1511,48 @@ static int force_start_move(t3_psx_match_t* n,unsigned i,unsigned slot) {
     CLEAR_HIT_DONE(f);f->taps.condition_used=0;
     return 1;
 }
+/* FUN_800B2B3C, FightMain's area change (adapted from the remake's force_boss): record 1 becomes the level's boss, a
+ * roster fighter loaded in place of the enemy; it enters 4,096 units ahead of the camera with the boss health and
+ * starts its stance. Host runs name the boss's data by an existing actor (config->force_boss_like). */
+static void boss_overrides(t3_psx_match_t* n) {
+    t3_psx_match_config_t* c=&n->force_cfg;
+    const unsigned a=c->force_boss_like-1u;
+    c->actor_bank[1]=&n->boss_bank;c->character[1]=c->character[a];
+    c->sound_voice_set[1]=c->sound_voice_set[a];c->parts[1]=c->parts[a];
+    c->actor_body_shapes[1]=c->actor_body_shapes[a];c->actor_scale_percent[1]=c->actor_scale_percent[a];
+#if defined(T3_PSX_HAND_CHANNELS)
+    c->face_attack[1]=c->face_attack[a];c->face_hit[1]=c->face_hit[a];
+#endif
+}
+static int force_boss(t3_psx_match_t* n) {
+    t3_psx_match_config_t* c=&n->force_cfg;
+    if(!c->force_boss_like)return 1;
+    n->boss_bank=*t3_psx_match_bank(c,c->force_boss_like-1u); /* a copy of its own: the AI addresses banks by object */
+    n->boss_swapped=1;boss_overrides(n);
+    t3_psx_fighter_t* f=&n->fighter[1];
+    if(!t3_move_vm_start_phased(&f->vm,&n->boss_bank,c->common,3u))return 0;
+    t3_move_clock_reset(&f->vm.clock,0);
+    f->blink=(t3_psx_blink_t){0};
+    n->fighter[0].blink=(t3_psx_blink_t){0}; /* setup_parts(player): the eyes restart too */
+    n->force.slot[0].type=4;n->force.slot[0].state=1;n->force.slot[0].timer=0;
+    /* start_move(boss, 3): the stance is queued and begins at the frame's MoveStartAll, facing the player */
+    f->vm.pending_valid=0;f->vm.clock.pose_frame=1;
+    if(!t3_move_vm_queue(&f->vm,3u,0,kept_branch_kind(&f->vm),1,f->vm.branch_window))return 0;
+    const int32_t x=n->force_cam.x+0x1000,hp=t3_force_enemy_health(&n->force,c->force_tables,4);
+    f->ground.anchor.x=f->ground.root.x=x;f->ground.anchor.z=f->ground.root.z=0;
+    f->body.anchor=f->ground.anchor;f->body.root=f->ground.root;f->body.previous_root=f->body.placed=f->ground.root;
+    f->body.active=1;f->body.invulnerable=0;
+    f->ground.anchor.y=0;f->ground.air_phase=0;f->vm.clock.ballistic=0;
+    f->health_max=f->health_q16=hp;
+    n->round_actor[1].active=1;
+    {   /* place(player, its own position): the root goes to the anchor */
+        t3_psx_fighter_t* p=&n->fighter[0];
+        p->ground.root.x=p->ground.anchor.x;p->ground.root.z=p->ground.anchor.z;
+        p->body.root.x=p->ground.root.x;p->body.root.z=p->ground.root.z;
+        p->body.previous_root.x=p->body.placed.x=p->ground.root.x;p->body.previous_root.z=p->body.placed.z=p->ground.root.z;
+    }
+    return 1;
+}
 /* The camera runs first in the frame, from the player's root as the last frame left it. */
 static void force_camera_frame(t3_psx_match_t* n) {
     if(!n->config->force_trig)return;
@@ -1611,7 +1653,7 @@ static int force_level_frame(t3_psx_match_t* n) {
     return 1;
 }
 #endif
-static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
+static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
                          const t3_psx_match_frame_t* frame) {
     T3_MATCH_PHASE(1);
     t3_psx_round_flow_facts_t facts={0};
@@ -1681,7 +1723,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     facts.replay_mode=n->replay.mode;facts.replay_skip=n->replay_skip;facts.frame_counter=frame->frame_counter;
     facts.team_round=1; /* Normal VS setup keeps g_teamRound at 1. */
 #if T3_PSX_FIGHTERS>2
-    facts.force=n->config->start_force;facts.force_level_ended=n->level_ended;
+    facts.force=n->config->start_force;facts.force_level_ended=n->level_ended;facts.force_tally_done=(uint8_t)n->force.tally_done;
 #endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(10+i);
@@ -1834,6 +1876,23 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         }
     }
     return 1;
+}
+static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,const t3_psx_match_frame_t* frame) {
+#if T3_PSX_FIGHTERS>2
+    if(n->config->start_force) {
+        /* The boss changes record 1's data: the step runs on a private copy of the config (with the staged effects). */
+        const t3_psx_match_config_t* external=n->config;
+        n->force_cfg=*external;
+        if(n->boss_swapped)boss_overrides(n);
+        n->config=&n->force_cfg;
+        int ok=1;
+        if(n->flow.state==T3_ROUND_AREA_CHANGE)ok=force_boss(n);
+        ok=ok && step_original_core(n,p0,p1,frame);
+        n->config=external;
+        return ok;
+    }
+#endif
+    return step_original_core(n,p0,p1,frame);
 }
 int T3_SIM_IMPL(t3_psx_match_step_original)(t3_psx_match_t* match,t3_input_t p0,t3_input_t p1,
                                const t3_psx_match_frame_t* frame) {

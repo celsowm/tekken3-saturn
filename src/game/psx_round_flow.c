@@ -91,7 +91,7 @@ static int result(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2]) {
     return 1;
 }
 #ifdef T3_PSX_FIGHTERS
-#define ROUND_FORCE_STATE(s) ((s)==T3_ROUND_AREA_CHANGE)
+#define ROUND_FORCE_STATE(s) ((s)==T3_ROUND_AREA_CHANGE || (s)==T3_ROUND_STAGE_CLEAR)
 #else
 #define ROUND_FORCE_STATE(s) 0
 #endif
@@ -135,6 +135,15 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
             else {s.input[i]=2;a[i].script_input=a[i].bank_type!=18 && (a[i].state_word&0x204)?0x1000:0;}
         }
         if((s.result&0x1F) && s.counter==90)s.done=1;
+#ifdef T3_PSX_FIGHTERS
+        if(s.done && f->force) {
+            /* Tekken Force: no replay. The round ends, or STAGE CLEAR!! for a won level. */
+            s.input[0]=s.input[1]=0;x.stop_sounds=1;
+            if(a[0].won!=1)s.state=T3_ROUND_END;
+            else {s.state=T3_ROUND_STAGE_CLEAR;s.counter=0;}
+            break;
+        }
+#endif
         if(s.done){s.input[0]=s.input[1]=0;s.state=T3_ROUND_REPLAY_DONE;s.replay_request=1;x.stop_sounds=1;}
         break;
     case T3_ROUND_REPLAY:
@@ -169,6 +178,11 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
     case T3_ROUND_END:break;
 #ifdef T3_PSX_FIGHTERS
     case T3_ROUND_AREA_CHANGE:s.state=T3_ROUND_FIGHT;break;   /* Tekken Force: the level runner's area change, back to the fight */
+    case T3_ROUND_STAGE_CLEAR:   /* until the tally is done and Start is pressed, or 300 frames */
+        if(s.counter<300){if(start_pressed(&s,f) && f->force_tally_done)s.state=T3_ROUND_END;}
+        else s.state=T3_ROUND_END;
+        s.input[0]=2;
+        break;
 #endif
     default:return 0;
     }

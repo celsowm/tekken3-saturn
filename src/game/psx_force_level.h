@@ -105,6 +105,8 @@ void t3_force_level_step(t3_force_level_t* s,const uint8_t* tables,const uint8_t
  * invulnerable with no health, the script from its start, the Doctor B. level (4) with its boss from the
  * start (state 8). The caller keeps the fight clock (the Doctor B. level's is 0xE10). */
 void t3_force_level_setup(t3_force_level_t* s,int level);
+/* The health of an enemy of `type` (0..4; 4 is the level's boss) in this level (16.16). */
+int32_t t3_force_enemy_health(const t3_force_level_t* s,const uint8_t* tables,int type);
 
 /* The flat vector of the golden cases: the state's fields in the order of tests/test_psx_force_level.c. */
 void t3_force_level_load(t3_force_level_t* s,const int32_t* v);

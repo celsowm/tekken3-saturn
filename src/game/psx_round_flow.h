@@ -31,6 +31,7 @@ typedef struct {
      * first two records once the level has ended (its boss fight). An enemy record that is not on the
      * field has no health, move or pose to validate. */
     uint8_t force,force_level_ended;
+    uint8_t force_tally_done; /* the level runner's tally has finished (STAGE CLEAR waits for Start after it) */
 } t3_psx_round_flow_facts_t;
 typedef struct {
     int16_t start_slot[2]; /* -1 means no move start. Resolve with original VM. */
