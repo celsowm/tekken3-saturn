@@ -693,6 +693,10 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
             if(!contact_pair(match,hurt,a,dn,free_mask[dn],cooldown[dn],&f->pair_gate[dn],&geometry))return 0;
             if(f->pair_gate[dn].zone_seen>=0 && f->pair_gate[dn].status!=T3_HIT_GATE_NO_ATTACK)match->slot_zone[dn][(free_mask[dn]&2u)?1:0]=f->pair_gate[dn].zone_seen;
             if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT)landed[a]=1; /* contact_this_move, at once */
+            /* a forced hit that reaches the posture test plays its sound: SoundPlayFighter(0, 0x4951) (combat.gd HitTest) */
+            if(f->ground.forced_hit && match->fighter[dn].ground.is_cpu && ((match->fighter[dn].body.contact_with>>a)&1u) &&
+               (f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT || f->pair_gate[dn].status==T3_HIT_GATE_POSTURE))
+                t3_psx_match_effects_sound(match,T3_SOUND_EFFECT,0u,0x4951u);
             /* the end of HitTest: an attack whose last active frame this is, with no contact yet, whiffs (and stays so) */
             if(f->vm.move.active_last==f->vm.clock.pose_frame && !f->contact_this_move && !landed[a])match->whiff_pairs[a]=1;
             if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT) {
