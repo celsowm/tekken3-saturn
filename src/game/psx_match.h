@@ -196,6 +196,7 @@ typedef struct t3_psx_match {
      * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
     uint8_t off_screen_extra[T3_PSX_FIGHTERS];
 #if T3_PSX_FIGHTERS>2
+    uint8_t whiff_pairs[T3_PSX_FIGHTERS]; /* the whiff flag as the ordered HitTest calls leave it */
     int8_t slot_zone[T3_PSX_FIGHTERS][2];   /* each defender's hit slots keep the cylinder of their last contact (+0x18) */
 #endif
     uint32_t pair_dist[T3_PSX_FIGHTERS]; /* each fighter's distance to its opponent (MoveStep's `dist`) */

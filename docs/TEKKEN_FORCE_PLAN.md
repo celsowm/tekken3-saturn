@@ -845,3 +845,19 @@ stage-clear — pass on every field. `force_bosses` starts with another characte
 character's banks and costume model (`build_oracle_pair_evaluator.py --fighters 19 21 22` builds, but the model is the default
 costume's: sphere centres differ by the costume's scale), so it is not compared yet. `scripts/force_first_running.py` finds a
 recording's first live frame (261 in all three).
+
+### Update: `force_bosses` (Doctor B, costume 1): 7,593 of 9,578 rows exact
+
+The recording plays character 19 in costume slot 45 (the costume key table maps key 77 to slot 45, not the roster's 44):
+`build_oracle_pair_evaluator.py --player-slot 45` builds that model (record 251 extracted with `psx_disc_import.py
+--extract-ids 251`). Closed on the way, each found by the first differing row and, for the AI, by
+`force_ai_trace.py` + `ai_first_diff.py` (the fields the original's AiUpdate read that the bus answered differently):
+
+- `whiffed` (+0xD2) is decided at the end of every ordered HitTest call, so an attack that lands only in the second pair
+  of its frame still reads as a whiff to the AI; the pairs run in the roles' order (player, its target, the other
+  enemy), not by index.
+- No item pickup while the player is in the air (`+0xDB`).
+
+Open at row 7593: the level's boss is character 5 (Nina, costume 1, bank type 5) for this player, so the host shortcut
+`force_boss_like` does not apply: the evaluator needs a third bank (the boss's, linked to the player's), its model, body
+radii, scale and AI image. That is also what BOSS.BIN supplies on the device.

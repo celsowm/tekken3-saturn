@@ -234,7 +234,11 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         if(s->collapsed){f->ko_collapse=1;f->hit_done=0;f->started=1;
             f->taps.condition_used=0;
             f->blend_guarded_previous=0;f->blend_in_reaction=1;}
+#if T3_PSX_FIGHTERS>2
+        f->whiffed=match->whiff_pairs[i]; /* decided pair by pair, as HitTest runs */
+#else
         f->whiffed=(uint8_t)(f->vm.clock.pose_frame==f->vm.move.active_last && !f->contact_this_move);
+#endif
     }
     match->reversal_cancelled=0;
     return 1;

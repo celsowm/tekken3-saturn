@@ -46,6 +46,7 @@ def main():
                         help='two roster ids, or three for Tekken Force: the player, then two enemy pack ids (21-24)')
     parser.add_argument('--banks', type=int, nargs=2, metavar=('P1', 'P2'),
                         help='fighter ids whose banks they play, when a Mokujin copies another')
+    parser.add_argument('--player-slot', type=int, help='the player\'s costume slot (its KMD record) when the recording plays another costume than 0')
     parser.add_argument('--assets', type=Path, required=True, help='prepared private import')
     parser.add_argument('--logic', type=Path, required=True, help='directory of NN.t3logic roster banks')
     parser.add_argument('--out', type=Path, required=True)
@@ -54,6 +55,8 @@ def main():
         parser.error('--fighters takes two or three ids')
     fighter_of = lambda i: FORCE_ENEMIES[i - FORCE_FIRST_ID] if i >= FORCE_FIRST_ID else ROSTER[i]
     fighters = [fighter_of(i) for i in args.fighters]
+    if args.player_slot is not None:
+        fighters[0] = fighters[0]._replace(slot=args.player_slot)
     banks = args.banks or args.fighters[:2]
     tables = args.assets / 'pose-tables'
     logic = args.out / 'generated' / 'private_logic'

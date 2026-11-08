@@ -677,10 +677,13 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     {
         /* HitTest runs the six ordered pairs one after another: an accepted hit takes the defender's last free
          * slot and its cooldown at once, which the next attacker of the same defender sees. */
-        static const uint8_t order[6][2]={{0,1},{1,0},{0,2},{2,0},{1,2},{2,1}};
-        uint8_t free_mask[T3_PSX_FIGHTERS],cooldown[T3_PSX_FIGHTERS];
+        /* (a,b),(b,a),(a,c),(c,a),(b,c),(c,b) with the roles' player, target and the other enemy */
+        const unsigned ra=0,rb=match->opponent[0]==2?2u:1u,rc=3u-rb;
+        const uint8_t order[6][2]={{ra,rb},{rb,ra},{ra,rc},{rc,ra},{rb,rc},{rc,rb}};
+        uint8_t free_mask[T3_PSX_FIGHTERS],cooldown[T3_PSX_FIGHTERS],landed[T3_PSX_FIGHTERS];
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
             free_mask[i]=3;cooldown[i]=match->fighter[i].ground.hit_cooldown!=0;
+            landed[i]=0;match->whiff_pairs[i]=0;
             match->fighter[i].projectile_hit=0;
         }
         for(unsigned k=0;k<6;++k) {
@@ -689,6 +692,9 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
             t3_psx_shadow_result_t geometry;
             if(!contact_pair(match,hurt,a,dn,free_mask[dn],cooldown[dn],&f->pair_gate[dn],&geometry))return 0;
             if(f->pair_gate[dn].zone_seen>=0 && f->pair_gate[dn].status!=T3_HIT_GATE_NO_ATTACK)match->slot_zone[dn][(free_mask[dn]&2u)?1:0]=f->pair_gate[dn].zone_seen;
+            if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT)landed[a]=1; /* contact_this_move, at once */
+            /* the end of HitTest: an attack whose last active frame this is, with no contact yet, whiffs (and stays so) */
+            if(f->vm.move.active_last==f->vm.clock.pose_frame && !f->contact_this_move && !landed[a])match->whiff_pairs[a]=1;
             if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT) {
                 free_mask[dn]&=(uint8_t)~(1u<<f->pair_gate[dn].hit_slot);
                 if(f->pair_gate[dn].hit_cooldown)cooldown[dn]=1;
@@ -1618,6 +1624,7 @@ static int force_level_frame(t3_psx_match_t* n) {
     s->player_health=n->fighter[0].health_q16;s->dr_b=0;s->player_index=0;
     s->timer=n->flow.timer;
     s->player.x=n->fighter[0].ground.root.x;s->player.z=n->fighter[0].ground.root.z;
+    s->player.db=n->fighter[0].ground.in_air!=0; /* +0xDB: no pickup while the player is in the air */
     for(unsigned k=0;k<T3_FORCE_SLOTS;++k) {
         const t3_psx_fighter_t* f=&n->fighter[k+1];t3_force_fighter_t* r=&s->fighter[k];
         r->health=f->health_q16;r->fc2=f->body.invulnerable!=0;r->fc3=f->body.active;
