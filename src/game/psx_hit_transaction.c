@@ -14,7 +14,7 @@ typedef struct {
     t3_move_vm_t vm;
     t3_psx_ground_state_t ground;
     t3_psx_hit_apply_result_t hit;
-    uint8_t got_hit,collapsed,attacker;
+    uint8_t got_hit,collapsed,attacker,forced_in;
     int16_t freeze;
 } staged_t;
 static int16_t abs_damage(int16_t n) {
@@ -55,6 +55,13 @@ static int select_reaction(const t3_psx_match_config_t* c,staged_t* s,const t3_p
     reaction_facts.attacker_bank=attacker->vm.bank?attacker->vm.bank->bank_type:0u;
     reaction_facts.attacker_slot=attacker->vm.slot;
     reaction_facts.attacker_pending_slot=attacker->vm.pending_valid?(int32_t)attacker->vm.pending_slot:-1;
+    if(s->forced_in && c->forced_reaction) {
+        /* HitApply: a forced hit takes the one forced reaction record whatever the attacker's move says. */
+        t3_psx_hit_candidate_t record=*best;
+        record.reaction_kind=T3_HIT_REACTION_RECORD;record.reaction_word=0;
+        if(!t3_psx_reaction_select_sparse(&record,&reaction_facts,c->forced_reaction,44u,
+                          c->ground_tables.air_kinds,&s->hit.reaction))return 0;
+    } else
     if(!t3_psx_reaction_select_sparse(best,&reaction_facts,c->reactions,c->reactions_size,
                       c->ground_tables.air_kinds,&s->hit.reaction))return 0;
     if(s->hit.reaction.air) {
@@ -81,9 +88,9 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const unsigned a=HIT_ATTACKER(match,i);
         const t3_psx_fighter_t *f=&match->fighter[i],*attacker=&match->fighter[a];
-        t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t slot_facts[2]={{0},{0}};unsigned slot_attacker[2]={a,a};
+        t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t slot_facts[2]={{0},{0}};unsigned slot_attacker[2]={a,a};t3_move_record_t slot_move[2];
         staged_t* s=&staged[i];
-        s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;
+        s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;s->forced_in=0;
         frame.health_q16=f->health_q16;frame.max_health_q16=c->max_health_q16;
         /* Once the round is over a move's exchange events no longer change health. */
         frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
@@ -117,7 +124,11 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
                     facts->close_table_available=1;
                 }
             }
-            frame.slots[(unsigned)g->hit_slot]=(t3_psx_hit_slot_input_t){1,(uint8_t)aa,(uint8_t)g->zone,&atk->vm.move,facts};
+            /* A forced hit strikes with the unblockable attack word whatever the move says. */
+            slot_move[(unsigned)g->hit_slot]=atk->vm.move;
+            if(atk->ground.attack_override)slot_move[(unsigned)g->hit_slot].attack_word=atk->ground.attack_override;
+            frame.slots[(unsigned)g->hit_slot]=(t3_psx_hit_slot_input_t){1,(uint8_t)aa,(uint8_t)g->zone,&slot_move[(unsigned)g->hit_slot],facts};
+            s->forced_in=atk->ground.forced_hit;
             slot_attacker[(unsigned)g->hit_slot]=aa;
             s->got_hit=1;s->freeze=g->hit_freeze_in;
             s->ground.hit_cooldown=g->hit_cooldown;s->ground.was_hit_this_move=1;
@@ -172,6 +183,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&match->fighter[i];const staged_t* s=&staged[i];
         f->vm=s->vm;f->ground=s->ground;f->hit=s->hit;
+        f->ground.forced_hit_in=s->forced_in;
         f->health_q16=s->hit.health_q16;f->got_hit=s->got_hit;f->hit_freeze_in=s->freeze;
         if(s->got_hit && s->hit.reaction.selected)f->reaction=s->hit.reaction;
         /* FightFrame clears +0xCF/+0xD3 immediately before HitApply. A hit

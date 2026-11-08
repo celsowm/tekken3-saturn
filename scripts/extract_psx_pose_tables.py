@@ -30,6 +30,7 @@ THROW_VICTIM_WORDS = 397 + 21
 BUILTIN_ATTACK_BYTES = 0x400
 BUILTIN_TABLE, BUILTIN_COUNT = 0x34, 13
 REVERSAL_LISTS, REVERSAL_COUNT = 0x80095AB8, 52
+FORCED_REACTION = 0x8001DEC0
 
 
 def reversal_lists(raw, address):
@@ -154,6 +155,10 @@ def extract(exe, layout_file, output):
     reactions+=builtin_attacks(raw[offsets['builtin_attacks']:offsets['builtin_attacks']+BUILTIN_ATTACK_BYTES],
                                targets['builtin_attacks'][0])
     (output/'psx_reactions.bin').write_bytes(reactions)
+    # Tekken Force's forced hit (a body thrown into a fighter) takes this one reaction record (0x8001DEC0 in Rev.1):
+    # one sparse entry (index 0, then the 42 bytes) for t3_psx_reaction_select_sparse.
+    forced_at = mapped(layout, FORCED_REACTION, 42) - BASE + HEADER
+    (output/'psx_forced_reaction.bin').write_bytes(struct.pack('<H', 0) + raw[forced_at:forced_at + 42])
     reversal_address = mapped(layout, REVERSAL_LISTS, REVERSAL_COUNT * 4)
     reversal = reversal_lists(raw, reversal_address)
     (output/'psx_reversal_lists.bin').write_bytes(reversal)

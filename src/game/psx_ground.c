@@ -269,7 +269,7 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     n=*state;m=&vm->move;
     n.in_reaction=n.hit_clean;
     n.air_phase=n.slide_state=n.track_mode=n.step_kind=0u;n.track_accum=0;n.hit_cooldown=0;
-    n.opponent_start=opp->root;
+    n.opponent_start=opp->root;n.attack_override=0;
     n.damage=n.damage_override?n.damage_override:((m->damage_class>>14)==1u?0:(int16_t)(m->damage_class&0x3FFFu));
     n.state=m->state_word;n.state_class=(uint8_t)((n.state>>11)&31u);
     n.human_guard=n.is_cpu?0u:1u;

@@ -94,6 +94,7 @@ typedef struct {
     /* With start_force: the constant tables (T3_FORCE_TABLE_BYTES), the level's script (T3_FORCE_SCRIPT_BYTES),
      * the level (0..3) and the executable's sine table (the camera's); null tables run no level. */
     const uint8_t *force_tables,*force_script,*force_trig;
+    const uint8_t* forced_reaction; /* the 44-byte sparse record of a forced hit (psx_forced_reaction.bin) */
     uint8_t force_level;
     uint16_t start_physical[T3_PSX_FIGHTERS]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */

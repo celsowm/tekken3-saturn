@@ -558,6 +558,9 @@ static int parked(const t3_psx_match_t* match,const t3_psx_fighter_t* f) {
 #else
 #define parked(match,f) 0
 #endif
+#if T3_PSX_FIGHTERS>2
+static void force_forced_hit(t3_psx_match_t* n,unsigned i);
+#endif
 static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     t3_attack_sample_t sample;t3_world_attack_t result;
     const t3_move_vm_t* vm=&f->vm;
@@ -636,7 +639,8 @@ static int contact_pair(t3_psx_match_t* match,t3_hurt_cylinder_t hurt[T3_PSX_FIG
         if(zone< -1)return 0;
     }
     *geometry=(t3_psx_shadow_result_t){any?(zone>=0?T3_SHADOW_CONTACT:T3_SHADOW_MISS):T3_SHADOW_INACTIVE,0,(int8_t)zone,(int8_t)segment};
-    facts.geometry=*geometry;facts.attack_word=f->vm.move.attack_word;
+    facts.geometry=*geometry;facts.attack_word=f->ground.attack_override?f->ground.attack_override:f->vm.move.attack_word;
+    facts.attacker_forced_hit=f->ground.forced_hit;facts.forced_contact_flag=(uint8_t)((d->body.contact_with>>a)&1u);
     facts.attacker_move_slot=f->vm.slot;facts.attacker_damage=f->ground.damage;
     facts.attacker_freeze=f->vm.move.hit_freeze;facts.attacker_active=f->body.active;
     facts.attacker_invulnerable=f->body.invulnerable!=0u;
@@ -1097,6 +1101,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         t3_psx_fighter_t* f=&n->fighter[i];
         if(parked(n,f))continue; /* not on the field: the load's state stands */
         const t3_command_frame_t input=t3_history_at(&f->input,0);
+#if T3_PSX_FIGHTERS>2
+        if(c->start_force)force_forced_hit(n,i);
+#endif
         f->ground.character=c->character[i];f->ground.opp_character=c->character[T3_PSX_OPP(n,i)];
         if(!t3_psx_ground_step(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,
                 &n->fighter[T3_PSX_OPP(n,i)].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
@@ -1456,6 +1463,25 @@ static void force_camera_frame(t3_psx_match_t* n) {
 }
 /* The level runner closes the frame (force.ovl FUN_800B1778): its inputs from the fight and the camera,
  * its writes back to the records; the records of its two slots are fighters 1 and 2. */
+/* FighterPhysics' forced hit in mode 8 (_forced_hit): a CPU body thrown fast enough hits whatever it touches, and the
+ * player's power move does (at a price in health). The attack is the unblockable one until the next move starts. */
+static void force_forced_hit(t3_psx_match_t* n,unsigned i) {
+    t3_psx_fighter_t* f=&n->fighter[i];t3_psx_ground_state_t* g=&f->ground;
+    g->forced_hit=0;
+    if(g->is_cpu) {
+        const int pose=f->vm.clock.pose_frame;
+        if(g->throw_state<0 && 10<pose && pose<(int)f->vm.move.length) {
+            const int64_t sq=(int64_t)g->velocity.x*g->velocity.x+(int64_t)g->velocity.y*g->velocity.y+(int64_t)g->velocity.z*g->velocity.z;
+            const uint32_t speed=isqrt(sq>(int64_t)INT32_MAX?(uint32_t)INT32_MAX:(uint32_t)sq);
+            if(speed>0x59u) {
+                g->forced_hit=1;g->attack_override=0x607;g->damage=(int16_t)((speed>>4)+10);
+            }
+        }
+    } else if(f->vm.move.flags&0x10000u) {
+        g->forced_hit=1;g->attack_override=0x607;g->damage=10;
+        if(f->vm.clock.move_changed && f->health_q16>0xA0000)f->health_q16-=0xA0000;
+    }
+}
 /* FUN_800B5EC0 at the start of the frame, from the state the last frame left: who the player faces. */
 static int force_roles(t3_psx_match_t* n,const t3_psx_match_frame_t* frame) {
     t3_force_target_inputs_t in={0};

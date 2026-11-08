@@ -139,6 +139,11 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
             fclose(f);
             if(!(f=fopen(getenv("T3_FORCE_TRIG"),"rb")) || fread(trig,1,sizeof trig,f)!=sizeof trig){return 0;}fclose(f);
             config.force_tables=tables;config.force_script=script;config.force_trig=trig;
+            if(getenv("T3_FORCED_REACTION")) {
+                static uint8_t forced[44];
+                if(!(f=fopen(getenv("T3_FORCED_REACTION"),"rb")) || fread(forced,1,sizeof forced,f)!=sizeof forced){return 0;}fclose(f);
+                config.forced_reaction=forced;
+            }
             config.force_level=(uint8_t)strtoul(getenv("T3_FORCE_LEVEL_INDEX")?getenv("T3_FORCE_LEVEL_INDEX"):"0",NULL,0);
         }
 #endif

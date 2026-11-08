@@ -740,3 +740,17 @@ two hit slots. The owned core tests an attacker against its opponent only and pi
 the player in one frame (frame 1,304). (2) The body push of a fighter after the pair separation (frame 1,078).
 (3) The voice cooldown after a hit sequence (frame 1,290). (1) is the "unverified: hit gate and hit application
 at three fighters" row of the inventory; it needs the gate and the transaction per attacker-defender pair.
+
+### Step 2/3, the long run, continued: 2,204 frames exact (2026-11-08)
+
+`force_run` now compares exactly for **2,204 frames (262-2,465)**; the full recording is 40,000. Fixed since the
+last note: the pair table is filled for all three pairs (the third pair was zero, which cleared a pushed enemy's
+body push); the sounds' state is per player slot (the third record shares the second's, as `+0x12` is `min(i,1)`);
+the roles read the screen x the last frame left; a reloaded enemy restarts its eyes (the level runner's model
+bind); forced hits (a CPU body thrown fast enough, or the player's power move, hit whatever the body touches;
+`psx_forced_reaction.bin` holds the one reaction record they take).
+
+The first difference now is `recover_mash` of a downed enemy hit a second time (frame 2,348, one point), which
+sends the AI generator off at 2,475. Still to do from the inventory: the throw skip and throw link for the third
+record, the forced hit's sound and score, `no_look_at` for the bosses, round over (`FUN_8003E608`) and the other
+levels' items, tally and stage clear against `force_bosses` and `force_final`.

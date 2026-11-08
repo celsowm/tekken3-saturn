@@ -28,6 +28,8 @@ typedef struct {
     uint16_t facing,heading,target_dir,opp_to_self_dir,opp_heading;
     uint16_t heading_delta,opp_heading_delta,relative_angle,opp_relative_angle,aim_dir,opp_aim_dir;
     int16_t damage,damage_override,last_damage,root_dx,track_accum,turn_frames,turn_step;
+    /* Tekken Force: a forced hit (+0xE6) and the attack word it sets until the next move starts (0 when none). */
+    uint16_t attack_override;uint8_t forced_hit,forced_hit_in;
     int16_t push_frames,push_speed,push_direction,push_repeat,push_table_frames;
     uint16_t push_cursor;
     int16_t attack_alert,hit_cooldown,recover_frames,recover_mash,power_timer,push_repeat_timer,push_repeat_transition;
