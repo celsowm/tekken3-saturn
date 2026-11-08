@@ -55,6 +55,10 @@ set(T3_LOCAL_SECOND_CAMERA_BANK "" CACHE FILEPATH "Private raw P2 DIVMOT bank fo
 set(T3_SECOND_CHARACTER_ID "1" CACHE STRING "Original character id of the second bank (1: Law, 6: Hwoarang)")
 option(T3_FIGHTER_PACKS "Play the whole roster: load the two fighters chosen on the select screen from Fnn.BIN packs" OFF)
 set(T3_BOOT_FIGHTERS "" CACHE STRING "Test builds: the pair of character ids (P1;P2) to start with, skipping the menus")
+set(T3_PSX_FIGHTERS_COUNT "2" CACHE STRING "Fighter records in the owned match: 2, or 3 for Tekken Force (the player and two enemies)")
+if(NOT T3_PSX_FIGHTERS_COUNT STREQUAL "2")
+    add_compile_definitions(T3_PSX_FIGHTERS=${T3_PSX_FIGHTERS_COUNT})
+endif()
 option(T3_COMPACT_CAMERA_STREAMS "Keep original compact camera stream words" OFF)
 option(T3_COLD_CAMERA_STREAMS "Load compact camera stream words from CAMERA.BIN to Low WRAM" OFF)
 set(T3_LOCAL_CAMERA_SPLINE "${CMAKE_SOURCE_DIR}/assets/imported/tekken3-usa/pose-tables/psx_spline.bin"

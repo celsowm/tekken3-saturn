@@ -53,7 +53,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     if(T3_LOCAL_SECOND_BANK_BYTES && (!t3_divmot_open(&second,t3_local_second_bank,T3_LOCAL_SECOND_BANK_BYTES) ||
        !t3_divmot_set_common_branches(&second,t3_local_common_branches,T3_LOCAL_COMMON_BRANCH_BYTES)))return 0;
 #endif
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const uint32_t base=0x800A9228u+i*0x188Cu;
         const unsigned type=(unsigned)i16(base+0x16);
         config.character[i]=(uint8_t)i16(base+0x18);
@@ -78,16 +78,17 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     config.scale_percent=T3_KMD_SCALE_PERCENT;config.max_health_q16=i32(0x800A9228u+0x3F8);
 #ifdef T3_PRIVATE_ACTOR_SCALES
     {
-        static const unsigned scales[2]=T3_PRIVATE_ACTOR_SCALES;
-        static const uint8_t radii[2][16]=T3_PRIVATE_ACTOR_RADII;
-        static uint8_t shapes[2][48];
-        for(unsigned i=0;i<2;++i) {
+        static const unsigned scales[T3_PSX_FIGHTERS]=T3_PRIVATE_ACTOR_SCALES;
+        static const uint8_t radii[T3_PSX_FIGHTERS][16]=T3_PRIVATE_ACTOR_RADII;
+        static uint8_t shapes[T3_PSX_FIGHTERS][48];
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
             memcpy(shapes[i],t3_local_body_blob+384u,32u);memcpy(shapes[i]+32u,radii[i],16u);
             config.actor_scale_percent[i]=scales[i];config.actor_body_shapes[i]=shapes[i];
         }
     }
 #endif
-    config.parts[0]=t3_private_actor_parts[0];config.parts[1]=t3_private_actor_parts[1];config.ik=(t3_psx_ik_tables_t){
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)config.parts[i]=t3_private_actor_parts[i];
+    config.ik=(t3_psx_ik_tables_t){
         {t3_local_trig_blob,T3_LOCAL_TRIG_BYTES},t3_local_ik_blob,T3_LOCAL_IK_BYTES};
     config.body_tables=t3_local_body_blob;config.body_tables_size=T3_LOCAL_BODY_BYTES;
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0
@@ -108,7 +109,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #if defined(T3_LOCAL_SOUND_TABLE_BYTES) && T3_LOCAL_SOUND_TABLE_BYTES > 0
     if(start_seed) {
         config.sound_tables=(t3_psx_sound_tables_t){t3_local_sound_tables,T3_LOCAL_SOUND_TABLE_BYTES};
-        for(unsigned i=0;i<2;++i)config.sound_voice_set[i]=(uint8_t)i16(0x800A9228u+i*0x188Cu+0x1Au);
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)config.sound_voice_set[i]=(uint8_t)i16(0x800A9228u+i*0x188Cu+0x1Au);
     }
 #endif
     if(start_seed) {
@@ -148,7 +149,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #endif
     if(!t3_psx_match_init(&game,&config))return 0;
     if(start_seed)return 1; /* No original state is copied into a fresh match. */
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const uint32_t b=0x800A9228u+i*0x188Cu;
         game.fighter[i].blink.timer=i16(b+0x128E);
         game.fighter[i].blink.closed=u8(b+0x1290);
@@ -247,7 +248,7 @@ int main(int argc,char** argv) {
         differences=0;
         reference_debug_done=rows!=reference_debug_target;
         if(reference_hashes){t3_sha256_init(&reference_digest);reference_value_count=0;}
-        for(unsigned i=0;i<2;++i)compare(i,sx,sz);
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)compare(i,sx,sz);
         compare_round();
         const int hud_checked=config.start_intro && has(0x80097D10u,0x20u);
         const int sound_checked=config.start_intro && config.sound_tables.size && has(0x800971DCu,0x1Au);

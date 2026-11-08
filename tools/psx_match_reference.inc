@@ -16,7 +16,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
         game.replay.recorded=i32(0x8009BCD0u);game.replay_skip=i32(0x80095480u);
         game.fight_clock=u32(0x800AFAB4u);
     }
-    for(unsigned i=0;i<2;++i) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         uint32_t b=0x800A9228u+i*0x188Cu;
         t3_psx_fighter_t* f=&game.fighter[i];
         f->last_attacker=u8(b+0x22);f->last_hit_target=u8(b+0x23);
