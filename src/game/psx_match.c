@@ -7,7 +7,6 @@
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "sim_profile.h"
 #include "psx_match.h"
-#include <string.h>
 #include "sh2_divide.h"
 #include "move_index.h"
 #include "attack_records.h"
@@ -659,6 +658,7 @@ static int contact_pair(t3_psx_match_t* match,t3_hurt_cylinder_t hurt[T3_PSX_FIG
     facts.defender_hit_cooldown=(uint8_t)cooldown;
     facts.defender_in_air=d->ground.in_air!=0u;facts.defender_in_throw=d->ground.throw_state!=0;
     facts.defender_is_cpu=d->ground.is_cpu;facts.free_slots_mask=free_mask;
+    facts.stored_zone=match->slot_zone[dn][(free_mask&2u)?1:0];
     facts.game_mode=8; /* a thrown defender cannot be hit (THROW_LOCK) */
     facts.hit_done=match->config->enable_combat?f->hit_done_for[dn]:0;
     return t3_psx_hit_test_gate(&facts,gate);
@@ -668,7 +668,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
 #if T3_PSX_FIGHTERS>2
-        if(parked(match,&match->fighter[i])){memset(hurt[i],0,sizeof hurt[i]);continue;}
+        if(parked(match,&match->fighter[i])){__builtin_memset(hurt[i],0,sizeof hurt[i]);continue;}
 #endif
         if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
@@ -688,6 +688,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
             t3_psx_fighter_t* f=&match->fighter[a];
             t3_psx_shadow_result_t geometry;
             if(!contact_pair(match,hurt,a,dn,free_mask[dn],cooldown[dn],&f->pair_gate[dn],&geometry))return 0;
+            if(f->pair_gate[dn].zone_seen>=0 && f->pair_gate[dn].status!=T3_HIT_GATE_NO_ATTACK)match->slot_zone[dn][(free_mask[dn]&2u)?1:0]=f->pair_gate[dn].zone_seen;
             if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT) {
                 free_mask[dn]&=(uint8_t)~(1u<<f->pair_gate[dn].hit_slot);
                 if(f->pair_gate[dn].hit_cooldown)cooldown[dn]=1;
@@ -808,8 +809,33 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
     if(match->throw_count<2u)match->throw_link=0;
     else if(match->throw_count_seen!=match->throw_count)match->throw_link=1;
     match->throw_count_seen=match->throw_count;
+#if T3_PSX_FIGHTERS>2
+    /* FUN_80043260's link, then Tekken Force's throw anchor (combat.gd throw_anchor): a thrown fighter that is still
+     * close to its thrower follows the thrower's anchor. */
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+        t3_psx_fighter_t* f=&match->fighter[i];
+        const unsigned o=T3_PSX_OPP(match,i);
+        if(!c->start_force || !f->ground.in_throw || !match->fighter[o].ground.in_throw || f->ground.throw_state>=0)continue;
+        const unsigned small=i<o?i:o,big=i<o?o:i;
+        if(f->vm.clock.move_frame>0x12 && match->pair_all[small+big-1u]>0x578u)match->throw_link=0;
+        if(match->throw_link) {
+            const int32_t dx=(int32_t)((uint32_t)pair[o].anchor.x-(uint32_t)pair[i].anchor.x);
+            const int32_t dz=(int32_t)((uint32_t)pair[o].anchor.z-(uint32_t)pair[i].anchor.z);
+            pair[i].anchor.x=pair[o].anchor.x;pair[i].anchor.z=pair[o].anchor.z;
+            pair[i].root.x=(int32_t)((uint32_t)pair[i].root.x+(uint32_t)dx);pair[i].root.z=(int32_t)((uint32_t)pair[i].root.z+(uint32_t)dz);
+        }
+    }
+#endif
     /* FUN_80043F40: a fighter in a throw and its partner are not pushed. */
+#if T3_PSX_FIGHTERS==2
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(match->fighter[i].ground.throw_state)pair[0].no_push=pair[1].no_push=1;
+#else
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(match->fighter[i].ground.throw_state) {
+        const unsigned partner=match->fighter[i].throw_partner;
+        pair[i].no_push=1;
+        if(partner)pair[partner-1u].no_push=1;
+    }
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_ground_state_t* g=&match->fighter[i].ground;
         g->anchor=pair[i].anchor;
@@ -1102,7 +1128,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             }
         }
     }
-    n->throw_count=(uint8_t)(n->fighter[0].ground.in_throw+n->fighter[1].ground.in_throw);
+    n->throw_count=(uint8_t)(n->fighter[0].ground.in_throw+n->fighter[1].ground.in_throw+(T3_PSX_FIGHTERS>2?n->fighter[T3_PSX_FIGHTERS-1].ground.in_throw:0));
     T3_MATCH_PHASE(130);
     if(!pair_distance(n))return 0;
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
@@ -1111,13 +1137,13 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         /* not on the field and never started: the load's state stands (an enemy that blinks out still steps) */
         if(parked(n,f) && !f->vm.move.length)continue;
         const t3_command_frame_t input=t3_history_at(&f->input,0);
-#if T3_PSX_FIGHTERS>2
-        if(c->start_force)force_forced_hit(n,i);
-#endif
         f->ground.character=c->character[i];f->ground.opp_character=c->character[T3_PSX_OPP(n,i)];
         if(!t3_psx_ground_step(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,
                 &n->fighter[T3_PSX_OPP(n,i)].vm,&c->ground_tables,input.direction,input.pressed_buttons))return 0;
         if(f->ground.flight_landed)f->vm.clock.ballistic=0u;
+#if T3_PSX_FIGHTERS>2
+        if(c->start_force)force_forced_hit(n,i); /* FighterMovePhysics' bookkeeping: after this frame's flight */
+#endif
 #if defined(T3_PSX_HAND_CHANNELS)
         if(c->character[i]!=20u)face_shape(n,f,i);
 #endif
@@ -1274,6 +1300,15 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         /* MoveBranchStep returns before BranchFind while the cooldown exceeds 0x19. */
         if(f->ground.step_cooldown<=0x19 &&
            t3_move_vm_queue_input(&f->vm,&f->input,c->enable_combat?&facts:NULL,c->sequences,c->sequence_count)<0)return 0;
+        /* The look-ahead calls FighterRelativeAngles on the record, with the `dist` MoveStep has just set: past 0x200
+         * it moves the aim directions. */
+#if T3_PSX_FIGHTERS>2
+        if(f->vm.looked && f->ground.distance>512u) {
+            t3_psx_ground_state_t* g=&f->ground;
+            g->aim_dir=g->relative_angle<0x4000u?g->target_dir:(uint16_t)(g->target_dir-0x8000u);
+            g->opp_aim_dir=g->opp_relative_angle<0x4000u?g->opp_to_self_dir:(uint16_t)(g->opp_to_self_dir-0x8000u);
+        }
+#endif
         if(c->enable_combat && f->vm.pending_valid && f->vm.queued.branch_kind!=1u) {
             unsigned code=f->vm.queued.transition,slot=f->vm.pending_slot;
             const int unsupported=f->vm.pending_move.active_first && !c->all_attacks && slot!=295u && slot!=355u && slot!=357u;
@@ -1284,8 +1319,9 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         }
         /* MoveStep pairs a pending thrower with its victim. */
         if(f->vm.pending_valid && f->vm.queued.transition==33u) {
+            const unsigned victim=T3_PSX_OPP(n,i); /* before in_throw redirects the opponent to the old partner */
             f->ground.in_throw=opp->ground.in_throw=1u;
-            f->throw_partner=(uint8_t)(T3_PSX_OPP(n,i)+1u);opp->throw_partner=(uint8_t)(i+1u); /* the throw's pair */
+            f->throw_partner=(uint8_t)(victim+1u);opp->throw_partner=(uint8_t)(i+1u); /* the throw's pair */
         }
     }
     if(c->enable_rounds==1 && !n->round.done) {
@@ -1550,6 +1586,7 @@ static int force_level_frame(t3_psx_match_t* n) {
     }
     t3_force_level_step(s,c->force_tables,c->force_script);
     n->flow.timer=s->timer;
+    n->fighter[0].health_q16=s->player_health; /* a picked-up item heals */
     n->force_cam.mode=s->scroll_mode;
     n->force_cam.left=s->bound[0];n->force_cam.right=s->bound[1];n->force_cam.min=s->bound[2];n->force_cam.max=s->bound[3];
     for(unsigned k=0;k<T3_FORCE_SLOTS;++k) {

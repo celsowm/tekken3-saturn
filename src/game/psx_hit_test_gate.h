@@ -42,6 +42,9 @@ typedef struct {
     uint8_t hit_done, defender_hit_cooldown;
     uint8_t defender_in_air, defender_in_throw;
     uint8_t attacker_forced_hit, defender_is_cpu, forced_contact_flag;
+#ifdef T3_PSX_FIGHTERS
+    int8_t stored_zone;      /* the free slot's zone from its last contact (a forced hit leaves it as it was) */
+#endif
 } t3_psx_hit_test_facts_t;
 typedef struct {
     uint8_t status;
@@ -51,6 +54,9 @@ typedef struct {
     uint8_t hit_freeze_in, hit_cooldown;
     uint8_t set_attacker_hit_done, set_attacker_contact;
     uint8_t set_defender_got_hit;
+#ifdef T3_PSX_FIGHTERS
+    int8_t zone_seen; /* the cylinder the segments touched, kept in the slot whatever the outcome (else -1) */
+#endif
 } t3_psx_hit_test_gate_t;
 
 /* 1 = known decision (including unavailable geometry), 0 = malformed

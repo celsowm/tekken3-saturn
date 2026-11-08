@@ -31,6 +31,10 @@ typedef struct {
     int16_t branch_window;
     uint8_t phased,pending_valid,pending_flags;
     uint8_t current_transition,current_branch_kind;
+#ifdef T3_PSX_FIGHTERS
+    /* MoveBranchStep's look-ahead ran this frame (it re-runs FighterRelativeAngles on the real record). */
+    uint8_t looked;
+#endif
 } t3_move_vm_t;
 
 /* Shared load semantics for live VM and post-hit projection. Applies the

@@ -36,9 +36,14 @@ static int16_t abs_damage(int16_t n) {
 #define GATE_APPLIES(match,i,a) 1
 /* HitApply copies the attacker's AttackVelocity (0x80040CF8): its first attack segment's end minus its start; the
  * attacker is that of the last slot used. */
+#ifdef T3_PSX_FIGHTERS
+#define FORCED_NO_DIR(a) ((a)->ground.forced_hit)   /* a thrown body has no strike direction */
+#else
+#define FORCED_NO_DIR(a) 0
+#endif
 static void set_hit_dir(staged_t* s,const t3_psx_fighter_t* attacker) {
     const t3_world_segment_t* g=&attacker->strike.segments[0];
-    s->ground.hit_dir=attacker->projectile_hit?(t3_vec3i_t){0,0,0}:
+    s->ground.hit_dir=(attacker->projectile_hit||FORCED_NO_DIR(attacker))?(t3_vec3i_t){0,0,0}:
         (t3_vec3i_t){(int32_t)((uint32_t)g->end.x-(uint32_t)g->start.x),
         (int32_t)((uint32_t)g->end.y-(uint32_t)g->start.y),(int32_t)((uint32_t)g->end.z-(uint32_t)g->start.z)};
 }

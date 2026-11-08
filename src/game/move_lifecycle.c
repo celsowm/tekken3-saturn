@@ -102,6 +102,9 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
     unsigned kind,transition;
     uint8_t flags;
     if(!vm || !vm->phased || !input)return -1;
+#ifdef T3_PSX_FIGHTERS
+    vm->looked=0;
+#endif
     if(vm->pending_valid)return 0;
     vm->branch_window=-1; /* MoveBranchStep (0x8002DC3C) */
     if(!t3_divmot_branch_find_ex(vm->active_bank,vm->move,input,
@@ -117,6 +120,9 @@ int t3_move_vm_queue_input(t3_move_vm_t* vm,const t3_input_history_t* input,
                          vm->clock.frame_step>0);
         if(look) {
             t3_branch_record_t found;
+#ifdef T3_PSX_FIGHTERS
+            vm->looked=1;
+#endif
             const t3_branch_context_t* ahead_facts=facts;
             t3_branch_context_t turned;
             /* Peeked, not resolved: this runs every frame of the window, and

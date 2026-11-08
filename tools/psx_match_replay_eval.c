@@ -311,6 +311,13 @@ int main(int argc,char** argv) {
             (getenv("T3_REPLAY_IN_PLACE")?t3_psx_match_step_original_in_place(&game,p0,p1,&video):
                                      t3_psx_match_step_original(&game,p0,p1,&video)):
             t3_psx_match_step(&game,p0,p1);
+        /* The Tekken Force recordings refill the player's health and the timer after a frame when they run low
+         * (flow_trace.py refill): the recorder's doing, not the game's. */
+        if(ok && config.start_force && getenv("T3_FORCE_REFILL")) {
+            const int32_t health=game.fighter[0].health_q16;
+            if(health>0 && health<0x280000)game.fighter[0].health_q16=game.fighter[0].health_max;
+            if(game.flow.state==1 && game.flow.timer>0 && game.flow.timer<600)game.flow.timer=3600;
+        }
 #ifdef T3_MATCH_FAILURE_TRACE
         if(getenv("T3_FLOW_DEBUG")){extern volatile uint32_t g_t3_match_failure_phase;fprintf(stderr,"phase %u\n",g_t3_match_failure_phase);}
 #endif

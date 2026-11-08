@@ -111,6 +111,13 @@ static void jump_forced_and_whiff(void) {
            r.status==T3_HIT_GATE_AIR_EVADE);
     f=usual();f.attacker_forced_hit=1;f.defender_is_cpu=1;
     f.forced_contact_flag=1;
+#ifndef T3_PSX_FIGHTERS
+    assert(t3_psx_hit_test_gate(&f,&r) &&
+           r.status==T3_HIT_GATE_FORCED_UNSUPPORTED);
+    f.forced_contact_flag=0;
+    assert(t3_psx_hit_test_gate(&f,&r) &&
+           r.status==T3_HIT_GATE_ACCEPT);
+#else
     /* Tekken Force: a forced hit on a CPU body in contact lands at once (no segment test), in the last free slot */
     assert(t3_psx_hit_test_gate(&f,&r) &&
            r.status==T3_HIT_GATE_ACCEPT && r.hit_slot==1 && r.zone==0 && r.segment==0);
@@ -122,6 +129,7 @@ static void jump_forced_and_whiff(void) {
     f.forced_contact_flag=0;
     assert(t3_psx_hit_test_gate(&f,&r) &&
            r.status==T3_HIT_GATE_ACCEPT);
+#endif
     assert(t3_psx_hit_whiff(10u,10u,0)==1);
     assert(t3_psx_hit_whiff(10u,10u,1)==0);
     assert(t3_psx_hit_whiff(9u,10u,0)==0);

@@ -192,6 +192,9 @@ typedef struct t3_psx_match {
     /* Tekken Force: set for an enemy whose slot is free and while its level still runs (FUN_800B2EEC), which
      * PairwiseDistances counts as off screen. The Force program sets it each frame from psx_force_level. */
     uint8_t off_screen_extra[T3_PSX_FIGHTERS];
+#if T3_PSX_FIGHTERS>2
+    int8_t slot_zone[T3_PSX_FIGHTERS][2];   /* each defender's hit slots keep the cylinder of their last contact (+0x18) */
+#endif
     uint32_t pair_dist[T3_PSX_FIGHTERS]; /* each fighter's distance to its opponent (MoveStep's `dist`) */
     /* Tekken Force's walls replace the arena's limits while `force_walls_on` (ArenaBounds in mode 8). */
     t3_force_walls_t force_walls;int32_t force_view_x;uint8_t force_stage,force_walls_on;

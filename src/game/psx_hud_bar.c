@@ -4,13 +4,18 @@
 #include "psx_hud_bar.h"
 
 enum { BAR_LENGTH=152, REFILL_PER_TICK=3 };
+#ifdef T3_PSX_FIGHTERS
+#define BAR_HEALTH_OVER(h,m) 0   /* above the maximum (a Force item) the bar stays full */
+#else
+#define BAR_HEALTH_OVER(h,m) ((h)>(m))
+#endif
 
 void t3_psx_hud_bar_reset(t3_psx_hud_bar_t* bar) {
     if(bar)*bar=(t3_psx_hud_bar_t){0};
 }
 
 int t3_psx_hud_bar_step(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health) {
-    if(!bar || max_health<BAR_LENGTH || health<0 || health>max_health)return 0;
+    if(!bar || max_health<BAR_LENGTH || health<0 || BAR_HEALTH_OVER(health,max_health))return 0;
     int target=bar->target;
     if(bar->last_health!=health) {
         bar->last_health=health;

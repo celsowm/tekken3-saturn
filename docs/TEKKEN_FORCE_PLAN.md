@@ -793,3 +793,25 @@ recording in all but a rare ±1 (about 10 of 6,000 ticks). The comparison is unc
 Open at call 2824: the original recomputes `aim_dir` that frame (it saw `dist > 0x200` where the stand-in gives 510 at screen
 x 310); probing with the real-distance branch at that tick confirms the cause is the distance the angle pass sees, and moves the
 next failure to the health at call 2964. Not yet explained; the ±1 screen rounding may be the lead (level 4 also needs the roll).
+
+### Update: the first 6,000 frames of `force_run` are exact (all fields, three records)
+
+`T3_FORCE_REFILL=1` mirrors the recorder's refill (`flow_trace.py refill`: the player's health back to its maximum when it
+falls below 40, the timer back to 60 s below 10 s) in the evaluator; it is the recorder's doing, not the game's.
+Found with `scripts/force_angle_trace.py` (the original's FighterRelativeAngles calls and `aim_dir` writes in one frame)
+and the field-by-field comparison:
+
+- MoveBranchStep's look-ahead calls FighterRelativeAngles on the real record after MoveStep set `dist`; past 0x200 it
+  moves `aim_dir` and `opp_aim_dir` (the `looked` flag of the VM; the call at 0x8002DE80/0x8002DEA8).
+- The level runner's health (the item's +50) is written back to the player; health above the maximum is legal until the
+  next hit clamps it (hit apply, HUD bar and round-flow checks relaxed at three fighters only).
+- A forced hit's damage zone is the slot's stored zone (the last contact's cylinder, kept per defender slot); its
+  `hit_dir` is zero.
+- The forced hit is decided after the fighter's flight step (bookkeeping), as in `FighterMovePhysics`.
+- A thrown fighter follows its thrower's anchor (`throw_anchor`, 0x578 drift), the throw count covers all three
+  records, a throw's partners are decided before `in_throw` redirects the opponent, and every throw partner is not pushed.
+- Screen x is projected by the port itself (Force camera view, pelvis joint); the recorded values are no longer read.
+
+Versus: the shared changes are compiled only for the three-record build (`#ifdef T3_PSX_FIGHTERS`); the two-record
+`app.bin` grows from 497,944 (before the Force work) to 498,528 bytes (the transaction and a few shared loops). The
+Mednafen A/B on the attract fight is still to be run.

@@ -23,10 +23,18 @@ int t3_psx_hit_test_gate(const t3_psx_hit_test_facts_t* f,
           f->geometry.segment<0 || f->geometry.segment>=2)))
         return 0;
     value.hit_slot=-1;value.zone=-1;value.segment=-1;
+#ifdef T3_PSX_FIGHTERS
+    value.zone_seen=-1;
+#endif
+
     value.status=T3_HIT_GATE_NO_ATTACK;
     /* Tekken Force: a forced hit (a thrown body, a power move) lands on a CPU defender its body touches, at the
      * defender's root, with no segment test and no cooldown check (HitTest, combat.gd). */
+#ifdef T3_PSX_FIGHTERS
     const unsigned forced_contact=(unsigned)(f->attacker_forced_hit && f->defender_is_cpu && f->forced_contact_flag);
+#else
+    const unsigned forced_contact=0u;
+#endif
     if(forced_contact && !f->free_slots_mask) {
         value.status=T3_HIT_GATE_NO_SLOT;
     } else if(forced_contact && (f->attacker_invulnerable||f->defender_invulnerable)) {
@@ -44,7 +52,13 @@ int t3_psx_hit_test_gate(const t3_psx_hit_test_facts_t* f,
         else {
             value.status=T3_HIT_GATE_ACCEPT;
             value.hit_slot=(int8_t)((f->free_slots_mask&2u)?1:0);
-            value.zone=0;value.segment=0; /* the slot's zone is its default */
+            
+#ifdef T3_PSX_FIGHTERS
+            value.zone=f->stored_zone;
+#else
+            value.zone=0;
+#endif
+            value.segment=0; /* the slot keeps the zone of its last contact */
             value.hit_freeze_in=(uint8_t)(f->attacker_move_slot==0x898u?30u:f->attacker_freeze);
             value.hit_cooldown=(uint8_t)(f->attacker_damage || f->defender_in_air?4u:0u);
             value.set_attacker_hit_done=1u;value.set_attacker_contact=1u;value.set_defender_got_hit=1u;
@@ -76,12 +90,20 @@ int t3_psx_hit_test_gate(const t3_psx_hit_test_facts_t* f,
               f->defender_in_throw) {
         value.status=T3_HIT_GATE_THROW_LOCK;
     } else {
+#ifdef T3_PSX_FIGHTERS
         forced=0;
+#else
+        forced=(unsigned)(f->attacker_forced_hit &&
+              f->defender_is_cpu && f->forced_contact_flag);
+#endif
         if(forced) {
             value.status=T3_HIT_GATE_FORCED_UNSUPPORTED;
         } else if(f->geometry.status!=T3_SHADOW_CONTACT) {
             value.status=T3_HIT_GATE_MISS;
         } else {
+#ifdef T3_PSX_FIGHTERS
+            value.zone_seen=f->geometry.zone;
+#endif
             posture=(unsigned)(f->attack_word |
                 (f->defender_step_kind==2u?1u:0u)) &
                 (unsigned)f->defender_state & 7u;

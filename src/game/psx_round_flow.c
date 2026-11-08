@@ -90,6 +90,11 @@ static int result(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2]) {
     s->hold=(s->result&1)?90:240;s->state=T3_ROUND_RESULT;s->done=0;
     return 1;
 }
+#ifdef T3_PSX_FIGHTERS
+#define ROUND_HEALTH_OVER(h,m,f) ((h)>(m) && !(f)->force)   /* an item lifts Force health above the maximum */
+#else
+#define ROUND_HEALTH_OVER(h,m,f) ((h)>(m))
+#endif
 int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[2],
                          const t3_psx_round_flow_facts_t* f,t3_psx_round_flow_actions_t* actions) {
     t3_psx_round_flow_t s;
@@ -102,7 +107,7 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
        s.to_win<1 || s.to_win>5 || s.max_rounds<0 || s.max_rounds>9 ||
        s.human_mask<0 || s.human_mask>3 || s.tie_choice<0 || s.tie_choice>1 ||
        s.draw_wins<0 || s.draw_wins>1 || s.match_result<0 || s.match_result>3)return 0;
-    for(unsigned i=0;i<2;++i)if(!(f->force && !a[i].active) && (a[i].health<0 || a[i].maximum<1 || a[i].health>a[i].maximum ||
+    for(unsigned i=0;i<2;++i)if(!(f->force && !a[i].active) && (a[i].health<0 || a[i].maximum<1 || ROUND_HEALTH_OVER(a[i].health,a[i].maximum,f) ||
        a[i].wins<0 || a[i].wins>6 || a[i].length<1 || a[i].pose<0 ||
        a[i].costume==0x26 || (a[i].is_cpu!=0 && a[i].is_cpu!=1)))return 0;
     if(s.state>1)++s.counter;

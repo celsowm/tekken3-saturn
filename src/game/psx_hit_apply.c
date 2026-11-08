@@ -39,8 +39,11 @@ int t3_psx_hit_extra_damage(const t3_psx_hit_extra_t* defender,
 
 /* The attacker indices a slot may name: the duel's two fighters, three in Tekken Force. */
 #ifdef T3_PSX_FIGHTERS
+/* a Force item can lift health above the maximum; the clamp in the apply brings it back */
+#define T3_HEALTH_OVER(h,m) 0
 #define T3_PSX_HIT_ATTACKERS T3_PSX_FIGHTERS
 #else
+#define T3_HEALTH_OVER(h,m) ((h)>(m))
 #define T3_PSX_HIT_ATTACKERS 2u
 #endif
 int t3_psx_hit_apply_preview(const t3_psx_hit_apply_frame_t* frame,
@@ -51,7 +54,7 @@ int t3_psx_hit_apply_preview(const t3_psx_hit_apply_frame_t* frame,
     int32_t health;
     unsigned i;
     if(!frame || !out || frame->max_health_q16<=0 ||
-       frame->health_q16<0 || frame->health_q16>frame->max_health_q16 ||
+       frame->health_q16<0 || T3_HEALTH_OVER(frame->health_q16,frame->max_health_q16) ||
        frame->suppress_health_change>1u ||
        frame->reaction_facts_known>1u ||
        !t3_psx_hit_extra_damage(&frame->defender_extra,
