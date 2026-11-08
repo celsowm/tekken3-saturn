@@ -198,7 +198,7 @@ typedef struct t3_psx_match {
     uint32_t pair_all[3]; /* the pair table's distances for pairs (0,1), (0,2), (1,2) */
     uint8_t level_ended; /* 0x800B70E8: the level's enemies are over, the third fighter no longer steps */
     t3_force_level_t force;     /* the level runner's state (psx_force_level.c) */
-    t3_force_camera_t force_cam;int32_t force_roll;
+    t3_force_camera_t force_cam;int32_t force_roll;int16_t force_screen[T3_PSX_FIGHTERS];t3_psx_camera_matrix_t force_view;
     t3_force_target_t force_target; /* the roles' wait and manual switch */
     t3_input_t third_pad;
 #endif

@@ -784,3 +784,12 @@ The first difference (frame 2,824) is a single-frame `aim_dir` of the player (it
 that frame's PairwiseDistances sees an off-screen enemy: the screen x it reads is the one this frame's draw writes, which
 needs the owned projection of step 5; the evaluator only has the last frame's). Without the fight camera's projection the
 evaluator cannot reproduce it; the long comparison continues past it (2,701 of the first 6,000 rows match).
+
+### Update: owned Force screen x
+
+The fighters' screen x (+0x1278) is now computed in the port: `t3_psx_camera_build_view_trig` builds the view from the Force
+camera (pitch and yaw in 1/64 units, sine table only) and the pelvis joint (11) is projected at compose time. It equals the
+recording in all but a rare ±1 (about 10 of 6,000 ticks). The comparison is unchanged (2,562 contiguous frames exact).
+Open at call 2824: the original recomputes `aim_dir` that frame (it saw `dist > 0x200` where the stand-in gives 510 at screen
+x 310); probing with the real-distance branch at that tick confirms the cause is the distance the angle pass sees, and moves the
+next failure to the health at call 2964. Not yet explained; the ±1 screen rounding may be the lead (level 4 also needs the roll).

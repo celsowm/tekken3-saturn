@@ -76,3 +76,20 @@ void t3_force_camera_frame(t3_force_camera_t* c,const uint8_t* trig,int32_t roll
     if(c->pitch<0x2AAA)c->pitch=0x2AAA;
     else if(0x10000<c->pitch)c->pitch=0x10000;
 }
+
+/* The screen x the camera's own follow math gives a world point (the player's follow reads root x and z at
+ * height 0): the fighters' stored screen x (+0x1278) is the same projection of their joint 11. */
+int32_t t3_force_camera_screen_x(const t3_force_camera_t* c,const uint8_t* trig,int32_t roll,
+                                 int32_t px,int32_t py,int32_t pz){
+    int32_t t1=sub(0,c->pitch);
+    if(t1<0)t1=add(t1,0x3F);
+    const unsigned r=(unsigned)(-roll&0xFFF)*2u;
+    const int32_t cr=s16at(trig,r+0x800),sr=s16at(trig,r);
+    const int32_t dx=sub(px,c->x),ny=sub(py,c->y);
+    const int32_t u12=round12(sub(mul(cr,dx),mul(sr,ny)))>>12;
+    const unsigned p=(unsigned)(t1>>5)&0x1FFEu;
+    const int32_t sp=s16at(trig,p),cp=s16at(trig,p+0x800);
+    const int32_t w12=round12(add(mul(sr,dx),mul(cr,ny)))>>12;
+    const int32_t d12=round12(sub(mul(cp,sub(pz,c->z)),mul(sp,w12)))>>12;
+    return divide(mul(u12,500),d12);
+}

@@ -234,6 +234,7 @@ void t3_psx_camera_shake_start(t3_psx_camera_t* camera,int script);
 /* CameraShakeStep (0x8004AFCC), after the director: the script's next byte
  * is added to the view pitch. */
 void t3_psx_camera_shake_step(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables);
+int t3_psx_camera_build_view_trig(const t3_psx_camera_view_t* view,const t3_psx_trig_t* trig,t3_psx_camera_matrix_t* out);
 int t3_psx_camera_build_view(const t3_psx_camera_view_t* view,
                              const t3_psx_camera_tables_t* tables,
                              t3_psx_camera_matrix_t* out);

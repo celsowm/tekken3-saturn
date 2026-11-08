@@ -1397,9 +1397,11 @@ void t3_psx_camera_shake_step(cam_t* c,const tab_t* t) {
     c->view.pitch+=v;
 }
 
-int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out) {
+/* Only the sine table is needed to build a view (the Force camera has no director tables). */
+int t3_psx_camera_build_view_trig(const t3_psx_camera_view_t* v,const t3_psx_trig_t* trig,t3_psx_camera_matrix_t* out) {
     int32_t sy,cy,sx,cx,ry[9],rx[9],r[9],e[3];int i,k,col;
-    if(!v || !tables_ok(t) || !out || v->roll)return 0;
+    const tab_t tab={.trig=trig};const tab_t* t=&tab;
+    if(!v || !trig || !trig->data || !out || v->roll)return 0;
     sy=sn(t,-v->yaw&0xFFF);cy=cs(t,-v->yaw&0xFFF);
     sx=sn(t,-v->pitch&0xFFF);cx=cs(t,-v->pitch&0xFFF);
     ry[0]=cy;ry[1]=0;ry[2]=-sy;ry[3]=0;ry[4]=ONE;ry[5]=0;ry[6]=sy;ry[7]=0;ry[8]=cy;
@@ -1415,6 +1417,10 @@ int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx
     apply_lv((const int16_t(*)[3])out->m,e,out->t);
     out->h=v->h;
     return 1;
+}
+int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out) {
+    if(!tables_ok(t))return 0;
+    return t3_psx_camera_build_view_trig(v,t->trig,out);
 }
 
 int t3_psx_camera_joint_matrix(const t3_psx_camera_matrix_t* view,const t3_psx_joint_t* joint,

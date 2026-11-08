@@ -505,6 +505,14 @@ static int T3_SIM_IMPL(compose)(t3_psx_match_t* match,unsigned index) {
         t3_psx_match_fighter_view(&match->camera,&view);
         t3_psx_match_draw_screen(match,index,&view,&match->camera.screen_x[index]);
     }
+#if T3_PSX_FIGHTERS>2
+    if(c->start_force && c->force_trig && f->body.active && (f->parts_mask&(1u<<11))) {
+        const int32_t p[3]={f->world[11].origin.x,f->world[11].origin.y,f->world[11].origin.z};
+        int32_t s[3];
+        t3_psx_camera_project(&match->force_view,p,s);
+        match->force_screen[index]=(int16_t)s[0];
+    }
+#endif
     if(replay_playing(match))return 1;
     T3_SIM_START(shapes,T3_SIM_SHAPES);
     const int shaped=t3_psx_body_shapes(&f->body,f->world,f->parts_mask,
@@ -1472,6 +1480,9 @@ static void force_camera_frame(t3_psx_match_t* n) {
     if(!n->config->force_trig)return;
     const t3_vec3i_t r=n->fighter[0].ground.root;
     t3_force_camera_frame(&n->force_cam,n->config->force_trig,n->force_roll,r.x,r.z);
+    const t3_psx_trig_t trig={n->config->force_trig,0x2800u};
+    const t3_psx_camera_view_t v={n->force_cam.pitch>>6,n->force_cam.yaw>>6,0,n->force_cam.x,n->force_cam.y,n->force_cam.z,n->force_cam.h};
+    (void)t3_psx_camera_build_view_trig(&v,&trig,&n->force_view);
 }
 /* The level runner closes the frame (force.ovl FUN_800B1778): its inputs from the fight and the camera,
  * its writes back to the records; the records of its two slots are fighters 1 and 2. */
@@ -1582,6 +1593,10 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     if(n->config->replay_storage && n->config->replay_storage->epoch!=n->replay.epoch)return 0;
     if(!n->config->camera && frame->screen_known) {
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n->screen_x[i]=frame->screen_x[i];
+#if T3_PSX_FIGHTERS>2
+        if(n->config->start_force)
+            for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(n->force_screen[i])n->screen_x[i]=n->force_screen[i];
+#endif
         n->screen_known=1;
     }
 #if T3_PSX_FIGHTERS>2

@@ -28,4 +28,8 @@ int32_t t3_force_camera_setup(t3_force_camera_t* c,uint32_t player,int level4,in
  * bounds) and pitches back when the player nears the bottom of the screen. `trig` is the 0x2800-byte sine
  * table of the executable (0x8001E8C4: s16 at 2 * (angle & 4095), cosine 0x800 bytes further). */
 void t3_force_camera_frame(t3_force_camera_t* c,const uint8_t* trig,int32_t roll,int32_t player_x,int32_t player_z);
+
+/* The same follow projection for any world point (the fighters' stored screen x). */
+int32_t t3_force_camera_screen_x(const t3_force_camera_t* c,const uint8_t* trig,int32_t roll,
+                                 int32_t px,int32_t py,int32_t pz);
 #endif
