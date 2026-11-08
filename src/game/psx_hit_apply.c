@@ -37,6 +37,12 @@ int t3_psx_hit_extra_damage(const t3_psx_hit_extra_t* defender,
     return 1;
 }
 
+/* The attacker indices a slot may name: the duel's two fighters, three in Tekken Force. */
+#ifdef T3_PSX_FIGHTERS
+#define T3_PSX_HIT_ATTACKERS T3_PSX_FIGHTERS
+#else
+#define T3_PSX_HIT_ATTACKERS 2u
+#endif
 int t3_psx_hit_apply_preview(const t3_psx_hit_apply_frame_t* frame,
                              t3_psx_hit_apply_result_t* out) {
     t3_psx_hit_apply_result_t result={0};
@@ -59,7 +65,7 @@ int t3_psx_hit_apply_preview(const t3_psx_hit_apply_frame_t* frame,
         const t3_psx_hit_slot_input_t* s=&frame->slots[i];
         if(s->used>1u)return 0;
         if(!s->used)continue;
-        if(s->attacker>1u || !s->move || !s->facts ||
+        if(s->attacker>=T3_PSX_HIT_ATTACKERS || !s->move || !s->facts ||
            !t3_psx_hit_preview(s->move,s->zone,s->facts,
                                &result.slots[i]))return 0;
         result.slot_used[i]=1u;

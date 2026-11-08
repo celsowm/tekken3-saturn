@@ -14,7 +14,7 @@ typedef struct {
     t3_move_vm_t vm;
     t3_psx_ground_state_t ground;
     t3_psx_hit_apply_result_t hit;
-    uint8_t got_hit,collapsed;
+    uint8_t got_hit,collapsed,attacker;
     int16_t freeze;
 } staged_t;
 static int16_t abs_damage(int16_t n) {
@@ -23,23 +23,17 @@ static int16_t abs_damage(int16_t n) {
 }
 #if T3_PSX_FIGHTERS==2
 #define HIT_ATTACKER(match,i) (1u-(i))
+#define ATTACKER_COUNT 1u
+#define ATTACKER_AT(match,i,k) HIT_ATTACKER(match,i)
+#define GATE_OF(match,i,aa) (&(match)->fighter[aa].hit_gate)
 #else
-/* The fighter that can hit defender i this frame: one that faces it and whose gate accepted (the first by
- * index), else its own opponent. Not yet compared with the original's HitApply for three fighters. */
-static unsigned hit_attacker(const t3_psx_match_t* match,unsigned i) {
-    for(unsigned j=0;j<T3_PSX_FIGHTERS;++j)
-        if(j!=i && T3_PSX_OPP(match,j)==i && match->fighter[j].hit_gate.status==T3_HIT_GATE_ACCEPT)return j;
-    return T3_PSX_OPP(match,i);
-}
-/* Whether a fighter's gate was tested against defender i (its opponent): only that gate can hit it. */
-static int gate_applies(const t3_psx_match_t* match,unsigned i,unsigned a) {return a!=i && T3_PSX_OPP(match,a)==i;}
-#define HIT_ATTACKER(match,i) hit_attacker(match,i)
+#define ATTACKER_COUNT (T3_PSX_FIGHTERS-1u)
+#define ATTACKER_AT(match,i,k) ((k)<(i)?(k):(k)+1u)
+#define GATE_OF(match,i,aa) (&(match)->fighter[aa].pair_gate[i])
+/* The fighter the defender's own opponent index names: the default for what no hit decides. */
+#define HIT_ATTACKER(match,i) T3_PSX_OPP(match,i)
 #endif
-#if T3_PSX_FIGHTERS==2
 #define GATE_APPLIES(match,i,a) 1
-#else
-#define GATE_APPLIES(match,i,a) gate_applies(match,i,a)
-#endif
 /* HitSelectReaction for a staged defender that took a hit: the reaction record's move, queued over what was pending. */
 static int select_reaction(const t3_psx_match_config_t* c,staged_t* s,const t3_psx_fighter_t* f,const t3_psx_fighter_t* attacker,int air) {
     t3_psx_hit_candidate_t forced=s->hit.slots[(unsigned)s->hit.best_slot];
@@ -87,8 +81,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const unsigned a=HIT_ATTACKER(match,i);
         const t3_psx_fighter_t *f=&match->fighter[i],*attacker=&match->fighter[a];
-        const t3_psx_hit_test_gate_t* gate=&attacker->hit_gate;
-        t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t facts={0};
+        t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t slot_facts[2]={{0},{0}};unsigned slot_attacker[2]={a,a};
         staged_t* s=&staged[i];
         s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;
         frame.health_q16=f->health_q16;frame.max_health_q16=c->max_health_q16;
@@ -96,37 +89,44 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
-        if(gate->status==T3_HIT_GATE_ACCEPT && GATE_APPLIES(match,i,a) && !(match->reversal_cancelled&(1u<<i))) {
-            if(gate->hit_slot<0 || gate->hit_slot>1 || gate->zone<0 || gate->zone>=14)return 0;
+        for(unsigned k=0;k<ATTACKER_COUNT;++k) {
+            const unsigned aa=ATTACKER_AT(match,i,k);
+            const t3_psx_fighter_t* atk=&match->fighter[aa];
+            const t3_psx_hit_test_gate_t* g=GATE_OF(match,i,aa);
+            if(g->status!=T3_HIT_GATE_ACCEPT || !GATE_APPLIES(match,i,aa) || (match->reversal_cancelled&(1u<<i)))continue;
+            if(g->hit_slot<0 || g->hit_slot>1 || g->zone<0 || g->zone>=14)return 0;
+            t3_psx_hit_facts_t* facts=&slot_facts[(unsigned)g->hit_slot];
             s->ground.fixed_facing=0;
-            if(!t3_psx_ground_angles(&s->ground,&attacker->ground,&c->ground_tables))return 0;
-            facts.attacker_damage=attacker->ground.damage;facts.defender_damage=f->ground.damage;
-            facts.defender_guard=f->ground.guard;facts.defender_rel_angle=s->ground.relative_angle;
-            facts.defender_pose_frame=f->vm.clock.pose_frame;facts.defender_active_first=f->vm.move.active_first;
-            facts.defender_state=(uint16_t)f->vm.move.state_word;
-            facts.juggle_count=(uint16_t)f->ground.juggle_count;
+            if(!t3_psx_ground_angles(&s->ground,&atk->ground,&c->ground_tables))return 0;
+            facts->attacker_damage=atk->ground.damage;facts->defender_damage=f->ground.damage;
+            facts->defender_guard=f->ground.guard;facts->defender_rel_angle=s->ground.relative_angle;
+            facts->defender_pose_frame=f->vm.clock.pose_frame;facts->defender_active_first=f->vm.move.active_first;
+            facts->defender_state=(uint16_t)f->vm.move.state_word;
+            facts->juggle_count=(uint16_t)f->ground.juggle_count;
             /* The close reaction reads g_fighterDistance (fighter 0's). */
-            facts.fighter_distance=match->fighter_distance;
-            facts.attacker_power=attacker->ground.power_timer!=0;facts.defender_power=f->ground.power_timer!=0;
-            facts.chip_enabled=c->chip_enabled;facts.defender_in_air=f->ground.in_air!=0;
+            facts->fighter_distance=match->fighter_distance;
+            facts->attacker_power=atk->ground.power_timer!=0;facts->defender_power=f->ground.power_timer!=0;
+            facts->chip_enabled=c->chip_enabled;facts->defender_in_air=f->ground.in_air!=0;
             {
                 /* HitClassify: the close entry of the attacking move (+0x34). */
-                const size_t close=4u*attacker->vm.move.close_reaction;
-                if(attacker->vm.move.close_reaction && c->close_reactions && close+4u<=c->close_reactions_size) {
+                const size_t close=4u*atk->vm.move.close_reaction;
+                if(atk->vm.move.close_reaction && c->close_reactions && close+4u<=c->close_reactions_size) {
                     const uint8_t* p=c->close_reactions+close;
-                    facts.close_reaction_word=(uint16_t)(p[0]|(p[1]<<8));
-                    facts.close_threshold=(uint32_t)(int32_t)(int16_t)(uint16_t)(p[2]|(p[3]<<8));
-                    facts.close_table_available=1;
+                    facts->close_reaction_word=(uint16_t)(p[0]|(p[1]<<8));
+                    facts->close_threshold=(uint32_t)(int32_t)(int16_t)(uint16_t)(p[2]|(p[3]<<8));
+                    facts->close_table_available=1;
                 }
             }
-            frame.slots[(unsigned)gate->hit_slot]=(t3_psx_hit_slot_input_t){1,(uint8_t)a,(uint8_t)gate->zone,&attacker->vm.move,&facts};
-            s->got_hit=1;s->freeze=gate->hit_freeze_in;
-            s->ground.hit_cooldown=gate->hit_cooldown;s->ground.was_hit_this_move=1;
+            frame.slots[(unsigned)g->hit_slot]=(t3_psx_hit_slot_input_t){1,(uint8_t)aa,(uint8_t)g->zone,&atk->vm.move,facts};
+            slot_attacker[(unsigned)g->hit_slot]=aa;
+            s->got_hit=1;s->freeze=g->hit_freeze_in;
+            s->ground.hit_cooldown=g->hit_cooldown;s->ground.was_hit_this_move=1;
         }
         if(!t3_psx_hit_apply_preview(&frame,&s->hit))return 0;
         s->ground.last_damage=abs_damage(s->hit.slot_damage);
         s->ground.hit_clean=s->hit.hit_clean;
-        if(s->got_hit && !select_reaction(c,s,f,attacker,0))return 0;
+        if(s->got_hit && !select_reaction(c,s,f,&match->fighter[slot_attacker[(unsigned)s->hit.best_slot]],0))return 0;
+        s->attacker=(uint8_t)slot_attacker[s->got_hit?(unsigned)s->hit.best_slot:0u];
     }
     /* USA VS FighterCollapse runs immediately in MoveStepAll on a clean KO,
      * after selecting the ordinary reaction. It does not wait for next tick. */
@@ -141,7 +141,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
                     const __typeof__(s->hit.prior_pending_valid) valid=s->hit.prior_pending_valid;
                     const __typeof__(s->hit.prior_pending_slot) slot=s->hit.prior_pending_slot;
                     s->ground.in_air=1;s->hit.guarded=0;s->hit.hit_clean=1;s->ground.guard=0;
-                    if(!select_reaction(c,s,&match->fighter[i],&match->fighter[HIT_ATTACKER(match,i)],1))return 0;
+                    if(!select_reaction(c,s,&match->fighter[i],&match->fighter[s->attacker],1))return 0;
                     s->hit.prior_pending_valid=valid;s->hit.prior_pending_slot=slot;
                 }
             }
@@ -162,7 +162,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
                 if(!t3_move_vm_queue(&s->vm,0xD66u,6u,1u,1,-1) ||
                    t3_move_vm_begin(&s->vm,facts)!=1)return 0;
                 s->hit.guarded=0;s->hit.hit_clean=1;s->ground.guard=0;
-                if(!t3_psx_ground_start(&s->ground,&staged[HIT_ATTACKER(match,i)].ground,&s->vm,&previous,
+                if(!t3_psx_ground_start(&s->ground,&staged[s->attacker].ground,&s->vm,&previous,
                         &c->ground_tables,0,0,facts,&s->hit.reaction,0))return 0;
                 s->collapsed=1;
             }
@@ -178,11 +178,20 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
          * writes this frame's outcome; without one the flags stay clear. */
         f->last_guarded=s->hit.guarded;f->last_counter=s->hit.counter;
         if(s->got_hit){if(s->hit.guarded)++f->registered_blocks;else ++f->registered_hits;}
-        if(s->got_hit)f->last_attacker=(uint8_t)HIT_ATTACKER(match,i);
+        if(s->got_hit)f->last_attacker=s->attacker;
         if(s->collapsed)f->last_guarded=0;
+#if T3_PSX_FIGHTERS>2
+        f->contact=0;
+        for(unsigned d=0;d<T3_PSX_FIGHTERS;++d)
+            if(d!=i && f->pair_gate[d].status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<(i+2u)))) {
+                f->contact=1;f->hit_done_for[d]=1;
+            }
+        if(f->contact){f->hit_done=f->hit_done_for[T3_PSX_OPP(match,i)];f->contact_this_move=1;}
+#else
         f->contact=f->hit_gate.status==T3_HIT_GATE_ACCEPT &&
             !(match->reversal_cancelled&(1u<<(i+2u)));
         if(f->contact){f->hit_done=1;f->contact_this_move=1;}
+#endif
         if(s->collapsed){f->ko_collapse=1;f->hit_done=0;f->started=1;
             f->taps.condition_used=0;
             f->blend_guarded_previous=0;f->blend_in_reaction=1;}

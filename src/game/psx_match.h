@@ -155,6 +155,12 @@ typedef struct {
     uint8_t strike_joint; /* the sampled descriptor's first joint (hand below 12, foot from 12) */
     t3_psx_shadow_result_t geometry;
     t3_psx_hit_test_gate_t hit_gate;
+#if T3_PSX_FIGHTERS>2
+    /* Tekken Force tests every pair of the three records (HitTest in the order 0-1, 1-0, 0-2, 2-0, 1-2, 2-1):
+     * this fighter's gate against each defender, and the hit-done flag it keeps per defender (+0x83 + index). */
+    t3_psx_hit_test_gate_t pair_gate[T3_PSX_FIGHTERS];
+    uint8_t hit_done_for[T3_PSX_FIGHTERS];
+#endif
     uint32_t contact_frames,gate_frames,registered_hits,registered_blocks,unsupported_moves;
     /* Diagnostics: the last move dropped as unsupported. */
     uint16_t unsupported_slot,unsupported_transition;

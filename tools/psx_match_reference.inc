@@ -141,7 +141,14 @@ static void compare(unsigned i,uint32_t sx,uint32_t sz) {
     check(i,"hit","guarded",f->hit.guarded,u8(b+0xCF));
     check(i,"hit","hit_clean",f->hit.hit_clean,u8(b+0xD0));
     check(i,"hit","counter",f->last_counter,u8(b+0xD3));
+#if T3_PSX_FIGHTERS>2
+    for(unsigned d=0;d<T3_PSX_FIGHTERS;++d)if(d!=i) {
+        char name[16];REFERENCE_NAME(name,sizeof name,"hit_done%u",d);
+        check(i,"hit",name,f->hit_done_for[d],u8(b+0x83+d)); /* one flag per defender */
+    }
+#else
     check(i,"hit","hit_done",f->hit_done,u8(b+0x83+1u-i));
+#endif
     if(config.rsqrt.data) {
 #define BLEND(field,off,kind) check(i,"blend",#field,f->blend.field,kind(b+off))
         BLEND(mode,0x181C,i32);BLEND(active,0xE5,u8);BLEND(frames,0x1870,i32);

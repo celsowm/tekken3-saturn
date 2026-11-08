@@ -22,6 +22,11 @@ volatile uint32_t g_t3_match_failure_phase;
 #define T3_MATCH_PHASE(value) ((void)0)
 #endif
 /* The round flow keeps the input mode of the first two records; Tekken Force's third follows the second. */
+#if T3_PSX_FIGHTERS>2
+#define CLEAR_HIT_DONE(f) do{(f)->hit_done=0;__builtin_memset((f)->hit_done_for,0,sizeof (f)->hit_done_for);}while(0)
+#else
+#define CLEAR_HIT_DONE(f) ((f)->hit_done=0)
+#endif
 #define FLOW_INPUT(n,i) ((n)->flow.input[(i)<2u?(i):1u])
 static int replay_playing(const t3_psx_match_t* m) {
     return m->config->enable_rounds==2 && m->replay.mode>=1 && m->replay.mode<=4;
@@ -590,6 +595,55 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     }
     return 1;
 }
+#if T3_PSX_FIGHTERS>2
+/* HitTest for one attacker and defender (the geometry and the gate), as contacts() does for a duel. */
+static int contact_pair(t3_psx_match_t* match,t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES],
+                        unsigned a,unsigned dn,uint8_t free_mask,int cooldown,t3_psx_hit_test_gate_t* gate,
+                        t3_psx_shadow_result_t* geometry) {
+    t3_psx_fighter_t *f=&match->fighter[a],*d=&match->fighter[dn];
+    t3_psx_hit_test_facts_t facts={0};t3_world_attack_t active=f->strike;
+    unsigned segment=0;int zone=-1,any=0;
+    uint8_t descriptor[4];
+    if(parked(match,f) || parked(match,d)) {
+        *geometry=(t3_psx_shadow_result_t){T3_SHADOW_INACTIVE,0,-1,0};
+        *gate=(t3_psx_hit_test_gate_t){T3_HIT_GATE_NO_ATTACK,-1,-1,-1,0,0,0,0,0};
+        return 1;
+    }
+    if(t3_attack_descriptor_joints(f->vm.active_bank,&f->vm.move,descriptor)==1 && descriptor[0]>=SEGMENT_JOINTS) {
+        const t3_psx_effect_pool_t* pool=match->config->effects;
+        if(pool)for(unsigned k=pool->head;k!=T3_PSX_EFFECT_NONE && zone<0;k=pool->next[k]) {
+            const t3_psx_spark_t* o=&pool->object[k];
+            if(!(o->flags&2u) || !(o->flags&(a?8u:0x10u)))continue;
+            active.segment_count=1;any=1;
+            active.segments[0]=(t3_world_segment_t){{o->px,o->py,o->pz},{o->x,o->y,o->z},0};
+            zone=t3_psx_attack_contact(&active,hurt[dn],&segment);
+            if(zone< -1)return 0;
+        }
+        if(zone>=0){f->projectile=active.segments[0];f->projectile_hit=1;}
+    } else {
+        active.segment_count=f->ground.active_segments;
+        if(active.segment_count>f->strike.segment_count)return 0;
+        any=active.segment_count!=0;
+        if(any)zone=t3_psx_attack_contact(&active,hurt[dn],&segment);
+        if(zone< -1)return 0;
+    }
+    *geometry=(t3_psx_shadow_result_t){any?(zone>=0?T3_SHADOW_CONTACT:T3_SHADOW_MISS):T3_SHADOW_INACTIVE,0,(int8_t)zone,(int8_t)segment};
+    facts.geometry=*geometry;facts.attack_word=f->vm.move.attack_word;
+    facts.attacker_move_slot=f->vm.slot;facts.attacker_damage=f->ground.damage;
+    facts.attacker_freeze=f->vm.move.hit_freeze;facts.attacker_active=f->body.active;
+    facts.attacker_invulnerable=f->body.invulnerable!=0u;
+    facts.defender_active=d->body.active;facts.defender_invulnerable=d->body.invulnerable!=0u;
+    facts.defender_state=(uint16_t)d->ground.state;facts.defender_pose_frame=d->vm.clock.pose_frame;
+    facts.defender_air_start=d->vm.move.air_start;facts.defender_air_end=d->vm.move.air_end;
+    facts.defender_state_class=d->ground.state_class;facts.defender_step_kind=d->ground.step_kind;
+    facts.defender_hit_cooldown=(uint8_t)cooldown;
+    facts.defender_in_air=d->ground.in_air!=0u;facts.defender_in_throw=d->ground.throw_state!=0;
+    facts.defender_is_cpu=d->ground.is_cpu;facts.free_slots_mask=free_mask;
+    facts.game_mode=8; /* a thrown defender cannot be hit (THROW_LOCK) */
+    facts.hit_done=match->config->enable_combat?f->hit_done_for[dn]:0;
+    return t3_psx_hit_test_gate(&facts,gate);
+}
+#endif
 static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
@@ -599,6 +653,34 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
         if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
     }
+#if T3_PSX_FIGHTERS>2
+    {
+        /* HitTest runs the six ordered pairs one after another: an accepted hit takes the defender's last free
+         * slot and its cooldown at once, which the next attacker of the same defender sees. */
+        static const uint8_t order[6][2]={{0,1},{1,0},{0,2},{2,0},{1,2},{2,1}};
+        uint8_t free_mask[T3_PSX_FIGHTERS],cooldown[T3_PSX_FIGHTERS];
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+            free_mask[i]=3;cooldown[i]=match->fighter[i].ground.hit_cooldown!=0;
+            match->fighter[i].projectile_hit=0;
+        }
+        for(unsigned k=0;k<6;++k) {
+            const unsigned a=order[k][0],dn=order[k][1];
+            t3_psx_fighter_t* f=&match->fighter[a];
+            t3_psx_shadow_result_t geometry;
+            if(!contact_pair(match,hurt,a,dn,free_mask[dn],cooldown[dn],&f->pair_gate[dn],&geometry))return 0;
+            if(f->pair_gate[dn].status==T3_HIT_GATE_ACCEPT) {
+                free_mask[dn]&=(uint8_t)~(1u<<f->pair_gate[dn].hit_slot);
+                if(f->pair_gate[dn].hit_cooldown)cooldown[dn]=1;
+            }
+            if(dn==T3_PSX_OPP(match,a)) {
+                f->geometry=geometry;f->hit_gate=f->pair_gate[dn];
+                if(geometry.status==T3_SHADOW_CONTACT)++f->contact_frames;
+                if(f->hit_gate.status==T3_HIT_GATE_ACCEPT)++f->gate_frames;
+            }
+        }
+        return 1;
+    }
+#endif
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[T3_PSX_OPP(match,i)];
 #if T3_PSX_FIGHTERS>2
@@ -732,7 +814,7 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
             t3_psx_body_actor_t pr[2]={pair[a],pair[b]};
             const uint8_t with_a=pr[0].contact_with,with_b=pr[1].contact_with;
             pr[0].contact_with=pr[1].contact_with=0;
-            if(!t3_psx_body_separate_force(pr,k==0?match->fighter[0].ground.distance:match->pair_all[k],&tables,match->throw_count))return 0;
+            if(!t3_psx_body_separate_force(pr,match->pair_all[k] /* the pair table's distance of this pair (a fighter's own is to its target) */,&tables,match->throw_count))return 0;
             const uint8_t new_a=(uint8_t)((pr[0].contact_with&2u)?(1u<<b):0u),new_b=(uint8_t)((pr[1].contact_with&1u)?(1u<<a):0u);
             pair[a]=pr[0];pair[b]=pr[1];
             pair[a].contact_with=(uint8_t)(with_a|new_a);pair[b].contact_with=(uint8_t)(with_b|new_b);
@@ -975,7 +1057,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             f->taps.condition_used=0;
             f->blend_guarded_previous=f->hit.guarded!=0;
             f->blend_in_reaction=f->hit.hit_clean!=0;
-            f->hit_done=0;
+            CLEAR_HIT_DONE(f);
             if(!f->contact)f->contact_this_move=0;
             int count=t3_attack_joint_pairs(f->vm.active_bank,&f->vm.move);
             if(count<0 || !t3_psx_ground_start(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,
@@ -1355,7 +1437,7 @@ static int force_start_move(t3_psx_match_t* n,unsigned i,unsigned slot) {
     if(!t3_move_vm_queue(&f->vm,slot,0,kind,1,f->vm.branch_window) || t3_move_vm_begin(&f->vm,start)!=1 ||
        !t3_psx_ground_start(&f->ground,&f->ground,&f->vm,&f->vm.move,
            &n->config->ground_tables,0,0,start,&f->reaction,0))return 0;
-    f->hit_done=0;f->taps.condition_used=0;
+    CLEAR_HIT_DONE(f);f->taps.condition_used=0;
     return 1;
 }
 /* The camera runs first in the frame, from the player's root as the last frame left it. */
@@ -1531,7 +1613,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
                 * reanchor/power tail reads the new row, unlike a queued move. */
                !t3_psx_ground_start(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,&f->vm.move,
                    &n->config->ground_tables,0,0,start,&f->reaction,0))return 0;
-            f->hit_done=0;
+            CLEAR_HIT_DONE(f);
             f->taps.condition_used=0;
         }
     }

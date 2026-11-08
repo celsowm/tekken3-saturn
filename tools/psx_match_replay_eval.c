@@ -290,7 +290,16 @@ int main(int argc,char** argv) {
 #ifdef T3_MATCH_FAILURE_TRACE
         if(getenv("T3_FLOW_DEBUG")){extern volatile uint32_t g_t3_match_failure_phase;fprintf(stderr,"phase %u\n",g_t3_match_failure_phase);}
 #endif
-        if(getenv("T3_FLOW_DEBUG"))fprintf(stderr,"tick %u flow state %d frame %d camera %d replay %d ticks %u\n",rows,game.flow.state,game.flow.frame,game.flow.camera,(int)game.replay.mode,game.ticks);
+#ifdef T3_MATCH_FAILURE_TRACE
+        extern volatile uint32_t g_t3_match_failure_phase;
+#endif
+        if(getenv("T3_FLOW_DEBUG"))fprintf(stderr,"tick %u phase %u ok %d flow state %d frame %d camera %d replay %d ticks %u\n",rows,
+#ifdef T3_MATCH_FAILURE_TRACE
+            g_t3_match_failure_phase,
+#else
+            0u,
+#endif
+            ok,game.flow.state,game.flow.frame,game.flow.camera,(int)game.replay.mode,game.ticks);
         /* The screen x this tick's PairwiseDistances reads (+0x1278). */
         if(reference_views && !reference_add_screen(i16(0x800A9228u+0x1278u),
                                                     i16(0x800A9228u+0x188Cu+0x1278u)))
