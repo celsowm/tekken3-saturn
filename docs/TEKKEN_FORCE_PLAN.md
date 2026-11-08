@@ -718,7 +718,7 @@ Two corrections the AI check forced: the round start draws the stance of all thr
 two AI resets, not four), and Force runs the effects (hit sparks, flipbooks) without the fight camera (they draw
 the shared generator; their glows and flames cover the first two records, which is all Force's characters use).
 
-What is verified is the first 430 frames of one level-1 game (0x2A000 bytes of trace); the full recordings of the
+What is verified is the first 430 frames of one level-1 game (the first 700 frames of the recording); the full recordings of the
 three scenarios (about 135,000 frames: all four levels, the bosses, the final fight) are being redone with the
 pad files and will extend the same check. Still open for steps 2-3: whatever the longer runs show (items, the
 tally and stage clear, area changes, the bosses' own records, the Doctor B. level), and the Force-specific `rand`
