@@ -1,5 +1,7 @@
 # Tekken 3 Saturn
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L4L11VB7JN)
+
 An **unofficial Sega Saturn port project for Tekken 3**, using the readable implementation and original-game research in [n0madic/Tekken3Remake](https://github.com/n0madic/Tekken3Remake) as its implementation reference. Its documented combat, motion, model and game-flow rules guide the portable C implementation, with differential checks against its research tools. The Saturn runtime uses [LibSaturn](https://github.com/celsowm/libsaturn) as an **installed package**.
 
 **Source reference: [Tekken3Remake @ e59c4da](https://github.com/n0madic/Tekken3Remake/tree/e59c4da179f39b4e915ccdc547567c8479a9f611)** — tracked at [`third_party/Tekken3Remake`](third_party/Tekken3Remake) as a Git submodule. GitHub displays that directory as a linked repository with its pinned commit. The Godot runtime is separate from the Saturn executable; the submodule supplies the source reference and host-side comparison tools.
