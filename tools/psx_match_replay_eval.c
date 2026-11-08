@@ -122,6 +122,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
             config.effects=&force_effects;config.effect_tables=t3_local_effect_tables;config.effect_table_bytes=T3_LOCAL_EFFECT_TABLE_BYTES;
         }
 #endif
+#if T3_PSX_FIGHTERS>2
         /* A Force level: T3_FORCE_TABLES (TABLES.BIN), T3_FORCE_LEVEL (LEVn.BIN) with T3_FORCE_LEVEL_INDEX, T3_FORCE_TRIG (TRIG.BIN). */
         if(config.start_force && getenv("T3_FORCE_TABLES")) {
             static uint8_t tables[T3_FORCE_TABLE_BYTES],script[T3_FORCE_SCRIPT_BYTES],trig[0x2800];
@@ -137,6 +138,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
             config.force_tables=tables;config.force_script=script;config.force_trig=trig;
             config.force_level=(uint8_t)strtoul(getenv("T3_FORCE_LEVEL_INDEX")?getenv("T3_FORCE_LEVEL_INDEX"):"0",NULL,0);
         }
+#endif
         const char* pads=getenv("T3_ORIGINAL_START_PADS");
         if(pads) {
             char* end;
