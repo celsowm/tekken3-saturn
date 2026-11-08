@@ -417,8 +417,9 @@ Every mode-8 rule outside the level runner, with the remake's verified reading (
 | Camera: the side-scrolling camera | `FUN_800B545C`, `FUN_800B5504` | `camera_director.gd` 202, 252 | **verified** (20,000 cases and 5,996 recorded frames) |
 | Level runner, slots, items, tally, boss set-up | `FUN_800B1778` and friends | `tekken_force.gd` | **verified** (30,000 cases; 6,671 recorded frames) |
 
-Seven rows are missing (throw skip, throw link, forced hits, the score, `no_look_at`, round over and the
-human's pad, scripted input, the model swaps) and five are unverified. Step 2 takes them in the original's order, each
+Nine rows outside the AI are missing (throw skip, throw link, forced hits, the score, `no_look_at`, round
+over, the human's pad, scripted input, the model swaps) and five are unverified (MoveStartAll, MoveStepAll,
+the body phase, the hit gate, hit application). The AI is step 3. Step 2 takes the rest in the original's order, each
 adapted from its remake reading with attribution (never copying GDScript).
 
 ### Step 1: traces and the role frames
