@@ -115,6 +115,7 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     if(start_seed) {
         if(!original_round_flow)return 0;
         config.start_intro=1;config.start_seed=(uint32_t)strtoul(start_seed,NULL,0);
+        config.start_force=getenv("T3_FORCE_START")!=NULL;
         const char* pads=getenv("T3_ORIGINAL_START_PADS");
         if(pads) {
             char* end;

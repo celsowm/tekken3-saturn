@@ -794,6 +794,11 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     t3_psx_replay_reset(&n.replay,config->enable_rounds==2 && config->replay_storage?
         config->replay_storage->epoch+1:1);
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n.round_actor[i].active=1;
+#if T3_PSX_FIGHTERS>2
+    /* The records' targets before the first roles pass: the player faces fighter 1, the others fighter 0
+     * (+0x20 in every recorded Force frame up to the first spawn). */
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n.opponent[i]=(uint8_t)(i==0);
+#endif
     if(!reset_fighters(&n))return 0;
     if(config->camera && (config->enable_rounds!=2 || !config->enable_body ||
        !config->camera->tables || !t3_psx_camera_valid(config->camera->tables)))return 0;
@@ -1145,6 +1150,9 @@ static int place_original_round(t3_psx_match_t* n,int first) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&n->fighter[i];t3_psx_ground_state_t* g=&f->ground;
         t3_move_vm_t* v=&f->vm;
+#if T3_PSX_FIGHTERS>2
+        if(n->config->start_force && i) {f->body.active=0;continue;} /* the level runner spawns the enemies */
+#endif
         t3_history_clear(&f->input);n->round_actor[i].script_input=0;
         t3_psx_sound_script_stop(&n->sound[i]);
         f->taps.previous=0;f->taps.condition_used=0;
@@ -1172,7 +1180,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
                 &n->config->ground_tables,0,0,facts,&f->reaction,0))return 0;
         }
         v->clock.pose_frame=v->clock.root_frame=(int16_t)(first && v->move.length>150?v->move.length-149:1);
-        g->anchor=(t3_vec3i_t){i?1000:-1000,0,0};
+        g->anchor=(t3_vec3i_t){n->config->start_force?0:i?1000:-1000,0,0};
         g->root.x=g->anchor.x;g->root.z=0;
         g->heading=g->facing=g->relative_angle=(uint16_t)(i?0xC000:0x4000);
         f->body.push=(t3_vec3i_t){0,0,0};

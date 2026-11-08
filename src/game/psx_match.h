@@ -87,6 +87,7 @@ typedef struct {
     /* Production round-one placement/intro. Zero preserves the neutral
      * mid-fight initializer used by existing oracle seeds. */
     uint8_t start_intro;
+    uint8_t start_force; /* with start_intro: Tekken Force's level start (three fighters): the player alone, at the origin */
     uint16_t start_physical[T3_PSX_FIGHTERS]; /* Original PsyQ buttons at first placement. */
     uint32_t start_seed; /* srand seed; zero is a valid original seed. */
     /* With start_intro: the score of a match carried over (the arcade's True Ogre

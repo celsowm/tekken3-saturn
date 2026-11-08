@@ -4,7 +4,7 @@
 Writes, under --out: `seed.bin` (a 2 MiB USA-layout RAM image of the state after the seed frame: the
 three fighter records and every recorded range mapped from Rev.1), `frame-N.ranges` (the same spans
 after each later running Force frame, the 'T3RANGES' format of fight_oracle_export.py), `cases.tsv`
-(path, the human's physical pad, the frame index) and `seed.json`. The seed is the last frame before the
+(the evaluator's row: path, four zero mapped pads, call, frame, the physical pads, the edges) and `seed.json`. The seed is the last frame before the
 first running one whose three records all stand neutral (move slot 3, no pending move). Nothing here is
 game data a repository may keep; the output stays under build/. Run with the Tekken3Remake venv:
 
@@ -41,7 +41,20 @@ def usa_spans(layout, header, ranges, records):
             continue   # outside the matched stretches (overlay data): not a USA address
     for i, record in enumerate(records):
         out.append((ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, record))
-    return out
+    return clip(out)
+
+
+def clip(spans):
+    """Only the bytes the evaluator reads (fight_oracle_export.GLOBALS and the fighter records), in at most
+    64 spans: the snapshot reader's limit."""
+    wanted = sorted(ox.GLOBALS) + [(ox.USA_FIGHTERS + i * ox.FIGHTER_SIZE, ox.FIGHTER_SIZE) for i in range(3)]
+    out = {}
+    for address, data in spans:
+        for w_address, w_size in wanted:
+            lo, hi = max(address, w_address), min(address + len(data), w_address + w_size)
+            if lo < hi:
+                out[lo] = data[lo - address:hi - address]
+    return sorted(out.items())
 
 
 def main():
@@ -58,6 +71,7 @@ def main():
     seeded = None
     rows = []
     previous = None
+    last_pad = 0
     for k, (pads, ranges, records) in enumerate(cf.frames(header, body)):
         running = len(records) == 3 and cf.build_ram(header, ranges, records).s32(0x800AFF50) == 8
         if seeded is None:
@@ -75,7 +89,10 @@ def main():
         chunks = usa_spans(layout, header, ranges, records)
         path.write_bytes(b'T3RANGES' + struct.pack('<I', len(chunks))
                          + b''.join(struct.pack('<II', a, len(d)) + d for a, d in chunks))
-        rows.append(f'{path}\t{pads[0]}\t{k}\n')
+        # the evaluator's row: path, mapped pads (not known here), call, frame, physical pads, edges
+        edge = pads[0] & ~last_pad & 0xFFFF
+        rows.append(f'{path}\t0\t0\t0\t0\t{k}\t{k}\t{pads[0]}\t{pads[1]}\t{edge}\t0\n')
+        last_pad = pads[0]
     if seeded is None:
         raise SystemExit('no neutral running Force frame to seed from')
     (args.out / 'cases.tsv').write_text(''.join(rows))
