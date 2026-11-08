@@ -91,7 +91,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         t3_psx_hit_apply_frame_t frame={0};t3_psx_hit_facts_t slot_facts[2]={{0},{0}};unsigned slot_attacker[2]={a,a};t3_move_record_t slot_move[2];
         staged_t* s=&staged[i];
         s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;s->forced_in=0;
-        frame.health_q16=f->health_q16;frame.max_health_q16=c->max_health_q16;
+        frame.health_q16=f->health_q16;frame.max_health_q16=f->health_max;
         /* Once the round is over a move's exchange events no longer change health. */
         frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
@@ -196,7 +196,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         f->contact=0;
         for(unsigned d=0;d<T3_PSX_FIGHTERS;++d)
             if(d!=i && f->pair_gate[d].status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<(i+2u)))) {
-                f->contact=1;f->hit_done_for[d]=1;
+                f->contact=1;f->hit_done_for[d]=1;f->last_hit_target=(uint8_t)d; /* the last pair that landed, in the original's order */
             }
         if(f->contact){f->hit_done=f->hit_done_for[T3_PSX_OPP(match,i)];f->contact_this_move=1;}
 #else

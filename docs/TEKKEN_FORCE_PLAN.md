@@ -762,3 +762,13 @@ second enemy (a stunned fighter, AI slot 1) draws 8 numbers where the original d
 equal before and after, and not a cache effect (`T3_AI_NOCACHE=1` gives the same). It needs the original's AI
 inputs at that call (an AI tape of the Force recordings, `fight_oracle_export.AiTape`), or a Python
 `ai_update` run from a mid-frame state.
+
+Update (AI ground truth): `scripts/force_ai_trace.py` records every read the original `AiUpdate` makes in one frame of a
+recording (a few minutes: it runs the harness to that frame), and the evaluator writes the owned bus's reads in the same
+format (`T3_AI_TRACE=FRAME T3_AI_TRACE_OUT=FILE`; `T3_FORCE_AI_BANKS` gives the recorded game's bank placement). Diffing
+them at frame 2,475 found the cause: an enemy's health maximum (`+0x3F8`) is its own (the level's value, 20), not the
+player's (130), so the AI's health fractions differed. Each fighter now keeps `health_max`. With the opponent index also
+made dynamic as in the original (throw partner, else the last attacker when hit, else the last fighter touched, else the
+roles' choice) and `last_hit_target` kept, **2,389 frames (262-2,650)** match. The first difference is the player's
+`distance` at frame 2,651: it starts a throw on the enemy it is not facing, which is the throw skip / throw link of the
+inventory (three-fighter `MoveStartAll`, `count_throws`, `update_throw_link`).

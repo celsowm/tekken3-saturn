@@ -194,7 +194,20 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #if T3_PSX_FIGHTERS>2
         if(getenv("T3_AI_NOCACHE"))ai_game.trace=force_ai_trace_off; /* a listener switches the bus's caches off */
 #endif
-        ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;ai_block_check=getenv("T3_AI_BLOCK_CHECK")!=NULL;
+#if T3_PSX_FIGHTERS>2
+        if(getenv("T3_AI_TRACE") && getenv("T3_AI_TRACE_OUT")) {
+            /* every bus read of one frame's AiUpdates, to diff against force_ai_trace.py's */
+            ai_trace_frame=(uint32_t)strtoul(getenv("T3_AI_TRACE"),NULL,0);
+            if(!(ai_trace_out=fopen(getenv("T3_AI_TRACE_OUT"),"w")))return 0;
+            ai_game.trace=ai_trace;
+        }
+#endif
+        ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;
+        if(getenv("T3_FORCE_AI_BANKS")) {
+            /* the recorded game's bank placement (fighter 0, the enemies', divmot 99): the bus's addresses then equal the original's */
+            char* end=getenv("T3_FORCE_AI_BANKS");
+            for(unsigned k=0;k<3;++k)ai_game.bank_base[k]=(uint32_t)strtoul(end,&end,0);
+        }ai_block_check=getenv("T3_AI_BLOCK_CHECK")!=NULL;
         config.ai=&ai_game;
     }
 #endif

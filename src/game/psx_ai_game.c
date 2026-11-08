@@ -195,7 +195,7 @@ static int fighter_high(const t3_psx_ai_game_t* b,unsigned i,uint32_t off,uint32
     case 0x3EC:*word=(uint32_t)f->body.push.y;return 1;
     case 0x3F0:*word=(uint32_t)f->body.push.z;return 1;
     case 0x3F4:*word=(uint32_t)f->health_q16;return 1;
-    case 0x3F8:*word=(uint32_t)b->match->config->max_health_q16;return 1;
+    case 0x3F8:*word=(uint32_t)f->health_max;return 1;
     case 0x994:*word=(uint32_t)f->world[2].origin.y;return 1;
     case 0x1278: {
         /* The camera's, or without one the frames' (as screen_of in psx_match.c). */

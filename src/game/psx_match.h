@@ -33,7 +33,11 @@
 #define T3_PSX_OPP(match,i) (1u-(i))
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_distance)
 #else
-#define T3_PSX_OPP(match,i) ((unsigned)(match)->opponent[i])
+/* FighterOpponentIndex (0x80045E50): the throw partner in a throw, else the last attacker when this move was
+ * interrupted by a hit, else the last fighter this move touched, else the default opponent (the roles'). */
+struct t3_psx_match;
+static inline unsigned t3_psx_opponent(const struct t3_psx_match* match,unsigned i);
+#define T3_PSX_OPP(match,i) t3_psx_opponent(match,i)
 #define T3_PSX_PAIR_DIST(match,i) ((match)->pair_dist[i])
 #include "psx_force_walls.h"
 #include "psx_force_level.h"
@@ -167,11 +171,13 @@ typedef struct {
     uint16_t unsupported_slot,unsupported_transition;
     uint8_t side_flag; /* +0xC6, FighterUpdateSide: the stick mirrors on side 1 */
     uint8_t last_attacker,last_hit_target; /* FighterOpponent's persistent indices. */
+    uint8_t throw_partner; /* the throw's pair plus one, 0 when none was recorded */
     uint8_t hit_done,contact,contact_this_move,whiffed,ko_collapse;
     t3_psx_hit_apply_result_t hit;
     t3_psx_move_events_t events;
     t3_psx_reaction_pick_t reaction;
     int32_t health_q16;
+    int32_t health_max; /* +0x3F8: the health a full bar holds (the level's per-enemy value in Tekken Force) */
     uint8_t got_hit;int16_t hit_freeze_in;
     uint8_t last_guarded,last_counter; /* +0xCF/+0xD3: valid on the hit frame only (cleared per frame) */
     uint16_t previous_pose_frame;uint8_t started;
@@ -222,6 +228,15 @@ typedef struct t3_psx_match {
     uint8_t reversal_cancelled; /* consumed by HitApply: slots bits 0/1, contact bits 2/3 */
     t3_psx_fight_camera_t camera;
 } t3_psx_match_t;
+#if T3_PSX_FIGHTERS>2
+static inline unsigned t3_psx_opponent(const struct t3_psx_match* match,unsigned i) {
+    const t3_psx_fighter_t* f=&match->fighter[i];
+    if(f->ground.in_throw && f->throw_partner)return (unsigned)f->throw_partner-1u;
+    if(f->ground.was_hit_this_move)return f->last_attacker;
+    if(f->contact)return f->last_hit_target;
+    return match->opponent[i];
+}
+#endif
 typedef struct {
     uint32_t frame_counter;
     uint16_t physical[T3_PSX_FIGHTERS],pressed[T3_PSX_FIGHTERS];

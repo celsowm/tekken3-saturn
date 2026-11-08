@@ -865,7 +865,7 @@ static int reset_fighters(t3_psx_match_t* n) {
         f->head.snap=1;
         f->body.root=f->ground.root;f->body.anchor=f->ground.anchor;
         f->body.previous_root=f->ground.root;f->body.placed=f->ground.root;
-        f->health_q16=config->max_health_q16;
+        f->health_q16=f->health_max=config->max_health_q16;
         t3_history_reset(&f->input);
     }
     return pair_distance(n);
@@ -948,6 +948,7 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
         if(config->start_force) {
             /* FUN_800B15EC and the camera's setup (FUN_800B545C) at the level's start. */
             t3_force_level_setup(&n.force,config->force_level);
+            for(unsigned k=0;k<T3_FORCE_SLOTS;++k)n.force.fighter[k].health_max=config->max_health_q16;
             n.force_roll=t3_force_camera_setup(&n.force_cam,0,config->force_level==3,&n.force.origin);
             n.force_walls=t3_force_walls_for_level(config->force_level);n.force_walls_on=1;
             n.force_stage=config->force_level==3?0x12u:0u; /* the staircase level's stage */
@@ -1267,7 +1268,10 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
             }
         }
         /* MoveStep pairs a pending thrower with its victim. */
-        if(f->vm.pending_valid && f->vm.queued.transition==33u)f->ground.in_throw=opp->ground.in_throw=1u;
+        if(f->vm.pending_valid && f->vm.queued.transition==33u) {
+            f->ground.in_throw=opp->ground.in_throw=1u;
+            f->throw_partner=(uint8_t)(T3_PSX_OPP(n,i)+1u);opp->throw_partner=(uint8_t)(i+1u); /* the throw's pair */
+        }
     }
     if(c->enable_rounds==1 && !n->round.done) {
         const int32_t hp[2]={n->fighter[0].health_q16,n->fighter[1].health_q16};
@@ -1345,7 +1349,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         f->body.push=(t3_vec3i_t){0,0,0};
         f->world[2].origin=(t3_vec3i_t){g->anchor.x,-0x591,0};
         f->world[1].origin=(t3_vec3i_t){g->anchor.x,-0x41B,0};
-        f->health_q16=n->config->max_health_q16;
+        f->health_q16=n->config->max_health_q16;f->health_max=n->config->max_health_q16;
         v->clock.hold_frames=-1;v->clock.hit_freeze=v->clock.ballistic=0;
         g->slide_state=g->was_hit_this_move=g->air_phase=g->in_air=0;
         g->juggle_count=g->hit_cooldown=g->push_frames=g->push_table_frames=0;
@@ -1522,7 +1526,7 @@ static int force_level_frame(t3_psx_match_t* n) {
         r->health=f->health_q16;r->fc2=f->body.invulnerable!=0;r->fc3=f->body.active;
         r->anchor_x=f->ground.anchor.x;r->anchor_z=f->ground.anchor.z;
         r->root_x=f->ground.root.x;r->root_z=f->ground.root.z;
-        r->f04=f->ground.anchor.y;r->owner=f->last_attacker;
+        r->f04=f->ground.anchor.y;r->owner=f->last_attacker;r->health_max=f->health_max;
     }
     t3_force_level_step(s,c->force_tables,c->force_script);
     n->flow.timer=s->timer;
@@ -1530,7 +1534,7 @@ static int force_level_frame(t3_psx_match_t* n) {
     n->force_cam.left=s->bound[0];n->force_cam.right=s->bound[1];n->force_cam.min=s->bound[2];n->force_cam.max=s->bound[3];
     for(unsigned k=0;k<T3_FORCE_SLOTS;++k) {
         t3_psx_fighter_t* f=&n->fighter[k+1];const t3_force_fighter_t* r=&s->fighter[k];
-        f->health_q16=r->health;f->body.invulnerable=r->fc2;f->body.active=r->fc3;
+        f->health_q16=r->health;f->health_max=r->health_max;f->body.invulnerable=r->fc2;f->body.active=r->fc3;
         f->ground.anchor.x=r->anchor_x;f->ground.anchor.z=r->anchor_z;f->ground.anchor.y=r->f04;
         f->ground.root.x=r->root_x;f->ground.root.z=r->root_z;
         n->round_actor[k+1].active=r->fc3;
@@ -1620,7 +1624,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(10+i);
         t3_psx_fighter_t* f=&n->fighter[i];t3_psx_round_actor_t* a=&n->round_actor[i];
-        a->health=f->health_q16;a->maximum=n->config->max_health_q16;
+        a->health=f->health_q16;a->maximum=f->health_max;
         a->active=f->body.active;a->pose=f->vm.clock.pose_frame;a->length=f->vm.move.length;
         a->bank_type=t3_psx_match_bank(n->config,i)->bank_type;a->is_cpu=f->ground.is_cpu;
         if(f->vm.pending_valid)a->state_word=(int32_t)f->vm.pending_move.state_word;
