@@ -388,25 +388,38 @@ the mode ships only when the last step passes.
 - **The frame rate is higher.** Versus is now 29.46 marked / 27.45 worst segment, against 26 when phase 0
   ran, so there is more room for the third actor.
 
-### Rules inventory (step 0, first)
+### Rules inventory (step 0, done 2026-11-07)
 
-Before any code, add a table to this file: every mode-8 rule with its original address, the remake
-file and function, our C file, and its status (verified / written but unverified / missing). Taken from
-`modes.md` ("The resident code in mode 8") and the remake files above, the C core is **missing**:
+Every mode-8 rule outside the level runner, with the remake's verified reading (under
+`third_party/Tekken3Remake/remake/core/`) and the state of our C. "Unverified" means written in C at
+`T3_PSX_FIGHTERS>2` but not yet compared with the original at three fighters (step 2 does that).
 
-| Rule | Original | Remake |
-|---|---|---|
-| Throw link dropped when the pair drifts apart in Force | `FUN_800432B0` | `combat.gd` throw-link function |
-| Forced hits: a CPU body thrown faster than 0x59 from frame 11, and the player's power moves (flag 16, cost 10 health), hit whoever they touch; contact at the defender's root, sound `0x4951`, forced reaction, `+0xC9` | `FighterMovePhysics`, `HitTest` 0x80044304 | `combat.gd` 671-707, 842 |
-| Force score in `HitApply`: 10 points per damage, twice the extra; no KO replay | `HitApply` | `combat.gd` `_force_score`, 865 |
-| Round over: the player's health while the level runs, the first or second record's in the boss fight, then the time | `FUN_8003E608` | `round_flow.gd` |
-| The human's pad `0x800B70D8`: `CpuOrPadInput`, Start, vibration (bug #16), COMMAND page, music pick | resident | `fighter_input.gd`, `vibration.gd` |
-| The enemy variant and boss model swaps during the fight (slot states 3-4, sub-state 23) and the area change (round state 7, sub-states 21-23) | `FUN_800363FC`, `FUN_800B2B3C` | `fight_simulation.gd` |
-| The Force AI state | `0x8009F6A8`, `0x80023210`, `0x8009F6A4`, `0x800AE3D8`, `FUN_800B2E60` | `ai_decision.gd` 157, 1160-1167, 1681-1685 |
+| Rule | Original | Remake reading | Our C |
+|---|---|---|---|
+| Pair distances for every pair; off-screen stand-in; a free enemy slot counts as off screen | `PairwiseDistances`, `FUN_800B2EEC` | `combat.gd` 70 | **verified** (5,996 frames, `--pairs`) |
+| Roles: player, target, the other; opponent indexes; the hidden manual switch | `FUN_800B5EC0`, `FUN_800B598C`, `FUN_800B5910` | `tekken_force.gd` `roles` | **verified** (`t3_force_roles`: 30,000 random cases and 5,994 recorded frames) |
+| MoveStartAll: pending throw picks the thrower by the frame counter, order victim / thrower / third; otherwise 0, 1, 2 | `FUN_80043F40` and its caller | `move_system.gd` 1121 and around, 1433 | unverified (`psx_match.c`) |
+| MoveStepAll: 0 and 1 by frame parity, the third after them, only while the level runs (`0x800B70E8` clear) | `MoveStepAll` | `move_system.gd` 828, 1433 | unverified |
+| Throw skip: in Force a throw transition row is skipped when the fighter is not in a throw and its opponent is | `MoveBranchStep` | `move_system.gd` 1121 | **missing** |
+| Body phase on pairs (0,1), (0,2), (1,2); throw doubling when two or more are in a throw (`0x800958C4 > 1`) | `BodySeparate` | `combat.gd` 518-548 | unverified (`t3_psx_body_separate_force`) |
+| Walls: z limits, the player's x lines, an enemy within ±0x1068 of the camera, level 4 lower line | `ArenaBounds` mode 8 | `combat.gd` 155 | **verified** (30,000 cases) plus an invariant on the recorded game; the correction values are unverified |
+| Throw link in Force: the victim's anchor follows the thrower; the link drops when the pair drifts more than a limit after move frame 0x12 | `FUN_800432B0` | `combat.gd` 193-205 | **missing** (`psx_match.c` handles fighters 0 and 1 only) |
+| Hit gate: a thrown defender cannot be hit in modes 7 and 8 | `HitTest` gate | `combat.gd` 684 | unverified (`game_mode = 8`) |
+| Forced hits: a CPU body thrown faster than `0x59` from frame 11, and the player's power moves (flag 16, cost 10 health), hit whoever they touch; contact at the defender's root; sound `0x4951`; forced reaction; `+0xC9` | `FighterMovePhysics`, `HitTest` 0x80044304 | `fighter_physics.gd` 209 (`_forced_hit`), `combat.gd` 671-707, 842 | **missing** |
+| Hit application: which attacker counts for a defender | `HitApply` | `combat.gd` 520-548 | unverified (my reading) |
+| Force score in `HitApply`: ten points per damage (the hit's base damage for the player or a forced hit, twice the extra damage) and no KO replay | `HitApply` | `combat.gd` 865-887 | **missing** |
+| `no_look_at`: 0 for the human, else 1 | `FighterMovePhysics` | `fighter_physics.gd` 247 | **missing** |
+| Round over: the player's health while the level runs; the first or second record's in the boss fight; then the time | `FUN_8003E608` | `round_flow.gd` 275 | **missing** (Force has no round flow in C) |
+| The human's pad `0x800B70D8` (0 or 1): input, Start, vibration (bug #16 fixed or not), COMMAND page, music pick | resident | `fighter_input.gd` 122, `vibration.gd` 35, `round_flow.gd` 606 | **missing** |
+| Scripted input for the third record | `CpuOrPadInput` | `round_flow.gd` 117 | **missing** |
+| Enemy variant and boss model swaps during the fight; the area change (round state 7, sub-states 21-23) | `FUN_800363FC`, `FUN_800B2B3C`, slot states 3-4 | `fight_simulation.gd` (`_force_fighters`), `tekken_force.gd` | **missing** (the runner emits the events; nothing loads the model) |
+| Force AI: targets, words per group and level, `AI_MULTI`, the layout, the leader return, the attack hold-off timers | `0x8009F6A8`, `0x80023210`, `0x8009F6A4`, `0x800AE3D8`, `FUN_800B2E60` | `ai_decision.gd` 157, 1160-1167, 1681-1685 | **missing** (step 3) |
+| Camera: the side-scrolling camera | `FUN_800B545C`, `FUN_800B5504` | `camera_director.gd` 202, 252 | **verified** (20,000 cases and 5,996 recorded frames) |
+| Level runner, slots, items, tally, boss set-up | `FUN_800B1778` and friends | `tekken_force.gd` | **verified** (30,000 cases; 6,671 recorded frames) |
 
-The C core has these written but **unverified at 3 fighters**: MoveStartAll / MoveStepAll order, the body
-phase on three pairs with throw doubling, the hit application's attacker choice, the mode-8 hit gate, and the
-sound facts. Exit: the table is in this file and every row points at code or at a step below.
+Seven rows are missing (throw skip, throw link, forced hits, the score, `no_look_at`, round over and the
+human's pad, scripted input, the model swaps) and five are unverified. Step 2 takes them in the original's order, each
+adapted from its remake reading with attribution (never copying GDScript).
 
 ### Step 1: traces and the role frames
 
