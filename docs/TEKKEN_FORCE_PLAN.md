@@ -703,3 +703,23 @@ records and `force_layout`): three records, the two enemy slots' countdowns (`0x
 pattern words (`0x80023210`) and `AiInitRound`'s odd-slot flag. The comparison checks `rand` every frame.
 
 The recordings are being redone with the pad side files (`flow_force_run`, `_bosses`, `_final`).
+
+### Step 3 result: the Force AI runs on the owned bus; 430 frames match (2026-11-08)
+
+`psx_ai_game.c` (which runs the original `AiUpdate` over typed fighter images) now serves three fighters in
+the Force build (`T3_PSX_AI_FIGHTERS`): three images, the third record on the enemies' bank, the Force layout
+(`force_layout` 1: the enemies are AI slots 0 and 1, both aiming at the player) and `AiInitRound`'s two
+resets. The C `AiUpdate` (`psx_ai.c`) already carried the Force rules (the countdowns at `0x8009F6A8`, the
+pattern words, the odd-slot rule). With the live AI the evaluator needs no pad tape for the enemies:
+**rows 262-691 of `force_run` (430 frames) compare with zero differences on all three records, the shared
+generator (`rand`, every frame), the sounds and the effects.**
+
+Two corrections the AI check forced: the round start draws the stance of all three records (five draws with the
+two AI resets, not four), and Force runs the effects (hit sparks, flipbooks) without the fight camera (they draw
+the shared generator; their glows and flames cover the first two records, which is all Force's characters use).
+
+What is verified is the first 430 frames of one level-1 game (0x2A000 bytes of trace); the full recordings of the
+three scenarios (about 135,000 frames: all four levels, the bosses, the final fight) are being redone with the
+pad files and will extend the same check. Still open for steps 2-3: whatever the longer runs show (items, the
+tally and stage clear, area changes, the bosses' own records, the Doctor B. level), and the Force-specific `rand`
+users beyond these 430 frames.
