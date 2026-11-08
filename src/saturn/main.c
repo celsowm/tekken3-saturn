@@ -83,6 +83,7 @@ volatile uint32_t g_t3_cached_stage_faces;
 #if defined(T3_ORIGINAL_HUD)
 #include "original_hud.h"
 #include "psx_hud_messages.h"
+#include "sh2_divide.h"
 #endif
 #include "combat_events.h"
 #if defined(T3_PARTICLE_PREPARE)
@@ -1486,11 +1487,12 @@ static void prepare_scene(void) {
     static sat_camera3d_t scene_camera;
     scene_camera=g_camera;
     for(unsigned j=0;j<4;++j) {
-        scene_camera.view_proj.m[4+j]=(sat_fx16_t)((int64_t)g_camera.view_proj.m[4+j]*15/14+
-            (int64_t)T3_VIEWPORT_SIGN*g_camera.view_proj.m[12+j]/112);
+        /* The same quotients as C's int64 division, on the on-chip divider. */
+        scene_camera.view_proj.m[4+j]=(sat_fx16_t)(t3_div64_32((int64_t)g_camera.view_proj.m[4+j]*15,14)+
+            t3_div64_32((int64_t)T3_VIEWPORT_SIGN*g_camera.view_proj.m[12+j],112));
         /* The original's GTE centre is x=167, not 160. */
         scene_camera.view_proj.m[j]=(sat_fx16_t)((int64_t)g_camera.view_proj.m[j]+
-            (int64_t)T3_VIEWPORT_DX*g_camera.view_proj.m[12+j]/160);
+            t3_div64_32((int64_t)T3_VIEWPORT_DX*g_camera.view_proj.m[12+j],160));
     }
     SAT_PANIC_IF_ERROR(sat_scene_begin(&g_scene, &scene_camera, Q(25), W, H, HUD_COMMANDS+(g_show_profiler?REPORT_COMMANDS:0)));
 #else

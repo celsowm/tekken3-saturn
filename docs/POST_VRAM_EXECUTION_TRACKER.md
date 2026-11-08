@@ -66,7 +66,9 @@ of record.
 | R1+R3–R5 plan steps | **PROMOTED (2026-11-07)**: own screen-cull append loop (lib-saturn), fighter-image AI reads and whole-word reads, on-chip divider for camera and IK divides, no zero-fill in FK, compose and slots; 28.26 → 29.01 marked, worst segment 26.36 → 27.00, 7/7 segments ahead; frozen pixels match |
 | R6 two-tick share | **KEPT AT 65 (2026-11-07)**: 55 gave 29.08 / 27.15 but segments 1, 2, 5 down by up to 0.20; 75 gave 29.04 / 27.00 with segment 3 −0.30 (inside noise); re-sweep after the next Slave or Master cut |
 | R8 worker-written span | **PROMOTED (2026-11-07)**: the join invalidates only the bytes of actor 1's geometry the Slave wrote, not all 14.8 KB; 29.01 → 29.06 marked, worst segment 27.00 → 27.05; frozen pixels match |
-| Base rate | 29.06 marked / 27.05 worst segment (2026-11-07, R8; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
+| GCC 16.2 toolchain | **REJECTED (2026-11-07)**: SDK and game rebuilt with GCC 16.2 / binutils 2.47 (same options): 29.06 → 28.76 marked, worst segment 27.05 → 26.70; with its one 64-bit divide regression fixed, 28.84 / 26.71. GCC 13.2 stays |
+| R10 camera divides | **PROMOTED (2026-11-07)**: the 12 int64 divides per image that map the SDK camera to the original viewport (`main.c`) run on the on-chip 64/32 divider (`t3_div64_32`); 29.06 → 29.19 marked, worst segment 27.05 → 27.20, no segment down; frozen pixels match |
+| Base rate | 29.19 marked / 27.20 worst segment (2026-11-07, R10; cache 8: 26.41/24.50) — the 30 img/s target is still open; plan in section 2b |
 
 ### Baseline reproduction (gate for everything else)
 
@@ -1277,6 +1279,49 @@ run, control P3 (28.26 / 26.36):
   outside the array (the OT raw vertices in the stage scratch) were never in
   this sync and are unchanged. Not a whole-cache purge: that would throw away
   the Master's hot lines to save a loop.
+
+**GCC 16.2 (2026-11-07).** Built `sh2eb-elf` GCC 16.2.0 with binutils 2.47
+(the `lib-saturn/scripts/build-toolchain.sh` configuration; prefix
+`/Users/celso/dev/saturn-tools-gcc16`, kept for a later retry). LibSaturn was
+rebuilt in place with it and the game in a fresh directory with the same
+205 options (`scripts/cmake_options_cache.py`). Pad hash `0xb99cc280` on both
+runs, so behaviour is identical; only the code is slower:
+
+| Build | Marked | Worst segment |
+| --- | ---: | ---: |
+| GCC 13.2 (control, R8) | 29.06 | 27.05 |
+| GCC 16.2 | 28.76 | 26.70 |
+| GCC 16.2 + `sat_skin_project_range` bound check as shifts | 28.84 | 26.71 |
+
+- Ymir profiles of both builds over the same 120 fields
+  (`assets/imported/perf-r8-profile-ymir` is the GCC 13 one) showed GCC 16
+  calling `__udivdi3` 86 times a frame from the row-bound check in
+  `sat_skin_project_range` (`/ input` with `input` a runtime power of two),
+  which GCC 13 never did. Writing it as shifts removed that, but recovered
+  only 0.08.
+- The rest is spread over the tick and the render: at the game's `-Os`,
+  GCC 16 multiplies 16-bit values with `mul.l` instead of `muls.w`, reloads
+  loop invariants from the stack and saves more registers
+  (`t3_psx_matrix_add_scaled` 79 → 95 instructions, `compose_parts` +10 %,
+  `t3_psx_ai_update` +604 bytes); `project_q15` is 4 % faster. SH still uses
+  the old reload allocator in 16.2 (`-mlra` is opt-in), so this is
+  middle-end, not LRA. No single fix closes it.
+- The shift form on GCC 13 measured 29.02 / 27.00 (inside noise): GCC 13 had
+  no divide there. Not kept.
+- Tools added: `scripts/compare_elf_sizes.py` (per-symbol size between two
+  ELFs) and `scripts/compare_elf_function.py` (one function from both).
+
+**R10: camera divides (2026-11-07).** The post-R8 Ymir profile
+(`perf-r8-profile-ymir`) has 70 `__divdi3` calls a frame on the Master, 29 of
+them from three sites in `main`: the clip-space mapping of the SDK camera to
+the original viewport (`*15/14`, `/112`, `/160` on each of 4 columns, in
+int64). `t3_div64_32` (`src/game/sh2_divide.h`) writes the 64-bit dividend
+to DVDNTH/DVDNTL when `|n| <= INT32_MAX * d` (so the quotient fits and the
+divider cannot overflow, SH7604 manual 10.3.3) and keeps `__divdi3`
+otherwise; the divider's signed quotient truncates as C, as `t3_div32`
+already relies on. The `/112` and `/160` terms always fit; `*15/14` falls
+back only for |m| above ≈2.0e9. Whole fight 29.06 → 29.19 marked, worst
+segment 27.05 → 27.20, pad hash same, frozen pixels match.
 
 **Stop rule.** If R1–R8 are done and the rate is still under 30, write down
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and
