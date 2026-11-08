@@ -13,7 +13,14 @@ static int32_t trig(const t3_psx_trig_t* t,unsigned angle,unsigned cos) {
     return (int16_t)(uint16_t)(t->data[at]|(t->data[at+1]<<8));
 }
 static void direction(const t3_psx_match_t* m,t3_vec3i_t d,int16_t* pitch,int16_t* yaw) {
-    const t3_psx_camera_tables_t* t=m->config->camera->tables;
+    const t3_psx_camera_tables_t* t;
+    if(m->config->camera)t=m->config->camera->tables;
+    else {
+        /* Tekken Force runs its effects without the fight camera: the arctangent is the ground tables'. */
+        static t3_psx_camera_tables_t own;
+        own.atan=m->config->ground_tables.atan;own.trig=&m->config->ground_tables.trig;
+        t=&own;
+    }
     const t3_psx_trig_t* tr=&m->config->ground_tables.trig;
     int32_t y=(t3_psx_camera_atan4096(t,d.x,d.z)-1024)&4095;
     int32_t xabs=d.x<0?-d.x:d.x,zabs=d.z<0?-d.z:d.z;
@@ -63,8 +70,8 @@ static void descriptor_spawn(t3_psx_match_t* m,unsigned i,const t3_psx_effect_ac
 int t3_psx_match_effects_update(t3_psx_match_t* m,int replay) {
     const t3_psx_match_config_t* c=m->config;
     if(!c->effects)return 1;
-    if(!c->camera)return 0;
-    t3_psx_effect_actor_t actors[2]={0};
+    if(!c->camera && !c->start_force)return 0;
+    t3_psx_effect_actor_t actors[2]={0}; /* the glows, breaths and flames of the first two records; Force's enemies have none */
     for(unsigned i=0;i<2;++i) {
         const t3_psx_fighter_t* f=&m->fighter[i];
         actors[i]=(t3_psx_effect_actor_t){.active=f->body.active,.character=c->character[i],
@@ -89,7 +96,12 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
     const t3_psx_hit_candidate_t* slot=&f->hit.slots[(unsigned)f->hit.best_slot];
     if(!f->hit.hit_clean)return 1;
     int damage=f->hit.total_damage>slot->base_damage?f->hit.total_damage:slot->base_damage;
-    unsigned a=T3_PSX_OPP(m,defender);const t3_psx_fighter_t* attacker=&m->fighter[a];
+#if T3_PSX_FIGHTERS>2
+    unsigned a=f->last_attacker; /* the fighter whose gate struck */
+#else
+    unsigned a=T3_PSX_OPP(m,defender);
+#endif
+    const t3_psx_fighter_t* attacker=&m->fighter[a];
     {
         /* FUN_80076F10: the hit burst (set 3, index 0, drifting along the slot's vector) and,
          * from 21 damage, the attacker's own flipbook (stationary). State only. */
@@ -123,7 +135,7 @@ int t3_psx_match_effects_hit(t3_psx_match_t* m,unsigned defender) {
 }
 void t3_psx_match_effects_sound(void* user,unsigned kind,unsigned player,uint16_t id) {
     t3_psx_match_t* m=user;
-    if(player>1)return;
+    if(player>=T3_PSX_FIGHTERS)return;
     uint16_t code=id;
     const int voice=kind==T3_SOUND_VOICE && (id>>12)>=2 && (id>>12)<=5 &&
         t3_psx_sound_voice_code(m->config->sound_tables,m->config->sound_voice_set[player],id,&code)==1;

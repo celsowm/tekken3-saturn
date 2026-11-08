@@ -32,6 +32,7 @@
 /* the built-in attack descriptor window */
 #define COMMON_ROWS T3_PSX_AI_COMMON_ROWS
 #define FORCE_LAYOUT 0x800AE3D8u
+#define N_AI T3_PSX_AI_FIGHTERS
 #define MAX_WINDOWS 8u
 
 /* Constant shifts: a variable one is a library call on the SH-2. */
@@ -52,7 +53,7 @@ static void put(uint8_t* p,unsigned n,uint32_t v) {
 int t3_psx_ai_game_init(t3_psx_ai_game_t* ai,const uint8_t* tables,size_t size,uint8_t cpu_mask,
                         uint16_t difficulty,uint8_t level) {
     uint32_t count;
-    if(!ai || !tables || size<8u || tables[0]!='T' || tables[1]!='3' || tables[2]!='A' || tables[3]!='I' || cpu_mask>3u)return 0;
+    if(!ai || !tables || size<8u || tables[0]!='T' || tables[1]!='3' || tables[2]!='A' || tables[3]!='I' || cpu_mask>(1u<<T3_PSX_AI_FIGHTERS)-1u)return 0;
     count=le(tables+4,4);
     if(!count || count>MAX_WINDOWS || size<8u+12u*count)return 0;
     for(uint32_t k=0;k<count;++k) {
@@ -150,20 +151,22 @@ static int bank_read(t3_psx_ai_game_t* b,uint32_t address,unsigned size,uint32_t
 
 /* --- fighters ---------------------------------------------------------------------------- */
 
+/* A fighter's motion bank: the third record of Tekken Force shares the enemies' bank. */
+static const t3_divmot_t* fighter_bank(const t3_psx_ai_game_t* b,unsigned i) {return b->bank[i<2u?i:1u];}
 static void fill_image(t3_psx_ai_game_t* b,unsigned i) {
     const t3_psx_match_t* m=b->match;
     const t3_psx_fighter_t* f=&m->fighter[i];
     const t3_psx_ground_state_t* g=&f->ground;
     uint8_t* p=b->image[i];
     /* Init zeroed the image and every field below is written each call. */
-    put(p+0x16,2,b->bank[i]->bank_type);
+    put(p+0x16,2,fighter_bank(b,i)->bank_type);
     put(p+0x18,2,m->config->character[i]);
     p[0x1E]=(uint8_t)i;p[0x1F]=(uint8_t)T3_PSX_OPP(m,i);
     put(p+0x2E,2,g->heading_delta);put(p+0x30,2,g->relative_angle);put(p+0x32,2,(uint32_t)g->facing_quadrant);
     put(p+0x3C,2,g->opp_heading_delta);put(p+0x3E,2,g->opp_relative_angle);
     put(p+0x40,2,(uint32_t)g->opponent_quadrant);
     const int ko=f->hit.collapsed!=0;
-    put(p+0x54,4,row_address(b,b->bank[i],ko?f->hit.prior_slot:f->vm.slot));
+    put(p+0x54,4,row_address(b,fighter_bank(b,i),ko?f->hit.prior_slot:f->vm.slot));
     put(p+0x58,2,ko?f->hit.prior_pose_frame:(uint32_t)f->vm.clock.pose_frame);
     put(p+0x60,4,g->state);
     put(p+0x64,2,ko?f->hit.prior_attack_word:f->vm.move.attack_word);
@@ -184,10 +187,10 @@ static int fighter_high(const t3_psx_ai_game_t* b,unsigned i,uint32_t off,uint32
         if(f->hit.reaction_known && f->hit.reaction.selected) {
             /* The reaction is queued in MoveStep; the pre-hit row is still there. */
             *word=f->hit.prior_pending_valid?
-                  row_address(b,b->bank[i],f->hit.prior_pending_slot):0;
+                  row_address(b,fighter_bank(b,i),f->hit.prior_pending_slot):0;
             return 1;
         }
-        *word=f->vm.pending_valid?row_address(b,b->bank[i],f->vm.pending_slot):0;return 1;
+        *word=f->vm.pending_valid?row_address(b,fighter_bank(b,i),f->vm.pending_slot):0;return 1;
     case 0x3E8:*word=(uint32_t)f->body.push.x;return 1;
     case 0x3EC:*word=(uint32_t)f->body.push.y;return 1;
     case 0x3F0:*word=(uint32_t)f->body.push.z;return 1;
@@ -247,9 +250,9 @@ static uint32_t read_raw(void* user,uint32_t address,unsigned size) {
         const unsigned i=(address-FIGHTERS)/STRIDE;
         const uint32_t off=(address-FIGHTERS)%STRIDE;
         uint32_t word;
-        if(i<2u && off+size<=LOW)return le(b->image[i]+off,size);
-        if(i<2u && fighter_high(b,i,off,&word) && (off&3u)+size<=4u)return word>>(8u*(off&3u))&(size==4u?~0u:(1u<<(8u*size))-1u);
-        if(i==2u && (off==0x1886u || off==0x1887u) && size==1u)
+        if(i<N_AI && off+size<=LOW)return le(b->image[i]+off,size);
+        if(i<N_AI && fighter_high(b,i,off,&word) && (off&3u)+size<=4u)return word>>(8u*(off&3u))&(size==4u?~0u:(1u<<(8u*size))-1u);
+        if(i==2u && N_AI<3u && (off==0x1886u || off==0x1887u) && size==1u)
             return (uint8_t)(off==0x1886u?ai->slot[2]:ai->target[2]);
     } else if(b->bank[0]->builtin_attacks && address-BUILTIN<T3_BUILTIN_ATTACK_BYTES &&
             address-BUILTIN+size<=T3_BUILTIN_ATTACK_BYTES)
@@ -306,7 +309,7 @@ static int bus_condition(void* user,uint32_t row,uint32_t self,uint32_t opp) {
     const unsigned i=(self-FIGHTERS)/STRIDE;
     (void)opp;
     int r;
-    if(i>1u)return 0;
+    if(i>=N_AI)return 0;
     ++b->conditions;
     /* Most calls test no fighter fact; the match does not change during one. */
     if(!(b->facts_ready>>i&1u)) {
@@ -345,7 +348,7 @@ static uint32_t* word_at(t3_psx_ai_game_t* ai,uint32_t address) {
 static int open_bus(t3_psx_ai_game_t* ai,t3_psx_match_t* match,t3_psx_ai_bus_t* bus) {
     if(!ai || !match || !ai->tables || !match->config->common)return 0;
     bind(ai,match);
-    for(unsigned i=0;i<2;++i)fill_image(ai,i);
+    for(unsigned i=0;i<N_AI;++i)fill_image(ai,i);
     ai->facts_ready=0;
     ai->window_count=0;
     if(!ai->trace) {
@@ -356,15 +359,15 @@ static int open_bus(t3_psx_ai_game_t* ai,t3_psx_match_t* match,t3_psx_ai_bus_t* 
         if(ai->word_match!=match) {
             __builtin_memset(ai->word,0,sizeof ai->word);
             for(unsigned k=0;k<7;++k)add_word(ai,globals[k],global_word(ai,globals[k]));
-            for(unsigned i=0;i<2;++i)
+            for(unsigned i=0;i<N_AI;++i)
                 for(unsigned k=0;k<9;++k)add_word(ai,FIGHTERS+STRIDE*i+high[k],&ai->high[i][k]);
             ai->word_match=match;
         }
-        for(unsigned i=0;i<2;++i)
+        for(unsigned i=0;i<N_AI;++i)
             for(unsigned k=0;k<9;++k)(void)fighter_high(ai,i,high[k],&ai->high[i][k]);
         const t3_divmot_t* b0=ai->bank[0];
         /* Most-read first; the block itself is the bus's ram (written only through put()). */
-        for(unsigned i=0;i<2;++i)
+        for(unsigned i=0;i<N_AI;++i)
             ai->window[ai->window_count++]=(t3_psx_ai_window_t){FIGHTERS+STRIDE*i,LOW,ai->image[i]};
         if(b0->common_branches && b0->common_branch_count)
             ai->window[ai->window_count++]=(t3_psx_ai_window_t){COMMON_ROWS,12u*b0->common_branch_count,b0->common_branches};
@@ -382,13 +385,13 @@ static int open_bus(t3_psx_ai_game_t* ai,t3_psx_match_t* match,t3_psx_ai_bus_t* 
                            ai->trace?0:ai->memo,T3_PSX_AI_MEMO/2u-1u,T3_PSX_AI_BANK_BUFFER,
                            ai->trace?0:ai->word,63u,
                            ai->trace?0:ai->pick[0],127u,ai->pick_index,ai->trace?0:ai->collect,
-                           {ai->trace?0:ai->image[0],ai->trace?0:ai->image[1]},FIGHTERS,STRIDE,LOW};
+                           {ai->trace?0:ai->image[0],ai->trace?0:ai->image[1],ai->trace||N_AI<3u?0:ai->image[N_AI-1u]},FIGHTERS,STRIDE,LOW};
     return 1;
 }
 
 /* The slot and target bytes the call wrote through the word table. */
 static void close_bus(t3_psx_ai_game_t* ai,const t3_psx_ai_bus_t* bus) {
-    for(unsigned i=0;i<2;++i)
+    for(unsigned i=0;i<N_AI;++i)
         if(bus->words && word_at(ai,FIGHTERS+STRIDE*i+0x1884u)==&ai->high[i][8]) {
             ai->slot[i]=(int8_t)(ai->high[i][8]>>16);
             ai->target[i]=(int8_t)(ai->high[i][8]>>24);
@@ -418,7 +421,7 @@ t3_input_t t3_psx_ai_game_pad(uint16_t held,uint16_t pressed) {
 
 int t3_psx_ai_game_input(t3_psx_ai_game_t* ai,t3_psx_match_t* match,unsigned i,t3_input_t* out) {
     t3_psx_ai_bus_t bus;uint16_t held,pressed;
-    if(i>1u || !out || !open_bus(ai,match,&bus))return 0;
+    if(i>=N_AI || !out || !open_bus(ai,match,&bus))return 0;
     /* Without health the original pushes uninitialised stack words. */
     if(!match->fighter[i].health_q16) {ai->match=0;*out=ai->pad[i]=(t3_input_t){0};return 1;}
     if(ai->observe)ai->observe(ai,i,0);

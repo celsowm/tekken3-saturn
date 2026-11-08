@@ -96,7 +96,7 @@ static inline __attribute__((always_inline)) uint32_t rd_n(const t3_psx_ai_bus_t
     if(b->image[0]) {
         uint32_t o=a-b->image_base;
         unsigned i=0;
-        if(o>=b->image_stride) {o-=b->image_stride;i=1;}
+        if(o>=b->image_stride) {o-=b->image_stride;i=1;if(o>=b->image_stride && b->image[2]) {o-=b->image_stride;i=2;}}
         if(o<b->image_size && n<=b->image_size-o)return host_n(b->image[i]+o,o,n);
     }
     if(b->words) {

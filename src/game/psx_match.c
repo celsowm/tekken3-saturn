@@ -804,7 +804,7 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
        !actor_scales_valid(config) ||
        config->enable_rounds>2 || config->start_intro>1 ||
        (config->start_intro && config->enable_rounds!=2))return 0;
-    if(config->effects && (config->enable_rounds!=2 || !config->camera))return 0;
+    if(config->effects && (config->enable_rounds!=2 || (!config->camera && !config->start_force)))return 0; /* Tekken Force runs its effects without the fight camera */
     if(config->enable_body && (!config->parts[0] || !config->parts[1] || !config->body_tables ||
        config->body_tables_size!=432u || !config->ik.ik_blob ||
        config->ik.ik_size!=T3_PSX_IK_BYTES))return 0;
@@ -1221,8 +1221,6 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         v->pending_valid=0;
         unsigned slot=1;
 #if T3_PSX_FIGHTERS>2
-        if(n->config->start_force && i==2)slot=0; /* the third record is only cleared by the load: its first move, no random draw */
-        else
 #endif
         if(first) {
             const unsigned held=n->config->start_physical[i];

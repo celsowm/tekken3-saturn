@@ -27,6 +27,11 @@ typedef struct t3_psx_ai_game {
     uint32_t game_mode,attract,force_layout;
     uint16_t difficulty;uint8_t cpu_level; /* 0x800AE6D0, 0x800AE6D9 */
     uint8_t cpu_mask;                   /* fighters the AI drives (isCpu) */
+#if defined(T3_PSX_FIGHTERS) && T3_PSX_FIGHTERS>2
+#define T3_PSX_AI_FIGHTERS 3
+#else
+#define T3_PSX_AI_FIGHTERS 2
+#endif
     int8_t slot[3],target[3];           /* fighter +0x1886, +0x1887 */
     uint32_t bank_base[3];              /* fighter 0, fighter 1, divmot99 */
     /* psx_ai.bin (scripts/extract_psx_ai_tables.py), caller-owned. */
@@ -35,12 +40,12 @@ typedef struct t3_psx_ai_game {
      * divmot99), the fighters' low fields and branch facts. */
     struct t3_psx_match* match;
     const t3_divmot_t* bank[3];
-    uint8_t image[2][T3_PSX_AI_IMAGE] __attribute__((aligned(4)));
-    t3_branch_context_t facts[2];unsigned facts_ready; /* bit i: facts[i] is this call's */
+    uint8_t image[T3_PSX_AI_FIGHTERS][T3_PSX_AI_IMAGE] __attribute__((aligned(4)));
+    t3_branch_context_t facts[T3_PSX_AI_FIGHTERS];unsigned facts_ready; /* bit i: facts[i] is this call's */
     t3_psx_ai_window_t window[9];unsigned window_count; /* constant rows, set per call */
     /* The globals and each fighter's fields above the image (fighter_high)
      * as host words for the call; +0x1884 (slot, target) is copied back. */
-    uint32_t high[2][9];
+    uint32_t high[T3_PSX_AI_FIGHTERS][9];
     t3_psx_ai_word_t word[64];const struct t3_psx_match* word_match;
     t3_psx_ai_memo_t pick[2][128];uint32_t pick_index[2]; /* the bus's picks, per fighter */
     t3_psx_ai_collect_t collect[2];     /* and its last collections */
@@ -51,7 +56,7 @@ typedef struct t3_psx_ai_game {
     uint32_t reads,conditions;         /* bus reads and BranchCondition calls (cost study) */
     uint32_t misses,last_miss;          /* accesses outside every mapped field */
     uint16_t held,pressed;              /* the last AiUpdate's pad words */
-    t3_input_t pad[2];                  /* each fighter's last CPU input */
+    t3_input_t pad[T3_PSX_AI_FIGHTERS]; /* each fighter's last CPU input */
     /* Optional, for verification: called before and after each AiUpdate. */
     void (*observe)(struct t3_psx_ai_game* ai,unsigned fighter,int after);
     /* Optional: every bus read (size 0: a branch condition at `address`

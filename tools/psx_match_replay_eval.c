@@ -116,6 +116,12 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         if(!original_round_flow)return 0;
         config.start_intro=1;config.start_seed=(uint32_t)strtoul(start_seed,NULL,0);
         config.start_force=getenv("T3_FORCE_START")!=NULL;
+#if T3_PSX_FIGHTERS>2 && defined(T3_LOCAL_EFFECT_TABLE_BYTES) && T3_LOCAL_EFFECT_TABLE_BYTES > 0
+        if(config.start_force && !getenv("T3_REPLAY_NO_EFFECTS")) {
+            static t3_psx_effect_pool_t force_effects;
+            config.effects=&force_effects;config.effect_tables=t3_local_effect_tables;config.effect_table_bytes=T3_LOCAL_EFFECT_TABLE_BYTES;
+        }
+#endif
         /* A Force level: T3_FORCE_TABLES (TABLES.BIN), T3_FORCE_LEVEL (LEVn.BIN) with T3_FORCE_LEVEL_INDEX, T3_FORCE_TRIG (TRIG.BIN). */
         if(config.start_force && getenv("T3_FORCE_TABLES")) {
             static uint8_t tables[T3_FORCE_TABLE_BYTES],script[T3_FORCE_SCRIPT_BYTES],trig[0x2800];
@@ -162,6 +168,19 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
 #endif
 #else
     if(getenv("T3_REPLAY_REQUIRE_CAMERA"))return 0;
+#endif
+#if T3_PSX_FIGHTERS>2
+    /* Tekken Force: the enemies' pads from the CPU opponent (T3_FORCE_AI_TABLES: psx_ai.bin), live, with the
+     * settings the recorded game had (T3_FORCE_AI_DIFFICULTY, T3_FORCE_AI_LEVEL). */
+    if(config.start_force && getenv("T3_FORCE_AI_TABLES")) {
+        size_t tsize;
+        if(!(ai_tables=ai_read_file(getenv("T3_FORCE_AI_TABLES"),&tsize)) ||
+           !t3_psx_ai_game_init(&ai_game,ai_tables,tsize,6u,
+               (uint16_t)strtoul(getenv("T3_FORCE_AI_DIFFICULTY")?getenv("T3_FORCE_AI_DIFFICULTY"):"1",NULL,0),
+               (uint8_t)strtoul(getenv("T3_FORCE_AI_LEVEL")?getenv("T3_FORCE_AI_LEVEL"):"0",NULL,0)))return 0;
+        ai_game.game_mode=8;ai_game.attract=0;ai_game.force_layout=1;
+        config.ai=&ai_game;
+    }
 #endif
     if(!t3_psx_match_init(&game,&config))return 0;
     if(start_seed)return 1; /* No original state is copied into a fresh match. */
