@@ -255,7 +255,8 @@ int main(int argc,char** argv) {
         if(reference_hashes){t3_sha256_init(&reference_digest);reference_value_count=0;}
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)compare(i,sx,sz);
         compare_round();
-        const int hud_checked=config.start_intro && has(0x80097D10u,0x20u);
+        const int hud_checked=config.start_intro && !config.start_force && has(0x80097D10u,0x20u);
+        /* Tekken Force draws its own bars: the versus HUD record is not compared. */
         const int sound_checked=config.start_intro && config.sound_tables.size && has(0x800971DCu,0x1Au);
         /* These additional host HUD/input audits are outside the existing shared
          * combat-state digest schema; it still fails the complete audit. */

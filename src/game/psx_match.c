@@ -534,6 +534,15 @@ static const t3_vec3i_t* segment_joint(const t3_psx_fighter_t* f,const t3_vec3i_
     if(joint>=SEGMENT_JOINTS)return NULL;
     return joint<SPARE_JOINT?&f->world[joint].origin:&spare[joint-SPARE_JOINT];
 }
+#if T3_PSX_FIGHTERS>2
+/* Tekken Force: an enemy record the level runner has not spawned (no health, invulnerable) strikes and is
+ * struck by nothing. */
+static int parked(const t3_psx_match_t* match,const t3_psx_fighter_t* f) {
+    return match->config->start_force && !f->body.active;
+}
+#else
+#define parked(match,f) 0
+#endif
 static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     t3_attack_sample_t sample;t3_world_attack_t result;
     const t3_move_vm_t* vm=&f->vm;
@@ -541,7 +550,7 @@ static int attack_shapes(t3_psx_match_t* match,t3_psx_fighter_t* f) {
     const unsigned character=match->config->character[index];
 #if T3_PSX_FIGHTERS>2
     /* An enemy record the level runner has not spawned holds no move: it has no attack to place. */
-    if(match->config->start_force && !f->body.active)return 1;
+    if(parked(match,f))return 1;
 #endif
     int decoded=t3_attack_sample(vm->active_bank,&vm->move,
         vm->move.active_first,0,&sample);
@@ -583,7 +592,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     t3_hurt_cylinder_t hurt[T3_PSX_FIGHTERS][T3_PSX_HURT_ZONES];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
 #if T3_PSX_FIGHTERS>2
-        if(match->config->start_force && !match->fighter[i].body.active){memset(hurt[i],0,sizeof hurt[i]);continue;}
+        if(parked(match,&match->fighter[i])){memset(hurt[i],0,sizeof hurt[i]);continue;}
 #endif
         if(!t3_psx_hurt_from_parts(match->fighter[i].world,
                match->fighter[i].parts_mask,t3_psx_hurt_profile(match->config->character[i]),hurt[i]))return 0;
@@ -591,7 +600,7 @@ static int T3_SIM_IMPL(contacts)(t3_psx_match_t* match) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t *f=&match->fighter[i],*d=&match->fighter[T3_PSX_OPP(match,i)];
 #if T3_PSX_FIGHTERS>2
-        if(match->config->start_force && !f->body.active) {
+        if(parked(match,f)) {
             /* Not on the field: nothing strikes and nothing is struck. */
             f->projectile_hit=0;f->geometry=(t3_psx_shadow_result_t){T3_SHADOW_INACTIVE,0,-1,0};
             continue;
@@ -837,7 +846,7 @@ int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
              * for the first MoveStartAll, with a still-zero frame step. */
             f->body.active=0;f->vm.slot=0;f->vm.branch_window=0;
             f->vm.clock=(t3_move_clock_t){0};
-            f->ground.anchor=f->ground.root=(t3_vec3i_t){i?1000:-1000,0,0};
+            f->ground.anchor=f->ground.root=(t3_vec3i_t){config->start_force?0:i?1000:-1000,0,0};
         }
         if(!place_original_round(&n,1))return 0;
     } else if(config->camera && !t3_psx_match_camera_round(&n,1))return 0;
@@ -981,6 +990,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(140+i);
         t3_psx_fighter_t* f=&n->fighter[i];
+        if(parked(n,f))continue; /* not on the field: the load's state stands */
         const t3_command_frame_t input=t3_history_at(&f->input,0);
         f->ground.character=c->character[i];f->ground.opp_character=c->character[T3_PSX_OPP(n,i)];
         if(!t3_psx_ground_step(&f->ground,&n->fighter[T3_PSX_OPP(n,i)].ground,&f->vm,
@@ -992,6 +1002,10 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
     }
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(150+i);
+#if T3_PSX_FIGHTERS>2
+        /* FighterPhysics in mode 8: only a human who faces freely looks at its target. */
+        if(c->start_force)n->fighter[i].no_look_at=(uint8_t)(!n->fighter[i].ground.is_cpu && !n->fighter[i].ground.fixed_facing?0:1);
+#endif
         n->fighter[i].body.previous_root=n->fighter[i].ground.root;
         n->fighter[i].body.placed=n->fighter[i].ground.root;
         if(c->enable_rounds!=2 || n->fighter[i].body.active) {
@@ -1023,11 +1037,11 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
          * no-damage flag (0x800958A0) keeps health then. */
         if(c->enable_rounds==2 || !c->enable_rounds || !n->round.done) {
             T3_MATCH_PHASE(180);
-            int32_t hp[2]={n->fighter[0].health_q16,n->fighter[1].health_q16};
-            int16_t pose[2]={n->fighter[0].vm.clock.pose_frame,n->fighter[1].vm.clock.pose_frame};
+            int32_t hp[T3_PSX_FIGHTERS];int16_t pose[T3_PSX_FIGHTERS];
+            for(unsigned i=0;i<T3_PSX_FIGHTERS;++i){hp[i]=n->fighter[i].health_q16;pose[i]=n->fighter[i].vm.clock.pose_frame;}
             if(!t3_psx_match_apply_hits(n))return 0;
             for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(!t3_psx_match_effects_hit(n,i))return 0;
-            if(c->enable_rounds==2 && n->replay.mode==7 && n->replay.mark<0) {
+            if(c->enable_rounds==2 && n->replay.mode==7 && n->replay.mark<0 && !c->start_force) {
                 for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(hp[i]>0 && !n->fighter[i].health_q16) {
                     if(!t3_psx_replay_mark_ko(&n->replay,(unsigned)pose[T3_PSX_OPP(n,i)]))return 0;
                     break;
@@ -1183,9 +1197,6 @@ static int place_original_round(t3_psx_match_t* n,int first) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         t3_psx_fighter_t* f=&n->fighter[i];t3_psx_ground_state_t* g=&f->ground;
         t3_move_vm_t* v=&f->vm;
-#if T3_PSX_FIGHTERS>2
-        if(n->config->start_force && i) {f->body.active=0;continue;} /* the level runner spawns the enemies */
-#endif
         t3_history_clear(&f->input);n->round_actor[i].script_input=0;
         t3_psx_sound_script_stop(&n->sound[i]);
         f->taps.previous=0;f->taps.condition_used=0;
@@ -1194,6 +1205,10 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         const unsigned kind=kept_branch_kind(v);
         v->pending_valid=0;
         unsigned slot=1;
+#if T3_PSX_FIGHTERS>2
+        if(n->config->start_force && i)slot=i==1?2:0; /* the enemy records wait: the first in its stance, the third on its first move; no random draw */
+        else
+#endif
         if(first) {
             const unsigned held=n->config->start_physical[i];
             slot=held&0x90u?0:2;
@@ -1215,7 +1230,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         v->clock.pose_frame=v->clock.root_frame=(int16_t)(first && v->move.length>150?v->move.length-149:1);
         g->anchor=(t3_vec3i_t){n->config->start_force?0:i?1000:-1000,0,0};
         g->root.x=g->anchor.x;g->root.z=0;
-        g->heading=g->facing=g->relative_angle=(uint16_t)(i?0xC000:0x4000);
+        g->heading=g->facing=g->relative_angle=(uint16_t)(i && !n->config->start_force?0xC000:0x4000);
         f->body.push=(t3_vec3i_t){0,0,0};
         f->world[2].origin=(t3_vec3i_t){g->anchor.x,-0x591,0};
         f->world[1].origin=(t3_vec3i_t){g->anchor.x,-0x41B,0};
@@ -1228,7 +1243,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         g->anchor_dirty=g->slide_to_point=g->fixed_facing=0;g->in_throw=0; /* throw_state is kept */
 #if T3_PSX_FIGHTERS>2
         /* The roles pass (FUN_800B5EC0) fixes the player's facing while both enemies are invulnerable. */
-        if(n->config->start_force)g->fixed_facing=1;
+        if(n->config->start_force && !i)g->fixed_facing=1;
 #endif
         f->blend_guarded_previous=f->blend_in_reaction=0;
         f->hit.guarded=f->hit.hit_clean=0;f->ko_collapse=0;
@@ -1236,6 +1251,21 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         /* Port diagnostics count successful contacts per round. */
         f->registered_hits=f->registered_blocks=0;
         f->body.active=1;f->body.invulnerable=0;f->no_look_at=0;
+#if T3_PSX_FIGHTERS>2
+        if(n->config->start_force && i) {
+            /* FUN_800B15EC: an enemy record waits inactive with no health, invulnerable, with its stance
+             * queued, until the level runner spawns it. */
+            f->body.active=0;f->health_q16=0;f->body.invulnerable=1;g->is_cpu=1;
+            g->state=0;g->state_class=0;g->human_guard=0;g->guard=0;g->damage=0;
+            f->side_flag=1;
+            /* The load computed its body spheres from the unposed joints. */
+            f->parts_mask=0x3FFFFu;
+            if(!t3_psx_body_shapes(&f->body,f->world,f->parts_mask,
+                   n->config->actor_body_shapes[i]?n->config->actor_body_shapes[i]:n->config->body_tables+384,
+                   &v->move,v->clock.pose_frame,0,0))return 0;
+            f->parts_mask=0;
+        }
+#endif
 #if defined(T3_PSX_HAND_CHANNELS)
         t3_psx_hands_command(&f->hands,3u,n->config->face_attack[i],10);
 #endif
@@ -1373,7 +1403,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
             if(!t3_move_vm_resolve(t3_psx_match_bank(n->config,i),n->config->common,f->vm.move.stance_slot,&stance,&owner))return 0;
             a->state_word=(int32_t)stance.state_word;
         } else a->state_word=0;
-        facts.physical[i]=frame->physical[i];facts.pressed[i]=frame->pressed[i];
+        if(i<2u){facts.physical[i]=frame->physical[i];facts.pressed[i]=frame->pressed[i];} /* the pads of the first two records */
     }
     T3_MATCH_PHASE(20);
     if(!t3_psx_round_flow_step(&n->flow,n->round_actor,&facts,&actions))return 0;
@@ -1383,7 +1413,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         T3_MATCH_PHASE(30+i);
         t3_psx_fighter_t* f=&n->fighter[i];
         f->body.active=(uint8_t)n->round_actor[i].active;
-        if(actions.start_slot[i]>=0) {
+        if(i<2u && actions.start_slot[i]>=0) { /* the round flow knows the first two records */
             t3_move_start_facts_t start={f->got_hit,(uint8_t)(f->health_q16!=0),f->hit_freeze_in,
                                          (int16_t)f->vm.clock.pose_frame};
             f->blend.mode=0;
@@ -1467,7 +1497,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         t3_psx_fighter_t* f=&n->fighter[i];
         if(f->ground.fixed_facing)f->side_flag=f->ground.fixed_facing_side;
         else if(n->config->camera)f->side_flag=n->camera.screen_x[T3_PSX_OPP(n,i)]<=n->camera.screen_x[i];
-        else if(frame->side_known)f->side_flag=frame->side[i]!=0;
+        else if(frame->side_known)f->side_flag=frame->side[i<2u?i:1u]!=0; /* the third record follows the second's */
     }
     T3_MATCH_PHASE(60);
     T3_SIM_START(camera,T3_SIM_CAMERA);

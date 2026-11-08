@@ -101,7 +101,7 @@ def main():
         edge = pads[0] & ~last_pad & 0xFFFF
         counter = struct.unpack_from('<I', ranges[('mode', 0x800AFF00)], 0x14)[0]   # 0x800AFF14, the main loop's frame
         held, pressed = ox.mapped_pad(pads[0], edge, records[0][0xC6])   # the human's pad (the enemies' come from the AI)
-        rows.append(f'{path}\t{held}\t{pressed}\t0\t0\t{k}\t{counter}\t{pads[0]}\t{pads[1]}\t{edge}\t0\n')
+        rows.append(f'{path}\t{held}\t{pressed}\t0\t0\t{k}\t{counter}\t{pads[0]}\t{pads[1]}\t{edge}\t0\t{records[0][0xC6]}\t{records[1][0xC6]}\n')
         last_pad = pads[0]
     if seeded is None:
         raise SystemExit('no neutral running Force frame to seed from')
