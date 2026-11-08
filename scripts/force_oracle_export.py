@@ -105,7 +105,7 @@ def main():
     for k, (pads, ranges, records) in enumerate(cf.frames(header, body)):
         running = len(records) == 3 and cf.build_ram(header, ranges, records).s32(0x800AFF50) == 8
         if seeded is None:
-            if running and previous is not None and k > args.skip and (k == args.seed_at if args.seed_at is not None else all(neutral(r) for r in records)):
+            if running and k > args.skip and ((k == args.seed_at) if args.seed_at is not None else (previous is not None and all(neutral(r) for r in records))):
                 ram = bytearray(0x200000)
                 for address, data in usa_spans(layout, header, ranges, records):
                     ram[address - 0x80000000:address - 0x80000000 + len(data)] = data

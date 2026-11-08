@@ -919,3 +919,10 @@ The live Force chunks of `force_run` (the player's record live in mode 8) start 
 frame's carried state (score, keys, health, the hi-score, the timer, the random state — the owned start derives its random
 state from the boot seed, which only fits the first chunk) and the matching `LEVn.BIN`, so the first thing to add is a
 "start from these globals" mode next to `T3_ORIGINAL_MATCH_START`.
+
+Tried: `force_oracle_export.py --seed-at 7799` (no longer needs a live frame before the seed) with the owned start. The stretch at
+frame 7,799 is not a level start: the player stands at x 32,613 with 130 carried health and the boss's area, i.e. the game resumes
+mid-level after the player's defeat. The owned start (a level start from the boot random state) cannot reproduce it; comparing
+it needs a "seed from the recorded state" mode that copies the three fighter records and the level runner's globals (the
+versus evaluator's way), not only a start from globals. The stretches at 18,935 and 35,785 (levels 2 and 3) are real level
+starts and need only the carried score, keys, hi-score and the right `LEVn.BIN`.
