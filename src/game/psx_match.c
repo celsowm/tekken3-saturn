@@ -763,13 +763,17 @@ static int place_original_round(t3_psx_match_t* n,int first);
  * Per-tick combat and pose code retain their measured optimization level. */
 __attribute__((optimize("Os")))
 #endif
+static int actor_scales_valid(const t3_psx_match_config_t* c) {
+    for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(c->actor_scale_percent[i]>200u)return 0;
+    return 1;
+}
 int t3_psx_match_init(t3_psx_match_t* out,const t3_psx_match_config_t* config) {
     t3_psx_match_t n={0};
     if(!out || !config || !config->bank || !config->ground_tables.atan ||
        config->ground_tables.atan_size!=1025u || !config->ground_tables.trig.data ||
        config->ground_tables.trig.size!=T3_PSX_TRIG_BYTES ||
        config->max_health_q16<=0 || config->scale_percent<1u || config->scale_percent>200u ||
-       config->actor_scale_percent[0]>200u || config->actor_scale_percent[1]>200u ||
+       !actor_scales_valid(config) ||
        config->enable_rounds>2 || config->start_intro>1 ||
        (config->start_intro && config->enable_rounds!=2))return 0;
     if(config->effects && (config->enable_rounds!=2 || !config->camera))return 0;
