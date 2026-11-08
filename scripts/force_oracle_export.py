@@ -118,6 +118,7 @@ def main():
         # the evaluator's row: path, mapped pads (not known here), call, frame, physical pads, edges
         edge = pads[0] & ~last_pad & 0xFFFF
         counter = struct.unpack_from('<I', ranges[('mode', 0x800AFF00)], 0x14)[0]   # 0x800AFF14, the main loop's frame
+        counter += int(os.environ.get('T3_COUNTER_BIAS', '0'))
         view_now = struct.unpack_from('<i', ranges[('force_mode', 0x800B69F0)], 0x800B70F0 - 0x800B69F0)[0]   # 0x800B70F0
         view_x = view_now if os.environ.get('T3_VIEW_SAME') else (view_prev if view_prev is not None else view_now)
         view_prev = view_now

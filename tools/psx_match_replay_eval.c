@@ -327,6 +327,7 @@ int main(int argc,char** argv) {
         }
 #endif
         if(config.start_force && has(0x800A39B8u,4))check(0,"rng","rand",game.camera.rand,u32(0x800A39B8u)); /* the shared generator */
+        if(config.start_force && has(0x800ADCA0u,4))check(0,"rng","ai_rand",game.camera.ai_rand,u32(0x800ADCA0u)); /* the CPU opponent's */
         const int hud_checked=config.start_intro && !config.start_force && has(0x80097D10u,0x20u);
         /* Tekken Force draws its own bars: the versus HUD record is not compared. */
         const int sound_checked=config.start_intro && config.sound_tables.size && has(0x800971DCu,0x1Au);
@@ -341,7 +342,7 @@ int main(int argc,char** argv) {
             check(0,"input","frame_seen",game.input_frame_seen,u32(0x80095464u));
             for(unsigned i=0;i<2;++i) {
                 const uint32_t b=0x800A9228u+i*0x188Cu;
-                if(sound_checked) {
+                if(sound_checked && i<2u) { /* the sound state is kept per player slot: the third record shares the second's */
                     const t3_psx_sound_state_t* s=&game.sound[i];
                     check(i,"sound","script",s->script,i16(b+0x70));
                     check(i,"sound","last_script",s->last_script,i16(b+0x72));
@@ -353,7 +354,7 @@ int main(int argc,char** argv) {
                 }
                 /* Internal RNG/eye parity requires a capture that includes
                  * the shared generator, beyond the older combat schema. */
-                if(config.camera && has(0x800A39B8u,4)) {
+                if((config.camera || config.start_force) && has(0x800A39B8u,4)) {
                     check(i,"animation","blink_timer",game.fighter[i].blink.timer,i16(b+0x128E));
                     check(i,"animation","blink_closed",game.fighter[i].blink.closed,u8(b+0x1290));
                 }

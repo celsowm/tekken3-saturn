@@ -77,14 +77,14 @@ static void special(reader* r,t3_psx_sound_state_t s[],
                     const t3_psx_sound_facts_t f[],unsigned p,unsigned n) {
     const unsigned q=opponent(r,p);
     switch(n) {
-    case 0:s[p].hold=1;break;
+    case 0:s[f[p].player].hold=1;break;
     case 1:
-        if(s[q].script!=-1) {
+        if(s[f[q].player].script!=-1) {
             emit(r,T3_SOUND_VOICE,f[p].player,r16(r,voice_record(r,f[p].voice_set)+18));
-            t3_psx_sound_script_stop(&s[q]);
+            t3_psx_sound_script_stop(&s[f[q].player]);
         }
         break;
-    case 2:s[p].voice_cooldown=1;break;
+    case 2:s[f[p].player].voice_cooldown=1;break;
     case 3: {
         const unsigned index=((random_next(r)&255)*3)>>8;
         emit(r,T3_SOUND_EFFECT,f[q].player,r16(r,r32(r,20)+14+2*index));break;
@@ -99,7 +99,7 @@ static void impact(reader* r,t3_psx_sound_state_t s[],
         code=wooden?(f[p].first_joint<12?0x707B:0x707A):(f[p].first_joint<12?0x704D:0x704E);
         emit(r,T3_SOUND_EFFECT,f[q].player,code);return;
     }
-    t3_psx_sound_script_stop(&s[q]);
+    t3_psx_sound_script_stop(&s[f[q].player]);
     if(f[q].character==16) {
         code=f[p].damage<7 || f[q].damage<16?0x705D:
              (r->c->vblank&3?0x7098:0x7099);
@@ -153,7 +153,7 @@ static void ambient(reader* r,t3_psx_sound_state_t* s,const t3_psx_sound_facts_t
 }
 static void script(reader* r,t3_psx_sound_state_t s[],
                    const t3_psx_sound_facts_t f[],unsigned p) {
-    t3_psx_sound_state_t* a=&s[p];
+    t3_psx_sound_state_t* a=&s[f[p].player];
     if(a->script<0 || a->script>=470 || a->position<0){r->ok=0;return;}
     const uint32_t list=r32(r,r32(r,16)+4u*(unsigned)a->script);
     a->frame=(int16_t)((uint16_t)a->frame+1u);
@@ -183,7 +183,7 @@ int t3_psx_fighter_sounds(t3_psx_sound_state_t s[],const t3_psx_sound_facts_t f[
     if(f[p].player>=T3_PSX_FIGHTERS || f[q].player>=T3_PSX_FIGHTERS || f[p].command_bytes>6 ||
        (f[p].command_bytes && !f[p].commands) || f[p].command_bytes%2)return 0;
     const uint32_t voice=voice_record(&r,f[p].voice_set);
-    s[p].hold=0;
+    s[f[p].player].hold=0;
     if(f[p].hit_clean || (f[p].throw_state<0 && f[p].pose_frame==1))
         emit(&r,T3_SOUND_VOICE_OFF,f[p].player,0);
     int voiced=0,impacted=0;
@@ -203,27 +203,27 @@ int t3_psx_fighter_sounds(t3_psx_sound_state_t s[],const t3_psx_sound_facts_t f[
         switch(code>>12) {
         case 1:case 7:if(f[p].contact && !impacted)impact(&r,s,f,p,code);break;
         case 2:case 3:
-            if(f[p].pose_frame==1 && f[p].health && !s[p].voice_cooldown && !voiced) {
+            if(f[p].pose_frame==1 && f[p].health && !s[f[p].player].voice_cooldown && !voiced) {
                 emit(&r,T3_SOUND_VOICE,f[p].player,code);
-                if((code>>12)==2)s[p].voice_cooldown=s16(&r,voice+12);
+                if((code>>12)==2)s[f[p].player].voice_cooldown=s16(&r,voice+12);
                 else voiced=1;
             }
             break;
         case 4:case 5:emit(&r,T3_SOUND_EFFECT,f[p].player,code);break;
         case 8:
-            if((code&0xFFF) && s[p].last_script!=(int)(code&0xFFF)) {
-                s[p].script=s[p].last_script=(int16_t)(code&0xFFF);s[p].position=0;
-                s[p].frame=(int16_t)((uint16_t)f[p].pose_frame-1u);
+            if((code&0xFFF) && s[f[p].player].last_script!=(int)(code&0xFFF)) {
+                s[f[p].player].script=s[f[p].player].last_script=(int16_t)(code&0xFFF);s[f[p].player].position=0;
+                s[f[p].player].frame=(int16_t)((uint16_t)f[p].pose_frame-1u);
             }
             break;
         case 9:special(&r,s,f,p,code&0xFFF);break;
         default:break;
         }
     }
-    if(f[p].got_hit)t3_psx_sound_script_stop(&s[p]);
-    if(s[p].script!=-1 && (c->camera_phase<=2 || c->camera_phase==5))script(&r,s,f,p);
-    else ambient(&r,&s[p],&f[p],&f[q],voice,voiced);
-    if(s[p].voice_cooldown>0)--s[p].voice_cooldown;
-    if(s[p].damage_voice_timer>0)--s[p].damage_voice_timer;
+    if(f[p].got_hit)t3_psx_sound_script_stop(&s[f[p].player]);
+    if(s[f[p].player].script!=-1 && (c->camera_phase<=2 || c->camera_phase==5))script(&r,s,f,p);
+    else ambient(&r,&s[f[p].player],&f[p],&f[q],voice,voiced);
+    if(s[f[p].player].voice_cooldown>0)--s[f[p].player].voice_cooldown;
+    if(s[f[p].player].damage_voice_timer>0)--s[f[p].player].damage_voice_timer;
     return r.ok;
 }

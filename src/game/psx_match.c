@@ -199,6 +199,14 @@ static int pair_distance(t3_psx_match_t* match) {
     const int16_t* screen=screen_of(match);
     uint8_t off[T3_PSX_FIGHTERS];
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)off[i]=(uint8_t)((screen && (uint16_t)screen[i]>=0x191u) || match->off_screen_extra[i]);
+    /* PairwiseDistances fills the table for every pair of the records, not only each fighter's own. */
+    for(unsigned big=1;big<T3_PSX_FIGHTERS;++big)
+        for(unsigned small=0;small<big;++small) {
+            const int64_t x=(int64_t)match->fighter[big].ground.root.x-match->fighter[small].ground.root.x;
+            const int64_t z=(int64_t)match->fighter[big].ground.root.z-match->fighter[small].ground.root.z;
+            if(x< -32767 || x>32767 || z< -32767 || z>32767)return 0;
+            match->pair_all[small+big-1u]=isqrt((uint32_t)(x*x+z*z));
+        }
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const unsigned o=T3_PSX_OPP(match,i),big=i>o?i:o,small=i>o?o:i;
         t3_psx_ground_state_t* g=&match->fighter[i].ground;
@@ -1158,7 +1166,7 @@ static int advance_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,t3_psx_rep
         t3_psx_sound_facts_t facts[T3_PSX_FIGHTERS]={0};
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
             const t3_psx_fighter_t* f=&n->fighter[i];
-            facts[i]=(t3_psx_sound_facts_t){.player=(uint8_t)i,.character=c->character[i],
+            facts[i]=(t3_psx_sound_facts_t){.player=(uint8_t)(i<2u?i:1u), /* the third record shares the second's player slot (+0x12) */.character=c->character[i],
                 .voice_set=c->sound_voice_set[i],.first_joint=f->strike_joint,
                 .ko=f->hit.ko_started,.hit_clean=f->ground.hit_clean,.got_hit=f->got_hit,
                 .contact=f->contact,.guarded=f->last_guarded,.move_changed=f->vm.clock.move_changed,
@@ -1504,6 +1512,10 @@ static int force_level_frame(t3_psx_match_t* n) {
     n->level_ended=s->flag_70e8!=0;
     for(unsigned e=0;e<s->event_count;++e) {
         const t3_force_event_t* ev=&s->events[e];
+        if(ev->kind==T3_FORCE_EVENT_MODEL_BIND && ev->a>=0 && ev->a<(int)T3_FORCE_SLOTS) {
+            /* reload_enemy: the record gets a fresh body, its eyes restart */
+            n->fighter[(unsigned)ev->a+1u].blink=(t3_psx_blink_t){0};
+        }
         if(ev->kind==T3_FORCE_EVENT_START_MOVE && ev->a>=0 && ev->a<(int)T3_FORCE_SLOTS &&
            !force_start_move(n,(unsigned)ev->a+1u,(unsigned)ev->b))return 0;
     }
@@ -1523,10 +1535,7 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     if(n->config->camera)n->camera.camera_rand=(n->camera.camera_rand+1u)*0x10DCDu;
     n->frame_view_used=0;
 #if T3_PSX_FIGHTERS>2
-    if(n->config->start_force) {
-        force_camera_frame(n);
-        if(!force_roles(n,frame))return 0;
-    }
+    if(n->config->start_force)force_camera_frame(n);
 #endif
     t3_sim_context((uint32_t)n->flow.state,(uint32_t)n->replay.mode,
         (uint32_t)n->fighter[0].body.active|((uint32_t)n->fighter[1].body.active<<1));
@@ -1535,6 +1544,10 @@ static int step_original(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)n->screen_x[i]=frame->screen_x[i];
         n->screen_known=1;
     }
+#if T3_PSX_FIGHTERS>2
+    /* The roles run first in the frame, from the screen x the last frame left. */
+    if(n->config->start_force && !force_roles(n,frame))return 0;
+#endif
     if(n->flow.state==T3_ROUND_END && n->flow.match_result) {
         /* Port result screen: preserve the terminal fight while its input
          * event clock continues. Original FightMain has left FightFrame. */
