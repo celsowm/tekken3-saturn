@@ -651,3 +651,11 @@ the shared preparation also lowers the third actor's cost.
   each (131,646 frames). The last three carry the comparator's seed ranges (`force_flow_record.py`);
   `force_run` and `force_bosses` are 40,000 frames, `force_final` 57,729; together 1.4 GB under
   `third_party/Tekken3Remake/work/traces` (git-ignored).
+- **The start looks like the versus start (frames 261-412 of `force_run`).** The player's record goes
+  live in fight sub-state 8 at frame 261 (health 130 in Q16, pose frame 1), plays a pose that advances
+  one frame per frame for 150 frames (pose word 9,830,550 = frame 150 at 411), then enters slot 3 (the
+  stance) at frame 412 and moves on at 413 (slot 21). That is the shape of `place_original_round(first)`
+  (`pose_frame = move.length - 149`, the first-round intro), so the player's start can reuse the owned
+  start before Force-specific placement (positions from the level, enemies inactive with health 0 and
+  invulnerable until their slots spawn them) is added on top. The enemies' records stay zero until
+  spawned.
