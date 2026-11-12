@@ -1227,9 +1227,9 @@ int main(void) {
     g_force_probe_start_field=previous_field;
 #endif
     uint16_t pending_pressed=0;
+    /* The first image needs a tick behind it: one field must pass before the clock is read. */
+    SAT_PANIC_IF_ERROR(sat_wait_vblank());
     for (;;) {
-        SAT_PANIC_IF_ERROR(sat_wait_vblank());
-
 #if T3_FORCE_VARIANT_PROBE
         static unsigned variant_probe_phase;
         if(variant_probe_phase<3u && g_owned_match.ticks>=200u+360u*variant_probe_phase &&
@@ -1309,9 +1309,10 @@ int main(void) {
             SAT_PANIC_IF_ERROR(load_force_boss(&start));
             /* Loading is not simulation time; the original area transition
              * also pauses the fight while resources are read from the disc. */
-            previous_field=sat_field_count();
             /* Wait for the next field before rendering: at a fresh boss
              * boundary no camera view has been composed by a fight tick yet. */
+            previous_field=sat_field_count();
+            SAT_PANIC_IF_ERROR(sat_wait_vblank());
             continue;
         }
 
@@ -1390,6 +1391,9 @@ int main(void) {
         if(g_owned_match.flow.state==T3_ROUND_AREA_CHANGE)break;
         }
         if(ticks)pending_pressed=0;
+        /* The ticks are CPU work only: they run while the last image is still on its way to the screen, and drawing
+         * starts at the next VBlank, after the swap was requested. */
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
         {
             t3_combat_event_t sounds[32];
             unsigned sound_count=0;

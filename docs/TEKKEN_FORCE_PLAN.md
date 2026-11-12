@@ -1339,9 +1339,59 @@ are master-CPU-bound (`draw_waits` and `late_swaps` are 0) and sit just past a f
 percent moves images into one more field. Closing the last 4 images needs about 1–2% of frame time saved elsewhere,
 most likely in the fighters' pose work, not more floor work.
 
-The pose cache size is not that lever. With `T3_FORCE_POSE_CACHE_ENTRIES` set to 64, the count is 641 fields /
-134 images (183 hits, 848 misses), which is worse. A request for 128 is identical to 32 (637 / 134, 258 hits), which
-suggests the arena holds neither and both fall back to the 16-entry cache. The default stays at 32.
+Correction: the probe tree above (`build/force-work`) is configured with `T3_FORCE_POSE_CACHE_ENTRIES=128`, so
+its rows are 128 entries. An earlier version of this paragraph mistook a 128 run for a 32 run. Measured on that
+tree:
+
+| Entries | Fields | Pose hits | Images |
+|---|---|---|---|
+| 128 (probe tree) | 637 | 258 | 134 |
+| 64 | 641 | 183 | 134 |
+| 32 (the release default) | 649 | 130 | — |
+
+More entries mean fewer fields, but the image count does not move. Raising the release default needs its own A/B on
+the release configuration, and an arena check (`scripts/force_arena_budget.py`). The default stays at 32 until then.
+
+#### Loop order: the fight ticks before the VBlank wait, 134 → 144 images (2026-11-12)
+
+The loop waited for VBlank at the top and only then ran the fight ticks. The ticks are CPU-only work. They now run
+first, while the last image is still on its way to the screen, and the wait follows them. The first pass waits once
+before the loop, because a tick needs one field behind it. After a boss load the loop waits before `continue`.
+
+Phase profile before the change (temporary FRT counters, 600-tick window, removed since):
+
+| Phase | Share of master time |
+|---|---|
+| simulation (fight ticks) | 55% |
+| characters (pose, skin, faces) | 21% |
+| VBlank wait at the top of the loop | 15% |
+| scene flush | 7% |
+| HUD and camera | ~1.6% |
+| floor | 0.4% |
+
+A/B on the same probe (hashes 1714359845, 2578104655 in every row). "Worst" is the longest gap between two
+images after tick 60, measured with a temporary counter:
+
+| Build | Fields | Ticks | Images | Worst (fields) |
+|---|---|---|---|---|
+| old order (control) | 635 | 603 | 134 | 8 |
+| **new order (current)** | 632 | 604 | 144 | 8 |
+| new order, `T3_FORCE_NO_FLOOR=ON` | 631 | 604 | 158 | 8 |
+
+The floor now accounts for 14 images. Four temporary builds narrowed down where that cost lies:
+
+| Floor variant | Images |
+|---|---|
+| quads collapsed to one point (no fill) | 144 |
+| commands written with JP = skip (the VDP1 draws nothing) | 144 |
+| CPU work kept, no commands written | 158 |
+| `SAT_VDP1_FRAME_ON_SUBMIT` (the VDP1 draws each list once) | 144 |
+
+Neither VDP1 fill, VDP1 command processing nor VDP1 VRAM contention explains the gap. What is left is the cost of
+writing 21 commands (168 uncached longwords) plus the work that goes with them. That is well under 1% of a frame.
+Without the floor, an image averages 3.8 fields. That is close to a field boundary, so a small amount of work pushes
+many images into one more field. Any saving of the same size elsewhere wins those images back; the simulation and
+the characters are where the time is.
 
 ### Panorama scale and level 4's staircase (2026-11-12)
 
