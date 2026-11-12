@@ -22,8 +22,9 @@ scale and level 4's staircase"). The host comparisons now cover
 every compared frame of the three recordings, including `force_run`'s carried-state
 levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
 requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
-There is no PS1 reference frame of a Force level yet. Under PCSX-Redux the game waits forever in its per-frame wait
-(`FUN_80029918`) once the mode's fight loads, with OpenBIOS and with a real SCPH-1001 BIOS alike.
+PS1 reference frames of Force level 1 (Backstreets) now exist: PCSX-Redux built with
+`scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). Compared with them, the
+Saturn level still draws a debug HUD where the original draws the Force HUD (step 6).
 
 ## What the mode is
 
@@ -1101,6 +1102,46 @@ Update (2026-11-12): a real BIOS did not help. `assets/imported/ps1-bios/SCPH100
 `--bios`. With it the game still stays in state 1 at PC `0x80029720`, under the interpreter and the dynarec alike, so
 the stall is PCSX-Redux's and not the BIOS's. The capture's heartbeat now prints the PC and RA. A reference frame will
 need another emulator, such as Mednafen's PSX core.
+
+### Update: PS1 reference frames of level 1 (2026-11-12)
+
+The diagnosis above was wrong. The game was not frozen: the frame pacer kept running, and the overlay loader (USA
+`0x80052CC4`) kept retrying the read of `select.ovl` (BNS 9, 0x70838 bytes at 55:55:47). Each retry is Setmode `a0`,
+Setloc, ReadN, Getstat on the next two frames, then Pause, then the same again. The drive did deliver the sectors.
+The game rejected them:
+
+- PCSX-Redux timing is fixed: ReadN 20 ms, a seek of 1 ms (the head is three sectors past the target after Pause),
+  one double-speed sector of 6.7 ms. So the first DataReady comes 27.8 ms after ReadN, about 1 ms before the game's
+  second Getstat.
+- libcd's command path (USA `0x800842FC`, from `0x8008FCE0`) finds that interrupt pending and clears it. The ready
+  handler never sees sector 55:55:47.
+- The next DataReady carries 55:55:48. libcd's ready wrapper (USA `0x80092034`) checks the header against the
+  expected position, and the game aborts with Pause and retries. The timing is the same every time, so it never
+  succeeds.
+
+On hardware the re-seek is not that short or that regular. `scripts/pcsx_redux_reseek.patch` raises PCSX-Redux's
+minimum read seek from 1 ms to 10 ms (`computeSeekDelay`, `~/dev/pcsx-redux`, a local change). It only changes CD
+timing, not what is drawn. With it, `select.ovl` loads and the game runs its select, VS and fight states (9, 8,
+11, 8):
+
+    python3 scripts/capture_ps1_menus.py --lua scripts/pcsx_redux_force_capture.lua \
+        --out assets/imported/ps1-force-reference --names menu-force select after-a after-b after-c --wait 150
+
+The frames are private (`assets/imported/ps1-force-reference`, git-ignored):
+
+- `select`: the Force select, `TEKKEN FORCE!` with its 19-second count.
+- `after-a`: the Force VS card: `TEKKEN FORCE`, `STAGE 1`, `BACKSTREETS`, the player's framed portrait and name.
+- `after-c`: level 1 in play, Xiaoyu at the start.
+
+Compared with the Saturn frame of level 1 kept from the panorama work (Mednafen, the diagnostic Force disc):
+
+- The panorama matches: the fence, the barrels, the billboard and the brick building, at the same height.
+- The floor matches: grey cobbles in rows, with the far rows fading into the panorama's foot.
+- The HUD does not match. The original has `SCORE` and its value at the top left, a large two-digit timer at the
+  top centre, `HI-SCORE` at the top right, and a cyan life bar with the player's name plate below it. A four-part
+  progress bar sits at the bottom centre. The Saturn build still draws the debug text: `STAGE`, `TIME`, `SCORE`,
+  `HI`, `KEYS` and `DEFEATED`. This is step 6's Force HUD, still open.
+- The original draws a dark blob shadow under the player.
 
 ### Update: the Force result screen in the original art (2026-11-12)
 

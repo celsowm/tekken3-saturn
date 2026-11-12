@@ -14,8 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['title-fade', 'title', 'menu', 'select-a', 'select-b', 'select-c']
-# A real BIOS (private, git-ignored) when present, else OpenBIOS. Either way PCSX-Redux stalls in the Force fight's
-# per-frame wait (docs/TEKKEN_FORCE_PLAN.md); the menus capture under both.
+# A real BIOS (private, git-ignored) when present, else OpenBIOS; the menus capture under both. Tekken Force's
+# overlay load needs PCSX-Redux built with scripts/pcsx_redux_reseek.patch (docs/TEKKEN_FORCE_PLAN.md).
 REAL_BIOS = ROOT / 'assets/imported/ps1-bios/SCPH1001.BIN'
 OPEN_BIOS = Path.home() / 'dev/pcsx-redux/src/mips/openbios/openbios.bin'
 
@@ -29,6 +29,7 @@ def main():
     p.add_argument('--names', nargs='+', default=NAMES, help='its pause names, in order')
     p.add_argument('--wait', type=float, default=300, help='seconds to wait for each pause')
     p.add_argument('--bios', type=Path, default=REAL_BIOS if REAL_BIOS.exists() else OPEN_BIOS)
+    p.add_argument('--debugger', action='store_true', help="enable the emulator's debugger (Lua breakpoints)")
     args = p.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -38,7 +39,7 @@ def main():
         [str(args.emulator), '-no-ui', '-interpreter', '-softgpu',
          '-bios', str(args.bios.resolve()),
          '-iso', str(ROOT / 'roms/Tekken 3 USA/Tekken 3 (USA).cue'),
-         '-run', '-webserver', '-webserver-port', str(args.port),
+         '-run', '-webserver', '-webserver-port', str(args.port), *(['-debugger'] if args.debugger else []),
          '-dofile', str(args.lua.resolve())],
         env={**os.environ, 'SDL_AUDIODRIVER': 'dummy'}, stdout=log, stderr=log, cwd=ROOT)
     try:
