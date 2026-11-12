@@ -1436,6 +1436,25 @@ Also tried in this round and reverted:
 
 `scripts/force_ymir_profile.sh BUILD OUT` writes that per-function profile for a Force probe build.
 
+#### `T3_FORCE_SFX` A/B on the 180-image loop (2026-11-12)
+
+Same probe, same hashes. Each of the first two rows was run twice, with the same numbers both times:
+
+| Build | Fields | Images | Worst gap (fields) |
+|---|---|---|---|
+| sound off | 610 | 180 | 7 |
+| sound on, combat sounds played before the render | 611 | 179 | 8 |
+| sound on, both play calls returning at once (temporary) | 611 | 181 | 7 |
+| sound on, combat sounds played after `sat_end_frame` (**current placement**) | 612 | 179 | 7 |
+| sound off, current placement | 611 | 180 | 7 |
+
+The 31 plays to tick 600 cost 527 FRT ticks in all, about 2.5 ms (about 81 µs each, 18 ticks at most).
+Force never calls `sat_audio_update`, so there is no audio work at each field. A difference of one image is the
+size of the phase shifts seen with neutral changes (the preparation move: 144 → 143; the floor: 181 → 180). The
+combat sounds now start right after the image that shows their ticks is handed to the VDP1. That ties the worst case
+with sound off and puts each sound one render nearer its picture. Images per second are still one image in 180
+short, so under the frame-rate rule `T3_FORCE_SFX` stays OFF until the owner decides.
+
 ### Panorama scale and level 4's staircase (2026-11-12)
 
 Rules: modes.md "Panorama", `force_sim.background_draw`, camera.md (`CameraBuildView`), and the remake's

@@ -1395,13 +1395,6 @@ int main(void) {
         if(ticks)pending_pressed=0;
         /* The ticks and the image's preparation up to the characters' tick are CPU work only: they run while the last
          * image is still on its way to the screen. */
-        {
-            t3_combat_event_t sounds[32];
-            unsigned sound_count=0;
-            while(sound_count<32u && t3_combat_events_pop(&sounds[sound_count]))++sound_count;
-            t3_sfx_play_events(sounds,sound_count);
-        }
-
         /* Build the scene camera from the match's Force camera and update the
          * tile panorama scroll. The characters are rebased on the camera so
          * their original joint origins stay in the skin bridge's bounds. */
@@ -1475,6 +1468,13 @@ int main(void) {
 #endif
 
         SAT_PANIC_IF_ERROR(sat_end_frame());
+        /* The combat sounds start with the image that shows their ticks: it is on screen from the next field. */
+        {
+            t3_combat_event_t sounds[32];
+            unsigned sound_count=0;
+            while(sound_count<32u && t3_combat_events_pop(&sounds[sound_count]))++sound_count;
+            t3_sfx_play_events(sounds,sound_count);
+        }
         published_field=sat_field_count();
         ++g_force_images;
     }
