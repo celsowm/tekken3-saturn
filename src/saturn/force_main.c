@@ -127,9 +127,10 @@ static volatile uint32_t g_force_images;
 static void init_force_pose_cache(void) {
     uint32_t bytes=0;
     t3_psx_local_pose_entry_t* entries=t3_fighter_pack_unused_arena(&bytes);
-    if(T3_FORCE_POSE_CACHE_ENTRIES>16u && entries &&
-       bytes/sizeof(*entries)>=T3_FORCE_POSE_CACHE_ENTRIES)
-        t3_psx_local_pose_cache_init(&g_force_pose_cache,entries,T3_FORCE_POSE_CACHE_ENTRIES);
+    /* The requested size, halved until the arena's free tail holds it (a boss pairing can leave none). */
+    unsigned n=T3_FORCE_POSE_CACHE_ENTRIES;
+    while(n>16u && (!entries || bytes/sizeof(*entries)<n))n>>=1;
+    if(n>16u)t3_psx_local_pose_cache_init(&g_force_pose_cache,entries,n);
     else t3_psx_local_pose_cache_init(&g_force_pose_cache,g_force_pose_entries,16u);
 }
 #if T3_FORCE_INPUT_PROBE
@@ -1227,6 +1228,7 @@ int main(void) {
     g_force_probe_start_field=previous_field;
 #endif
     uint16_t pending_pressed=0;
+    uint32_t published_field=0;
     /* The first image needs a tick behind it: one field must pass before the clock is read. */
     SAT_PANIC_IF_ERROR(sat_wait_vblank());
     for (;;) {
@@ -1391,9 +1393,8 @@ int main(void) {
         if(g_owned_match.flow.state==T3_ROUND_AREA_CHANGE)break;
         }
         if(ticks)pending_pressed=0;
-        /* The ticks are CPU work only: they run while the last image is still on its way to the screen, and drawing
-         * starts at the next VBlank, after the swap was requested. */
-        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        /* The ticks and the image's preparation up to the characters' tick are CPU work only: they run while the last
+         * image is still on its way to the screen. */
         {
             t3_combat_event_t sounds[32];
             unsigned sound_count=0;
@@ -1407,8 +1408,6 @@ int main(void) {
         t3_characters_set_force_origin(g_owned_match.force_cam.x, g_owned_match.force_cam.z);
         update_draw_view();
         SAT_PANIC_IF_ERROR(update_force_scene_camera());
-        uint32_t level_width_tiles = be32(g_level_header+12);
-        update_stage_layer_scroll(level_width_tiles);
 
         /* Publish the owned match's original pose for each draw actor. */
         for (unsigned i = 0; i < 3; ++i) {
@@ -1430,7 +1429,13 @@ int main(void) {
         /* Update characters (clip selection, animation advance). */
         SAT_PANIC_IF_ERROR(t3_characters_tick(&g_portable_match));
 
-        /* Commit VDP2 layers. */
+        /* The VDP1 (1-cycle mode) takes the last list at the next field start, and then leaves the bank this image is
+         * built in. When the ticks have run past that field start there is nothing to wait for. Level 4's staircase
+         * is written to VDP2 VRAM directly, so it keeps the VBlank. The scroll reaches the VDP2 at a VBlank either
+         * way (sat_vdp2_layers_commit). */
+        if(sat_field_count()==published_field || g_stage_layer.vertical_cell_scroll)
+            SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        update_stage_layer_scroll(be32(g_level_header+12));
         SAT_PANIC_IF_ERROR(sat_vdp2_layers_commit());
 
         /* Begin frame and draw. */
@@ -1470,6 +1475,7 @@ int main(void) {
 #endif
 
         SAT_PANIC_IF_ERROR(sat_end_frame());
+        published_field=sat_field_count();
         ++g_force_images;
     }
 }

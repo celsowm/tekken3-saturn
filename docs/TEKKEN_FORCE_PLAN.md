@@ -1393,6 +1393,49 @@ Without the floor, an image averages 3.8 fields. That is close to a field bounda
 many images into one more field. Any saving of the same size elsewhere wins those images back; the simulation and
 the characters are where the time is.
 
+#### The VBlank wait only when no field has started: 144 → 180 images, the floor gap closed (2026-11-12)
+
+Where an image's time went in the order above (temporary `sat_time` counters to tick 600, 143 images):
+
+| Phase | Share | Per image |
+|---|---|---|
+| simulation (the ticks) | 55% | 2.45 fields |
+| render (frame begin to `sat_end_frame`) | 31% | 1.39 fields |
+| `sat_wait_vblank` before the render | 11% | 0.49 fields |
+| preparation (sounds, camera, poses, characters' tick) | 0.7% | — |
+
+The wait was rounding only. Force runs the VDP1 in 1-cycle mode, which takes the published list at every field
+start. A bank is handed back to the CPU once the VDP1 has left it, and `begin_frame` checks that
+(`reclaim_settled`). By the time the ticks end, a field start has nearly always passed since the last
+`sat_end_frame`. The loop now waits only when the field count still equals the one read right after that
+`sat_end_frame`. The level-4 staircase writes its vertical cell scroll to VDP2 VRAM directly, so level 4 still waits
+every time. The NBG0 scroll goes through `sat_vdp2_layers_commit`, which applies it at a VBlank either way. The
+preparation now runs before the wait. Alone, that move changed nothing (143 images).
+
+A/B, same probe, same hashes (1714359845, 2578104655). Temporary counters, since removed, checked that every list
+was published (`sat_vdp1_list_serial` advanced on every `sat_end_frame`) and that no two lists were published in
+the same field, which would have left one unseen:
+
+| Build | Fields | Discarded | Images | Worst gap (fields) | Same-field publishes |
+|---|---|---|---|---|---|
+| wait every image (control, `29f76b9`) | 632 | 26 | 144 | 8 | — |
+| **wait only without a new field (current)** | 609–613 | 5–8 | 180 | 7 | 0 |
+| current, `T3_FORCE_NO_FLOOR=ON` | 613 | 8 | 181 | 7 | 0 |
+
+The floor now costs one image in 181. Ymir screenshots at fields 900, 1301 and 1650 of the probe show the floor,
+panorama, fighters and HUD intact.
+
+Also tried in this round and reverted:
+
+- **A 32-bit `MULS` path in `t3_psx_mul_rot`** for entries within ±16,384. Ymir's debug profile had put the
+  function at 5.4% of master time (395 calls per field, about 490 cycles each). The new path cost about 596 cycles
+  per call, because checking the entries costs more than the 64-bit MAC sum it avoids.
+- **`T3_FORCE_POSE_CACHE_ENTRIES=256`** (130 more hits than 128). It gave 624 fields against 630 and the same 144
+  images. The pose cache now halves the requested size until the arena's free tail holds it, instead of dropping
+  straight to the 16-entry fallback. CMake accepts 16, 32, 64, 128 or 256.
+
+`scripts/force_ymir_profile.sh BUILD OUT` writes that per-function profile for a Force probe build.
+
 ### Panorama scale and level 4's staircase (2026-11-12)
 
 Rules: modes.md "Panorama", `force_sim.background_draw`, camera.md (`CameraBuildView`), and the remake's
