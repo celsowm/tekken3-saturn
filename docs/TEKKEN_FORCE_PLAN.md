@@ -22,8 +22,8 @@ scale and level 4's staircase"). The host comparisons now cover
 every compared frame of the three recordings, including `force_run`'s carried-state
 levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
 requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
-A PS1 reference frame of a Force level needs a real PS1 BIOS: under PCSX-Redux's OpenBIOS
-the game waits forever in its per-frame wait (`FUN_80029918`) once the mode's fight loads.
+There is no PS1 reference frame of a Force level yet. Under PCSX-Redux the game waits forever in its per-frame wait
+(`FUN_80029918`) once the mode's fight loads, with OpenBIOS and with a real SCPH-1001 BIOS alike.
 
 ## What the mode is
 
@@ -1096,6 +1096,12 @@ spins in the per-frame wait (USA `0x80029720`, Rev.1 `FUN_80029918`), waiting fo
 `0x8009C004`) that the VSync callback or the root-counter event sets. The capture runs PCSX-Redux with OpenBIOS, and
 no real PS1 BIOS is on this machine; with one, the same plan should reach the level.
 
+Update (2026-11-12): a real BIOS did not help. `assets/imported/ps1-bios/SCPH1001.BIN` (private, git-ignored, SHA-1
+`10155d8d6e6e832d6ea66db9bc098321fb5e8ebf`; PCSX-Redux names it SCPH-1001) is now `capture_ps1_menus.py`'s default
+`--bios`. With it the game still stays in state 1 at PC `0x80029720`, under the interpreter and the dynarec alike, so
+the stall is PCSX-Redux's and not the BIOS's. The capture's heartbeat now prints the PC and RA. A reference frame will
+need another emulator, such as Mednafen's PSX core.
+
 ### Update: the Force result screen in the original art (2026-11-12)
 
 A cleared run (`T3_FORCE_RUN_RESULT`) no longer draws the debug-font result in FORCE.BIN. It saves its progress,
@@ -1454,6 +1460,31 @@ size of the phase shifts seen with neutral changes (the preparation move: 144 �
 combat sounds now start right after the image that shows their ticks is handed to the VDP1. That ties the worst case
 with sound off and puts each sound one render nearer its picture. Images per second are still one image in 180
 short, so under the frame-rate rule `T3_FORCE_SFX` stays OFF until the owner decides.
+
+Cheaper plays in LibSaturn (`7b37d6cf`), same probe and hashes:
+
+| LibSaturn | FRT ticks for the 31 plays | Most for one play | Images (sound on) |
+|---|---|---|---|
+| before | 527 | 18 | 179 |
+| SH-2 copy of slot words +02..+16, unchanged writes skipped (dropped) | 442–508 | 16–19 | 179 |
+| PITCH word and length precomputed at pitch 1.0 (**committed**) | 304 | 13 | 179 |
+
+Sound off on the new library: 611 fields, 180 images, worst gap 7. Sound on: 610–612 fields, 179 images, worst gap 7.
+
+- **Where a play's time goes.** Ymir counts about 800 executed cycles a play, most of them `sat_sound_play`'s two
+  64-bit divisions (`__udivdi3` in `encode_pitch`, `__umoddi3` for the voice's length). Mednafen measures about 2,100.
+  The SCSP writes are not the difference: skipping about 5 of the 16 saved only 0.6 tick a play (about 15 cycles a
+  write). `sat_sound_create` now stores the pitch-1.0 PITCH word and length, so a play at pitch 1.0 divides nothing.
+- **The register copy was dropped.** It saved about 3 µs a play and cost 704 bytes. In High WRAM it left the SFX build
+  short of the stack reserve; in Low WRAM it pushed the duel's `.wram_l` into `sat_exec`'s 512 bytes. Inlined, it
+  cost 1.2 KB of code; out of line, its calls cost more than the writes it saved.
+- **The 68000 or FM synthesis would not help.** A 68000 driver taking the slot setup moves the SCSP writes, and those
+  are not the cost. It would also keep a driver polling Sound RAM, which Force does not run today. FM synthesis
+  replaces the original sampled hits and voices with new sounds, so it breaks fidelity.
+
+The 31 plays now take about 1.5 ms in the 10 s probe, under 0.02% of the master's time. The one image in 180 is the
+field-boundary rounding measured above. Under the frame-rate rule, `T3_FORCE_SFX` still stays OFF until the owner
+accepts that last image.
 
 ### Panorama scale and level 4's staircase (2026-11-12)
 

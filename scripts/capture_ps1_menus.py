@@ -14,6 +14,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ['title-fade', 'title', 'menu', 'select-a', 'select-b', 'select-c']
+# A real BIOS (private, git-ignored) when present, else OpenBIOS. Either way PCSX-Redux stalls in the Force fight's
+# per-frame wait (docs/TEKKEN_FORCE_PLAN.md); the menus capture under both.
+REAL_BIOS = ROOT / 'assets/imported/ps1-bios/SCPH1001.BIN'
+OPEN_BIOS = Path.home() / 'dev/pcsx-redux/src/mips/openbios/openbios.bin'
 
 
 def main():
@@ -24,6 +28,7 @@ def main():
     p.add_argument('--lua', type=Path, default=ROOT / 'scripts/pcsx_redux_menu_capture.lua', help='the capture plan')
     p.add_argument('--names', nargs='+', default=NAMES, help='its pause names, in order')
     p.add_argument('--wait', type=float, default=300, help='seconds to wait for each pause')
+    p.add_argument('--bios', type=Path, default=REAL_BIOS if REAL_BIOS.exists() else OPEN_BIOS)
     args = p.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -31,7 +36,7 @@ def main():
     log = (out / 'emulator.log').open('w')
     proc = subprocess.Popen(
         [str(args.emulator), '-no-ui', '-interpreter', '-softgpu',
-         '-bios', str(Path.home() / 'dev/pcsx-redux/src/mips/openbios/openbios.bin'),
+         '-bios', str(args.bios.resolve()),
          '-iso', str(ROOT / 'roms/Tekken 3 USA/Tekken 3 (USA).cue'),
          '-run', '-webserver', '-webserver-port', str(args.port),
          '-dofile', str(args.lua.resolve())],

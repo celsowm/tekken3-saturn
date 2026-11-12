@@ -30,7 +30,9 @@ T3_FORCE_CAPTURE = PCSX.Events.createEventListener('GPU::Vsync', function()
     end
     age = age + 1
     if frames % 300 == 0 then
-        print(string.format('BEAT vsync=%d state=%d age=%d mode=%d', frames, state, age, u32(0x800AFF50)))
+        local regs = PCSX.getRegisters()
+        print(string.format('BEAT vsync=%d state=%d age=%d mode=%d pc=%08x ra=%08x', frames, state, age,
+            u32(0x800AFF50), tonumber(regs.pc), tonumber(regs.GPR.n.ra)))
     end
     if release_at and frames >= release_at[1] then
         pad.clearOverride(release_at[2]); release_at = nil
