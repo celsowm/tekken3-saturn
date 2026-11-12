@@ -11,7 +11,7 @@
 #if defined(T3_COMPILED_RENDERER) || defined(T3_SHARE_ACTOR_RESOURCES)
 #error "these paths read a fighter's pixels after boot or share one embedded mesh"
 #endif
-#define ACTOR_FACE_OT(actor) (t3_fighter_pack(actor)->face_ot)
+#define ACTOR_FACE_OT(actor) (t3_fighter_pack(T3_PACK_INDEX(actor))->face_ot)
 #elif defined(T3_SECOND_MESH)
 #define ACTOR_FACE_OT(actor) ((actor)?t3_kmd_face_ot1:t3_kmd_face_ot)
 #else
@@ -65,8 +65,29 @@ extern const t3_compiled_plan_t t3_compiled_plan;
 
 #define DT_Q16 (SAT_FX16_ONE / T3_HZ)
 #define FADE_Q16 (SAT_FX16_ONE / 10)
-enum { ACTOR_COUNT = 2 };
-#if defined(T3_SECOND_MESH)
+#ifndef T3_ACTOR_COUNT
+#define T3_ACTOR_COUNT 2
+#endif
+enum { ACTOR_COUNT = T3_ACTOR_COUNT };
+
+/* Force: actor 0 keeps its player pack; either enemy can bind either of the
+ * stage's two resident variants. A boss reload shares pack 1 for hidden actor 2. */
+#if defined(T3_FORCE_PROGRAM)
+static uint8_t g_force_pack_index[3] = {0, 1, 1};
+#define T3_PACK_INDEX(actor) g_force_pack_index[(actor)]
+#else
+#define T3_PACK_INDEX(actor) ((actor) & 1u)
+#endif
+
+#if defined(T3_FORCE_PROGRAM)
+enum { ASSET_COUNT = 3, FORCE_ENEMY_TEXTURE_CAP = T3_TEXTURE_COUNT };
+static uint16_t (*g_force_enemy_fallback)[FORCE_ENEMY_TEXTURE_CAP];
+_Static_assert(2u*FORCE_ENEMY_TEXTURE_CAP*sizeof(uint16_t)<=T3_FORCE_PACK_SCRATCH_BYTES,
+    "resident enemy fallback colours fit the third pack's scratch");
+#if T3_FORCE_VARIANT_PROBE
+static volatile uint32_t g_force_variant_binds[3];
+#endif
+#elif defined(T3_SECOND_MESH)
 #if defined(T3_COMPILED_RENDERER) || defined(T3_SHARE_ACTOR_RESOURCES)
 #error "the compiled renderer and shared actor resources cover one mesh"
 #endif
@@ -169,6 +190,8 @@ _Static_assert(sizeof(g_stage_world_scratch[0]) >= T3_PROJECTED_VERTEX_COUNT*siz
 #if defined(T3_FIGHTER_PACKS)
 /* The texture table is only read while decoding, in the arena. */
 static actor_t g_actors[ACTOR_COUNT] T3_HOT_WRAM;
+/* One decode per resident asset, independent of which actor currently uses it. */
+static uint8_t g_asset_loaded[ASSET_COUNT];
 #elif defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
 /* Decoded/uploaded once; preserve High WRAM for simulation and stack. */
 static sat_model_texture_asset_t g_texture_tables[ASSET_COUNT][T3_TEXTURE_COUNT] __attribute__((section(".wram_l")));
@@ -205,6 +228,15 @@ static uint8_t g_initialized;
 static uint8_t g_light_turn;
 #endif
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
+#if defined(T3_FORCE_PROGRAM)
+/* Tekken Force publishes its owned match's original joint pose here. The
+ * pose is rebased on the Force camera so the bridge's original-unit bounds
+ * hold for a whole level (see characters.h). */
+static t3_psx_joint_t g_force_pose[ACTOR_COUNT][T3_PSX_DRAW_PARTS];
+static uint32_t g_force_parts_mask[ACTOR_COUNT];
+static uint8_t g_force_shown[ACTOR_COUNT], g_force_pose_ready[ACTOR_COUNT];
+static int32_t g_force_origin_x, g_force_origin_z;
+#endif
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 #if defined(T3_COMPILED_RENDERER)
 static t3_compiled_renderer_t g_compiled_renderer;
@@ -293,6 +325,11 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     unsigned i;
     sat_result_t st;
     if (g_initialized) return SAT_OK;
+#if defined(T3_FORCE_PROGRAM)
+    g_force_pack_index[0]=0;g_force_pack_index[1]=1;
+    g_force_pack_index[2]=(uint8_t)(t3_fighter_packs_count()==3u?2u:1u);
+    g_force_enemy_fallback=t3_fighter_pack_force_scratch();
+#endif
 #if defined(T3_PARALLEL_GEOMETRY) || defined(T3_PARALLEL_SKINNING)
     const sat_parallel_config_t parallel={SAT_PARALLEL_AUTO,NULL,0,0,GEOMETRY_TIMEOUT_TICKS};
     if((st=sat_parallel_init(&parallel))!=SAT_OK)return st;
@@ -339,28 +376,40 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 
     for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
+        /* Force preloads each regular stage's two enemy variants. A boss
+         * reload uses two packs and shares its second asset for hidden actor 2. */
+#if defined(T3_FORCE_PROGRAM)
+        const unsigned asset_index = T3_PACK_INDEX(i);
+#else
+        const unsigned asset_index = i < ASSET_COUNT ? i : 0u;
+#endif
 #if defined(T3_FIGHTER_PACKS)
         /* The archive and its texture table borrow the arena until compacted
          * below; a loaded actor keeps only its store. */
-        sat_character_asset_t* const owned = &g_assets[i];
-        {
+        sat_character_asset_t* const owned = &g_assets[asset_index];
+        if (!g_asset_loaded[asset_index]) {
             uint8_t* const arena=t3_fighter_pack_arena();
-            const uint32_t bytes=t3_fighter_pack_section_bytes(i,T3_PACK_ARCHIVE);
+            const uint32_t bytes=t3_fighter_pack_section_bytes(asset_index,T3_PACK_ARCHIVE);
             sat_model_texture_asset_t* const tables=
                 (sat_model_texture_asset_t*)(void*)(arena+((bytes+15u)&~15u));
             if(bytes>T3_ROSTER_ARCHIVE_BYTES)return SAT_ERR_CAPACITY;
-            if((st=t3_fighter_pack_read(i,T3_PACK_ARCHIVE,0,arena,bytes))!=SAT_OK)return st;
-            if((st=sat_character_asset_decode(arena,bytes,g_clips[i],T3_CLIP_COUNT,
+#if defined(T3_FORCE_PROGRAM)
+            if((uint32_t)((uint8_t*)(tables+T3_TEXTURE_COUNT)-arena)>
+               T3_ROSTER_ARENA_BYTES-T3_ROSTER_STORE_BYTES)return SAT_ERR_CAPACITY;
+#endif
+            if((st=t3_fighter_pack_read(asset_index,T3_PACK_ARCHIVE,0,arena,bytes))!=SAT_OK)return st;
+            if((st=sat_character_asset_decode(arena,bytes,g_clips[asset_index],T3_CLIP_COUNT,
                     tables,T3_TEXTURE_COUNT,owned))!=SAT_OK)return st;
             if((st=sat_skin_validate(&owned->skin))!=SAT_OK)return st;
             if((st=sat_model_validate(&owned->model))!=SAT_OK)return st;
             if(owned->model.vertex_count>T3_VERTEX_COUNT || owned->model.face_count>T3_FACE_COUNT ||
                owned->model.texture_count>T3_TEXTURE_COUNT)return SAT_ERR_CAPACITY;
+            g_asset_loaded[asset_index]=1u;
         }
 #endif
-        const sat_character_asset_t* asset = &g_assets[i < ASSET_COUNT ? i : 0u];
+        const sat_character_asset_t* asset = &g_assets[asset_index];
         a->asset = asset;
-        a->clips = g_clips[i < ASSET_COUNT ? i : 0u];
+        a->clips = g_clips[asset_index];
         a->vertex_count = asset->model.vertex_count;
         a->texture_count = asset->model.texture_count;
         a->vertices = g_actor_geometry[i].vertices;
@@ -379,7 +428,11 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         a->material_commands = g_material_commands[i];
 #endif
         sat_model_asset_t model = asset->model;
+#if defined(T3_FORCE_PROGRAM)
+        if (asset_index != 0u) {
+#else
         if (i == 1u) {
+#endif
             /* The second actor gets separate CRAM banks after the first
              * actor's, never overriding its colors. */
 #if defined(T3_SECOND_MESH)
@@ -392,11 +445,29 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             model.palette_base = (uint16_t)(model.palette_base + 1u);
 #endif
         }
+#if defined(T3_FORCE_PROGRAM)
+        /* Stage tiles own CRAM colours 0..1279. Sprite INDEX8 palettes
+         * occupy banks 5 and 6; bank 7 is reserved for the text overlay.
+         * Even LUT4 models upload a fallback palette through this API. */
+        model.palette_base=(uint16_t)(5u+(asset_index?g_assets[0].model.palette_count:0u));
+        if(model.palette_base+model.palette_count>7u)return SAT_ERR_CAPACITY;
+#endif
 #if defined(T3_LOCAL_KMD_BIND) && T3_ORIGINAL_TEXTURES
         /* These immutable model textures live for the application lifetime.
          * Use the public native model uploader; the logical texture registry
          * has 64 owner slots and is intended for individually managed assets. */
-        if ((!share_resources || !i) &&
+        int upload_textures=(!share_resources || !i);
+#if defined(T3_FORCE_PROGRAM)
+        /* Enemy 2 shares the enemy asset already compacted by actor 1.
+         * Its texture pixels were transient arena data; reuse the resident
+         * VDP1 descriptors instead of uploading those expired pointers. */
+        if(i==2u && asset_index==1u) {
+            __builtin_memcpy(a->textures,g_actors[1].textures,
+                a->texture_count*sizeof(*a->textures));
+            upload_textures=0;
+        }
+#endif
+        if (upload_textures &&
             (st = sat_model_upload_textures(&model,a->textures,a->texture_count)) != SAT_OK)
             return st;
         if(share_resources && i) {
@@ -408,6 +479,14 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         }
         for (unsigned t=0;t<a->texture_count;++t) {
             sat_scene3d_material_t* material=&a->materials[t];
+#if defined(T3_FORCE_PROGRAM)
+            if(i==2u && asset_index==1u) {
+                *material=g_actors[1].materials[t];
+                material->texture=&a->textures[t];
+                continue;
+            }
+#endif
+            *material=(sat_scene3d_material_t){0};
             const sat_model_texture_asset_t* texture=&model.textures[t];
             material->kind=SAT_SCENE3D_INDEXED_TEXTURED;
             material->texture=&a->textures[t];
@@ -423,13 +502,24 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             else
                 material->rgb555=model.palettes_rgb555[
                     texture->palette_slot*256u+texture->pixels[texture->pixel_count/2u]];
+#if defined(T3_FORCE_PROGRAM)
+            if(asset_index && t3_fighter_packs_count()==3u) {
+                if(t>=FORCE_ENEMY_TEXTURE_CAP || !(texture->flags&SAT_MODEL_TEXTURE_LUT4))
+                    return SAT_ERR_CAPACITY;
+                g_force_enemy_fallback[asset_index-1u][t]=material->rgb555;
+            }
+#endif
         }
 #else
         if ((st = sat_character_materials_upload(&model, a->owners,
                 a->textures, a->materials, a->texture_count)) != SAT_OK)
             return st;
 #endif
-        if(!share_resources || !i)for (unsigned t=0;t<a->texture_count;++t)
+        if((!share_resources || !i)
+#if defined(T3_FORCE_PROGRAM)
+           && !(i==2u && asset_index==1u)
+#endif
+           )for (unsigned t=0;t<a->texture_count;++t)
             g_texture_vram_bytes+=(uint32_t)a->textures[t].width*a->textures[t].height/
                 (a->textures[t].format==SAT_VDP1_TEXTURE_LUT4?2u:1u);
         if ((st = sat_mesh_init(&a->mesh, a->vertices, T3_VERTEX_COUNT,
@@ -439,9 +529,16 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         if ((st = sat_skin_validate_mesh(&asset->skin, &a->mesh)) != SAT_OK)
             return st;
 #if defined(T3_FIGHTER_PACKS)
-        {
+        /* Compact after the last actor using this decode has copied its
+         * mesh. Compaction removes the texture table; model_copy_to_mesh
+         * validates that table even though the mesh itself has no pixels. */
+#if defined(T3_FORCE_PROGRAM)
+        if(i==0u || i==2u || t3_fighter_packs_count()==3u) {
+#else
+        if(asset_index==i) {
+#endif
             uint32_t capacity,kept;
-            void* const storage=t3_fighter_pack_asset_storage(i,&capacity);
+            void* const storage=t3_fighter_pack_asset_storage(asset_index,&capacity);
             if((st=sat_character_asset_compact(owned,storage,capacity,&kept))!=SAT_OK)return st;
         }
 #endif
@@ -492,8 +589,8 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         a->original_mesh=a->mesh;
         a->original_mesh.vertex_cap=T3_PROJECTED_VERTEX_COUNT;
 #if defined(T3_FIGHTER_PACKS)
-        a->original_mesh.vertex_count=(uint16_t)t3_fighter_pack(i)->projected_vertices;
-        a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_fighter_pack(i)->projected_faces;
+        a->original_mesh.vertex_count=(uint16_t)t3_fighter_pack(T3_PACK_INDEX(i))->projected_vertices;
+        a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_fighter_pack(T3_PACK_INDEX(i))->projected_faces;
 #else
         a->original_mesh.vertex_count=(uint16_t)t3_kmd_projected_vertex_count;
         a->original_mesh.indices=(uint16_t*)(uintptr_t)t3_kmd_projected_faces;
@@ -514,7 +611,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #if T3_CLIP_COUNT == 1
         a->instance.cull_backfaces = SAT_SCENE3D_CULL_SCREEN;
 #if defined(T3_FIGHTER_PACKS)
-        a->instance.double_sided_faces = t3_fighter_pack(i)->double_sided;
+        a->instance.double_sided_faces = t3_fighter_pack(T3_PACK_INDEX(i))->double_sided;
 #else
         a->instance.double_sided_faces = t3_kmd_double_sided;
 #if defined(T3_SECOND_MESH)
@@ -546,6 +643,91 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
     return SAT_OK;
 }
 
+#if defined(T3_FORCE_PROGRAM)
+/* Rebind mutable actor state to one of the stage's two immutable, resident
+ * enemy assets. No allocation, disc read or texture upload occurs here.
+ * The compact assets retain topology, skin, skeleton and clips; their
+ * transient texture tables have already been released. */
+sat_result_t t3_characters_force_bind_enemy(unsigned actor,unsigned key) {
+    if(actor<1u || actor>=ACTOR_COUNT || key>3u || !g_initialized ||
+       t3_fighter_packs_count()!=3u)return SAT_ERR_INVALID_ARG;
+    unsigned index=1u;
+    while(index<3u && t3_fighter_pack(index)->id!=21u+key)++index;
+    if(index==3u)return SAT_ERR_NOT_FOUND;
+    if(g_force_pack_index[actor]==index)return SAT_OK;
+    actor_t* a=&g_actors[actor];
+    const sat_character_asset_t* asset=&g_assets[index];
+    const t3_fighter_pack_t* pack=t3_fighter_pack(index);
+    a->asset=asset;a->clips=g_clips[index];
+    a->vertex_count=asset->model.vertex_count;a->texture_count=asset->model.texture_count;
+    if(a->texture_count>FORCE_ENEMY_TEXTURE_CAP)return SAT_ERR_CAPACITY;
+    a->textures=g_texture_descriptors[index];
+    a->material_commands=g_material_commands[index];
+    for(unsigned t=0;t<a->texture_count;++t)a->materials[t]=(sat_scene3d_material_t){
+        .kind=SAT_SCENE3D_INDEXED_TEXTURED,.texture=&a->textures[t],
+        .rgb555=g_force_enemy_fallback[index-1u][t],
+        .color_calc_slot=SAT_INDEXED_SOLID_OPAQUE,.sprite_flags=SAT_SPRITE_FLAG_HIGH_SPEED_SHRINK};
+    SAT_TRY(sat_mesh_init(&a->mesh,a->vertices,T3_VERTEX_COUNT,a->indices,T3_FACE_COUNT));
+    __builtin_memcpy(a->vertices,asset->model.vertices,a->vertex_count*sizeof(*a->vertices));
+    __builtin_memcpy(a->indices,asset->model.indices,asset->model.face_count*4u*sizeof(*a->indices));
+    a->mesh.vertex_count=a->vertex_count;a->mesh.face_count=asset->model.face_count;
+    SAT_TRY(sat_skin_validate_mesh(&asset->skin,&a->mesh));
+    __builtin_memcpy(a->face_materials,asset->model.face_texture_indices,
+        a->mesh.face_count*sizeof(*a->face_materials));
+    SAT_TRY(sat_skeleton_instance_init(&a->skeleton,&asset->skeleton,a->nodes,
+        T3_JOINT_COUNT,a->scratch,T3_JOINT_COUNT));
+    SAT_TRY(sat_skeleton_rest_pose(&asset->skeleton,a->pose,T3_JOINT_COUNT));
+    SAT_TRY(sat_pose_fade_init(&a->fade,a->fade_from,T3_JOINT_COUNT));
+    SAT_TRY(sat_skel_clip_player_init(&a->clip_player,&a->clips[T3_CLIP_IDLE]));
+    a->clip=T3_CLIP_IDLE;
+    a->instance.mesh=&a->mesh;a->instance.materials=a->materials;
+    a->instance.material_count=a->texture_count;a->instance.face_materials=a->face_materials;
+    a->instance.double_sided_faces=pack->double_sided;
+    SAT_TRY(sat_scene3d_instance_binding_init(&a->binding,&a->mesh,
+        a->materials,a->texture_count,a->instance.face_materials));
+    SAT_TRY(sat_scene3d_material_programs_init(&a->material_programs,a->materials,
+        a->texture_count,a->material_commands,T3_TEXTURE_COUNT));
+    a->binding.programs=&a->material_programs;
+    a->instance.validated_binding=&a->binding;
+    g_force_pack_index[actor]=(uint8_t)index;
+#if T3_FORCE_VARIANT_PROBE
+    ++g_force_variant_binds[actor];
+#endif
+    g_force_pose_ready[actor]=0u;
+    return SAT_OK;
+}
+
+unsigned t3_characters_force_model(unsigned actor) {
+    return actor<ACTOR_COUNT?t3_fighter_pack(g_force_pack_index[actor])->id:255u;
+}
+
+sat_result_t t3_characters_force_check_skin(uint32_t* checked) {
+    sat_vec3_t expected[T3_VERTEX_COUNT];
+    *checked=0;
+    for(unsigned i=0;i<T3_DRAW_ACTORS;++i) {
+        const actor_t* a=&g_actors[i];
+        if(!g_force_shown[i] || !g_force_pose_ready[i])continue;
+        SAT_TRY(sat_skin_deform(&a->asset->skin,a->joints,T3_JOINT_COUNT,expected,T3_VERTEX_COUNT));
+        for(unsigned j=0;j<a->vertex_count;++j) {
+            const sat_vec3_t* actual=&a->mesh.vertices[j];
+            if(expected[j].x!=actual->x || expected[j].y!=actual->y || expected[j].z!=actual->z)
+                return SAT_ERR_VERSION;
+        }
+        *checked+=a->vertex_count;
+    }
+    return SAT_OK;
+}
+
+sat_result_t t3_characters_force_reload(void) {
+    g_initialized=0;
+    __builtin_memset(g_asset_loaded,0,sizeof g_asset_loaded);
+    __builtin_memset(g_force_shown,0,sizeof g_force_shown);
+    __builtin_memset(g_force_pose_ready,0,sizeof g_force_pose_ready);
+    g_texture_vram_bytes=0;
+    return t3_characters_init(NULL,NULL);
+}
+#endif
+
 sat_result_t t3_characters_reset(void) {
     unsigned i;
     sat_result_t st;
@@ -566,11 +748,41 @@ sat_result_t t3_characters_reset(void) {
     return SAT_OK;
 }
 
+#if defined(T3_FORCE_PROGRAM)
+void t3_characters_set_force_pose(unsigned actor,
+        const t3_psx_joint_t world[T3_PSX_DRAW_PARTS], uint32_t parts_mask, int shown) {
+    if (actor >= ACTOR_COUNT || !world) return;
+    /* The owned match stores joints in original slot order; the KMD skin
+     * wants part order (move_probe's publish_owned_pose does the same). */
+    const t3_psx_part_t* parts = t3_fighter_pack(T3_PACK_INDEX(actor))->parts;
+    for (unsigned p = 0; p < T3_PSX_DRAW_PARTS; ++p) {
+        t3_psx_joint_t* out = &g_force_pose[actor][p];
+        *out = world[parts[p].slot];
+        out->origin.x -= g_force_origin_x;
+        out->origin.z -= g_force_origin_z;
+    }
+    g_force_parts_mask[actor] = parts_mask;
+    g_force_shown[actor] = (uint8_t)(shown != 0);
+}
+
+void t3_characters_set_force_origin(int32_t x, int32_t z) {
+    g_force_origin_x = x;
+    g_force_origin_z = z;
+}
+
+int t3_characters_force_pose_ready(unsigned actor) {
+    return actor < ACTOR_COUNT ? g_force_pose_ready[actor] : 0;
+}
+#endif
+
 sat_result_t t3_characters_tick(const t3_match_t* game) {
     unsigned i;
     sat_result_t st;
     if (!g_initialized || !game) return SAT_ERR_INVALID_ARG;
     for (i = 0; i < ACTOR_COUNT; ++i) {
+#if defined(T3_FORCE_PROGRAM)
+        if(!g_force_shown[i])continue;
+#endif
         actor_t* a = &g_actors[i];
         const t3_fighter_t* fighter = &game->fighters[i];
         int moved = fighter->x != a->last_x || fighter->z != a->last_z;
@@ -599,15 +811,29 @@ static sat_result_t prepare_base_skeleton(actor_t* a) {
 #if defined(T3_PARALLEL_SKINNING)
 typedef struct {
     volatile sat_result_t range_result[2];
+#if defined(T3_FORCE_PROGRAM)
+    uint16_t vertices[T3_DRAW_ACTORS];
+#endif
 } skin_ranges_t;
 
 static void skin_actors_range(void* opaque,uint32_t begin,uint32_t end) {
     skin_ranges_t* ranges=(skin_ranges_t*)opaque;
     const unsigned range_index=begin==0u?0u:1u;
     while(begin<end) {
+#if defined(T3_FORCE_PROGRAM)
+        unsigned actor_index=0;
+        uint32_t first=begin;
+        while(actor_index<T3_DRAW_ACTORS && first>=ranges->vertices[actor_index])
+            first-=ranges->vertices[actor_index++];
+        if(actor_index>=T3_DRAW_ACTORS) {
+            ranges->range_result[range_index]=SAT_ERR_INVALID_ARG;return;
+        }
+        uint32_t count=ranges->vertices[actor_index]-first;
+#else
         const unsigned actor_index=begin/T3_VERTEX_COUNT;
         const uint32_t first=begin%T3_VERTEX_COUNT;
         uint32_t count=T3_VERTEX_COUNT-first;
+#endif
         if(count>end-begin)count=end-begin;
         if(actor_index>=T3_DRAW_ACTORS) {
             ranges->range_result[range_index]=SAT_ERR_INVALID_ARG;
@@ -661,6 +887,12 @@ static sat_result_t prepare_actors(int defer_skin) {
     sat_result_t st;
     const uint32_t started=sat_time_ms();
     for (unsigned i = 0; i < T3_DRAW_ACTORS; ++i) {
+#if defined(T3_FORCE_PROGRAM)
+        /* Released/off-screen enemy records retain their simulation pose,
+         * but produce no geometry. Do not evaluate and skin a hidden actor. */
+        g_force_pose_ready[i]=0u;
+        if(!g_force_shown[i])continue;
+#endif
         actor_t* a = &g_actors[i];
         T3_PERF_START(skeleton_started);
         g_skin_preview_applied[i]=0u;
@@ -698,6 +930,26 @@ static sat_result_t prepare_actors(int defer_skin) {
                     g_skin_preview_applied[i]=1u;
             }
         }
+#elif defined(T3_FORCE_PROGRAM)
+        /* Every roster fighter keeps the original body pose. Costumes using
+         * accessory joints also need their imported local rest transforms;
+         * propagate those from the newly animated parents, rather than hiding
+         * the whole actor when its skin references a joint above 17. */
+        g_force_pose_ready[i]=0u;
+        const int accessories=a->asset->skin.max_joint>=T3_PSX_VISIBLE_PARTS;
+        if(accessories && (st=prepare_base_skeleton(a))!=SAT_OK)return st;
+        if(T3_CLIP_COUNT==1 &&
+           t3_psx_skin_bridge(g_force_pose[i],g_force_parts_mask[i],a->joints)) {
+            if(accessories)for(unsigned joint=T3_PSX_VISIBLE_PARTS;joint<T3_JOINT_COUNT;++joint) {
+                const uint16_t parent=a->asset->skeleton.joints[joint].parent;
+                if(parent==SAT_TRANSFORM3D_ROOT)a->joints[joint]=a->nodes[joint].local_matrix;
+                else if((st=sat_mat4_multiply(&a->joints[joint],&a->joints[parent],
+                                             &a->nodes[joint].local_matrix))!=SAT_OK)return st;
+            }
+            g_skin_preview_applied[i]=1u;
+            g_force_pose_ready[i]=1u;
+        }
+
 #else
         if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
 #endif
@@ -722,9 +974,17 @@ static sat_result_t prepare_actors(int defer_skin) {
 #if defined(T3_PARALLEL_SKINNING)
     if (!defer_skin) {
         T3_PERF_START(skin_started);
-        skin_ranges_t ranges={{SAT_OK,SAT_OK}};
+        skin_ranges_t ranges={.range_result={SAT_OK,SAT_OK}};
+#if defined(T3_FORCE_PROGRAM)
+        uint32_t end=0;
+        for(unsigned i=0;i<T3_DRAW_ACTORS;++i) {
+            ranges.vertices[i]=(g_force_shown[i] && g_force_pose_ready[i])?g_actors[i].vertex_count:0u;
+            end+=ranges.vertices[i];
+        }
+#else
         const uint32_t end=(uint32_t)T3_DRAW_ACTORS*T3_VERTEX_COUNT;
-        if((st=sat_parallel_for(0u,end,128u,skin_actors_range,&ranges,
+#endif
+        if(end && (st=sat_parallel_for(0u,end,128u,skin_actors_range,&ranges,
                 g_actor_geometry,(uint32_t)sizeof(g_actor_geometry)))!=SAT_OK)return st;
         if((st=sat_parallel_cache_sync_range(&ranges,sizeof(ranges)))!=SAT_OK)return st;
         if(ranges.range_result[0]!=SAT_OK)return ranges.range_result[0];
@@ -1466,8 +1726,8 @@ static int project_original(const fused_actor_context_t* context,actor_t* actor)
      * published camera and joint snapshot through the shared alias. */
     context=sat_parallel_uncached_address(context);
 #if defined(T3_FIGHTER_PACKS)
-    const t3_psx_projected_part_t* parts=t3_fighter_pack(n)->projected;
-    unsigned count=t3_fighter_pack(n)->projected_count;
+    const t3_psx_projected_part_t* parts=t3_fighter_pack(T3_PACK_INDEX(n))->projected;
+    unsigned count=t3_fighter_pack(T3_PACK_INDEX(n))->projected_count;
 #else
     const t3_psx_projected_part_t* parts=t3_kmd_projected;
     unsigned count=t3_kmd_projected_count;
@@ -1987,7 +2247,12 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #if defined(T3_FUSED_ACTOR_PREPARATION)
     fused=t3_move_probe_owned() && T3_DRAW_ACTORS==2;
 #endif
-    if ((st = prepare_actors(fused)) != SAT_OK) return st;
+    if ((st = prepare_actors(fused)) != SAT_OK) {
+#if defined(T3_FORCE_PROGRAM)
+        SAT_PANIC_IF_ERROR(st);
+#endif
+        return st;
+    }
 #if defined(T3_FUSED_ACTOR_PREPARATION)
     if(fused)return prepare_fused_actors(scene);
 #endif
@@ -2014,6 +2279,12 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #endif
         /* Original example model faces +Z. Turn its front towards rival. */
         transform.rotation_deg.y = (fighter->facing > 0 ? 90 : -90) * SAT_FX16_ONE;
+#if defined(T3_FORCE_PROGRAM)
+        /* The published original pose is already camera-rebased and carries
+         * the fighter's own facing; only the sixfold visual scale applies. */
+        transform.position.x = transform.position.z = 0;
+        transform.rotation_deg.y = 0;
+#endif
         if(t3_move_probe_owned()) {
             /* The owned world matrix is diagonal scale six + translation.
              * Apply that exact transform in place after skinning rather than
@@ -2107,9 +2378,20 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #endif
     for(i=0;i<T3_DRAW_ACTORS;++i) {
         actor_t* a=&g_actors[i];
+#if defined(T3_FORCE_PROGRAM)
+        /* A hidden actor, or one whose original pose is incomplete this
+         * tick, has no image (the level runner hides released and wiped-out
+         * enemies; an unbridged pose would be a stale one). */
+        if(!g_force_shown[i] || !g_force_pose_ready[i])continue;
+#endif
         if(!t3_move_probe_fighter_shown(i))continue;
         if((st=sat_scene_submit_instance(scene,&a->instance,
-            SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK)return st;
+            SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK) {
+#if defined(T3_FORCE_PROGRAM)
+            SAT_PANIC_IF_ERROR(st);
+#endif
+            return st;
+        }
     }
     T3_PERF_ADD(geometry,geometry_started);
     return SAT_OK;

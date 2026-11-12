@@ -60,6 +60,7 @@ def main():
                         help='fighter ids whose banks they play, when a Mokujin copies another')
     parser.add_argument('--boss', type=int, help='Tekken Force: the roster id of the level\'s boss (its model, radii, scale and voice are generated; its bank is read at run time from T3_FORCE_BOSS_BANK)')
     parser.add_argument('--boss-slot', type=int, help='the boss\'s costume slot')
+    parser.add_argument('--boss-bank', type=int, help='the fighter id whose bank the boss plays, when the boss is a Mokujin (default: --boss)')
     parser.add_argument('--player-slot', type=int, help='the player\'s costume slot (its KMD record) when the recording plays another costume than 0')
     parser.add_argument('--assets', type=Path, required=True, help='prepared private import')
     parser.add_argument('--logic', type=Path, required=True, help='directory of NN.t3logic roster banks')
@@ -86,7 +87,7 @@ def main():
                '--ai-tables', str(tables / 'psx_ai.bin'), '--sound-tables', str(tables / 'psx_sounds.bin'),
                '--effect-tables', str(tables / 'psx_effects.bin'), '--output', str(logic)]
     if args.boss is not None:
-        command += ['--extra-bank', str(args.logic / f'{args.boss:02}.t3logic')]
+        command += ['--extra-bank', str(args.logic / f'{args.boss if args.boss_bank is None else args.boss_bank:02}.t3logic')]
     if fighter_of(banks[0]).bank_type != fighter_of(banks[1]).bank_type:
         command += ['--second-bank', str(args.logic / f'{banks[1]:02}.t3logic')]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL)

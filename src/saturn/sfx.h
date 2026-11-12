@@ -15,6 +15,8 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes);
 void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count);
 /* Also once per displayed image: the round announcer from the round flow. */
 void t3_sfx_round_update(void);
+/* Tekken Force's level runner: a raw sound code. */
+void t3_sfx_play_code(uint16_t code);
 uint32_t t3_sfx_played(void);
 #else
 static inline sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
@@ -22,6 +24,7 @@ static inline sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
 }
 static inline void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) { (void)events;(void)count; }
 static inline void t3_sfx_round_update(void) {}
+static inline void t3_sfx_play_code(uint16_t code) { (void)code; }
 static inline uint32_t t3_sfx_played(void) { return 0; }
 #endif
 

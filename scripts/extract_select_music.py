@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Decode the original character select music (XA stream 0x11) from the USA disc.
+"""Decode one of the original's XA music streams from the USA disc: the character select music (stream 0x11, the
+default) or the result screens' (0x12, track 6 in both soundtracks; sound.md "Music" in the pinned Tekken3Remake).
 
 The XA stream table in SLUS_004.02 (rows of start, end, channel; sound.md and
 tools/remake_import/media.py in the pinned Tekken3Remake) names the stream's
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import psx_disc_import as disc_import  # noqa: E402
 
-STREAM, INTERLEAVE, RAW_SECTOR = 0x11, 8, 2352
+SELECT_STREAM, INTERLEAVE, RAW_SECTOR = 0x11, 8, 2352
 
 
 def find_table(exe):
@@ -39,6 +40,7 @@ def main():
     p.add_argument('--exe', type=Path, default=ROOT / 'assets/imported/tekken3-usa/SLUS_004.02')
     p.add_argument('--out', type=Path, required=True, help='WAV path under assets/imported or build')
     p.add_argument('--seconds', type=int, default=60)
+    p.add_argument('--stream', type=lambda text: int(text, 0), default=SELECT_STREAM, help='XA stream row (0x11 select)')
     p.add_argument('--ffmpeg', default='ffmpeg')
     args = p.parse_args()
     out = args.out.resolve()
@@ -47,7 +49,7 @@ def main():
     exe = args.exe.read_bytes()
     if hashlib.sha256(exe).hexdigest() != disc_import.US_EXE_SHA:
         p.error('needs the fingerprinted USA SLUS_004.02')
-    start, end, channel = struct.unpack_from('<3I', exe, find_table(exe) + 12 * STREAM)
+    start, end, channel = struct.unpack_from('<3I', exe, find_table(exe) + 12 * args.stream)
     with disc_import.Disc(args.track1) as disc:
         _, lba, _, _ = disc.find('TEKKEN3', 'TEKKEN3.XAS')
         with args.track1.open('rb') as image:
@@ -71,7 +73,7 @@ def main():
         w.setsampwidth(2)
         w.setframerate(44100)
         w.writeframes(frames)
-    print(f'{out}: stream {STREAM:#x}, {args.seconds} s, lba {lba}, sectors {start}..{end} ch {channel}')
+    print(f'{out}: stream {args.stream:#x}, {args.seconds} s, lba {lba}, sectors {start}..{end} ch {channel}')
 
 
 if __name__ == '__main__':

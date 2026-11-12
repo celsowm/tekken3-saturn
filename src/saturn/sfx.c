@@ -29,7 +29,8 @@ static uint8_t g_ready;
 /* Sound requests with no extracted sample, and the first distinct ones as
  * (kind<<24 | player<<16 | code). Dumped by scripts/saturn_probe.py. */
 volatile uint32_t g_t3_sfx_unmapped,g_t3_sfx_unmapped_count,g_t3_sfx_unmapped_seen[16];
-volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_ms,g_t3_sfx_play_max_ms,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
+/* play_frc: FRT ticks (sat_time_frc) spent in sat_sound_play; two raw timer reads cost less than sat_time_ms. */
+volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_frc,g_t3_sfx_play_max_frc,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
 /* LibSaturn's audio statistics, refreshed each update: Sound RAM and voice pressure of a real fight. */
 volatile uint32_t g_t3_sfx_ram_used,g_t3_sfx_ram_capacity,g_t3_sfx_ram_high_water,g_t3_sfx_resident_sounds,
                   g_t3_sfx_voice_steals,g_t3_sfx_failed_plays;
@@ -112,12 +113,12 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
 
 static void play(unsigned id) {
     const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
-    const uint32_t started=sat_time_ms();
+    const uint16_t started=sat_time_frc();
     ++g_t3_sfx_shared_plays[id];
     if(sat_sound_play(g_sound[id],&params,NULL)==SAT_OK)++g_t3_sfx_played;
-    const uint32_t spent=sat_time_ms()-started;
-    g_t3_sfx_play_ms+=spent;
-    if(spent>g_t3_sfx_play_max_ms)g_t3_sfx_play_max_ms=spent;
+    const uint32_t spent=(uint16_t)(sat_time_frc()-started);
+    g_t3_sfx_play_frc+=spent;
+    if(spent>g_t3_sfx_play_max_frc)g_t3_sfx_play_max_frc=spent;
 }
 
 /* Voices: a hurt voice for a hit (not a block) with the original's 40-tick
@@ -141,7 +142,11 @@ static void play_request(const t3_combat_event_t* e) {
             if(g_voice_code[e->fighter][i]==e->code) {
                 const sat_sound_play_params_t params={SAT_AUDIO_VOLUME_MAX,SAT_AUDIO_PAN_CENTER,1u,0u,SAT_FX16_ONE,0u};
                 ++g_t3_sfx_voice_plays[e->fighter][i];
+                const uint16_t started=sat_time_frc();
                 if(sat_sound_play(g_voice[e->fighter][i],&params,NULL)==SAT_OK)++g_t3_sfx_played;
+                const uint32_t spent=(uint16_t)(sat_time_frc()-started);
+                g_t3_sfx_play_frc+=spent;
+                if(spent>g_t3_sfx_play_max_frc)g_t3_sfx_play_max_frc=spent;
                 return;
             }
     }
@@ -157,6 +162,14 @@ static void play_request(const t3_combat_event_t* e) {
     ++g_t3_sfx_unmapped;
     for(unsigned k=0;k<n;++k)if(g_t3_sfx_unmapped_seen[k]==key)return;
     if(n<16u){g_t3_sfx_unmapped_seen[n]=key;g_t3_sfx_unmapped_count=n+1u;}
+}
+
+/* A raw sound code of Tekken Force's level runner (key bank 3). */
+void t3_sfx_play_code(uint16_t code) {
+    if(!g_ready)return;
+    for(unsigned i=0;i<T3_SFX_COUNT;++i)
+        if(g_key[i].bank==3u && g_key[i].code==code){play(i);return;}
+    ++g_t3_sfx_unmapped;
 }
 
 void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {

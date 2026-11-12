@@ -18,6 +18,19 @@ implementation of Tekken3Remake.
   "Copyright (c) 2026 n0madic". It is pinned under `third_party/Tekken3Remake` as a separate Git submodule. The upstream license and notices still apply to its checkout and adapted code.
 - **Original engine adaptations**: `src/game/arcade_ladder.c` (the arcade ladder
   of ArcadeBuildLadder and its `x·5 + 1` draws, from `docs/research/code/modes.md`),
+  `scripts/build_force_boss_packs.py` (boss costume/model/voice selection from
+  `docs/research/code/modes.md` and `tools/research/char_records.py`),
+  `scripts/build_force_items.py` and the Force pickup/popup presentation in
+  `src/saturn/force_main.c` (texture rectangles, billboards and popup placement
+  from `tools/remake_import/stage.py`, `tools/research/force_sim.py` and
+  `remake/core/force/tekken_force.gd`),
+  the Force panorama and level 4's staircase in `src/saturn/force_main.c` (scale, top edge, scroll, the
+  tan(0xD8) steps and the camera roll 0x82, from `docs/research/code/modes.md` "Panorama",
+  `tools/research/force_sim.py` `background_draw` and `remake/core/force/tekken_force.gd`; the rolled
+  CameraBuildView in `src/game/psx_camera.c` from `docs/research/code/camera.md`),
+  Force enemy model selection in `src/saturn/force_main.c` (the level's two
+  costume keys and slot model requests from `remake/core/force/tekken_force.gd`
+  and `docs/research/code/modes.md`; resource residency/rebinding is newly authored),
   `scripts/pack_ending_movies.py` (the ending movie selection of `ending.ovl`, from
   `docs/research/formats/sound-and-video.md`); `src/saturn/vs_screen.c` and `scripts/pack_vs_art.py`
   (the pre-fight VS screen's layout, tint and captions, from
@@ -81,7 +94,10 @@ implementation of Tekken3Remake.
   FighterOpponent from `move_system.gd` and `fight_state.gd`),
   `src/game/psx_hud_messages.c` (normal round text selection from
   `remake/core/fight/round_hud.gd` and the replay label from `fight-frame.md`),
-  `src/saturn/menu_main.c`, `scripts/pack_menu_art.py`,
+  `src/saturn/menu_main.c` (also the Tekken Force result screen from `modes.md` state 15,
+  `tools/research/draw_sim.py` `force_screen_draw`/`force_portrait` and `hud.md`'s font CLUT rule),
+  `scripts/pack_force_result_art.py` (the result picture, `modes.md` and `draw_sim.py` `result_picture`),
+  `scripts/pack_menu_art.py`,
   `scripts/extract_menu_art.py`, `scripts/extract_select_music.py`, `scripts/extract_menu_sfx.py`,
   `scripts/pcsx_redux_menu_capture.lua` (the title sequence timings, main menu, character
   select grid order, layout, big portrait bands and HUD portrait source from
@@ -94,7 +110,7 @@ implementation of Tekken3Remake.
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
   `src/game/psx_round.c`, `src/game/psx_round_flow.c`, `src/game/psx_replay.c`,
-  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/psx_force_level.c`, `src/game/psx_force_target.c`, `src/game/psx_force_walls.c`, `src/game/psx_force_camera.c`, `src/game/psx_camera.c`,
+  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/psx_force_level.c`, `src/game/force_progress.c`, `src/game/psx_force_target.c`, `src/game/psx_force_walls.c`, `src/game/psx_force_camera.c`, `src/game/psx_camera.c`,
   `src/game/psx_match_camera.c`, `src/game/psx_motion.c`,
   `src/game/stage_backdrop.c`, `src/game/stage_rules.c`,
   `src/game/input_history.c`, `src/game/psx_reaction.c`,

@@ -169,7 +169,8 @@ static void fill_image(t3_psx_ai_game_t* b,unsigned i) {
     put(p+0x54,4,row_address(b,fighter_bank(b,i),ko?f->hit.prior_slot:f->vm.slot));
     put(p+0x58,2,ko?f->hit.prior_pose_frame:(uint32_t)f->vm.clock.pose_frame);
     put(p+0x60,4,g->state);
-    put(p+0x64,2,ko?f->hit.prior_attack_word:f->vm.move.attack_word);
+    /* +0x64: a forced hit (Force) writes the unblockable attack word over the move's until the next move starts */
+    put(p+0x64,2,ko?f->hit.prior_attack_word:g->attack_override?g->attack_override:f->vm.move.attack_word);
     put(p+0x74,2,(uint32_t)g->throw_state);
     p[0x87]=g->was_hit_this_move;
     put(p+0xA0,2,ko?f->hit.prior_slot:f->vm.slot);

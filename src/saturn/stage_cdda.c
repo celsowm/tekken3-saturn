@@ -35,8 +35,16 @@ sat_result_t t3_stage_cdda_status(sat_cd_status_t* status) {
     return sat_cd_get_status(block,status);
 }
 
-/* Plays the range [track start + skip, + length) of audio track 2 on repeat; length 0 is to its end. */
-static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
+/* The result music ends the track; every other range stops before it. */
+#if defined(T3_RESULT_CDDA_SECTORS)
+enum { RESULT_SECTORS = T3_RESULT_CDDA_SECTORS };
+#else
+enum { RESULT_SECTORS = 0 };
+#endif
+
+/* Plays the range [track start + skip, + length) of audio track 2 on repeat; length 0 is to its end (before the result
+ * music). `tail` plays the result music instead. */
+static sat_result_t cdda_range(uint32_t skip,uint32_t limit,int tail) {
     sat_cd_block_t* block;
     SAT_TRY(t3_disc_block(&block));
     sat_cd_toc_t toc;
@@ -44,11 +52,18 @@ static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {
     SAT_TRY(sat_cd_read_toc(block,&toc));
     if(toc.last_track!=2u)return SAT_ERR_INVALID_ARG;
     SAT_TRY(sat_cd_toc_audio_track(&toc,2u,&start,&whole));
+    if(whole<=RESULT_SECTORS)return SAT_ERR_INVALID_ARG;
+    if(tail){skip=whole-RESULT_SECTORS;limit=RESULT_SECTORS;}
+    else whole-=RESULT_SECTORS;
     if(whole<skip+limit || whole==skip)return SAT_ERR_INVALID_ARG;
     SAT_TRY(sat_cdda_play(block,start+skip,limit?limit:whole-skip));
     t3_stage_cdda_mix();
     return SAT_OK;
 }
+static sat_result_t cdda_play(uint32_t skip,uint32_t limit) {return cdda_range(skip,limit,0);}
+#if defined(T3_RESULT_CDDA_SECTORS)
+sat_result_t t3_result_cdda_start(void) {return cdda_range(0,0,1);}
+#endif
 #if defined(T3_SELECT_CDDA_SECTORS)
 /* The fighter themes follow the select music on the same track. */
 #if defined(T3_MUSIC_TABLE)

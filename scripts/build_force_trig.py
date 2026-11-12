@@ -3,6 +3,7 @@
 reads (src/game/psx_force_camera.c), from the private USA executable. The output is retail-derived: keep it
 under assets/imported or build/."""
 import argparse
+import struct
 from pathlib import Path
 
 from build_stage_packs import usa_file_offset
@@ -17,7 +18,13 @@ def main():
     args = parser.parse_args()
     exe = args.exe.read_bytes()
     at = usa_file_offset(ADDRESS)
-    args.out.write_bytes(exe[at:at + BYTES])
+    data = exe[at:at + BYTES]
+    if exe[:8] != b'PS-X EXE' or len(data) != BYTES or (
+            struct.unpack_from('<h', data, 0x800)[0] != 4096 or
+            struct.unpack_from('<h', data, 0x1800)[0] != -4096):
+        raise ValueError('expected the original USA executable and its sine table; placeholder data is not usable')
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_bytes(data)
     print(f'{BYTES} bytes -> {args.out}')
 
 

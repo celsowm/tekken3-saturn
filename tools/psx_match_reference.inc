@@ -5,6 +5,8 @@
 #ifndef REFERENCE_NAME
 #define REFERENCE_NAME(...) snprintf(__VA_ARGS__)
 #endif
+/* Set by a recorded Tekken Force resume: the fighters need not stand neutral (move slot 3, no pending move). */
+static int reference_seed_relaxed;
 static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32_t ramp) {
     if(original_round_flow) {
 #define READ_FLOW(member,offset,kind) game.flow.member=kind(offset);
@@ -20,19 +22,33 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
         uint32_t b=0x800A9228u+i*0x188Cu;
         t3_psx_fighter_t* f=&game.fighter[i];
         f->last_attacker=u8(b+0x22);f->last_hit_target=u8(b+0x23);
-        if(u16(b+0xA0)!=3 || u32(b+0x1A4) || u32(b+0x4C)!=u32(b+0x54) ||
-           u16(b+0x404) || u16(b+0x406))return 0;
+        if(!reference_seed_relaxed && (u16(b+0xA0)!=3 || u32(b+0x1A4) || u32(b+0x4C)!=u32(b+0x54) ||
+           u16(b+0x404) || u16(b+0x406)))return 0;
 #define READ(member,offset,kind) f->ground.member=kind(b+offset);
         T3_GROUND_EVAL_FIELDS(READ)
 #undef READ
         f->ground.step_accum_x=i32(sx+4*i);f->ground.step_accum_z=i32(sz+4*i);
         uint32_t push=u32(b+0x110);
         if(push>=0x8001075Cu && push<=0x80010CE8u)f->ground.push_cursor=(uint16_t)(push-0x8001075Cu);
-        else if(f->ground.push_table_frames)return 0;
+        else if(f->ground.push_table_frames && !reference_seed_relaxed)return 0;
         f->vm.clock=(t3_move_clock_t){i16(b+0x58),i16(b+0x50),i16(b+0x5C),i16(b+0x6E),
             i16(b+0x76),i16(b+0x6A),(uint8_t)i16(b+0x92),u8(b+0xDA)};
         f->vm.current_transition=(uint8_t)u16(b+0xA2);f->vm.current_branch_kind=u8(b+0x8B);
         f->vm.last_entry_frame=i16(b+0x198);f->vm.branch_window=i16(b+0x6C);
+        if(reference_seed_relaxed) {
+            for(unsigned k=0;k<8;++k) {
+                const uint32_t q=b+0x324+16*k;
+                f->body.spheres[k].center=(t3_vec3i_t){i32(q),i32(q+4),i32(q+8)};f->body.spheres[k].radius=u16(q+12);
+            }   /* a resumed fight: the move in progress and any move queued behind it */
+            f->vm.slot=u16(b+0xA0);
+            f->health_max=i32(b+0x3F8);
+            f->vm.pending_valid=u32(b+0x1A4)!=0;
+            if(f->vm.pending_valid) {
+                f->vm.pending_slot=(uint16_t)i16(b+0x1A0);
+                f->vm.queued.transition=u16(b+0x19A);f->vm.queued.entry_frame=i16(b+0x198);
+                f->vm.queued.branch_kind=u8(b+0x8B);f->vm.queued.branch_window=i16(b+0x6C);
+            }
+        }
         f->health_q16=i32(b+0x3F4);f->hit_done=u8(b+0x83+1u-i);
         if(original_round_flow) {
             t3_psx_round_actor_t* a=&game.round_actor[i];
@@ -63,7 +79,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
         f->blend.weight=i16(b+0x186E);f->blend.last_frame=i32(b+0x182C);
         f->blend.src_frame=u8(b+0x1884);f->blend.dst_frame=u8(b+0x1885);
         /* Seed is neutral slot3 with last row equal to the live pose row. */
-        if(u32(b+0x1824)!=u32(b+0x54) || f->blend.mode)return 0;
+        if(!reference_seed_relaxed && (u32(b+0x1824)!=u32(b+0x54) || f->blend.mode))return 0;
         const uint8_t* slot=bank.data+bank.sections[2]+4*3;
         f->blend.last_row=(uint32_t)slot[0]|((uint32_t)slot[1]<<8)|((uint32_t)slot[2]<<16)|((uint32_t)slot[3]<<24);
         for(unsigned k=0;k<3;++k){f->blend.previous_root[k]=i16(b+0x1810+2*k);f->blend.root_delta[k]=i16(b+0x1868+2*k);}
@@ -75,7 +91,7 @@ static int reference_seed_state(uint32_t sx,uint32_t sz,uint32_t previous,uint32
         f->input=(t3_input_history_t){0};f->input.count=60;
         for(unsigned k=0;k<60;++k) {
             uint8_t value=u8(b+0x41C+(head+1+k)%60);
-            if(value>=16u || (value&15u)>9u)return 0; /* seed requires unpressed neutral history */
+            if(!reference_seed_relaxed && (value>=16u || (value&15u)>9u))return 0; /* seed requires unpressed neutral history */
             f->input.frames[k]=(t3_command_frame_t){value,0,0};
         }
         f->body.anchor=f->ground.anchor;f->body.root=f->ground.root;

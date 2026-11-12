@@ -38,6 +38,12 @@ ANNOUNCER = {
     'ann_fight': 0x3C,
 }
 FILTERS = ((0, 0), (60, 0), (115, -52), (98, -55), (122, -60))
+# Tekken Force's level runner plays raw sound codes (bits 14-15: the VAB, 4-5: program, 0-3: tone): the tally line
+# (FUN_800B4A1C), the key and final-stage lines, the item pickup and its LIFE UP!, the rescue and the 5..1 countdown.
+FORCE_SOUNDS = {
+    'tally': 0x4C6C, 'key': 0x4CEB, 'pickup': 0x4E6A, 'lifeup': 0x87C0, 'rescue': 0x50F4,
+    'count5': 0x8694, 'count4': 0x8693, 'count3': 0x8652, 'count2': 0x8711, 'count1': 0x86D0,
+}
 USA_EXE_SHA256 = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
 # g_soundTable at USA 0x80097050, mapped from Rev.1 0x80097474.
 SOUND_TABLE_OFFSET, SOUND_TABLE_COUNT = 0x87850, 212
@@ -147,6 +153,10 @@ def main():
                         'adds f<slot>_shout0/1 and f<slot>_hurt0..2')
     p.add_argument('--generated', type=Path,
                    help='also write SFX.BIN and t3_local_sfx.h (the Saturn build\'s inputs) here')
+    p.add_argument('--with-force', action='store_true',
+                   help='also add Tekken Force\'s runner sounds (key bank 3) to SFX.BIN: the Force disc\'s file')
+    p.add_argument('--force', action='store_true',
+                   help='only Tekken Force\'s runner sounds, written as FORCESFX.BIN and t3_local_force_sfx.h (T3_FORCE_SFX_*)')
     args = p.parse_args()
     d = args.exe.read_bytes()
     if hashlib.sha256(d).hexdigest() != USA_EXE_SHA256:
@@ -154,6 +164,11 @@ def main():
     vh = d[VH:VH + 0x1220]
     if vh[:4] != b'pBAV' or struct.unpack_from('<I', vh, 12)[0] != VAB_BYTES:
         raise SystemExit('not the USA VAB 0')
+    if args.force:
+        sys_len = 0x820 + d[SYS_VH + 0x12] * 0x200 + 0x200
+        banks = {1: (vh, d[VB:VB + VAB_BYTES - 0x1220]), 2: (d[SYS_VH:SYS_VH + sys_len], d[SYS_VB:SYS_VB + SYS_BYTES - sys_len])}
+        jobs = [(name, *banks[code >> 14], code, 3, 0, code) for name, code in FORCE_SOUNDS.items()]
+        return write(args, jobs, 'FORCESFX.BIN', 't3_local_force_sfx.h', 'T3_LOCAL_FORCE_SFX_H', 'T3_FORCE_SFX')
     # key kinds match the match's sound requests: 0 effect (VAB 0), 1 system, 2 voice
     jobs = [(name, vh, d[VB:VB + VAB_BYTES - 0x1220], request, 0, 0,
              effect_code(d, request)) for name, request in SOUNDS.items()]
@@ -173,6 +188,13 @@ def main():
         named = set(shouts) | set(hurts) | set(kos)
         jobs += [(f'f{slot}_v{c:04x}', char_vh, body, c, 2, int(slot), c)
                  for c in all_voice_codes(d, int(char)) if c not in named]
+    if args.with_force:
+        banks = {1: (vh, d[VB:VB + VAB_BYTES - 0x1220]), 2: (sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len])}
+        jobs += [(name, *banks[code >> 14], code, 3, 0, code) for name, code in FORCE_SOUNDS.items()]
+    return write(args, jobs, 'SFX.BIN', 't3_local_sfx.h', 'T3_LOCAL_SFX_H', 'T3_SFX')
+
+
+def write(args, jobs, bin_name, header_name, guard, prefix):
     pcm, rows = bytearray(), []
     for name, job_vh, body, code, bank, slot, tone_code in jobs:
         vag, hz, samples = vab_sound(job_vh, body, tone_code)
@@ -187,23 +209,22 @@ def main():
         rows.append((name, code, vag, hz, len(pcm), len(samples), bank, slot))
         pcm += data
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / 'psx_sfx.bin').write_bytes(pcm)
-    (args.out / 'psx_sfx.tsv').write_text(''.join('\t'.join(map(str, r)) + '\n' for r in rows))
+    (args.out / ('psx_force_sfx' if prefix == 'T3_FORCE_SFX' else 'psx_sfx')).with_suffix('.bin').write_bytes(pcm)
+    (args.out / ('psx_force_sfx' if prefix == 'T3_FORCE_SFX' else 'psx_sfx')).with_suffix('.tsv').write_text(''.join('\t'.join(map(str, r)) + '\n' for r in rows))
     if args.generated:
         args.generated.mkdir(parents=True, exist_ok=True)
-        (args.generated / 'SFX.BIN').write_bytes(pcm)
-        lines = ['#ifndef T3_LOCAL_SFX_H', '#define T3_LOCAL_SFX_H',
-                 f'#define T3_SFX_FILE_BYTES {len(pcm)}u', f'#define T3_SFX_COUNT {len(rows)}u',
-                 f'#define T3_SFX_MAX_SAMPLES {max(r[5] for r in rows)}u']
-        lines += [f'#define T3_SFX_{r[0].upper()} {i}u' for i, r in enumerate(rows)]
-        lines += ['#define T3_SFX_TABLE \\'] + [f'    {{{r[4]}u,{r[5]}u,{r[3]}u}}, \\' for r in rows]
+        (args.generated / bin_name).write_bytes(pcm)
+        lines = [f'#ifndef {guard}', f'#define {guard}',
+                 f'#define {prefix}_FILE_BYTES {len(pcm)}u', f'#define {prefix}_COUNT {len(rows)}u',
+                 f'#define {prefix}_MAX_SAMPLES {max(r[5] for r in rows)}u']
+        lines += [f'#define {prefix}_{r[0].upper()} {i}u' for i, r in enumerate(rows)]
+        lines += [f'#define {prefix}_TABLE \\'] + [f'    {{{r[4]}u,{r[5]}u,{r[3]}u}}, \\' for r in rows]
         lines[-1] = lines[-1].rstrip(' \\')
-        lines += ['#define T3_SFX_KEY_TABLE \\'] + [f'    {{{r[6]}u,{r[7]}u,0x{r[1]:04X}u}}, \\' for r in rows]
+        lines += [f'#define {prefix}_KEY_TABLE \\'] + [f'    {{{r[6]}u,{r[7]}u,0x{r[1]:04X}u}}, \\' for r in rows]
         lines[-1] = lines[-1].rstrip(' \\')
-        (args.generated / 't3_local_sfx.h').write_text('\n'.join(lines + ['#endif', '']))
+        (args.generated / header_name).write_text('\n'.join(lines + ['#endif', '']))
     for r in rows:
         print(*r)
-
 
 if __name__ == '__main__':
     main()

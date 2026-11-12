@@ -8,6 +8,10 @@ sat_result_t t3_stage_cdda_start(unsigned track);
 #if defined(T3_SELECT_CDDA_SECTORS)
 sat_result_t t3_select_cdda_start(void);
 #endif
+#if defined(T3_RESULT_CDDA_SECTORS)
+/* The result screens' music (the original's track 6). */
+sat_result_t t3_result_cdda_start(void);
+#endif
 void t3_stage_cdda_mix(void);
 sat_result_t t3_stage_cdda_status(sat_cd_status_t* status);
 #else

@@ -96,6 +96,10 @@ typedef struct {
     unsigned event_count;
 } t3_force_level_t;
 
+/* Reject truncated/placeholder tables before a newly spawned actor can receive
+ * zero maximum health. The private pack is little-endian on every target. */
+int t3_force_tables_valid(const uint8_t* tables,size_t bytes);
+
 /* One frame of the level runner (the script, the two enemy slots, the score, hi-score and timer caps and
  * the announcer's countdown). `tables` is T3_FORCE_TABLE_BYTES, `script` the level's 128 20-byte records
  * (little-endian, as in the stage archive). Events are appended to s->events (cleared first). */

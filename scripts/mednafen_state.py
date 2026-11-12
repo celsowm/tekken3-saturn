@@ -116,7 +116,7 @@ def symbols(elf, tools):
 
 
 class Memory:
-    def __init__(self, state, elf, tools):
+    def __init__(self, state, elf, tools, text_diff=False):
         low, high = work_ram(state)
         address, expected = elf_text(elf, tools)
         at = (address & 0x0FFFFFFF) - HIGH
@@ -124,6 +124,17 @@ class Memory:
             self.order = 'big'
         elif swap16(high[at:at + len(expected)]) == expected:
             self.order, low, high = 'swapped16', swap16(low), swap16(high)
+        elif text_diff:
+            # A run whose code was overwritten: keep the order with fewer differing bytes and say where they are.
+            def differing(ram):
+                return [i for i in range(len(expected)) if ram[at + i] != expected[i]]
+            big, swapped = differing(high), differing(swap16(high))
+            if len(swapped) < len(big):
+                self.order, low, high, bad = 'swapped16 (text differs)', swap16(low), swap16(high), swapped
+            else:
+                self.order, bad = 'big (text differs)', big
+            print(f'.text: {len(bad)} of the first {len(expected)} bytes differ, '
+                  f'{address + bad[0]:#010x}..{address + bad[-1]:#010x}')
         else:
             raise ValueError('Work RAM does not hold this ELF: .text differs in both byte orders')
         self.low, self.high = low, high
@@ -146,6 +157,8 @@ def main():
     p.add_argument('--json', action='store_true')
     p.add_argument('--dump', type=Path, help='also write each symbol\'s raw bytes to DIR/<symbol>.bin')
     p.add_argument('--cpus', action='store_true', help='print each SH-2\'s PC and PR with their functions')
+    p.add_argument('--text-diff', action='store_true',
+                   help='read the state even when the ELF\'s code differs, and report where it does')
     args = p.parse_args()
     state = args.run
     if state.is_dir():
@@ -153,7 +166,7 @@ def main():
         if not found:
             raise SystemExit(f'{state}: no save state; record with --save-state')
         state = found[-1]
-    memory = Memory(state, args.elf, args.tools)
+    memory = Memory(state, args.elf, args.tools, args.text_diff)
     table = symbols(args.elf, args.tools)
     result = {}
     for name in args.symbol:

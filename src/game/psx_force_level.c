@@ -24,6 +24,14 @@ static uint16_t tab16(const uint8_t* t,int64_t off){
 static uint32_t tab32(const uint8_t* t,int64_t off){
     return (uint32_t)tab16(t,off)|((uint32_t)tab16(t,off+2)<<16);
 }
+int t3_force_tables_valid(const uint8_t* t,size_t bytes){
+    if(!t || bytes!=T3_FORCE_TABLE_BYTES)return 0;
+    for(unsigned i=0;i<25;++i)if((int32_t)tab32(t,ENEMY_HEALTH+4u*i)<=0)return 0;
+    for(unsigned i=0;i<8;++i)if(t[ENEMY_KEYS+i]>3u)return 0;
+    for(unsigned i=0;i<4;++i)if(!tab32(t,STAGE_BONUS+4u*i))return 0;
+    return 1;
+}
+
 static uint8_t tab8(const uint8_t* t,int64_t off){
     return off<0||off>=(int64_t)T3_FORCE_TABLE_BYTES?0:t[off];
 }
@@ -391,6 +399,9 @@ void t3_force_level_save(const t3_force_level_t* s,int32_t* v){
 void t3_force_level_setup(t3_force_level_t* s,int level){
     *s=(t3_force_level_t){0};
     s->level=level;
+    /* The announcer's calls at 1..5 seconds left (the table at 0x8009747E of Rev.1, bank 2: the system VAB). */
+    static const uint16_t countdown[5]={0x86D0,0x8711,0x8652,0x8693,0x8694};
+    for(int i=0;i<5;++i)s->countdown_sound[i]=countdown[i];
     for(int i=0;i<T3_FORCE_SLOTS;++i){
         s->slot[i].loaded=(int16_t)i;
         s->fighter[i].fc2=1;

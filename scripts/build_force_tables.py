@@ -9,6 +9,7 @@ work/jp_rev1/bns/007_rec, or BNS record 7). The output is retail-derived: keep i
 assets/imported or build/.
 """
 import argparse
+import struct
 from pathlib import Path
 
 BASE, BYTES = 0x800B0A10, 0x1D0
@@ -22,6 +23,8 @@ def main():
     data = args.overlay.read_bytes()[:BYTES]
     if len(data) != BYTES:
         raise ValueError('overlay shorter than its constant tables')
+    if any(value <= 0 for value in struct.unpack_from('<25i', data, 0x13C)):
+        raise ValueError('Force tables need positive enemy health; placeholder overlays are not usable')
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(data)
     print(f'{len(data)} bytes -> {args.out}')

@@ -17,7 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {'INTRO.MOV': 'the Tekken 3 opening movie (-DT3_LOCAL_INTRO_MOVIE)',
             'VSBG0.BIN': 'the VS screen (-DT3_LOCAL_VS_RECORDS and -DT3_LOCAL_ARCADE_OVERLAY)',
             'MENU.BIN': 'the title and select menus', 'INTRO.BIN': 'the intro program',
-            'END00.MOV': 'the arcade ending movies (-DT3_LOCAL_ENDING_MOVIES, scripts/pack_ending_movies.py)'}
+            'END00.MOV': 'the arcade ending movies (-DT3_LOCAL_ENDING_MOVIES, scripts/pack_ending_movies.py)',
+            'FORCE.BIN': 'the Tekken Force program (-DT3_LOCAL_FORCE_LEVELS)',
+            'LEV1.BIN': 'the Tekken Force levels (-DT3_LOCAL_FORCE_LEVELS, scripts/build_force_levels.py)',
+            'BOSSPAK.BIN': 'the Tekken Force bosses (scripts/build_force_boss_packs.py)'}
 
 
 def missing_features(disc):

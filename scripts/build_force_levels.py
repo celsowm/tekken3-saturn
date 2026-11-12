@@ -11,11 +11,13 @@ LEVn.BIN is big-endian: a 64-byte header, then the cells, the tiles, the palette
 descriptor and the script.
 
     header   u32 magic 'T3FL', version, level, map width, map height, tile count, palette count,
-             cells offset, tiles offset, palettes offset, floor offset, script offset, script bytes
+             cells offset, tiles offset, palettes offset, floor offset, script offset, script bytes,
+             floor-extra offset, floor tile count, floor palette count
     cells    width * height of (u16 tile, u16 palette), row by row
     tiles    64 * 64 texels in 4 bits (left texel in the high nibble), 2,048 bytes each, once each
     palettes 16 u16 Saturn colours (0 stays transparent), once each
     floor    member 1 as stored; script member 3 as stored (little-endian records)
+    floor-extra  the floor's 100 entries resolved (build_floor), its tiles and palettes
 
 The output is retail-derived: keep it under assets/imported or build/.
 """
@@ -74,6 +76,38 @@ def tile_texels(vram, word):
     return rows
 
 
+def build_floor(vram, floor):
+    """The floor's 10 x 10 entries resolved to tiles: (bytes, tile count, palette count).
+
+    An entry is two words (stages.md, Floor): word 0 the tile's u (bits 0-7) and v (bits 8-15) and the texture
+    page bits (16-20; 25-26 the order of the corners, 30-31 the corner set), word 1 the CLUT (bits 16-31). The bytes are 100
+    entries of (tile, palette, orientation = set * 4 + order, 0), then the distinct 64 x 64 tiles (2,048 bytes
+    each, as the map's) and their 16-colour palettes (as the map's)."""
+    tiles, palettes, packed_tiles, packed_palettes, rows = {}, {}, [], [], []
+    for k in range(100):
+        word0, word1 = struct.unpack_from('<II', floor, 4 + 8 * k)
+        page = word0 >> 16 & 0x1F
+        x0, y0 = (page & 15) * 64, (page >> 4) * 256
+        u, v = word0 & 0xFF, word0 >> 8 & 0xFF
+        rows_px = []
+        for y in range(TILE):
+            rows_px.append([vram[(y0 + v + y) * 1024 + x0 + (u + x) // 4] >> (4 * ((u + x) % 4)) & 15
+                            for x in range(TILE)])
+        key = tuple(map(tuple, rows_px))
+        if key not in tiles:
+            tiles[key] = len(tiles)
+            packed_tiles.append(b''.join(
+                bytes(row[x] << 4 | row[x + 1] for x in range(0, TILE, 2)) for row in rows_px))
+        clut = word1 >> 16
+        cx, cy = 16 * (clut & 63), clut >> 6
+        colours = tuple(saturn_colour(vram[cy * 1024 + cx + i]) for i in range(16))
+        if colours not in palettes:
+            palettes[colours] = len(palettes)
+            packed_palettes.append(struct.pack('>16H', *colours))
+        rows.append(bytes((tiles[key], palettes[colours], (word0 >> 30 & 3) * 4 + (word0 >> 25 & 3), 0)))
+    return b''.join(rows) + b''.join(packed_tiles) + b''.join(packed_palettes), len(packed_tiles), len(packed_palettes)
+
+
 def build_level(arc, level):
     members, vram = read_stage(arc)
     map_member = members[2]
@@ -100,13 +134,14 @@ def build_level(arc, level):
     cell_bytes = b''.join(struct.pack('>HH', *r) for r in rows)
     tile_bytes, palette_bytes = b''.join(packed_tiles), b''.join(packed_palettes)
     floor, script = members[1], members[3]
+    floor_extra, floor_tiles, floor_palettes = build_floor(vram, floor)
     offsets, at = [], HEADER_BYTES
-    for blob in (cell_bytes, tile_bytes, palette_bytes, floor, script):
+    for blob in (cell_bytes, tile_bytes, palette_bytes, floor, script, floor_extra):
         offsets.append(at)
         at += len(blob)
-    header = struct.pack('>13I', MAGIC, VERSION, level, width, height, len(packed_tiles), len(packed_palettes),
-                         *offsets, len(script))
-    image = header.ljust(HEADER_BYTES, b'\0') + cell_bytes + tile_bytes + palette_bytes + floor + script
+    header = struct.pack('>16I', MAGIC, VERSION, level, width, height, len(packed_tiles), len(packed_palettes),
+                         *offsets[:5], len(script), offsets[5], floor_tiles, floor_palettes)
+    image = header.ljust(HEADER_BYTES, b'\0') + cell_bytes + tile_bytes + palette_bytes + floor + script + floor_extra
     return image, dict(level=level, file=f'LEV{level}.BIN', bytes=len(image), map=[width, height],
                        tiles=len(packed_tiles), palettes=len(packed_palettes), script_bytes=len(script))
 

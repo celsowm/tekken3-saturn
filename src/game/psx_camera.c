@@ -1397,12 +1397,24 @@ void t3_psx_camera_shake_step(cam_t* c,const tab_t* t) {
     c->view.pitch+=v;
 }
 
-/* CameraBuildView (the sine table is all it reads). */
-static inline __attribute__((always_inline)) void build_view_core(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out) {
+/* CameraBuildView (the sine table is all it reads): R = Rx(-pitch) . Ry(-yaw) . Rz(-roll). `roll` is a constant 0 for
+ * the fight camera, whose roll is always 0, so only Tekken Force's level 4 view carries the Rz product. */
+static inline __attribute__((always_inline)) void build_view_core(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out,
+                                                                  int32_t roll) {
     int32_t sy,cy,sx,cx,ry[9],rx[9],r[9],e[3];int i,k,col;
     sy=sn(t,-v->yaw&0xFFF);cy=cs(t,-v->yaw&0xFFF);
     sx=sn(t,-v->pitch&0xFFF);cx=cs(t,-v->pitch&0xFFF);
     ry[0]=cy;ry[1]=0;ry[2]=-sy;ry[3]=0;ry[4]=ONE;ry[5]=0;ry[6]=sy;ry[7]=0;ry[8]=cy;
+    if(roll) {
+        const int32_t sz=sn(t,-roll&0xFFF),cz=cs(t,-roll&0xFFF);
+        const int32_t rz[9]={cz,-sz,0,sz,cz,0,0,0,ONE};
+        int32_t yz[9];
+        for(col=0;col<3;col++)for(i=0;i<3;i++) {
+            int64_t s=((int64_t)ry[3*i]*rz[col]+(int64_t)ry[3*i+1]*rz[3+col]+(int64_t)ry[3*i+2]*rz[6+col])>>12;
+            yz[3*i+col]=s<-32768?-32768:s>32767?32767:(int32_t)s;
+        }
+        for(i=0;i<9;i++)ry[i]=yz[i];
+    }
     rx[0]=ONE;rx[1]=0;rx[2]=0;rx[3]=0;rx[4]=cx;rx[5]=sx;rx[6]=0;rx[7]=-sx;rx[8]=cx;
     /* MulMatrix: one MVMVA per column, saturated to 16 bits. */
     for(col=0;col<3;col++)for(i=0;i<3;i++) {
@@ -1417,15 +1429,16 @@ static inline __attribute__((always_inline)) void build_view_core(const t3_psx_c
 }
 int t3_psx_camera_build_view(const t3_psx_camera_view_t* v,const tab_t* t,t3_psx_camera_matrix_t* out) {
     if(!v || !tables_ok(t) || !out || v->roll)return 0;
-    build_view_core(v,t,out);
+    build_view_core(v,t,out,0);
     return 1;
 }
 #ifdef T3_PSX_FIGHTERS
-/* The same from the sine table alone: Tekken Force's side-scrolling camera has no director tables. */
+/* The same from the sine table alone: Tekken Force's side-scrolling camera has no director tables, and its level 4
+ * view is rolled (modes.md; the camera's roll 0x82). */
 int t3_psx_camera_build_view_trig(const t3_psx_camera_view_t* v,const t3_psx_trig_t* trig,t3_psx_camera_matrix_t* out) {
     const tab_t tab={.trig=trig};
-    if(!v || !trig || !trig->data || !out || v->roll)return 0;
-    build_view_core(v,&tab,out);
+    if(!v || !trig || !trig->data || !out)return 0;
+    build_view_core(v,&tab,out,v->roll);
     return 1;
 }
 #endif

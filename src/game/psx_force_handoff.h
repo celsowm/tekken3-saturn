@@ -2,18 +2,18 @@
 #define T3_PSX_FORCE_HANDOFF_H
 #include <stdint.h>
 
-/* What the Tekken Force programs hand each other through sat_exec (docs/TEKKEN_FORCE_PLAN.md, decision 1): a
- * level is the scrolling section, then the boss duel in the versus program, then back to the next level. The
- * block is not the 16-byte boot argument of the other programs, so a program that receives the other size
- * treats the start as a cold boot. Big-endian, T3_FORCE_HANDOFF_BYTES long (at most SAT_EXEC_ARG_MAX, 64). */
+/* Force stage continuation through sat_exec. Boss swaps happen within the
+ * current program; a clear carries this state to the next scrolling stage
+ * or the earned Doctor B. stage. Big-endian, distinct from the menu's boot
+ * argument. Version 2 also retains the encountered bosses and record flag. */
 #define T3_FORCE_HANDOFF_BYTES 40u
-#define T3_FORCE_HANDOFF_VERSION 1u
+#define T3_FORCE_HANDOFF_VERSION 2u
 
 enum { T3_FORCE_SECTION_SCROLL=0, T3_FORCE_SECTION_BOSS=1, T3_FORCE_SECTION_RESULT=2 };
-enum { T3_FORCE_FLAG_KEY_EARNED=1, T3_FORCE_FLAG_FINAL=2, T3_FORCE_FLAG_DOCTOR_B=4, T3_FORCE_FLAG_BOSS_WON=8 };
+enum { T3_FORCE_FLAG_KEYS=7, T3_FORCE_FLAG_SAVED_DOCTOR=8, T3_FORCE_FLAG_DOCTOR_UNLOCKED=16 };
 
 typedef struct {
-    uint8_t level;        /* 0..3 */
+    uint8_t level;        /* 0..3 scrolling stages; 4 is the earned Doctor B. fight */
     uint8_t section;      /* T3_FORCE_SECTION_* */
     uint8_t character;    /* the player's character */
     uint8_t costume;      /* its costume */
@@ -25,6 +25,8 @@ typedef struct {
     uint16_t kills;
     uint32_t seed;        /* the fight's random seed */
     uint8_t pad_side;     /* the human's pad */
+    uint8_t bosses[4];    /* original character*4+costume; 0xFF when not met */
+    uint8_t new_record;
 } t3_force_handoff_t;
 
 /* Packs into `out` (T3_FORCE_HANDOFF_BYTES) and unpacks; unpack returns 0 for a block that is not a Force

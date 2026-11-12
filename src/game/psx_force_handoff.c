@@ -7,7 +7,8 @@ void t3_force_handoff_pack(const t3_force_handoff_t* in,uint8_t* out){
     for(unsigned i=0;i<T3_FORCE_HANDOFF_BYTES;++i)out[i]=0;
     out[0]='G';out[1]='F';out[2]=T3_FORCE_HANDOFF_VERSION;
     out[3]=in->level;out[4]=in->section;out[5]=in->character;out[6]=in->costume;out[7]=in->keys;out[8]=in->flags;
-    out[9]=in->pad_side;
+    out[9]=(uint8_t)(in->pad_side|(in->new_record?0x80u:0u));
+    out[10]=in->bosses[0];out[11]=in->bosses[1];out[30]=in->bosses[2];out[31]=in->bosses[3];
     put32(out+12,in->score);put32(out+16,in->hiscore);
     put32(out+20,(uint32_t)in->timer);put32(out+24,(uint32_t)in->health);
     out[28]=(uint8_t)(in->kills>>8);out[29]=(uint8_t)in->kills;
@@ -19,13 +20,16 @@ void t3_force_handoff_pack(const t3_force_handoff_t* in,uint8_t* out){
 }
 
 int t3_force_handoff_unpack(const uint8_t* in,uint32_t bytes,t3_force_handoff_t* out){
-    if(bytes!=T3_FORCE_HANDOFF_BYTES||in[0]!='G'||in[1]!='F'||in[2]!=T3_FORCE_HANDOFF_VERSION)return 0;
+    if(!in||!out||bytes!=T3_FORCE_HANDOFF_BYTES||in[0]!='G'||in[1]!='F'||in[2]!=T3_FORCE_HANDOFF_VERSION)return 0;
     uint32_t sum=0x811C9DC5u;
     for(unsigned i=0;i<36;++i)sum=(sum^in[i])*0x01000193u;
     if(sum!=get32(in+36))return 0;
-    if(in[3]>3||in[4]>T3_FORCE_SECTION_RESULT||in[7]>3||in[8]>15||in[9]>1)return 0;
+    if(in[3]>4||in[4]>T3_FORCE_SECTION_RESULT||in[5]>20||in[6]>3||in[7]>3||in[8]>31||(in[9]&~0x81u))return 0;
+    const unsigned boss_at[4]={10,11,30,31};
+    for(unsigned i=0;i<4;++i)if(in[boss_at[i]]!=255u && in[boss_at[i]]>=84u)return 0;
     out->level=in[3];out->section=in[4];out->character=in[5];out->costume=in[6];out->keys=in[7];out->flags=in[8];
-    out->pad_side=in[9];
+    out->pad_side=in[9]&1u;out->new_record=in[9]>>7;
+    for(unsigned i=0;i<4;++i)out->bosses[i]=in[boss_at[i]];
     out->score=get32(in+12);out->hiscore=get32(in+16);
     out->timer=(int32_t)get32(in+20);out->health=(int32_t)get32(in+24);
     out->kills=(uint16_t)(in[28]<<8|in[29]);

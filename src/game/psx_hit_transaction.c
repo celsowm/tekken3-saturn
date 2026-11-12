@@ -248,10 +248,15 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         if(s->collapsed)f->last_guarded=0;
 #if T3_PSX_FIGHTERS>2
         f->contact=0;
-        for(unsigned d=0;d<T3_PSX_FIGHTERS;++d)
+        /* HitTest's pairs run on the roles' player, target and other enemy, so each attacker meets its defenders
+         * in that order ((P,T),(T,P),(P,O),(O,P),(T,O),(O,T), as in contacts()): the last that landed is kept. */
+        const unsigned target=match->opponent[0]==2u?2u:1u,roles[3]={0u,target,3u-target};
+        for(unsigned k=0;k<3u;++k) {
+            const unsigned d=roles[k];
             if(d!=i && f->pair_gate[d].status==T3_HIT_GATE_ACCEPT && !(match->reversal_cancelled&(1u<<(i+2u)))) {
-                f->contact=1;f->hit_done_for[d]=1;f->last_hit_target=(uint8_t)d; /* the last pair that landed, in the original's order */
+                f->contact=1;f->hit_done_for[d]=1;f->last_hit_target=(uint8_t)d;
             }
+        }
         if(f->contact){f->hit_done=f->hit_done_for[T3_PSX_OPP(match,i)];f->contact_this_move=1;}
 #else
         f->contact=f->hit_gate.status==T3_HIT_GATE_ACCEPT &&

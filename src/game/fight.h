@@ -69,16 +69,25 @@ typedef struct {
     int8_t dash_direction;
 } t3_fighter_t;
 
+/* Maximum fighters: 2 for versus, 3 for Tekken Force (when T3_FORCE_PROGRAM is defined). */
+#ifndef T3_MAX_FIGHTERS
+#ifdef T3_FORCE_PROGRAM
+#define T3_MAX_FIGHTERS 3
+#else
+#define T3_MAX_FIGHTERS 2
+#endif
+#endif
+
 typedef struct {
-    t3_fighter_t fighters[2];
-    t3_input_history_t input_histories[2];
+    t3_fighter_t fighters[T3_MAX_FIGHTERS];
+    t3_input_history_t input_histories[T3_MAX_FIGHTERS];
     uint32_t total_ticks;
     uint16_t timer;
     uint16_t round_pause;
     uint16_t hits;
     uint16_t blocks;
     uint8_t round;
-    uint8_t wins[2];
+    uint8_t wins[T3_MAX_FIGHTERS];
     uint8_t round_done;
     uint8_t match_done;
     int8_t winner;            /* -1 tie, 0 or 1 */

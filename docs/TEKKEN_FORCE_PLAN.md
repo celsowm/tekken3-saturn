@@ -1,16 +1,29 @@
 # Tekken Force: plan
 
-Status (2026-11-07): phases 0-2 done, phase 3 partly, phase 4 and 5 started; **the mode does not play yet**.
-The plan to finish it is [Plan to finish](#plan-to-finish-2026-11-07); it supersedes the old resume list.
-In the shipping build the menu still lists TEKKEN FORCE and does nothing (`docs/ROSTER.md`, `docs/ROADMAP.md`);
-with the private levels configured it starts a Force demo program (the level script, camera, items and the
-tally on a scrolling panorama, enemies and the player as boxes). Done and checked: the research harness, the
-enemy packs and level files, the level runner, target choice, roles, walls, camera and hand-off in C (golden
-cases; the runner and camera also against a recorded whole game), the match core's fighter count for three
-fighters (duel binary unchanged). Open: the three-fighter match comparator, the AI state for Force, mode-8
-contact and sound facts, real fighters and the third actor's cost, the level 4 staircase, the original HUD, the
-screens' text, a full game disc played from the menu, and the frame-rate A/B (phase 6). The sections below are
-the plan; the dated notes inside them are the results.
+Status (2026-11-11): **Force is still incomplete.** The separate three-actor
+Saturn executable builds, boots, and displays an animated player on the stage
+panorama. Physical-input conversion and elapsed-field scheduling are connected;
+the host input regression covers both target sides. The frontend now draws
+health, enemy health, time, score, high score, keys, defeats and the stage tally.
+The original PS1 `NOW LOADING...` font art is displayed during the initial CD
+loads, independently of the stage/HUD palettes. On the full-game disc
+(`build/saturn`, 2026-11-12) the menu's TEKKEN FORCE MODE reaches level 1 in a
+headless Ymir boot. These changes do not prove that the complete mode is playable.
+
+Current acceptance gaps and repair order are in
+[TEKKEN_FORCE_REVIEW.md](TEKKEN_FORCE_REVIEW.md). Device input replays now
+exercise combat and live boss costume loading.
+Cold boots verify key persistence, and probes reach the final challenge and
+Doctor B. rescue. Original chicken pickups now render and a labelled device
+probe verifies healing and the rising message. The Force result screen now runs in MENU.BIN with the
+original picture, fonts, colours, timings and sounds (see "Update: the Force result screen"). A complete
+played run, sound and the ranking must still be finished; the floor and level 4's staircase are drawn (see "Panorama
+scale and level 4's staircase"). The host comparisons now cover
+every compared frame of the three recordings, including `force_run`'s carried-state
+levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
+requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
+A PS1 reference frame of a Force level needs a real PS1 BIOS: under PCSX-Redux's OpenBIOS
+the game waits forever in its per-frame wait (`FUN_80029918`) once the mode's fight loads.
 
 ## What the mode is
 
@@ -19,7 +32,7 @@ section "Tekken Force"): the player walks through four side-scrolling levels
 and fights up to two CPU enemies at a time (character 21 in the costumes Crow,
 Falcon, Hawk and Owl, motion bank 20). A level script of 20-byte records
 spawns enemies, locks the screen for fights, drops items (roast chicken, +50
-health) and ends with a real fighter as boss (level 4 is only the boss). Each
+health) and ends with a real fighter as boss (the earned Doctor B. stage is only a boss). Each
 defeat adds 2 to 8 seconds to a timer; the level ends with a tally (stage
 bonus, clear bonus, bonus time). Three keys unlock Doctor B.'s final stage.
 
@@ -943,8 +956,827 @@ first one after frame 7,800 is 20,479) needs the evaluator's RAM-seed path to ac
 globals: today it refuses a Force seed ("invalid or unsupported neutral seed"). That seed mode (records, enemy slots, runner
 globals, camera, AI banks, random state, copied from the RAM image) is the next host task, before the `FORCE.BIN` skeleton.
 
+### RAM-seed mode for resumed Force stretches (2026-11-11)
+
+`T3_FORCE_RAM_SEED=1` (with `T3_FORCE_START`) in `tools/psx_match_replay_eval.c` now seeds a Force stretch from the
+exported RAM image instead of refusing it: all three records through `reference_seed_state` with
+`reference_seed_relaxed` set (no neutral-stance checks), plus the move in progress and any queued move, the body
+spheres, both random generators, the input frame counter, carried score and keys. Run it with
+`scripts/force_ram_seed_eval.sh` (evaluator from `build_oracle_pair_evaluator.py --fighters 4 21 22 --assets
+assets/imported/tekken3-usa-full --logic <dir with 04, 21, 22 .t3logic>`). Versus seeding is unchanged
+(`reference_seed_relaxed` defaults to 0; host tests pass).
+
+Result (the RAM-seed evaluator; `round_gap_frames` 50 for the level load; `T3_FORCE_AI_LEVEL` and the level file found by
+trying, see below). Rows are 18,936 onward from the seed frame; `side_flag` one-row blips are ignored in the count:
+
+| Stretch | Level file, AI level | Rows exact before the first real difference | First real difference |
+|---|---|---|---|
+| 18,935 | LEV3, 4 | 1,563 (to frame 20,498) | row 1,563: the player's target (enemy 2 vs enemy 1) |
+| 35,785 | LEV4, 5 | 718 (to frame 36,503) | row 718: a shared-generator draw (`rand`) |
+| 7,799 | LEV1, 3 | 51 | row 51: enemy body sphere radii (0 in the original, 96 here) |
+
+(`side_flag` is wrong for one row at the first enemy spawn in each stretch and again later; its source is the screen x of
+the newly active record.) What was needed, all behind `round_gap_frames` (three fighters only):
+
+- the flow stays in state 9 for 50 frames, then FighterPlace runs as a first round (player to the origin, wall ramp and
+  camera restarted, the timer and the enemies' health/state kept); the enemy set-up follows one frame later;
+- the level runner counts from the frame after the placement (clock 1 there, the first spawn at clock 151);
+- the enemies' aim directions: the original's angle call sees the pair distance of the current frame once the player
+  is on screen; the camera had to restart at x 0 for the player to be on screen (the stand-in distance 1000 applied
+  while our camera still sat at the previous level's x);
+- level 4 (view roll 0x82): a fighter's stored screen x is the camera's own roll-aware projection plus 192
+  (`t3_force_camera_screen_x`), not the unrolled view's; the target choice depends on it (close = 1..399).
+
+The player's target at frame 20,499 (original: enemy 1 for exactly one frame, distance 1,146 against 779, then enemy 2
+again; both enemies close, wait 0, pair distances 367 apart, same quadrant) needs the candidates' relative angles as the
+original's roles pass computed them; our stored screen x for all three records matches the original exactly on
+that level (rows 20,494-20,499), so the screen is not the cause. Giving a newly spawned record its projected screen x
+at spawn removes the first `side_flag` blip but breaks row 827 (a respawned record keeps its previous screen x), so
+it was reverted.
+
+Open: the 7,799 sphere radii; the player's target at frame 20,499 (the candidates' inputs there need a trace); a
+shared-generator draw at frame 36,504 (the AI or a blink); the `side_flag` blips. Probe outputs (`build/fseed-*`) are
+deleted after each session.
+
+### RAM-seed stretches: hit order, the recorder's refill, an enemy's stale distance (2026-11-12)
+
+The 20,499 row was not the target choice. `check_force_roles_trace.py --dump FROM TO` (new: the choice's inputs per
+frame) shows that the original keeps enemy 2 there: the distances are 367 apart, so the relative angles decide (134
+against 6,488), and our C choice agrees. The difference was the player's `last_hit_target`. The player hit both enemies
+in one frame. FightFrame runs `HitTest` on the roles' player, target and other enemy ((P,T), (T,P), (P,O), (O,P),
+(T,O), (O,T)), so each attacker meets its defenders in the order player, target, other, and the last pair that lands is
+kept. `psx_hit_transaction.c` walked the defenders by record index instead; it now follows the roles' order.
+
+The next stop (frame 22,037, the player's health 17 against 130) is the recorder, not the game: `force_run`,
+`force_bosses` and `force_final` were recorded with `flow_trace.py`'s `refill` (health below 40 goes back to the
+maximum, a timer below 600 to 3,600). The evaluator already has it behind `T3_FORCE_REFILL=1`, which these recordings
+need. `force_ram_seed_eval.sh` now prints the first difference with `side_flag` blips skipped.
+
+The 35,785 stretch had dropped to 458 rows (enemy 1's aim direction at 36,244). At 36,243 enemy 1 hit enemy 2. At
+36,244, PairwiseDistances (step 11) still sees that contact (HitClearSlots, step 21, clears it). Its opponent, enemy 2,
+is off screen (x 463), so `dist` is the screen stand-in, 10·|180 − |180 − 410|| = 500. MoveStep's angle call runs
+before MoveStep reloads `dist`, and 500 ≤ 0x200 leaves the aim unchanged. Our MoveStep replaced `dist` with the
+pair-table distance to the current opponent first. That override was a workaround from before the camera restart was
+right; with it removed, the stretch is back to 718 rows, and the other stretches are unchanged.
+
+| Stretch | Level file, AI level | Rows exact before the first real difference | First real difference |
+|---|---|---|---|
+| 18,935 | LEV3, 4 | 6,452 (was 1,563) | row 6,452 (frame 25,388): enemy 1's queued move (`pending_slot` 0 against 2,573) |
+| 35,785 | LEV4, 5 | 718 | row 718: a shared-generator draw (`rand`) |
+| 7,799 | LEV1, 3 | 51 | row 51: enemy body sphere radii (0 in the original, 96 here) |
+
+Host tests pass (107, 8 skipped for missing data). The device rate probe is unchanged: 640 fields, 640 / 35, 605 ticks,
+134 images. `scripts/force_trace_peek.py` prints chosen RAM words (or fighter record offsets `fN+0xOFF`) of a
+recording over a range of frames.
+
+### Update: `force_run` exact from frame 7,799 to its end (levels 2, 3 and 4)
+
+Five more fixes, then the evaluator set-up for each level:
+
+1. **Forced reaction.** Frame 25,388 was the evaluator, not the game: `force_ram_seed_eval.sh` did not pass
+   `T3_FORCED_REACTION` (the forced-hit reaction table), so a thrown body landed no forced hit. The AI's view of the
+   attack word (`+0x64`) now shows the unblockable word a forced hit writes until the next move starts.
+2. **Sound opponent.** FightFrame passes FighterSounds the FighterOpponent rule (throw partner, last attacker, last hit
+   target, else the opponent), not the plain opponent. The draws at 30,220 and 36,504 were this.
+3. **Reversal pair gates.** `t3_psx_match_reversals` (three records) sets contact, `got_hit` and `was_hit_this_move` for
+   every pair that landed, in the roles' HitTest order. Before, it used the single opponent's gate (frame 32,651).
+4. **Bosses in the evaluator.** At the area change record 1 becomes the level's boss, which the evaluator only plays
+   when it is built with it (`--boss ID --boss-slot SLOT`, `T3_FORCE_BOSS_BANK`). The boss of each level is
+   `0x800AFF91 + level` (character · 4 + costume). Mokujin plays another fighter's bank (the record's bank type), so
+   `build_oracle_pair_evaluator.py --boss-bank ID` names it. For this recording (player Yoshimitsu), level 2 is Mokujin in
+   costume 1 with Nina's bank (`--boss 15 --boss-slot 31 --boss-bank 5`) and level 3 is Bryan in costume 1
+   (`--boss 12 --boss-slot 25`).
+5. **The alternative point block.** Ogre and Mokujin strike with the attack record's alternative points. The flag
+   (`0x800A0950 + 4 · index`) is set from the character only by the match set-up (`FUN_8006A658`). The Force boss loader
+   leaves record 1's enemy flag, so a Mokujin or Ogre boss strikes with the normal block (frame 17,933: `hit_dir` 4.5%
+   short). `attack_shapes` reproduces this.
+
+The 7,799 stretch is the start of level 2, not a level-1 resume. Runner state 7 (the clear tally) goes to 0 at 7,800,
+and record 1, still the level-1 boss, is reloaded as an enemy. The level-1 boss is the player's own character, so the
+evaluator matched record 1 to the player's bank. In a Force seed an enemy record now plays the enemy bank first.
+
+| Stretch | Level file, AI level, boss | Rows | Exact |
+|---|---|---|---|
+| 7,799 | LEV2, 3, Mokujin (Nina's bank) | 11,120 (through the boss fight) | all |
+| 18,935 | LEV3, 4, Bryan | 16,800 (through the boss fight) | all |
+| 35,785 | LEV4, 5 | 4,214 (to the recording's end) | all |
+
+All three need `T3_FORCE_REFILL=1`. With the first chunk (7,522 frames), every compared frame of `force_run` matches.
+Rerun on this source, the first-level runs still pass every row:
+
+| Recording | Evaluator | Start | Rows |
+|---|---|---|---|
+| `force_run` | `--fighters 4 21 22`, `T3_FORCE_BOSS_LIKE=1` | `T3_ORIGINAL_MATCH_START=11`, seed at 261 | 7,522 |
+| `force_bosses` | `--fighters 19 21 22 --player-slot 45 --boss 5 --boss-slot 11` | 21, seed at 261 | 9,578 |
+| `force_final` | `--fighters 9 21 22 --player-slot 19 --boss 0 --boss-slot 1` | 15, seed at 261 | 7,882 |
+
+(Doctor B's costume model, record 251, comes from `psx_disc_import.py --extract-ids 251`.) Host tests pass
+(107). Device rate probe: 643 fields, 643 / 38, 605 ticks, 134 images (was 640, 640 / 35, 605, 134). No loss.
+
+### Update: Force from the full game's menu; the panorama's torn sky
+
+The full-game disc (`build/saturn`, with `T3_LOCAL_FORCE_LEVELS`, the intro and ending movies) passes
+`play_mednafen.py`'s feature check. A Ymir pad script (title START, START, five DOWNs, START, then START on the select
+screen) reaches FORCE.BIN and level 1 by field 3,600. Ymir runs this disc's menus faster than the 2,100-field arcade
+timing in `scripts/ai_cost.py`: the mode list is up by field 800 and the attract demo takes over if it is left idle.
+
+That boot showed dark torn patches in level 1's sky. The original draws the tile map over a black clear and skips only
+texels of colour 0x0000. `scripts/render_force_panorama.py` draws a level's map that way: none of the four levels has
+such a texel. NBG0 was configured with dot code 0 transparent, so every texel of palette index 0, which the tiles use
+for opaque colours, showed the back screen. NBG0 is now opaque. The empty cells around the map use palette 113 (bank 7
+entry 16, black), which the text font and the item shadow leave free. Rate probe A/B on `build/force-work`: same input
+and state hashes, 605 ticks and 134 images in both; fields 642 / 37 against 643 / 38. No loss.
+
+`scripts/record_mednafen.py`'s input scripts can now press DOWN (macOS keycode 125). The macOS helper still needs
+Mednafen to take focus, which fails while another app is frontmost; the Ymir pad script does not.
+
+`scripts/pcsx_redux_force_capture.lua` does not yet give a PS1 level frame. After the mode is chosen (SQUARE or CROSS)
+the game goes 7, 1, 7, 8 for one frame, then stays in the loader (state 1) with the menu picture on screen. The CPU
+spins in the per-frame wait (USA `0x80029720`, Rev.1 `FUN_80029918`), waiting for the flag `0x8009BC5C` (Rev.1
+`0x8009C004`) that the VSync callback or the root-counter event sets. The capture runs PCSX-Redux with OpenBIOS, and
+no real PS1 BIOS is on this machine; with one, the same plan should reach the level.
+
+### Update: the Force result screen in the original art (2026-11-12)
+
+A cleared run (`T3_FORCE_RUN_RESULT`) no longer draws the debug-font result in FORCE.BIN. It saves its progress,
+puts the stored high score in the hand-off and execs MENU.BIN with the 40-byte `t3_force_handoff_t`
+(section RESULT). The menu recognises it at boot (`force_result_flow`). It shows the screen as
+`result.ovl` `FUN_800F1F08` draws it (`draw_sim.force_screen_draw`, modes.md state 15), on the 368 × 480 layout
+mapped to 352 × 448:
+
+- the picture (Tekken 3 logo on red lightning): the six-TIM archive at USA `0x800D8400` in record 302,
+  packed by `scripts/pack_force_result_art.py` into FORCEBG.BIN (the build adds it when
+  `T3_LOCAL_VS_RECORDS/302.bin` exists; otherwise TITLEBG.BIN);
+- the strings in the original fonts (`pack_menu_art.py` group 2). The colour is the format string's colour
+  plus the font's CLUT offset (hud.md: 16 for font 1, 32 for font 2). Without the offset, colour 8
+  (`TO BE CONTINUED...`, `YOU SAVED`) is an empty CLUT and the line is invisible. The title menu's palettes
+  (`GOLD, RED, CYAN, WHITE = 5, 2, 3, 6` in `pack_menu_art.py`) do not add the offset and stay as they are. They were
+  matched against a PS1 capture, and with the offset the cyan labels would read CLUT 19, which is all zero, so
+  OPTION MODE and INSERT COIN would vanish;
+- the portrait at (16+2, 100+6) over FUN_800F1C00's backing (black → the character's colour → `0xC0C0C0`),
+  inside the overlay's four frame tiles (`0x800B9864`: 130 × 6 above and below, 2 × 212 at the sides);
+- the lines at frames 30/60/90 after the 32-frame fade-in. The keys at 90/120/150, `TO BE CONTINUED...` from 180
+  (`shown & 0x30`), the saved line blinking 6/2, and the boss list 20 frames apart. FORCE: counts by 1 every
+  2 frames from boss frame 0x50. A face button jumps to the total;
+- sounds `0x4C6C` per line (MENUSFX.BIN grew a sixth entry, header 96 bytes), `0x50F4` for the saved line and
+  `0x55F5` for each count step;
+- 4,680 frames or START, a 64-frame fade-out, then MENU.BIN is exec'd again at the title. The result's pictures
+  take VDP1 VRAM that LibSaturn never gives back, and in the same program the select then cannot load its own.
+
+`BOSS:` shows the bosses' HUD faces, as `FUN_8004BBC0` draws them, at PS1 x 52, 88, 124 and 160, y + 130, 20 frames
+apart. `pack_menu_art.py` writes FACES.BIN: the 20 faces (system textures 9–28), each 32 × 58 mapped to 31 × 54
+backdrop pixels in 63 colours. Sprite codes on this screen have only about 40 free entries, so the faces go on NBG1,
+which is unused here. NBG1 sits at priority 3, between the picture (2) and the sprites (6), with 64 codes of
+palette bank 1 per boss. Each face is written into the bitmap when its boss appears, and every file is read before
+the music starts. The frame is `FUN_8004BA68`'s ten lines (`0x800215EC`, the same bytes in the USA executable) in
+black, `0xC088F8` and `0xE0E0E0`, drawn as sprite rectangles. A key without a face (Doctor B.'s `0x59`) still gets
+its name plate. Checked on Mednafen with `T3_FORCE_RESULT_PROBE=16` (Yoshimitsu, Julia, Heihachi, Doctor B.; video
+deleted).
+
+Music track 6 (RESULT, XA stream 0x12 in both soundtracks; sound.md "Music") now plays on this screen and on the
+arcade-side result (`result_flow`). `extract_select_music.py --stream 0x12 --seconds 80` decodes it (native loop
+76.7 s), and the disc builder puts it at the end of CD-DA track 2: select 4,500 sectors, themes, result 6,000
+(`T3_RESULT_CDDA_SECTORS`). `t3_result_cdda_start` plays the last 6,000 sectors after the screen's files are read.
+Every other range stops before them, so a theme played to the track's end never runs into it. Checked on Mednafen
+(full-game disc, `T3_FORCE_RESULT_PROBE=7`, START at 30 s to skip the intro; video deleted): the screen appears at
+about 41 s. Its audio after the line sounds correlates 0.997 with `result.wav`, starting 4.4 s into it, so the music
+began with the screen. The probe is off again, and `play_mednafen.py` accepts the disc.
+
+Checked in Ymir with `-DT3_FORCE_RESULT_PROBE=<flags>` (sample values at a cold boot, test builds only):
+the boss list (16, count to 137), the keys (7, with TO BE CONTINUED...), the saved case (8), START →
+fade → title → arcade select. The probe is off in `build/saturn`, which passes `play_mednafen.py`'s check;
+107/107 host tests pass. FORCE.BIN's level loop did not change, so it was not re-measured for frame rate.
+
+### Force floor: the biggest remaining stage gap (2026-11-11)
+
+A screenshot of the device build shows the tile panorama only: the fighters stand on the panorama's lower edge, with no
+floor and no lit ground. The original draws a floor under the fighters (the walls of mode 8 are collision bounds only,
+`ArenaBounds`, and are not drawn; Force loads no `stg_*.tmd`). The data is already in `LEVn.BIN` (header word at byte 40,
+the 808-byte descriptor): 10 x 10 tile entries (4 to 9 distinct 64 x 64 tiles per level, from the same TIM set as the
+panorama), a kind and a shading factor. Force draws mode 8's grid (stages.md "Floor"): 10 x 3 tiles of 2,500 units at
+`z = 0x145`, the grid centred on the tile under the camera, tile texture orientation from entry bits 25-26 and 30-31
+(rotations/mirrors of the tile), vertex brightness by kind: level 1-2 kind 0 (distance fade, `0x80 + table[d]*shade/128`),
+level 3 kind 3 (spotlight, `K = 512,000,000 / r^2` from the player's root), level 4 kind 4 (`K = 414,720,000` from the
+camera x, z = -2000).
+
+Plan: draw it as VDP1 textured, gouraud-shaded quads through the Force scene camera (the fighters already use it), one
+quad per visible tile; upload the level's distinct tiles to VDP1 VRAM beside the item art (palette bank, 4-bit); host
+check: project the grid with `psx_force_camera.c`'s view and compare the quad corners and brightness to the remake's
+`stage` presentation (`third_party/Tekken3Remake/remake/presentation/`), then a Mednafen screenshot per level. The
+alternative, an RBG0 rotation plane as the versus stage uses (`docs/PAUL_STAGE_VDP2.md`), cannot show the per-tile
+rotations or the spotlight, so it is not planned.
+
+#### Floor: first implementation (level 1 seen on Mednafen)
+
+`scripts/build_force_levels.py` appends each level's floor to `LEVn.BIN` (header words 13-15: offset, tile count,
+palette count): the 100 descriptor entries resolved to (tile, palette, orientation), the distinct 64 x 64 tiles (4, 15,
+4, 6 per level, each with its own CLUT, the CLUT being word 1's upper half) and the distinct palettes (1, 10, 2, 5).
+`src/game/psx_force_floor.c` holds the layout (entry under a tile, tile corners, the 16 corner orders;
+`test_psx_force_floor` checks them against stages.md). `force_main.c` uploads the tiles as VDP1 LUT4 textures and
+submits one projected quad per visible tile (7 x 6 around the camera, 1,800-unit tiles, rows ending at the backdrop's
+edge z = 0x9C4, world y = 0) behind everything else. A Mednafen screenshot of level 1 shows paving stones under both
+fighters, replacing the panorama's lower edge; the host projection (camera at the level's start) puts the far edge at
+PS1 y 320 and the near rows below the screen, as drawn.
+
+Levels 3 (a rocky cave floor) and 4 (wooden planks) were also looked at on Mednafen with the variant probe: a floor
+is drawn on both, flat-lit. Level 4's was drawn flat at first; the camera roll 0x82 is now applied (see "Panorama scale
+and level 4's staircase").
+
+Shading: levels 3 and 4 (kinds 3 and 4) take one of four pre-darkened copies of the tile's palette (x1, 0.7, 0.45,
+0.25) by `K / r^2` at the tile's centre (`K` 512,000,000 from the player's root, 414,720,000 from the camera's x at
+z -2000; 128 is neutral, brighter than neutral is not shown), seen on level 3 on Mednafen (bright around the player,
+dark at the sides); projected faces take no Gouraud, so it steps per tile. Kind 0's distance fade (levels 1-2) is now
+applied too (below). The spotlight shading was not re-measured in the frame-rate A/B.
+
+Not done: level 2 (a
+desert floor) is drawn too; the original's 10 x 3 grid of 2,500 units if it differs from the remake's 1,800; the frame-rate
+cost is a measured regression (below). **No PS1 frame to compare with:** PCSX-Redux (`~/dev/pcsx-redux`, `scripts/capture_ps1_menus.py
+--lua scripts/pcsx_redux_force_capture.lua`) walks the USA menu to TEKKEN FORCE MODE, but pressing Square, Cross or
+Start there runs states 7, 1, 7, 8, 1 and returns to the menu (the interpreter/openbios run may not complete the
+overlay load); the script is a start for it. The executable links with 568 bytes of High WRAM spare.
+
+#### Floor frame-rate A/B (2026-11-11)
+
+`scripts/mednafen_force_rate.py` runs the probe disc for 75 s in an isolated Mednafen profile and reads
+`g_force_probe_600` from the exit state (no recording). Same input replay and the same input and state hashes in both
+builds (the simulation is identical), tick 600:
+
+| Build | Fields to tick 600 | Observed / discarded | Scheduled ticks | Images |
+|---|---|---|---|---|
+| floor on (candidate) | 661 | 661 / 56 | 605 | 133 |
+| `T3_FORCE_NO_FLOOR=ON` (control) | 636 | 633 / 32 | 601 | 138 |
+
+The floor takes 3.9% more fields per 600 ticks and renders about 7% fewer images per second (12.1 against 13.0), one
+run each. Under the project's rule (fidelity ships only if the A/B is no worse) this is a regression to win back:
+about 10 textured quads a frame. Projecting the grid's 56 vertices once instead of 4 per tile (done) gives 646 fields /
+642 observed / 42 discarded / 600 scheduled ticks / 133 images: 1.6% more fields than the control and about 5% fewer
+images per second (12.4 against 13.0). Projecting four rows instead of six (the other two are below the screen at the default camera; same picture on a
+screenshot) gives 642 fields / 638 observed / 38 discarded / 600 ticks / 133 images: 0.9% more fields than the control
+(636). Images stay at 133 against the control's 138 (one run each, run-to-run noise not measured), so the A/B is not
+yet a clean pass; the remaining candidates are caching the projection while the camera is still and a smaller column
+count.
+
+#### Floor A/B, bisected (2026-11-11)
+
+Mednafen is deterministic here (identical runs give identical counters), and the control now runs the same code
+(`T3_FORCE_NO_FLOOR=ON` clears the floor at run time instead of compiling the draw out, which had also moved the code).
+Probe replay, tick 600 (fields / images):
+
+| Variant | Fields | Images |
+|---|---|---|
+| control (floor off at run time, same code) | 633 | 138 |
+| floor drawn, first version | 642 | 134 |
+| draw returns at once (textures uploaded, floor ready) | 634 | 138 |
+| vertices computed, no quads | 634 | 138 |
+| quads built, **not submitted** | 633 | 138 |
+| quads submitted as 1 x 1 | 640 | 133 |
+| 2 projections a row, or a cached row projection | 643 / 642 | 134 |
+| corner order precomputed, no modulo (**current**) | 639 | 134 |
+
+So the projections, the tile lookup and the fill are not the cost: it is `sat_scene3d_faces_submit_projected_material`
+for the ~10 visible tiles, about 0.6 field each, whatever their size (a 1 x 1 quad costs the same). The current floor
+costs 6 fields (0.9%) and 4 images (-3%, 12.7 against 13.1 images/s) against the control. Per-tile work was cut by
+precomputing each entry's corner order and dropping the modulo (3 fields). It remains a regression under the no-regression
+rule; what is left is the submit cost per face, so only fewer faces would help (larger textured faces are not possible:
+a tile is one 64 x 64 texture).
+
+#### Floor: kind 0 distance fade, and still no PS1 frame (2026-11-12)
+
+Levels 1 and 2 have floor kind 0 with shade -51 and -102 (level 4's descriptor also says kind 0 shade -51, but the
+level forces kind 4). FloorDrawGrid lights a vertex at `128 + table[i] * shade >> 7`, `i = beyond * (0x4000000 / 10,000)
+>> 16` (at most 1,023), where `beyond` is the vertex depth less the camera's horizontal distance to the fighters and the
+1,024-byte table at `0x8001DF6C` (USA: same address) rises from 0 to 127 (`scripts/force_floor_fade.py` prints the kinds,
+the curves and the thresholds below from the private `LEVn.BIN` and `SLUS_004.02`). The Force camera (y -3,500,
+z -7,000, pitch 0x2AAA >> 6 = 170 of 4,096) puts the far floor edge about 3,100 units beyond the fighters, so the
+original darkens the far edge by about 7% on level 1 and 14% on level 2, and the near rows not at all.
+
+`force_main.c` builds kind 0's four palette copies at 0, 1/12, 2/12 and 3/12 of the shade darker, and each row takes the
+copy its centre's depth reaches (beyond 1,309, 2,501 and 3,546 units: where `table * 12 / 128` rounds to 1, 2 and 3; the
+distance is the camera to the player's root, `sat_isqrt32`). At the level start only the far row reaches copy 1. To fit
+High WRAM (the fade adds ~400 bytes of code), the debug HUD's font moved to Low WRAM; the executable links with 792 bytes
+spare. A/B on the probe replay, tick 600, same input and state hashes in all three:
+
+| Build | Fields | Observed / discarded | Scheduled ticks | Images |
+|---|---|---|---|---|
+| fade on, font in Low WRAM (candidate) | 640 | 640 / 35 | 605 | 134 |
+| same code, fade off at run time (`T3_FORCE_NO_FLOOR_FADE=ON`) | 640 | 640 / 35 | 605 | 134 |
+| no fade code, font in High WRAM (temporary build) | 640 | 640 / 35 | 605 | 134 |
+
+No difference (the 639 above was measured on an older tree). `T3_FORCE_NO_FLOOR_FADE` replaces the bisection-only
+`T3_FORCE_FLOOR_TINY`, whose code no longer compiled. A Mednafen frame of level 1 (recorded, video deleted) shows the floor
+unchanged near the fighters, as expected.
+
+PS1 reference: `scripts/pcsx_redux_force_capture.lua` now pauses correctly (its plan is sequential; a pause at state 8,
+which lasts one frame, had blocked the later ones) and `capture_ps1_menus.py --wait` allows slow runs. With OpenBIOS the
+USA disc still never starts Force: after TEKKEN FORCE MODE it runs states 7, 1, 7, 8, 1 and stays in state 1 for at
+least 1,500 frames with the menu frozen on screen, with or without memory cards inserted. No Sony BIOS is on this machine
+(Mednafen and DuckStation both need one), so the floor has not been compared with a PS1 frame. A screenshot of Force
+level 1 from real hardware or a BIOS-equipped emulator would close this.
+
+#### Floor: drawn straight to VDP1; what the rest of its cost is (2026-11-12)
+
+The floor is always behind everything, so it no longer goes through the scene painter. `draw_force_floor` runs right
+after `sat_scene_begin` and sends each visible tile as `sat_draw_sprite_distorted`, with the corners in the order the
+painter's opaque textured path used. A Ymir frame of level 1 from the full-game menu matches the earlier one pixel for
+pixel. Probe replay, tick 600, same input and state hashes (1714359845, 2578104655) in every row:
+
+| Build | Fields | Observed / discarded | Ticks | Images |
+|---|---|---|---|---|
+| floor off at run time (`T3_FORCE_NO_FLOOR=ON`, control) | 634 | 631 / 30 | 601 | 138 |
+| floor through the painter (the bisection above, an older tree) | 639 | — | — | 134 |
+| floor direct (**current**) | 637 | 635 / 32 | 603 | 134 |
+| direct, `SAT_SPRITE_FLAG_HIGH_SPEED_SHRINK` | 637 | 635 / 32 | 603 | 134 |
+| direct, every tile a 1 × 1 dot | 638 | 636 / 33 | 603 | 134 |
+| direct, 1 × 1 dots reading an 8 × 8 texture | 638 | 636 / 33 | 603 | 134 |
+
+Going direct halves the field cost (6 → 3) but leaves the image count 4 short. The last three rows show this is not
+VDP1 fill or texture reads: about ten distorted-sprite calls cost the same at any size. The calls are not expensive
+either: `push_distorted_sprite` writes 16 words into a RAM command buffer. The likelier reading is that the frame sits
+right at a field boundary, so any small extra work moves some images into one more field. If so, the floor is not the
+thing to cut. Saving CPU elsewhere in the frame, for example in the fighters' pose work, would win the images back.
+Until then the floor is still a measured regression of 4 images in 138 (3%).
+
+#### Floor: CPU cost cut by 39%, the image gap explained (2026-11-12)
+
+Floor time was read with temporary `sat_time` counters around `draw_force_floor`, summed over the 600-tick probe
+window (sat_time runs at 210,600 ticks/s). All counters have since been removed. Changes kept, with the state hashes
+unchanged at every step:
+
+| Change | Floor ticks / window | Per image |
+|---|---|---|
+| `sat_draw_sprite_distorted` per tile (previous section) | 14,233 | 106 |
+| commands written into a `sat_sprite_batch` window | 11,374 | 85 |
+| tile/shade command words and corner orders in high work RAM | 9,104 | 68 |
+| a row's x as 32.32 plus a fixed step (no multiply per vertex) | 8,710 | 65 |
+
+LibSaturn has a new `sat_sprite_batch_emit_distorted` (`include/saturn/sprite_batch.h`). It writes the same distorted
+sprite command as `sat_draw_sprite_distorted` straight into the VDP1 list window. `tests/host/test_sprite_batch.cpp`
+compares the two words-for-words for LUT4 and INDEXED8 textures under three flag sets, and checks the full-window case.
+
+Tried and rejected:
+
+- **Building on the slave SH-2.** Force did not use the slave. With `sat_parallel`, the task ran there in about 80
+  ticks and the master never waited. But submitting cost about 30 ticks, and waiting, releasing and copying 21–43,
+  about what the floor itself now costs. The runtime also overflowed high work RAM's `__stack_reserve`, so the tables
+  had to move to the slower low bank. Render ticks per image: floor-off 4,908, slave 4,928–4,969, master 4,986.
+- **Reusing last frame's commands** when the camera, the view, the near plane and (for the lit floors) the player's
+  root are all unchanged. Only 36 of 263 frames in the window qualify, because the camera pans in most frames. The
+  count stayed at 134, so it was reverted.
+- **Dropping the commands altogether** (CPU work kept): still 134. VDP1 time is not the limit, as the previous
+  section's dot tests had shown.
+
+Current rate, same tree, same probe (hashes 1714359845, 2578104655):
+
+| Build | Fields | Observed / discarded | Ticks | Images |
+|---|---|---|---|---|
+| floor on (**current**) | 637 | 635 / 32 | 603 | 134 |
+| `T3_FORCE_NO_FLOOR=ON` (control) | 636 | 633 / 32 | 601 | 138 |
+
+The floor now costs about 1.3% of a frame's master time (65 of ~4,950 render ticks per image; the floor-off render
+is 1.6% shorter). Yet the 600-tick count still differs by 4 images (3%). That count is quantised and sensitive to
+layout: the same floor-off control gave 134, not 138, on a tree that only linked the slave code. Saturn frames here
+are master-CPU-bound (`draw_waits` and `late_swaps` are 0) and sit just past a field boundary, so a fraction of a
+percent moves images into one more field. Closing the last 4 images needs about 1–2% of frame time saved elsewhere,
+most likely in the fighters' pose work, not more floor work.
+
+The pose cache size is not that lever. With `T3_FORCE_POSE_CACHE_ENTRIES` set to 64, the count is 641 fields /
+134 images (183 hits, 848 misses), which is worse. A request for 128 is identical to 32 (637 / 134, 258 hits), which
+suggests the arena holds neither and both fall back to the 16-entry cache. The default stays at 32.
+
+### Panorama scale and level 4's staircase (2026-11-12)
+
+Rules: modes.md "Panorama", `force_sim.background_draw`, camera.md (`CameraBuildView`), and the remake's
+`tekken_force.gd` (`view.roll = 0x82` on level 4).
+
+- **Scale and placement, all levels.** The PS1 draws the map one texel per pixel of its 384 x 480 interlaced
+  frame (368 x 448 shown, hud.md). The port had drawn it one texel per Saturn dot and line, so only the top third
+  of a map showed above the floor. NBG0 now steps 368/320 texels per dot and 480/224 per line
+  (`sat_vdp2_layer_set_zoom`; the horizontal step uses the VDP2's 1/2 reduction mode), the same mapping the
+  floor and items use. The Saturn's left edge is PS1 x 8. The map's top edge is the original's: the projection of
+  (camera x, 0, 2,500) minus 64 x its height, recomputed only when the camera's height, depth or pitch changes.
+- **Repeat.** The plane held one copy of the map in 1,024 dots, so a view past the map's end showed blank cells
+  on level 4 (192 dots wide) and on levels 2 and 3 (960 and 832). There are now two planes side by side
+  (2,048 dots) with the map repeated, and the page rows go up in one VRAM write each.
+- **Steps.** Level 4's map starts `tan(0xD8) * (184 + scroll % 192)` lower at PS1 x 0 and climbs
+  `192 * tan` at every repetition. It is drawn with a vertical cell scroll table (VRAM A1 0x20000, 48
+  entries per frame). Ymir reads one entry per *plane* cell column (`VDP2DrawNormalScrollBG`), so the steps
+  fall exactly on cell edges. Blank black plane rows above and below the map stand in for the black ground
+  tile and gates.
+- **Roll.** The original draws level 4 through a view rolled by 0x82 (11.4°): R = Rx(−pitch) · Ry(−yaw) ·
+  Rz(−roll). `t3_psx_camera_build_view_trig` now builds it. The fight camera's builder still refuses a roll
+  and compiles without it. `force_main.c` draws the scene camera, the floor (every vertex projected, level 4
+  only), the items and the panorama top with that view. On level 4 the scroll's view-space x takes the
+  camera height through row 0. The simulation keeps its unrolled `force_view`, whose outputs the host
+  comparisons check.
+
+Rate on `build/force-work` (level 1, `mednafen_force_rate.py`, same tree):
+
+| Build | Fields | Observed / discarded | Ticks | Images |
+|---|---|---|---|---|
+| control (no panorama change) | 637 | 635 / 32 | 603 | 134 |
+| control + 0x184 bytes of dead code before `main` | 638 | 636 / 33 | 603 | 134 |
+| control + a busy wait before the clock starts | 637 | 635 / 32 | 603 | 134 |
+| first candidate (shared floor cache) | 640 | 638 / 35 | 603 | 134 |
+| **final** (own top cache, rolled view on level 4) | 636 | 634 / 31 | 603 | 134 |
+
+Frames sit at about 4.75 fields, so code layout alone moves a few frames past the 4-field catch-up. The padding row
+shows this: dead code costs a field. The zoom costs nothing measurable (same fields with it off). The final build is
+no worse than the control. Level 4 has no rate probe; its extra work is 56 vertex projections and 48 table entries
+per frame.
+
+Evidence (Ymir, variant probe on level 4 and the normal disc on level 1):
+- level 1 shows its whole map (sky, buildings, fence) standing on the floor's far edge;
+- level 2 shows its whole map with no blank band;
+- level 4 shows the tilted planks and fighters and the stepped bridge rail with black above.
+
+The Doctor B. level (`0x800B70F4`) draws no map: a black tile down to the horizon − 16 over Force's black clear colour
+(stages.md "Clear colour"), so everything behind the floor is black. NBG0 is hidden there (priority 0) over the black
+back screen. The rescue probe (`T3_FORCE_RESCUE_PROBE`) shows the final stage black behind the planks, unrolled, and
+then reaches the result screen through the real handoff (YOU SAVED DR.BOSKONOVITCH!).
+
+What is left: the step edges and the roll are not compared with a PS1 frame (that needs a real BIOS, see above).
+
+### Not planned here: the ranking after the result
+
+The original goes from the Force result to the ranking (state 16, `ranking.ovl`). That screen is game-wide: a rotating
+stage backdrop and one of three record pages (time-attack times, survival wins, character usage), none of which Force
+writes. The port has no ranking in any mode (arcade also returns to the title, `docs/ARCADE_MODE.md`), so Force
+returns to the title like the rest. The ranking belongs to a port-wide task with the records it shows.
+
+### Force sound: extraction and wiring done, off by default (2026-11-11)
+
+The level runner emits sound ids (tally 0x4C6C, key 0x4CEB, pickup 0x4E6A, LIFE UP! 0x87C0, rescue 0x50F4, the 5..1
+countdown), and the Force executable played nothing: `force_main.c` never connected the match's sound sink and the Force
+target had no `sfx.c`. The runner's countdown table (`countdown_sound`) was also never filled; it is now (Rev.1
+0x8009747E: 0x86D0, 0x8711, 0x8652, 0x8693, 0x8694, bank 2 = the system VAB).
+
+- `scripts/extract_psx_sfx.py --with-force` adds the ten runner sounds (key bank 3, 77 KB) to the Force disc's `SFX.BIN`;
+  `--force` writes only them. The versus output is byte-identical to the old script's.
+- `t3_sfx_play_code(code)` plays one; `force_main.c` forwards the runner's sound events to it, connects the match's
+  sound sink and drains the fight's swing/hit/guard/voice events to `t3_sfx_play_events` each frame.
+- CMake option `T3_FORCE_SFX` (default OFF) builds all of it. **It does not fit yet:** with it on, High Work RAM overflows
+  by ~10.9 KB (LibSaturn's audio code and `sfx.c`); moving the AI state to Low WRAM recovers it, but Low WRAM then
+  overflows by ~1.2 KB, so ~1.3 KB more must be found (the pose cache's 16-entry fallback in Low WRAM is 7 KB, but
+  shrinking it needs an A/B). Until then the option stays off and Force is silent.
+- The default Force build had itself grown past High WRAM by 1.5 KB; the level script and constant tables now sit in Low
+  WRAM, and the resume-only code of `psx_match.c` is compiled out of the Saturn build (`__sh__`). It links with 1.5 KB
+  spare and boots on Mednafen (stage 1, score 60, Crow: `INPUT REPLAY` probe).
+
+#### Force sound now fits; still off by default (2026-11-12)
+
+The faces without a material program (the floor quads and the items) peak at 24 a frame on the probe replay, none
+skipped (`g_force_probe_cold`, input-probe builds only), against a 512-face buffer. `T3_FORCE_COLD_FACES` is now 384 (16
+times the peak; the buffer is also the loaders' scratch, and its 39,936 bytes still hold the largest voice, 31,920, which a
+`_Static_assert` checks). That frees 13 KB of High WRAM, so the AI state stays in High WRAM with sound on too (the
+`T3_SFX` placement in Low WRAM is gone). Without sound the executable has 14,088 bytes of High WRAM spare, and with
+`T3_FORCE_SFX=ON` it has 5,100 bytes and Low WRAM fits.
+
+The pose cache's 16-entry fallback in Low WRAM (7 KB) is still needed: `scripts/force_arena_budget.py` computes the arena
+tail left for the cache for every pairing. Grunt stretches leave room for at least 399 entries, but one `BOSS.BIN` pairing
+(player 3 against character 5, level 3) leaves 4,160 bytes (9 entries); every other one leaves room for 32 or more.
+
+A/B on the probe replay, tick 600, same input and state hashes:
+
+| Build | Fields | Observed / discarded | Scheduled ticks | Images |
+|---|---|---|---|---|
+| sound off (control) | 641 | 641 / 36 | 605 | 134 |
+| `T3_FORCE_SFX=ON` | 645 | 645 / 40 | 605 | 134 |
+| `T3_FORCE_SFX=ON`, play calls return at once (temporary build) | 640 | 640 / 35 | 605 | 134 |
+
+| `T3_FORCE_SFX=ON`, play time read from the raw FRT (current) | 642 | 642 / 37 | 605 | 134 |
+| sound off, cold faces 383 (data placement only) | 641 | 641 / 36 | 605 | 134 |
+
+The 4 fields were not the sound itself. Measured with the raw free-running timer (`sat_time_frc`), the 38 plays of the
+75 s run take 642 FRT ticks in all (about 17 per play, at most 18): far below a field. Replacing `sfx.c`'s diagnostic
+`sat_time_ms()` reads around each play with two raw timer reads (`g_t3_sfx_play_frc` / `_max_frc`, renamed in
+`scripts/saturn_probe.py`) changed the count from 645 to 642, although 76 timer reads cannot cost three fields of work
+either: the counts are threshold effects (a few frames close to a field boundary tip one way or the other with tiny
+timing changes). Builds doing identical work have measured 640 and 641, so 642 against 641 is within that noise, and the
+image count is the same. The option still defaults to off until that last field is settled by a second probe or the
+user accepts it.
+
 ### Versus A/B on the current source (2026-11-08)
 
 `build/perf-n3-simprof` (the A/B's build, two records) rebuilt from the current tree: 280 s Mednafen attract fight, AI pad hash
 `0xb99cc280`, marked **29.46** images/s, worst segment **27.45**, `vdp1_vram_free` 145,824: equal to the earlier control.
 (The full-game disc in `build/`, `T3_DEMO_CPU_MASK=3`, plays a different fight, hash `0x640e32c0`, and is not comparable.) No loss.
+
+### Step 4 continuation: Force executable integration (2026-11-08)
+
+The working tree now contains the first `tekken3_force` executable and CMake disc wiring, using three fighter
+records and actors. The Force-only static library compiles. The executable target currently stops in private
+asset generation (`build_fighter_packs.py`: `F00.BIN` input is not a five-member character ARC), before the
+main source can be compiled; this is a local input/configuration issue, so it is not evidence that the target
+builds or runs. The first source review found and fixed two Force integration errors: the CPU mask now selects
+fighters 1 and 2 (rather than accidentally driving player 0), and its AI bus is initialized with mode 8 and
+Force layout 1. The shared flow's human mask now derives from the configured fighter count, preserving the
+duel's 2-fighter mask while supporting Force's player-only human input.
+
+Still required before this program is a playable Force mode: compile and run the executable with valid packs,
+connect the runner's events to the HUD/items/stage rendering, keep progression and bosses in the Force flow,
+implement save/result paths, then pass the level, final-stage and whole-disc gates in steps 5-8.
+
+### Force frontend repair, loading art and memory (2026-11-10)
+
+- The standalone Force simulation target inherited no optimization when
+  `CMAKE_BUILD_TYPE` was empty. It now explicitly uses `-O2
+  -fomit-frame-pointer` on Saturn (per-file size overrides still apply).
+  The frontend with HUD/loading art shrank from approximately 507 KB to
+  398 KB, leaving about 123 KB between BSS and the top of High WRAM instead
+  of about 17 KB. A pre-optimization scripted run produced a renderer
+  invalid-argument error; an idle run cannot prove that failure is fixed.
+- `pack_menu_art.py` produces private `LOAD.BIN`: the original disc's
+  `NOW LOADING...` glyphs and white palette, stored as a 128 x 16 LUT4 image
+  (1,068 bytes including header/palette). Force uploads it before stage,
+  model and motion data. The loading message is visible on black in
+  `build/force-work/review-controls/frame-25.png`; the normal-color gameplay
+  HUD/player is visible in `frame-42.png` and `frame-49.png`.
+- The gameplay HUD is always available; detailed diagnostics default off
+  (`T3_FORCE_DEBUG_HUD`). `T3_FORCE_INPUT_PROBE` is an explicit diagnostic
+  replay of walking/punching, defaults off, and labels the image INPUT REPLAY.
+  It exercises the frontend's Saturn-to-physical adapter without depending
+  on macOS window focus. It is not proof of controller hardware operation.
+- The original macOS scripted key helper silently produced pad state zero.
+  It now schedules overlapping holds independently and checks focus before
+  injecting input; the focus attempt currently fails for this emulator
+  process. Those neutral runs do not establish movement or combat coverage.
+- Validation: the host CTest run passed all 96 executed tests; eight private
+  retail-dependent tests skipped. The initial seven Force tests executed, but the level cases were generated
+  from the placeholder tables discovered below and were insufficient evidence.
+  After replacing those tables, all eight Force tests passed, including
+  3,000 regenerated level-runner golden cases and the new asset validation test. `tekken3_force_disc` and
+  `tekken3_menu` compile/link; whole-game runtime acceptance remains open.
+- Completed recordings were inspected and their videos deleted immediately;
+  the rejected focus-only recording was removed. Screenshots, metadata and
+  logs retain the evidence. Build/imported usage remained below budget.
+
+### First-spawn crash: placeholder assets (2026-11-10)
+
+The explicit input probe failed at tick 253 in RoundFlow validation, before
+rendering. The saved state shows enemy 1 active with health/max health zero;
+`g_t3_match_failure_phase` is 20. This corrects the earlier inference that the
+movement failure originated in the renderer: the panic's frontend line was
+in the simulation call.
+
+`assets/imported/force-packs/{TABLES,TRIG,BOSS,KEYS}.BIN` were completely
+zero-filled. They were regenerated from the actual Japan Rev.1 Force overlay
+and research boss table, and the USA executable in `tekken3-usa-full`.
+The mandatory-kept `tekken3-usa` tree also has zero-filled placeholder EXE,
+spline, trig and some ARC files; it was preserved. The current candidate's
+camera EXE/spline and HUD ARC configuration now names the real full import.
+Force uses its configured real `t3_local_trig_blob` for simulation, but the
+standalone TRIG.BIN on disc has also been repaired.
+
+`t3_force_tables_valid` rejects missing/truncated tables, nonpositive enemy
+maxima, invalid costume indices and absent stage bonuses before match setup.
+A regression test covers the zero-filled pack and individual health entries;
+the table and trig builders reject placeholder inputs too. The player now
+starts with the original mode-8 maximum of 130, rather than the survival
+mode's 140 (FUN_800519B4, remake `fight_simulation.gd`). The newly generated
+3,000 level-runner golden cases use real tables; all eight Force tests pass.
+
+### Verified first encounter after the asset repair (2026-11-10)
+
+`build/force-work/review-real-tables` is a 52-second boot with the explicit
+input replay. At 40 s the player walks right (`pad=32768`, relative direction
+6), its x is 1,400 and the camera has scrolled 1,230 units. At 45 s an enemy
+is visible and has reduced player health; at 50 s the enemy health has fallen
+and score/high score are 60. The subsequent 14-second saved-state replay
+(`review-real-tables-resume`) reaches tick 1,371 and score 120. This verifies
+movement, scrolling, enemy activation/rendering and hits/damage/score for
+that encounter; it does not prove a defeat or a complete stage.
+
+Timing is still an acceptance failure: the first saved state reports 960
+observed fields, 123 discarded fields and 837 scheduled ticks. The six-field
+catch-up limit therefore discarded 2.05 seconds. The idle third actor was
+still being evaluated/skinned before submission skipped it; the next candidate
+skips clip playback and pose/skin preparation for hidden Force actors.
+This is presentation-only; their original simulation records still step.
+The optimization needs its own measurement before claiming a rate improvement.
+
+### Hidden-actor preparation and continuation wiring (2026-11-10)
+
+The visible-only candidate still reaches the first encounter and exchanges
+hits (`build/force-work/review-visible-only/frame-50.png`). At its saved
+state, 956 fields were observed, 111 discarded and 845 ticks scheduled;
+174 images were rendered. This remains a performance failure: skipping
+hidden presentation work helps only slightly and is not a 60 Hz acceptance
+result. All simulation records remain active in the original frame order.
+
+Source wiring for clears now waits for RoundFlow's actual end (Start after
+the tally, or the original 300-frame wait), and stages 1–3 relaunch FORCE.BIN
+with exactly the 40-byte handoff. It carries kills, costume, pad side and
+the simulation RNG instead of using the elapsed tick count as the seed.
+The terminal return uses the menu's 16-byte boot protocol. These paths are
+compile-checked only; real bosses, final challenge/results and a complete
+run still have to be integrated and exercised. They do not constitute a
+verified four-stage completion.
+
+The default device build has input replay and debug text disabled. The
+standalone disc remains diagnostic and is not the full-game deliverable.
+
+### Boss resources and continuation (2026-11-11)
+
+The Force renderer now uses a projected command queue (with a bounded cold
+clipping store), sized for two maximum-size roster fighters. This frees room
+for a retained 108 KiB grunt-bank buffer. At the real area-change boundary the
+frontend reloads player/boss presentation and motion assets in place while
+retaining the match, player VM, AI state, RNG, score and timer. Hidden enemy
+records retain the original grunt bank and part table. VDP2 stage VRAM/CRAM
+is reused; only its register configuration is restored. Loading time is
+excluded from the simulation's field scheduler.
+
+`build_force_boss_packs.py` packs all 37 character/costume pairs referenced by
+the original BOSS.BIN, using the USA costume-key and character-record tables.
+The generated private BOSSPAK.BIN also provides Force-only buffer limits;
+none of its converted data enters Git. Directory bounds and embedded pack
+headers were checked for every entry; default costume bytes match their
+original Fnn.BIN exactly. Alternate voices and model scales come from the
+selected original costume. The ordinary duel keeps its original buffer limits
+and compiles/links after the loader changes.
+
+The renderer previously hid any costume whose skin referenced an accessory
+joint. Force now bridges the 18 body joints and propagates imported accessory
+local transforms from the animated parents. This renders those fighters;
+original attachment dynamics remain a separate fidelity gap.
+
+Device evidence: `build/force-work/review-boss-live-input` shows Paul versus
+Law with both fighters visible, movement, damage and score 60. The matching
+alternate-costume probe, `review-boss-alt-live-input`, shows Yoshimitsu against
+the original alternate Yoshimitsu model, again with damage/score changes.
+These are explicit boss-boundary/input probes, **not full level clears**.
+The probe must enter from a live fight after Round Intro enables input;
+skipping that setup produced misleading idle captures, which were removed.
+
+Correction to earlier prose: regular levels 0..3 all have scripts. LEV4.BIN
+contains its own scrolling/staircase script and an end command at trigger
+30,720. Only level 4 (zero based), the earned Doctor B. stage, starts in state
+8. This follows the verified `TekkenForce.level_setup`, `_force_placement`
+and `_force_fighters` implementations, despite the contradictory sentence in
+the upstream modes.md prose. The frontend follows these implementation rules.
+
+### Saved keys and run-end paths (2026-11-11)
+
+The internal backup record `T3FORCE` contains a versioned, checksummed Force
+high score, key count and Doctor B. unlock. It never formats memory or touches
+other records. The menu reads it into a fresh Force run. Saves occur for the
+runner's key-save event and at run end, followed by BIOS read-back verification.
+The protocol now carries all five stages, original result flags (including
+already-unlocked), the four encountered bosses and the new-record indicator.
+A pure end-hook helper distinguishes loss, next stage and final result; the
+third key earns the key result, while a *subsequent* three-key run earns the
+Doctor B. challenge. Force tests cover these branches, checksum corruption,
+all key/unlock combinations and regular/final-stage setup distinctions.
+
+The explicit clear-path probe exercised the original tally and save event:
+`review-clear-save-1` earned COPPER and score 33,000; save/verify returned
+SAT_OK. `review-clear-save-2` cold-booted with copied backup RAM (not a saved
+emulator state), displayed the existing key/high score before play, and earned
+SILVER. Its backup write/read-back also returned SAT_OK. This proves persistent
+progress for those probe cases, not a manually played four-stage run. The
+result screen and 121-tick game-over path are wired. The result screen now has its original art, sound and
+menu return (2026-11-12). The ranking and a played final challenge still need runtime acceptance.
+
+`review-clear-save-3` cold-booted the second backup and earned GOLD. Its raw
+backup record contains three keys, high score 33,000 and a valid checksum.
+`review-clear-to-final` then cold-booted those three keys: the original runner
+showed the final-stage challenge, executed the 40-byte continuation and rendered
+Paul with Doctor B. in the fifth stage. These clear probes inject the fourth
+stage's clear condition; they do not prove all four stages can be played through.
+
+`review-rescue-save` starts from that three-key backup and explicitly injects
+Doctor B.'s defeat after entering the live fifth-stage fight. Real RoundFlow
+and the final tally reach `YOU SAVED DR.BOSKONOVITCH!` in frame-52.png. BIOS
+write/verify returns SAT_OK. The raw record at byte 164 is
+`5433465301030100000080e878b1ebb6`: three keys, Doctor unlock 1, high score
+33,000, valid checksum. This proves the rescue save path under the labelled
+probe, not a played victory. All recordings listed here were deleted after
+inspection; screenshots, logs, state and backup RAM remain as evidence.
+
+`review-unlocked-result` cold-boots the rescued backup without a saved emulator
+state. The same labelled fourth-stage clear now reaches the already-unlocked
+boss-list/defeat-count result, with no fourth key or final-stage challenge.
+At frame 51 the score/high score are both 33,000; BIOS save/verify is SAT_OK,
+and the loaded progress remains three keys/Doctor 1. The empty boss list is
+expected because this probe bypasses the four encounters. Result rendering
+now omits gameplay actors/HUD and clears the whole screen before its text;
+the earlier overlapping result capture was rejected and removed. Original
+result artwork remains unimplemented. The redundant zero BONUS TIME line is
+also omitted after stage four, following `force_sim.tally`/`tally_lines`.
+
+Validation after these changes: all 106 host tests pass (98 executed, eight
+retail-data-dependent cases skipped); all nine Force tests execute and pass,
+including the 3,000-case runner comparison. The default build has every Force
+probe and debug HUD disabled. No full-game disc acceptance is claimed.
+
+### Chicken pickups and projected popups (2026-11-11)
+
+`build_force_items.py` extracts the original chicken and shadow from each
+stage's TIM uploads (USA BNS records 51..54). ITEM1..4.BIN are private build
+outputs packaged into both diagnostic and full-game disc targets. The picture
+uses a VDP1 LUT4 texture; the shadow uses its original quarter-intensity
+palette in a separate INDEX8 bank and the SDK's nearest half-alpha VDP2 slot.
+All 12,288 texels per level and the picture palettes were compared with the
+pinned remake's independent `Vram` decoder and match for all four levels.
+Shadow colours retain opaque black after modulation; transparent index zero
+is checked explicitly. Neither generated art nor raw records enter Git.
+
+The frontend projects the item's original (x, 0x420, z) through the current
+Force view, uses the original SZ/4 size formula and submits both quads into
+the same bounded painter as the fighters. The shadow sorts one original
+depth bucket behind the picture. Its palette bank does not overlap the
+panorama or HUD. The textures and alpha configuration reload with boss
+presentation. Near/off-screen items are rejected before bounded submission.
+VDP2 alpha blends against the background; exact PS1 blending with an
+overlapping VDP1 actor remains a presentation limitation.
+
+The core previously passed zero screen coordinates into the runner for
+pickup and defeated-enemy popups. It now projects joint 2 (the head) with
+the original -300 Y offset before the runner stores the popup coordinates.
+The frontend draws LIFE UP! and +n SEC from those stored positions as the
+runner raises them. Placement, lifetime, pickup distance and healing remain
+the verified original simulation. Popup glyph styling is still the generic
+ASCII HUD; the original flashing fonts are part of the remaining HUD art.
+
+Device evidence: `build/force-work/review-pickup-heal/frame-45.png` shows the
+original chicken beside the player and the deliberately reduced 80/130
+health bar. At tick 360 the labelled pickup-path probe moves that item into
+reach; the real runner collects it. `frame-48.png` shows the restored bar and
+LIFE UP! above the player, and `frame-49.png` shows the message expired.
+The final matching save state (tick 641) contains player and runner health
+8,519,680 (130 in 16.16), and item state 0; `decoded.json` preserves those
+values. The probe injects the item, damage and its final position: this is
+not evidence of walking to a naturally scripted item. The recording and two
+superseded preliminary captures were deleted after inspection.
+
+The Force input regression now also checks pickup/defeat projection and
+the exact +50 heal. All nine Force tests pass; the full host suite passes
+98 executed cases, with eight retail-data-dependent cases skipped. The
+cross build also exposed an out-of-bounds replay loop when compiling with
+three fighters: the two-actor duel replay format is now explicitly bounded
+to its two actors. Force does not enable KO replay. Its feature-disabled
+build and the ordinary duel are rebuilt after the change. Performance,
+sound, floor/staircase, original HUD/result art,
+ranking flow and a complete played full-game run remain open.
+
+### Resident enemy variants and palette isolation (2026-11-11)
+
+Regular Force stages now preload their two distinct enemy models. TABLES.BIN
+selects keys [0,1], [0,2], [1,2], [2,3] for the four levels: Crow/Falcon,
+Crow/Hawk, Falcon/Hawk, Hawk/Owl. The renderer starts with the same [0,1]
+variant assignments as the original slot setup. Subsequent runner costume
+keys select the correct resident model independently for each actor. A rebind
+rebuilds its mesh, skin/skeleton state, materials and validated scene binding;
+it performs no allocation, CD read or texture upload. Enemy labels use the
+bound model's name. Original name-picture HUD artwork is still pending.
+
+The packs have genuinely different geometry: respectively 247/270/274/281
+vertices and 342/373/380/398 faces. Their motion banks are byte-identical
+(SHA-256 `803e38551739ec7f912b9d3624d040ad4965e3d17d5ee3b0a0fb42e70728ec23`),
+and their original part tables, collision radii and scales match. The loader
+checks the shared simulation contract before accepting a pair; immutable
+rendering data is kept separately from each actor's changing pose/binding.
+
+CMake now builds private LUT4 F21..24.BIN from USA records
+259/261/262, 263/265/266, 267/269/270 and 271/273/274. These use the existing
+eight-texel patch limit, with the original per-patch CLUT colours. The old
+Force packs were INDEX8: they failed the deliberate LUT4 guard during the
+first preload experiment and would compete for shared palette banks. The
+rejected experiment was removed. The native packs' hot-plus-compact sizes
+are 24,337/25,729/26,097/26,953 bytes, all within the existing 49,488-byte store.
+
+The extra asset's store reserves the final 49,488 bytes of the existing Low
+WRAM arena. All bank/camera reads check the remaining 685,184-byte capacity;
+the maximum regular player/grunt bank-and-camera combination over the current
+21-player roster is 506,112 bytes. No new Low WRAM allocation or SDK copy is
+needed. The retained grunt bank is now 104 KiB (the actual bank is 105,786
+bytes), freeing 4 KiB of High WRAM. The Crow/Falcon probe links with BSS
+ending at 0x060FA908, leaving 22,264 bytes for the required 16 KiB stack
+reserve. The maximum regular face count is 841 + 380 + 398 = 1,619, below
+the 1,698-entry scene capacity before adding the four possible item quads.
+
+The pickup shadow's INDEX8 colours now occupy entries 240..255 of HUD bank 7,
+whose ASCII font only uses 0/1. Shadow pixel codes are remapped into that
+range, keeping index zero transparent. This fixes a palette collision with
+INDEX8 bosses in bank 6; the panorama can use every colour in banks 0..4.
+Material setup also clears old flags when reloading a different model.
+
+Runtime evidence is intentionally labelled and uses neutral CPU inputs:
+
+- `review-variants-crow-falcon-lut/frame-47.png` shows Falcon in enemy slot 1
+  and Crow in slot 2; frame 55 shows the reverse. A six-second continuation,
+  `review-variants-crow-falcon-repeat/frame-4.png`, shows a third swap.
+  The final binding counters are [0,3,3].
+- `review-variants-hawk-owl/frame-47.png` shows Hawk/Owl, and frame 58 shows
+  Owl/Hawk. Both enemy binding counters again reach three. This also exposes
+  the still-incomplete fourth-stage panorama/floor presentation; it is not
+  a claim that the staircase stage is finished.
+- `review-variants-boss-reload/frame-60.png` shows Paul/Law after replacing
+  the three-asset grunt setup with the two-pack boss setup. Frame 63 shows
+  damage and score 60. The loaded pack count is two, as required. This is
+  a boss-boundary/input probe, not a natural level clear.
+
+These tests exercise all four models and repeated independent rebinding,
+but do not prove a played four-stage run. Every movie was deleted after
+inspection. Screenshots, logs and saved state remain; the default build has
+all probes disabled. Ordinary duel compilation and the nine Force tests pass.

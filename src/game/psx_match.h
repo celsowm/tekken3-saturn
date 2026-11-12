@@ -106,6 +106,7 @@ typedef struct {
      * character, bank, model and sounds the boss uses; the device program will look the boss up in BOSS.BIN. */
     uint8_t force_boss_like;
     /* Or the boss's own data (host evaluators): bank, model, body shapes (48 bytes), scale, character and voice set. */
+    uint8_t round_gap_frames; /* FightMain frames between a round's end and the next placement; 0 is the versus 2 (a Force level change loads for 50) */
 #if T3_PSX_FIGHTERS>2
     /* A level after the first starts with the score, hi-score and health of the last (health 0: full). */
     uint32_t force_carry_score,force_carry_hiscore;int32_t force_carry_health;
@@ -230,7 +231,8 @@ typedef struct t3_psx_match {
     uint32_t fight_clock;
     t3_psx_replay_t replay;
     int32_t intro_camera_left,replay_skip;
-    uint8_t round_gap; /* FightMain frames since the round ended (0..2) */
+    uint8_t round_gap; /* FightMain frames since the round ended */
+    uint8_t force_enemy_reset; /* a resumed Force level: the enemy records are set up on the next frame */
     /* Without a fight camera: the screen x supplied by the frames. */
     uint8_t screen_known;int16_t screen_x[T3_PSX_FIGHTERS];
     /* Diagnostic: this tick's fighter draw consumed frame->fighter_view
@@ -333,6 +335,6 @@ void t3_psx_match_draw_screen(const t3_psx_match_t* match,unsigned i,
  * pose, with the camera on them alone. The original neither moves, collides nor
  * draws an inactive fighter (Tekken3Remake fight_view.gd). */
 static inline int t3_psx_match_fighter_shown(const t3_psx_match_t* match,unsigned i) {
-    return i<2u && match->fighter[i].body.active!=0;
+    return i<T3_PSX_FIGHTERS && match->fighter[i].body.active!=0;
 }
 #endif

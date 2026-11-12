@@ -54,11 +54,25 @@ int t3_psx_match_reversals(t3_psx_match_t* n) {
         t3_psx_fighter_t* f=&n->fighter[i];
         f->got_hit=0;f->contact=0;
     }
+#if T3_PSX_FIGHTERS==2
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)if(n->fighter[i].hit_gate.status==T3_HIT_GATE_ACCEPT) {
         t3_psx_fighter_t *a=&n->fighter[i],*d=&n->fighter[T3_PSX_OPP(n,i)];
         a->contact=a->contact_this_move=a->hit_done=1;a->last_hit_target=(uint8_t)T3_PSX_OPP(n,i);
         d->got_hit=1;d->ground.was_hit_this_move=1;
     }
+#else
+    {   /* every pair that landed, in HitTest's order on the roles' player, target and other enemy */
+        const unsigned target=n->opponent[0]==2u?2u:1u,roles[3]={0u,target,3u-target};
+        for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)
+            for(unsigned k=0;k<3u;++k) {
+                const unsigned dn=roles[k];
+                t3_psx_fighter_t *a=&n->fighter[i],*d=&n->fighter[dn];
+                if(dn==i || a->pair_gate[dn].status!=T3_HIT_GATE_ACCEPT)continue;
+                a->contact=a->contact_this_move=a->hit_done=1;a->last_hit_target=(uint8_t)dn;
+                d->got_hit=1;d->ground.was_hit_this_move=1;
+            }
+    }
+#endif
     for(unsigned j=0;j<T3_PSX_FIGHTERS;++j) {
 #if T3_PSX_FIGHTERS==2
         const unsigned i=(j+((n->frame_counter&1u)?0u:1u))&1u;

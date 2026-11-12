@@ -36,6 +36,26 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 sat_result_t t3_characters_reset(void);
 sat_result_t t3_characters_tick(const t3_match_t* game);
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game);
+#if defined(T3_FORCE_PROGRAM)
+#include "psx_pose.h"
+/* After sat_shutdown/sat_init, reload both packs into the same actor buffers. */
+sat_result_t t3_characters_force_reload(void);
+sat_result_t t3_characters_force_bind_enemy(unsigned actor,unsigned key);
+unsigned t3_characters_force_model(unsigned actor);
+/* Diagnostic only: compare the last skin output to the serial solver. */
+sat_result_t t3_characters_force_check_skin(uint32_t* checked);
+/* Tekken Force owns its match, so the frontend publishes each actor's
+ * original joint pose every tick (as the move probe does for its fixture)
+ * and the camera origin the renderer rebases it to. Rebasing keeps the joint
+ * origins inside the original-unit bounds of the skin bridge across a whole
+ * level, whose camera travels to ~32,768 units. */
+void t3_characters_set_force_pose(unsigned actor,
+    const t3_psx_joint_t world[T3_PSX_DRAW_PARTS], uint32_t parts_mask, int shown);
+void t3_characters_set_force_origin(int32_t x, int32_t z);
+/* Diagnostics: 1 when the actor's original pose was bridged for the last
+ * image, 0 otherwise. */
+int t3_characters_force_pose_ready(unsigned actor);
+#endif
 #if defined(T3_EFFECT_RING)
 /* W3.2 of docs/POST_VRAM_FRAME_RATE_PLAN.md: the last image's mixed-OT
  * counts (live fighter faces, sorted entries) and the FRT split of its

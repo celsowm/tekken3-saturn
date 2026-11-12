@@ -20,7 +20,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_spark.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_vertex_exchange.c src/game/psx_vertex_project.c src/game/psx_projected_mesh.c src/game/psx_fighter_ot.c src/game/psx_face_coverage.c src/game/psx_scene_ot.c src/game/psx_particle_projection.c src/game/psx_particle_assets.c src/game/psx_particle_snapshot.c src/game/psx_particle_prepare.c src/game/psx_particle_order.c src/game/psx_particle_tile.c src/game/psx_flipbook.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_force_camera.c src/game/psx_force_handoff.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_force_floor.c src/game/psx_force_camera.c src/game/psx_force_handoff.c src/game/force_progress.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
     src/game/arcade_ladder.c)
@@ -43,6 +43,41 @@ target_sources(tekken3_fight PRIVATE src/game/psx_world_pose.c)
 option(T3_POSE_TOPOLOGY_FAST "Validate pose part topology once per part table (P5)" ON)
 if(T3_POSE_TOPOLOGY_FAST)
     target_compile_definitions(tekken3_fight PRIVATE T3_POSE_TOPOLOGY_FAST=1)
+endif()
+
+# Tekken Force game library: same sources as tekken3_fight but with T3_PSX_FIGHTERS=3.
+# This keeps the versus program at 2 fighters while Force uses 3.
+add_library(tekken3_fight_force STATIC
+    src/game/sha256.c src/game/fight.c src/game/input_history.c src/game/divmot.c src/game/move_index.c src/game/move_vm.c src/game/move_clock.c src/game/branch_rules.c src/game/attack_records.c src/game/psx_collision.c src/game/psx_motion.c src/game/psx_pose.c src/game/psx_ik.c src/game/psx_contact.c src/game/psx_root.c src/game/psx_trace.c src/game/psx_shadow_combat.c src/game/psx_hit_damage.c src/game/psx_reaction.c src/game/psx_hit_apply.c src/game/psx_hit_test_gate.c src/game/psx_move_events.c src/game/psx_combat_pipeline.c src/game/psx_state_transition.c src/game/psx_movevm_bridge.c
+    src/game/move_lifecycle.c
+    src/game/psx_ground.c src/game/psx_body.c src/game/psx_exact_contact.c src/game/psx_hit_transaction.c
+    src/game/psx_match.c src/game/psx_round.c src/game/psx_round_flow.c
+    src/game/psx_replay.c
+    src/game/psx_replay_sounds.c
+    src/game/psx_spark.c
+    src/game/psx_vertex_exchange.c src/game/psx_vertex_project.c src/game/psx_projected_mesh.c src/game/psx_fighter_ot.c src/game/psx_face_coverage.c src/game/psx_scene_ot.c src/game/psx_particle_projection.c src/game/psx_particle_assets.c src/game/psx_particle_snapshot.c src/game/psx_particle_prepare.c src/game/psx_particle_order.c src/game/psx_particle_tile.c src/game/psx_flipbook.c
+    src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c
+    src/game/psx_blend_math.c src/game/psx_blend.c
+    src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_force_floor.c src/game/psx_force_camera.c src/game/psx_force_handoff.c src/game/force_progress.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c
+    src/game/psx_ai.c src/game/psx_ai_game.c
+    src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
+        src/game/arcade_ladder.c
+    src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c
+    src/game/tick_clock.c
+    src/game/psx_local_pose.c
+    src/game/psx_hud_bar.c
+    src/game/psx_hud_messages.c
+    src/game/psx_tap_latch.c
+    src/game/psx_reversal.c
+    src/game/psx_match_reversal.c
+    src/game/branch_input_filter.c
+    src/game/psx_world_pose.c)
+target_include_directories(tekken3_fight_force PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/game>")
+target_compile_options(tekken3_fight_force PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_definitions(tekken3_fight_force PUBLIC T3_CATCH_UP_FIELDS=${T3_CATCH_UP_FIELDS} T3_PSX_FIGHTERS=3 T3_FORCE_PROGRAM=1)
+if(T3_POSE_TOPOLOGY_FAST)
+    target_compile_definitions(tekken3_fight_force PRIVATE T3_POSE_TOPOLOGY_FAST=1)
 endif()
 
 # PRIVATE original fight camera tables (scripts/build_local_camera_assets.py):
@@ -130,6 +165,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     find_package(LibSaturn 0.1 CONFIG REQUIRED)
     target_include_directories(tekken3_fight PRIVATE
         "$<TARGET_PROPERTY:LibSaturn::Saturn,INTERFACE_INCLUDE_DIRECTORIES>")
+
+    # The Force executable needs optimized simulation even in a build with no
+    # CMAKE_BUILD_TYPE: otherwise the unoptimized library wastes High WRAM
+    # and leaves too little headroom for initialization and rendering stacks.
+    target_compile_options(tekken3_fight_force PRIVATE -O2 -fomit-frame-pointer -m2 -mb -ffreestanding -ffunction-sections -fdata-sections)
+    target_include_directories(tekken3_fight_force PRIVATE
+        "$<TARGET_PROPERTY:LibSaturn::Saturn,INTERFACE_INCLUDE_DIRECTORIES>")
+    set_source_files_properties(src/game/psx_blend.c src/game/psx_blend_math.c
+        PROPERTIES COMPILE_OPTIONS "-Os")
+    set_source_files_properties(src/game/psx_ai_game.c src/game/psx_ai.c
+        PROPERTIES COMPILE_OPTIONS "-Os")
 
     # LibSaturn is an installed runtime dependency. Its uninstalled source
     # tree supplies the offline original-humanoid/SKA1 generator only.
@@ -408,6 +454,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     option(T3_MATCH_FAILURE_TRACE "Publish the last original-match phase on a guest failure" OFF)
     if(T3_MATCH_FAILURE_TRACE)
         target_compile_definitions(tekken3_fight PRIVATE T3_MATCH_FAILURE_TRACE=1)
+        target_compile_definitions(tekken3_fight_force PRIVATE T3_MATCH_FAILURE_TRACE=1)
         target_compile_definitions(tekken3_saturn PRIVATE T3_MATCH_FAILURE_TRACE=1)
     endif()
     option(T3_POSE_TRACE "Publish paired debugger pose records every simulation tick" OFF)
@@ -1684,7 +1731,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         set(_t3_menu_gen "${CMAKE_BINARY_DIR}/generated/private_menu")
         set(_t3_menu_files "${_t3_menu_gen}/TITLEBG.BIN" "${_t3_menu_gen}/SELBG.BIN" "${_t3_menu_gen}/TILEBG.BIN" "${_t3_menu_gen}/NAMES.BIN" "${_t3_menu_gen}/TEXT.BIN"
-            "${_t3_menu_gen}/menu_layout.h" "${_t3_menu_gen}/menu_text.h")
+            "${_t3_menu_gen}/menu_layout.h" "${_t3_menu_gen}/menu_text.h" "${_t3_menu_gen}/LOAD.BIN"
+            "${_t3_menu_gen}/FACES.BIN")
         foreach(_i RANGE 0 21)
             string(LENGTH "${_i}" _len)
             if(_len EQUAL 1)
@@ -1768,6 +1816,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         # Tekken Force stage-layer probe (docs/TEKKEN_FORCE_PLAN.md, phase 4): the baked level panorama on a VDP2
         # layer. The levels are the private output of scripts/build_force_levels.py.
         set(T3_LOCAL_FORCE_LEVELS "" CACHE PATH "Private LEV1-4.BIN (scripts/build_force_levels.py) for the Force stage probe")
+        set(T3_LOCAL_PSX_FORCED_REACTION "" CACHE FILEPATH "Private 44-byte mode-8 forced-hit reaction record")
         if(T3_LOCAL_FORCE_LEVELS AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN")
             add_executable(tekken3_force_probe src/saturn/force_stage_probe.c src/saturn/disc.c src/game/psx_force_camera.c src/game/psx_force_level.c src/game/psx_force_handoff.c)
             target_include_directories(tekken3_force_probe PRIVATE src/saturn src/game)
@@ -1778,6 +1827,160 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             libsaturn_add_disc(tekken3_force_probe NAME tekken3_force_probe
                 IP_TEMPLATE_KIND native ROOT_FILES "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN" ALL)
         endif()
+
+        # Tekken Force main program (Step 4): the real FORCE.BIN with 3 fighters, 3 draw actors,
+        # Force stage layer, camera, level runner, and combat. Replaces the probe.
+        # Requires: player packs; enemy LUT4 packs are generated from the private raw records,
+        # LEV1-4.BIN, TRIG.BIN, TABLES.BIN, BOSS.BIN, KEYS.BIN, and private HUD/camera/AI data.
+        if(T3_LOCAL_FORCE_LEVELS AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" AND EXISTS "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN")
+            if(NOT T3_FIGHTER_PACKS)
+                message(FATAL_ERROR "tekken3_force requires T3_FIGHTER_PACKS (player + enemy packs)")
+            endif()
+            if(NOT T3_COLD_LOW_WRAM)
+                message(FATAL_ERROR "tekken3_force requires T3_COLD_LOW_WRAM for the three-fighter working set")
+            endif()
+            if(NOT T3_ENABLE_PSX_OWNED_MATCH OR NOT T3_ENABLE_PSX_COMBAT)
+                message(FATAL_ERROR "tekken3_force requires the owned PSX match and combat implementation")
+            endif()
+            if(NOT T3_LOCAL_PSX_FORCED_REACTION OR NOT EXISTS "${T3_LOCAL_PSX_FORCED_REACTION}")
+                message(FATAL_ERROR "tekken3_force requires T3_LOCAL_PSX_FORCED_REACTION (44-byte mode-8 reaction data)")
+            endif()
+            set(_t3_boss_gen "${CMAKE_BINARY_DIR}/generated/force-boss")
+            set(_t3_enemy_gen "${CMAKE_BINARY_DIR}/generated/force-enemies")
+            set(_t3_enemy_files)
+            foreach(_enemy RANGE 21 24)
+                list(APPEND _t3_enemy_files "${_t3_enemy_gen}/F${_enemy}.BIN")
+            endforeach()
+            set(_t3_enemy_records)
+            foreach(_record 259 261 262 263 265 266 267 269 270 271 273 274)
+                if(NOT EXISTS "${T3_LOCAL_SFX}/raw/${_record}.bin")
+                    message(FATAL_ERROR "Force enemy variants require private USA BNS record ${_record} in T3_LOCAL_SFX/raw (scripts/psx_disc_import.py --extract)")
+                endif()
+                list(APPEND _t3_enemy_records "${T3_LOCAL_SFX}/raw/${_record}.bin")
+            endforeach()
+            add_custom_command(OUTPUT ${_t3_enemy_files} "${_t3_enemy_gen}/force.json"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
+                    --force-enemies --texture-cap 8 --raw "${T3_LOCAL_SFX}/raw"
+                    --exe "${T3_LOCAL_SFX}/SLUS_004.02" --libsaturn-source "${LIBSATURN_SOURCE_DIR}"
+                    --out "${_t3_enemy_gen}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/fighter_roster.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
+                    "${T3_LOCAL_SFX}/SLUS_004.02"
+                    ${_t3_enemy_records}
+                VERBATIM COMMENT "Build PRIVATE LUT4 Force enemy variants")
+            set(_t3_item_gen "${CMAKE_BINARY_DIR}/generated/force-items")
+            set(_t3_item_files)
+            foreach(_level RANGE 1 4)
+                list(APPEND _t3_item_files "${_t3_item_gen}/ITEM${_level}.BIN")
+            endforeach()
+            add_custom_command(OUTPUT ${_t3_item_files}
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_force_items.py"
+                    --raw "${T3_LOCAL_SFX}/raw" --out "${_t3_item_gen}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_force_items.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/build_force_levels.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
+                    "${T3_LOCAL_SFX}/raw/051.bin" "${T3_LOCAL_SFX}/raw/052.bin"
+                    "${T3_LOCAL_SFX}/raw/053.bin" "${T3_LOCAL_SFX}/raw/054.bin"
+                VERBATIM COMMENT "Build PRIVATE original Force pickup sprites")
+            add_custom_command(OUTPUT "${_t3_boss_gen}/BOSSPAK.BIN" "${_t3_boss_gen}/t3_force_boss_limits.h"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_force_boss_packs.py"
+                    --raw "${T3_LOCAL_SFX}/raw" --exe "${T3_LOCAL_SFX}/SLUS_004.02"
+                    --roster "${_t3_pack_gen}" --boss-table "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN"
+                    --libsaturn-source "${LIBSATURN_SOURCE_DIR}" --texture-cap "${T3_FIGHTER_TEXTURE_CAP}"
+                    --out "${_t3_boss_gen}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_force_boss_packs.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py" ${_t3_pack_files}
+                    "${_t3_pack_gen}/t3_roster.h" "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN"
+                VERBATIM COMMENT "Build PRIVATE original Force boss costumes")
+            option(T3_FORCE_DEBUG_HUD "Show Force input and renderer diagnostics" OFF)
+            option(T3_FORCE_INPUT_PROBE "Diagnostic only: replay walking and attacks in Force" OFF)
+            option(T3_FORCE_PARALLEL_SKINNING "Split visible Force skin vertices between both SH-2 CPUs" OFF)
+            option(T3_FORCE_NO_FLOOR "Skip the floor (frame-rate A/B control)" OFF)
+            option(T3_FORCE_NO_FLOOR_FADE "Skip the level 1-2 floor's distance fade (frame-rate A/B control)" OFF)
+            set(T3_FORCE_POSE_CACHE_ENTRIES "32" CACHE STRING "Requested Force arena pose cache entries (16, 20, 32, 64 or 128)")
+            if(NOT T3_FORCE_POSE_CACHE_ENTRIES MATCHES "^(16|20|32|64|128)$")
+                message(FATAL_ERROR "T3_FORCE_POSE_CACHE_ENTRIES must be 16, 20, 32, 64 or 128")
+            endif()
+            if(T3_FORCE_PARALLEL_SKINNING AND NOT T3_FORCE_POSE_CACHE_ENTRIES STREQUAL "16")
+                message(FATAL_ERROR "The experimental Force parallel skinning layout requires 16 pose entries")
+            endif()
+            option(T3_FORCE_BOSS_PROBE "Diagnostic only: start Force at its area-change boss boundary" OFF)
+            option(T3_FORCE_CLEAR_PROBE "Diagnostic only: enter the fourth stage tally to test progress and saving" OFF)
+            option(T3_FORCE_RESCUE_PROBE "Diagnostic only: exercise Doctor B KO, result and unlock saving" OFF)
+            option(T3_FORCE_ITEM_PROBE "Diagnostic only: place a visible item then exercise pickup and popup" OFF)
+            option(T3_FORCE_VARIANT_PROBE "Diagnostic only: swap both resident enemy variants through original spawn/load states" OFF)
+            set(T3_FORCE_VARIANT_PROBE_LEVEL "0" CACHE STRING "Regular level 0..3 for the enemy variant probe")
+            if(NOT T3_FORCE_VARIANT_PROBE_LEVEL MATCHES "^[0-3]$")
+                message(FATAL_ERROR "T3_FORCE_VARIANT_PROBE_LEVEL must be 0..3")
+            endif()
+            set(T3_FORCE_BOSS_PROBE_CHARACTER "0" CACHE STRING "Player id for the diagnostic Force boss boundary")
+            if(NOT T3_FORCE_BOSS_PROBE_CHARACTER MATCHES "^([0-9]|1[0-9]|20)$")
+                message(FATAL_ERROR "T3_FORCE_BOSS_PROBE_CHARACTER must be 0..20")
+            endif()
+            add_executable(tekken3_force src/saturn/force_save.c src/saturn/force_main.c src/saturn/disc.c src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c src/saturn/perf.c src/saturn/sim_profile.c src/saturn/combat_events.c src/saturn/cold_data.c src/saturn/fighter_pack.c src/saturn/roster_names.c src/saturn/stage_vdp2.c
+                "${_t3_gen}/t3_generated_character.c"
+                "${_t3_logic_gen}/t3_local_divmot.c"
+                "${_t3_pack_gen}/t3_roster.h" "${_t3_boss_gen}/t3_force_boss_limits.h" ${_t3_pack_files})
+            target_include_directories(tekken3_force PRIVATE "${_t3_boss_gen}" "${_t3_pack_gen}" "${_t3_gen}" "${_t3_logic_gen}"
+                "${LIBSATURN_SOURCE_DIR}/include" src/saturn src/game)
+            target_compile_definitions(tekken3_force PRIVATE T3_PSX_FIGHTERS=3 T3_DRAW_ACTORS=3 T3_ACTOR_COUNT=3
+                T3_FORCE_PROGRAM=1 T3_FIGHTER_PACKS=1 T3_SECOND_CHARACTER=1 T3_LOCAL_DIVMOT_ENABLED=1
+                T3_COLD_LOW_WRAM=1 T3_HIGH_TEXTURE_DESCRIPTORS=1 T3_FORCE_PACK_COUNT=25
+                T3_FORCE_DEBUG_HUD=$<BOOL:${T3_FORCE_DEBUG_HUD}>
+                T3_FORCE_INPUT_PROBE=$<BOOL:${T3_FORCE_INPUT_PROBE}>
+                T3_FORCE_NO_FLOOR=$<BOOL:${T3_FORCE_NO_FLOOR}>
+                T3_FORCE_NO_FLOOR_FADE=$<BOOL:${T3_FORCE_NO_FLOOR_FADE}>
+                T3_FORCE_POSE_CACHE_ENTRIES=${T3_FORCE_POSE_CACHE_ENTRIES}
+                T3_FORCE_BOSS_PROBE=$<BOOL:${T3_FORCE_BOSS_PROBE}>
+                T3_FORCE_BOSS_PROBE_CHARACTER=${T3_FORCE_BOSS_PROBE_CHARACTER}
+                T3_FORCE_CLEAR_PROBE=$<BOOL:${T3_FORCE_CLEAR_PROBE}>
+                T3_FORCE_RESCUE_PROBE=$<BOOL:${T3_FORCE_RESCUE_PROBE}>
+                T3_FORCE_ITEM_PROBE=$<BOOL:${T3_FORCE_ITEM_PROBE}>
+                T3_FORCE_VARIANT_PROBE=$<BOOL:${T3_FORCE_VARIANT_PROBE}>
+                T3_FORCE_VARIANT_PROBE_LEVEL=${T3_FORCE_VARIANT_PROBE_LEVEL})
+            # The combat sounds, the fighters' voices and the level runner's own sounds (key bank 3) from one SFX.BIN.
+            set(_t3_force_sfx_files "")
+            # Off by default: it links and plays; the probe replay reaches tick 600 one field later (642 against 641,
+            # within the measured noise), with the same images (docs/TEKKEN_FORCE_PLAN.md, Force sound).
+            option(T3_FORCE_SFX "Play combat sounds, voices and the level runner's sounds in Tekken Force" OFF)
+            if(T3_FORCE_SFX AND T3_LOCAL_SFX)
+                set(_t3_force_sfx_gen "${CMAKE_BINARY_DIR}/generated/force_sfx")
+                add_custom_command(OUTPUT "${_t3_force_sfx_gen}/SFX.BIN" "${_t3_force_sfx_gen}/t3_local_sfx.h"
+                    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" --with-force
+                        --exe "${T3_LOCAL_SFX}/SLUS_004.02" --out "${_t3_force_sfx_gen}/tables" --generated "${_t3_force_sfx_gen}"
+                    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" "${T3_LOCAL_SFX}/SLUS_004.02" VERBATIM)
+                target_sources(tekken3_force PRIVATE src/saturn/sfx.c "${_t3_force_sfx_gen}/t3_local_sfx.h")
+                target_include_directories(tekken3_force PRIVATE "${_t3_force_sfx_gen}")
+                target_compile_definitions(tekken3_force PRIVATE T3_SFX=1)
+                set(_t3_force_sfx_files "${_t3_force_sfx_gen}/SFX.BIN")
+            endif()
+            target_compile_options(tekken3_force PRIVATE -Wall -Wextra -O2)
+            if(T3_FORCE_PARALLEL_SKINNING)
+                target_compile_definitions(tekken3_force PRIVATE T3_PARALLEL_SKINNING=1)
+            endif()
+            target_link_libraries(tekken3_force PRIVATE tekken3_fight_force LibSaturn::Saturn)
+            target_link_options(tekken3_force PRIVATE "-Wl,-T,${CMAKE_SOURCE_DIR}/src/saturn/hot_wram.ld")
+            set_property(TARGET tekken3_force APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/saturn/hot_wram.ld")
+            libsaturn_configure_executable(tekken3_force)
+            libsaturn_add_binary(tekken3_force MAX_BYTES 983040)
+            libsaturn_add_disc(tekken3_force NAME tekken3_force
+                IP_TEMPLATE_KIND native
+                ROOT_FILES
+                    "${CMAKE_BINARY_DIR}/menu/FORCE.BIN" "${CMAKE_BINARY_DIR}/menu/MENU.BIN"
+                    ${_t3_menu_files} "${_t3_menu_gen}/MENUSFX.BIN"
+                    ${_t3_pack_files}
+                    "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV2.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV3.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV4.BIN"
+                    "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN"
+                    ${_t3_enemy_files}
+                    "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN"
+                    "${_t3_boss_gen}/BOSSPAK.BIN" ${_t3_item_files}
+                    "${_t3_menu_gen}/LOAD.BIN" ${_t3_force_sfx_files}
+                    "${T3_LOCAL_PSX_FORCED_REACTION}"
+                    "${_t3_logic_gen}/MOTION.BIN"
+                ALL)
+        endif()
+
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
             src/game/select_grid.c src/game/arcade_ladder.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
@@ -1815,9 +2018,37 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_include_directories(tekken3_menu PRIVATE "${_t3_adx_dir}")
             target_compile_definitions(tekken3_menu PRIVATE T3_ADX_MUSIC_TEST=1)
         endif()
-        # Tekken Force: with the private levels built, the menu starts FORCE.BIN (the probe program for now).
-        if(TARGET tekken3_force_probe)
-            target_sources(tekken3_menu PRIVATE src/game/psx_force_handoff.c)
+        # Tekken Force: with the private levels built, the menu starts FORCE.BIN (the real program).
+        if(TARGET tekken3_force)
+            target_sources(tekken3_menu PRIVATE src/game/psx_force_handoff.c src/game/force_progress.c src/saturn/force_save.c)
+            target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_PROGRAM=1)
+            # The original result screen's picture, from result.ovl (USA record 302), when it is extracted.
+            if(T3_LOCAL_VS_RECORDS AND EXISTS "${T3_LOCAL_VS_RECORDS}/302.bin")
+                add_custom_command(OUTPUT "${_t3_menu_gen}/FORCEBG.BIN"
+                    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_force_result_art.py"
+                        --result "${T3_LOCAL_VS_RECORDS}/302.bin" --out "${_t3_menu_gen}"
+                    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_force_result_art.py"
+                        "${CMAKE_SOURCE_DIR}/scripts/pack_menu_art.py" "${T3_LOCAL_VS_RECORDS}/302.bin" VERBATIM)
+                list(APPEND _t3_stage_disc_files "${_t3_menu_gen}/FORCEBG.BIN")
+                target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_RESULT_ART=1)
+            endif()
+            list(APPEND _t3_stage_disc_files "${_t3_boss_gen}/BOSSPAK.BIN"
+                "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN")
+            add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
+                COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE_DIR:tekken3_force>/tekken3_force.app.bin"
+                    "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                DEPENDS tekken3_force VERBATIM)
+            list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
+                ${_t3_pack_files}
+                "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV2.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV3.BIN"
+                "${T3_LOCAL_FORCE_LEVELS}/LEV4.BIN" "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN"
+                ${_t3_enemy_files}
+                "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN"
+                "${_t3_boss_gen}/BOSSPAK.BIN" ${_t3_item_files}
+                "${_t3_menu_gen}/LOAD.BIN" "${T3_LOCAL_PSX_FORCED_REACTION}")
+        elseif(TARGET tekken3_force_probe)
+            target_sources(tekken3_menu PRIVATE src/game/psx_force_handoff.c src/game/force_progress.c src/saturn/force_save.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_PROGRAM=1)
             add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/FORCE.BIN"
                 COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/menu"
@@ -1876,11 +2107,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py"
                     --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_select_wav}"
                 DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py" "${T3_LOCAL_HUD_EXE}" VERBATIM)
-            target_sources(tekken3_menu PRIVATE src/saturn/stage_cdda.c "${_t3_select_wav}")
-            target_compile_definitions(tekken3_menu PRIVATE T3_STAGE_CDDA=1 T3_SELECT_CDDA_SECTORS=4500)
-            target_compile_definitions(tekken3_saturn PRIVATE T3_SELECT_CDDA_SECTORS=4500)
-            set(_t3_select_wav_args --select-wav "${_t3_select_wav}")
-            set(_t3_select_wav_deps "${_t3_select_wav}")
+            # The result screens' music (XA stream 0x12, the original's track 6) ends it: 80 s.
+            set(_t3_result_wav "${_t3_menu_gen}/result.wav")
+            add_custom_command(OUTPUT "${_t3_result_wav}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --stream 0x12 --seconds 80 --out "${_t3_result_wav}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_select_music.py" "${T3_LOCAL_HUD_EXE}" VERBATIM)
+            target_sources(tekken3_menu PRIVATE src/saturn/stage_cdda.c "${_t3_select_wav}" "${_t3_result_wav}")
+            target_compile_definitions(tekken3_menu PRIVATE T3_STAGE_CDDA=1 T3_SELECT_CDDA_SECTORS=4500
+                T3_RESULT_CDDA_SECTORS=6000)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_SELECT_CDDA_SECTORS=4500 T3_RESULT_CDDA_SECTORS=6000)
+            set(_t3_select_wav_args --select-wav "${_t3_select_wav}" --result-wav "${_t3_result_wav}")
+            set(_t3_select_wav_deps "${_t3_select_wav}" "${_t3_result_wav}")
         endif()
         target_sources(tekken3_saturn PRIVATE ${_t3_pack_files})
     endif()
@@ -1895,6 +2133,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(T3_DEMO_PAIR "" CACHE STRING "Test builds: fixed attract fight pair, empty for the rotation")
     if(T3_DEMO_PAIR)
         target_compile_definitions(tekken3_menu PRIVATE T3_DEMO_PAIR=${T3_DEMO_PAIR})
+    endif()
+    # Test builds: a cold boot opens the Tekken Force result with sample values and these result flags
+    # (7 keys, 8 saved Doctor B., 16 the boss list), so the screen is seen without playing four levels.
+    set(T3_FORCE_RESULT_PROBE "" CACHE STRING "Test builds: Tekken Force result flags shown at a cold boot")
+    if(T3_FORCE_RESULT_PROBE)
+        target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_RESULT_PROBE=${T3_FORCE_RESULT_PROBE})
     endif()
     option(T3_LADDER_SELFTEST "Test builds: every arcade ladder fight counts as won once round 1 has begun" OFF)
     set(T3_LADDER_SELFTEST_STAGE "0" CACHE STRING "Test builds: the ladder fight (0-9) a new run starts at")
@@ -1949,6 +2193,7 @@ else()
         message(FATAL_ERROR "Set T3_SATURN_MATH_INCLUDE_DIR to the LibSaturn include directory (standalone integer math; no target toolchain needed).")
     endif()
     target_include_directories(tekken3_fight PRIVATE "${T3_SATURN_MATH_INCLUDE_DIR}")
+    target_include_directories(tekken3_fight_force PRIVATE "${T3_SATURN_MATH_INCLUDE_DIR}")
     # Explicit local-only replay against private generated assets. Public CI
     # leaves this empty and neither compiles nor downloads retail data.
     set(T3_PRIVATE_REPLAY_ASSET_DIR "" CACHE PATH "Configured private Saturn build used by the native match replay evaluator")
@@ -2209,6 +2454,14 @@ else()
         target_link_libraries(test_psx_head PRIVATE tekken3_fight)
         target_compile_options(test_psx_head PRIVATE -Wall -Wextra -Werror)
         add_test(NAME ps1_procedural_head_tracking COMMAND test_psx_head)
+        add_executable(test_force_progress tests/test_force_progress.c)
+        target_link_libraries(test_force_progress PRIVATE tekken3_fight)
+        target_compile_options(test_force_progress PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME force_progress_save_and_run_transitions COMMAND test_force_progress)
+        add_executable(test_psx_force_tables tests/test_psx_force_tables.c)
+        target_link_libraries(test_psx_force_tables PRIVATE tekken3_fight)
+        target_compile_options(test_psx_force_tables PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME force_reject_placeholder_tables COMMAND test_psx_force_tables)
         add_executable(test_psx_force_level tests/test_psx_force_level.c)
         target_link_libraries(test_psx_force_level PRIVATE tekken3_fight)
         target_compile_options(test_psx_force_level PRIVATE -Wall -Wextra -Werror)
@@ -2218,6 +2471,10 @@ else()
         add_test(NAME force_target_choice_golden COMMAND test_psx_force_target)
         set_tests_properties(force_target_choice_golden PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT "T3_FORCE_TARGET_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/target.bin")
+        add_executable(test_psx_force_floor tests/test_psx_force_floor.c)
+        target_link_libraries(test_psx_force_floor PRIVATE tekken3_fight)
+        target_compile_options(test_psx_force_floor PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME force_floor_layout COMMAND test_psx_force_floor)
         add_executable(test_psx_force_walls tests/test_psx_force_walls.c)
         target_link_libraries(test_psx_force_walls PRIVATE tekken3_fight)
         target_compile_options(test_psx_force_walls PRIVATE -Wall -Wextra -Werror)
@@ -2231,6 +2488,10 @@ else()
         set_tests_properties(force_camera_golden PROPERTIES SKIP_RETURN_CODE 77
             ENVIRONMENT "T3_FORCE_CAMERA_CASES=${CMAKE_SOURCE_DIR}/build/force-cases/camera.bin")
         add_executable(test_psx_force_handoff tests/test_psx_force_handoff.c)
+        add_executable(test_psx_force_input tests/test_psx_force_input.c)
+        target_link_libraries(test_psx_force_input PRIVATE tekken3_fight_force)
+        target_compile_options(test_psx_force_input PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME force_physical_input_current_target COMMAND test_psx_force_input)
         target_link_libraries(test_psx_force_handoff PRIVATE tekken3_fight)
         target_compile_options(test_psx_force_handoff PRIVATE -Wall -Wextra -Werror)
         add_test(NAME force_handoff_block COMMAND test_psx_force_handoff)

@@ -10,9 +10,17 @@ from convert_cd_audio import convert
 
 
 SELECT_SECTORS = 4500                    # T3_SELECT_CDDA_SECTORS: the select music is 60 s, first on the track
+RESULT_SECTORS = 6000                    # T3_RESULT_CDDA_SECTORS: the result music is 80 s, last on the track
 
 
-def build(build_dir, wav, libsaturn, force=False, select_wav=None):
+def exact(wav, path, sectors, what):
+    convert(wav.resolve(), path, 'ffmpeg')
+    if path.stat().st_size != sectors * 2352:
+        raise ValueError(f'the {what} music must be exactly {sectors} sectors ({sectors // 75} s)')
+    return path.read_bytes()
+
+
+def build(build_dir, wav, libsaturn, force=False, select_wav=None, result_wav=None):
     build_dir, wav, libsaturn = build_dir.resolve(), wav.resolve(), libsaturn.resolve()
     cache = (build_dir / 'CMakeCache.txt').read_text()
     if 'T3_STAGE_CDDA:BOOL=ON\n' not in cache:
@@ -30,11 +38,11 @@ def build(build_dir, wav, libsaturn, force=False, select_wav=None):
         audio = Path(temporary) / 'stage.cdda'
         conversion = convert(wav, audio, 'ffmpeg')
         if select_wav:
-            head = Path(temporary) / 'select.cdda'
-            convert(select_wav.resolve(), head, 'ffmpeg')
-            if head.stat().st_size != SELECT_SECTORS * 2352:
-                raise ValueError(f'the select music must be exactly {SELECT_SECTORS} sectors (60 s)')
-            audio.write_bytes(head.read_bytes() + audio.read_bytes())
+            head = exact(select_wav, Path(temporary) / 'select.cdda', SELECT_SECTORS, 'select')
+            audio.write_bytes(head + audio.read_bytes())
+        if result_wav:
+            tail = exact(result_wav, Path(temporary) / 'result.cdda', RESULT_SECTORS, 'result')
+            audio.write_bytes(audio.read_bytes() + tail)
         disc = build_mixed(iso, audio, output, cue)
     return dict(cue=str(cue), binary=str(output), conversion=conversion, disc=disc,
                 scope='Private image contains retail-derived assets and non-redistributable boot data.')
@@ -45,11 +53,13 @@ def main():
     parser.add_argument('--build', type=Path, required=True)
     parser.add_argument('--wav', type=Path, required=True)
     parser.add_argument('--select-wav', type=Path, help='60 s select music placed before the stage music')
+    parser.add_argument('--result-wav', type=Path, help='80 s result music placed after the stage music')
     parser.add_argument('--libsaturn', type=Path, required=True, help='existing LibSaturn source checkout')
     parser.add_argument('--force', action='store_true', help='replace an existing mixed-mode candidate')
     args = parser.parse_args()
     try:
-        print(json.dumps(build(args.build, args.wav, args.libsaturn, args.force, args.select_wav), indent=2))
+        print(json.dumps(build(args.build, args.wav, args.libsaturn, args.force, args.select_wav, args.result_wav),
+                         indent=2))
     except (OSError, ValueError) as error:
         parser.exit(1, f'{error}\n')
 

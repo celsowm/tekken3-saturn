@@ -18,6 +18,7 @@
 #include "boot_arg.h"
 #if defined(T3_FORCE_PROGRAM)
 #include "psx_force_handoff.h"
+#include "force_save.h"
 #endif
 #include "disc.h"
 #include "menu_layout.h"
@@ -203,7 +204,7 @@ static sat_result_t load_backdrop(const char* name) {
 
 /* ---- sounds ---- */
 
-enum { SFX_MOVE, SFX_PICK, SFX_UPDOWN, SFX_CONFIRM, SFX_START, SFX_COUNT, SFX_HEAD=64 };
+enum { SFX_MOVE, SFX_PICK, SFX_UPDOWN, SFX_CONFIRM, SFX_START, SFX_LINE, SFX_COUNT, SFX_HEAD=96 };
 static sat_sound_t g_sfx[SFX_COUNT];
 static int g_sfx_ready;
 
@@ -315,7 +316,7 @@ static void text(unsigned set,const char* s,int bg_cx,int y) {
 /* The strings in the original fonts (TEXT.BIN, scripts/pack_menu_art.py): glyph codes ready for the
  * sprite bank, one group per screen. A picture is drawn 2 dots per texel across and 1:1 down: a
  * vertical scale would shimmer between the interlaced fields. */
-static uint8_t g_text_blob[160*1024] __attribute__((section(".wram_l"),aligned(4)));
+static uint8_t g_text_blob[224*1024] __attribute__((section(".wram_l"),aligned(4)));
 static const uint8_t* g_text_data[TX_COUNT];
 static sat_vdp1_texture_t g_tx[TX_COUNT];
 static unsigned g_text_palettes;
@@ -636,6 +637,13 @@ static void ending_flow(void) {
 }
 
 /* After a survival loss or the tenth time attack win: the wins or the time, until START. */
+/* Track 6, once the screen's files are read: a data read stops CD audio. */
+static void result_music(void) {
+#if defined(T3_RESULT_CDDA_SECTORS)
+    if(!(g_arg[4]&ARG_MUSIC_OFF))(void)t3_result_cdda_start();
+#endif
+}
+
 static void result_flow(void) {
     pads_t pads;
     const int survival=((g_arg[4]>>2)&3u)==1u;
@@ -644,6 +652,7 @@ static void result_flow(void) {
     SAT_PANIC_IF_ERROR(load_backdrop("TITLEBG.BIN"));
     backdrop_show(1);
     fade(0);
+    result_music();
     if(survival) {__builtin_memcpy(line,"WINS 00",8);digits(line+5,g_arg[5],2);}
     else {__builtin_memcpy(line,"TIME 00:00",11);digits(line+5,(seconds/60u)%100u,2);digits(line+8,seconds%60u,2);}
     for(unsigned f=0,t0=g_now;f<1800u;f=g_now-t0) {
@@ -759,7 +768,7 @@ static void ladder_start(void) {
     ladder_pick();
 }
 
-static void select_flow(uint8_t picks[2],int ladder) {
+static void select_flow(uint8_t picks[2],int ladder,int force) {
     pads_t pads;
     t3_select_cursor_t cursor[2]={t3_select_find(picks[0]),t3_select_find(picks[1])};
     /* A ladder is one player's even with a second pad: port 2 joins only as a challenger. */
@@ -778,7 +787,7 @@ static void select_flow(uint8_t picks[2],int ladder) {
     for(unsigned elapsed=0,t0=g_now;elapsed<SELECT_FRAMES&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
         frame_begin(&pads);
         fade(elapsed<FADE_FRAMES?-255+(int)(elapsed*255/FADE_FRAMES):0);
-        two=pads.pad[1].connected&&!ladder;
+        two=pads.pad[1].connected&&!ladder&&!force;
         if(two) {
             for(unsigned side=0;side<2;++side) {
                 if(chosen[side])continue;
@@ -787,7 +796,7 @@ static void select_flow(uint8_t picks[2],int ladder) {
             }
         } else if(!chosen[0]) {
             cursor[0]=steer(cursor[0],&pads.pad[0]);
-            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;chosen[1]=ladder;sfx(SFX_PICK);}
+            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;chosen[1]=ladder||force;sfx(SFX_PICK);}
         } else if(pads.pad[0].pressed&SAT_PAD_B) {
             chosen[0]=0;
         } else {
@@ -795,7 +804,7 @@ static void select_flow(uint8_t picks[2],int ladder) {
             if(pads.pad[0].pressed&START_BUTTONS) {chosen[1]=1;sfx(SFX_PICK);}
         }
         /* Until the first pick is made the CPU's side is the empty silhouette; a ladder never shows it. */
-        const int empty1=!two&&(!chosen[0]||ladder);
+        const int empty1=!two&&(!chosen[0]||ladder||force);
         for(unsigned side=0;side<2;++side) {
             const unsigned id=(side&&empty1)?SILHOUETTE:t3_select_id(cursor[side]);
             const int bg_x=side?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
@@ -873,7 +882,7 @@ static void select_flow(uint8_t picks[2],int ladder) {
         if(g_arg[4]&ARG_PRACTICE)kind=T3_VS_PRACTICE;
         else if(run==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
         else if(run==T3_RUN_ARCADE && two)kind=T3_VS_VERSUS;
-        vs_compose(picks,kind,(g_arg[ARG_LADDER]&LADDER_ON)?g_arg[ARG_STAGE]+1u:g_arg[5]+1u);
+        if(!force)vs_compose(picks,kind,(g_arg[ARG_LADDER]&LADDER_ON)?g_arg[ARG_STAGE]+1u:g_arg[5]+1u);
     }
 #endif
     for(unsigned f=0,t0=g_now;f<FADE_FRAMES;f=g_now-t0) {
@@ -883,6 +892,216 @@ static void select_flow(uint8_t picks[2],int ladder) {
     }
 }
 
+#if defined(T3_FORCE_PROGRAM)
+/* The Tekken Force result (result.ovl FUN_800F1F08; modes.md "Result screens", draw_sim.force_screen_draw):
+ * the original picture, the player's portrait in its colour frame and the lines at their places on the
+ * 368 x 480 screen, mapped onto the 352 x 448 one. BOSS: shows the bosses' HUD faces (FACES.BIN) in their frames;
+ * a boss without one (Doctor B.'s key) shows its name plate. */
+enum { PS1_W=368, PS1_H=480, FR_FRAMES=4680, FR_FADE_IN=32, FR_FADE_OUT=64, FR_BOSS_ROW=18,
+       FR_RAMP=208, FR_RAMP_STEPS=16, FR_EDGE_ROWS=5,
+       /* The faces go on NBG1 (unused here), above the picture and below the sprites, 64 codes of bank 1 each;
+        * the frame's two colours take sprite codes 100 and 101 (slot B's, unused here). */
+       FR_FACE_HEADER=14, FR_FACE_BYTES=MENU_FACE_COLOURS*2+MENU_FACE_W*MENU_FACE_H, FR_FACE_ROW=MENU_FACE_W+1,
+       FR_FRAME_CODE=100 };
+
+static int fr_x(int x) {return x*MENU_BG_W/PS1_W;}
+static int fr_y(int y) {return y*MENU_BG_H/PS1_H;}
+
+/* Picture `id` with its top left at PS1 (x, y), as the original's %H%V. */
+static void fr_text(unsigned id,int x,int y) {pic_left(id,fr_x(x),fr_y(y)+(int)be16(g_text_data[id]+4)/2);}
+
+/* %nD: right-aligned in n places of font 1, the leading zeros blank. */
+static void fr_number(uint32_t value,unsigned width,int x,int y) {
+    char d[8];
+    digits(d,(unsigned)value,width);
+    for(unsigned i=0,lead=1;i<width;++i) {
+        lead=lead&&d[i]=='0'&&i+1u<width;
+        if(!lead)fr_text(TX_FR_DIGIT0+(unsigned)(d[i]-'0'),x+(int)i*TX_FONT1_ADVANCE,y);
+    }
+}
+
+/* FUN_800F1C00's backing: black at the top to the character's colour halfway, then to 0xC0C0C0, in
+ * 2 x 16 steps at the sprite codes the select's text group 1 uses (not loaded on this screen). */
+static void force_ramp(unsigned colour) {
+    uint16_t out[2*FR_RAMP_STEPS];
+    const unsigned r=colour&31u,g=(colour>>5)&31u,b=(colour>>10)&31u;
+    for(unsigned i=0;i<FR_RAMP_STEPS;++i) {
+        out[i]=(uint16_t)w555(r*i/FR_RAMP_STEPS,g*i/FR_RAMP_STEPS,b*i/FR_RAMP_STEPS);
+        out[FR_RAMP_STEPS+i]=(uint16_t)w555(r+(24u-r)*i/FR_RAMP_STEPS,g+(24u-g)*i/FR_RAMP_STEPS,
+                                            b+(24u-b)*i/FR_RAMP_STEPS);
+    }
+    (void)sat_vdp2_palette_upload(out,2*FR_RAMP_STEPS,SPR_BANK*256u+FR_RAMP);
+}
+
+/* The bosses' faces: codes already offset to their 64-code block, and which ones are on NBG1. */
+static uint8_t g_face[4][MENU_FACE_W*MENU_FACE_H];
+static uint8_t g_face_ok,g_face_shown;
+
+/* Reads the bosses' faces and palettes and readies NBG1 to show them: every read happens before the music. */
+static void force_faces_load(const t3_force_handoff_t* run) {
+    static const uint16_t frame[2]={0x8000u|(0xC0u>>3)|(0x88u>>3)<<5|(0xF8u>>3)<<10,0x8000u|(0xE0u>>3)*0x421u};
+    sat_vdp2_layer_config_t layer;
+    g_face_ok=g_face_shown=0;
+    for(unsigned i=0;i<4u;++i) {
+        uint16_t palette[MENU_FACE_COLOURS];
+        const unsigned id=run->bosses[i]/4u;
+        if(run->bosses[i]==255u || id>=MENU_FACES)continue;
+        if(read_file("FACES.BIN",FR_FACE_HEADER+id*FR_FACE_BYTES,g_io,FR_FACE_BYTES)!=SAT_OK) {g_face_ok=0;return;}
+        __builtin_memcpy(palette,g_io,sizeof palette);
+        if(sat_vdp2_palette_upload(palette,MENU_FACE_COLOURS,(uint16_t)(TILE_BANK*256u+64u*i+1u))!=SAT_OK) {
+            g_face_ok=0;
+            return;
+        }
+        for(unsigned k=0;k<sizeof g_face[i];++k)g_face[i][k]=(uint8_t)(g_io[sizeof palette+k]+64u*i);
+        g_face_ok|=(uint8_t)(1u<<i);
+    }
+    (void)sat_vdp2_palette_upload(frame,2,SPR_BANK*256u+FR_FRAME_CODE);
+    {
+        static const uint16_t zero[BG_STRIDE/2];
+        for(unsigned y=0;y<MENU_BG_H;++y)(void)sat_vdp2_vram_write_words((TILE_BASE+y*BG_STRIDE)/2u,zero,BG_STRIDE/2u);
+    }
+    sat_vdp2_layer_config_default(SAT_VDP2_NBG1,&layer);
+    layer.bitmap=1;
+    layer.bitmap_size=SAT_VDP2_BITMAP_512X512;
+    layer.color_mode=SAT_VDP2_COLOR_MODE_256;
+    layer.palette=TILE_BANK;
+    layer.priority=3;
+    layer.transparent=1;
+    for(unsigned i=0;i<4;++i)layer.plane_address[i]=TILE_BASE;
+    (void)sat_vdp2_layer_configure(&layer);
+    (void)sat_vdp2_layer_set_zoom(SAT_VDP2_NBG1,0x20000u,0x10000u);
+    (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,0,0);
+    (void)sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,1);
+}
+
+/* FUN_8004BBC0 with flags 0: the 36 x 64 frame at PS1 (x, y) (FUN_8004BA68's ten lines at 0x800215EC, colours
+ * black, 0xC088F8 and 0xE0E0E0 from 0x80021664), the face at (x + 2, y + 3). The face goes into NBG1 once. */
+static void force_face(unsigned i,int x,int y) {
+    static const int8_t line[10][5]={{0,1,0,34,0},{1,1,1,34,1},{2,1,2,34,2},{2,1,61,34,61},{1,1,62,34,62},
+                                     {0,1,63,34,63},{0,0,0,0,63},{0,35,0,35,63},{2,1,3,1,60},{2,34,3,34,60}};
+    static const uint8_t code[3]={CODE_BLACK,FR_FRAME_CODE,FR_FRAME_CODE+1};
+    for(unsigned k=0;k<10u;++k) {
+        const int x0=fr_x(x+line[k][1]),y0=fr_y(y+line[k][2]);
+        const int w=fr_x(x+line[k][3]+1)-x0,h=fr_y(y+line[k][4]+1)-y0;
+        rect(x0*2,y0,(w>0?w:1)*2,h>0?h:1,code[line[k][0]]);
+    }
+    if(g_face_shown&(1u<<i))return;
+    g_face_shown|=(uint8_t)(1u<<i);
+    const int fx=fr_x(x+2),fy=fr_y(y+3);
+    for(unsigned r=0;r<MENU_FACE_H;++r) {
+        uint16_t row[(FR_FACE_ROW+1)/2]={0};
+        uint8_t* const bytes=(uint8_t*)row;
+        __builtin_memcpy(bytes+(fx&1),g_face[i]+r*MENU_FACE_W,MENU_FACE_W);
+        (void)sat_vdp2_vram_write_words((TILE_BASE+(uint32_t)(fy+(int)r)*BG_STRIDE+(uint32_t)(fx&~1))/2u,row,
+                                        (FR_FACE_ROW+1)/2);
+    }
+}
+
+/* One picture at `shown` frames after the fade-in; returns the FORCE: count it shows. */
+static unsigned force_result_draw(const t3_force_handoff_t* run,unsigned shown,unsigned skip_count) {
+    const int blink=(g_now>>1)&1u;   /* the original's F_FRAME & 2: one picture each */
+    /* The portrait at PS1 (16+2, 100+6) in the overlay's four frame tiles (0x800B9864: 130 x 6
+     * above and below, 2 x 212 at the sides). */
+    const int bg_x=fr_x(18),bg_y=fr_y(106),band=MENU_PORT_H/(2*FR_RAMP_STEPS);
+    unsigned count=0;
+    int y=120;
+    for(unsigned i=0;i<2u*FR_RAMP_STEPS;++i)
+        rect(bg_x*2,bg_y+(int)i*band,MENU_PORT_W*2,i+1u==2u*FR_RAMP_STEPS?MENU_PORT_H-(int)i*band:band,FR_RAMP+i);
+    (void)sat_draw_sprite_scaled_screen(&g_port_tex[0],(int16_t)((bg_x+MENU_PORT_W/2)*2),
+        (int16_t)(bg_y+MENU_PORT_H/2),PORT_STRIDE*2,MENU_PORT_H,0);
+    rect((bg_x-2)*2,bg_y-FR_EDGE_ROWS,(MENU_PORT_W+4)*2,FR_EDGE_ROWS,CODE_WHITE);
+    rect((bg_x-2)*2,bg_y+MENU_PORT_H,(MENU_PORT_W+4)*2,FR_EDGE_ROWS,CODE_WHITE);
+    rect((bg_x-2)*2,bg_y,4,MENU_PORT_H,CODE_WHITE);
+    rect((bg_x+MENU_PORT_W)*2,bg_y,4,MENU_PORT_H,CODE_WHITE);
+    fr_text(TX_FR_TITLE,52,28);
+    if(shown>29u) {fr_text(TX_FR_SCORE,158,120);fr_number(run->score,8,249,146);y=198;}
+    if(shown>59u) {
+        fr_text(TX_FR_HIGH,158,y);fr_number(run->hiscore,8,249,y+26);
+        y+=52;
+        if(run->new_record)fr_text(blink?TX_FR_RECORD6:TX_FR_RECORD2,197,y);
+    }
+    if(run->flags&T3_FORCE_FLAG_DOCTOR_UNLOCKED) {
+        static const unsigned after[4]={0,0x13,0x27,0x3B};
+        const unsigned boss=shown>89u?shown-89u:0u;
+        if(boss)fr_text(TX_FR_BOSS,39,y+104);
+        for(unsigned i=0;i<4;++i) {
+            const unsigned id=run->bosses[i]/4u;
+            if(!boss || boss<=after[i] || run->bosses[i]==255u || id>=SILHOUETTE)continue;
+            if(g_face_ok&(1u<<i)) {force_face(i,52+36*(int)i,y+130);continue;}
+            const int plate=fr_y(y+130)+(int)i*FR_BOSS_ROW;
+            rect(fr_x(52)*2,plate,NAME_W*2,NAME_H,CODE_WHITE);
+            draw_name(id,fr_x(52)+NAME_W/2,plate);
+        }
+        /* FORCE: from boss frame 0x50, one more defeated enemy every 2 frames, then the total. */
+        if(boss>0x50u) {
+            count=skip_count?run->kills:(boss-0x51u)/2u;
+            if(count>run->kills)count=run->kills;
+            fr_text(TX_FR_FORCE,223,y+104);
+            fr_number(count,4,301,y+130);
+        }
+    } else if(run->flags&T3_FORCE_FLAG_SAVED_DOCTOR) {
+        if(shown>89u) {
+            fr_text(TX_FR_SAVED,15,y+182);
+            /* One string in the original, the colour switched after "YOU SAVED ": 10 advances on. */
+            fr_text(blink?TX_FR_DOCTOR6:TX_FR_DOCTOR2,15+10*TX_FONT1_ADVANCE,y+182);
+        }
+    } else {
+        if(shown>89u)fr_text(TX_FR_KEYS,158,y+78);
+        if((run->flags&1u) && shown>89u)fr_text(TX_FR_COPPER,223,y+78);
+        if((run->flags&2u) && shown>119u)fr_text(TX_FR_SILVER,223,y+104);
+        if((run->flags&4u) && shown>149u)fr_text(TX_FR_GOLD,223,y+130);
+        if(shown>=180u && (shown&0x30u))fr_text(TX_FR_CONTINUED,67,y+182);
+    }
+    return count;
+}
+
+static void force_result_flow(const t3_force_handoff_t* run) {
+    pads_t pads;
+    const unsigned id=run->character<SILHOUETTE?run->character:0u;
+    char name[12]={'P','O','R','T',(char)('0'+id/10u),(char)('0'+id%10u),'.','B','I','N',0,0};
+    unsigned before=0,shown=0,counted=0,skip_count=0;
+    backdrop_show(0);
+#if defined(T3_FORCE_RESULT_ART)
+    SAT_PANIC_IF_ERROR(load_backdrop("FORCEBG.BIN"));
+#else
+    SAT_PANIC_IF_ERROR(load_backdrop("TITLEBG.BIN"));
+#endif
+    load_text_group(2);
+    SAT_PANIC_IF_ERROR(load_names());
+    SAT_PANIC_IF_ERROR(read_file(name,0,g_port_cache[id],PORT_FILE));
+    force_ramp(((unsigned)g_port_cache[id][0]<<8)|g_port_cache[id][1]);
+    SAT_PANIC_IF_ERROR(load_portrait(0,id));
+    portrait_palette(0,32);
+    if(run->flags&T3_FORCE_FLAG_DOCTOR_UNLOCKED)force_faces_load(run);
+    backdrop_show(1);
+    result_music();
+    for(unsigned f=0,t0=g_now;f<FR_FRAMES;f=g_now-t0,before=shown) {
+        frame_begin(&pads);
+        fade(f<FR_FADE_IN?-255+(int)(f*8u):0);
+        shown=f<FR_FADE_IN?0u:f-FR_FADE_IN;
+        /* The lines' sounds: 0x4C6C for each, 0x50F4 for the saved doctor, the cursor tick for the count. */
+        for(unsigned t=29;t<=149;t+=30)if(before<=t && shown>t) {
+            const int keys=!(run->flags&(T3_FORCE_FLAG_DOCTOR_UNLOCKED|T3_FORCE_FLAG_SAVED_DOCTOR));
+            if(t<89u || (t==89u && !(run->flags&T3_FORCE_FLAG_SAVED_DOCTOR)))sfx(SFX_LINE);
+            else if(t==89u)sfx(SFX_PICK);
+            else if(keys && (run->flags&(t==119u?2u:4u)))sfx(SFX_LINE);
+        }
+        if(pads.pad[0].pressed&(START_BUTTONS&~SAT_PAD_START))skip_count=1;
+        const unsigned count=force_result_draw(run,shown,skip_count);
+        if(count!=counted){counted=count;sfx(SFX_MOVE);}
+        frame_end();
+        if(f>FR_FADE_IN && (pads.pad[0].pressed&SAT_PAD_START))break;
+    }
+    for(unsigned f=0,t0=g_now;f<FR_FADE_OUT;f=g_now-t0) {
+        fade(-(int)(f*255/FR_FADE_OUT));
+        frame_begin(&pads);
+        (void)force_result_draw(run,shown,1);
+        frame_end();
+    }
+    backdrop_show(0);
+}
+#endif
+
 int main(void) {
     uint32_t arg_bytes=0;
     uint8_t arg[SAT_EXEC_ARG_MAX];
@@ -891,8 +1110,33 @@ int main(void) {
     init_sfx();
     SAT_PANIC_IF_ERROR(read_text());
     load_text_group(0);
-    if(sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
+    int got_arg=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK;
+    if(got_arg && arg_bytes==BOOT_ARG_BYTES)__builtin_memcpy(g_arg,arg,sizeof g_arg);
     else g_arg[0]=0;                                  /* cold boot: the title first */
+#if defined(T3_FORCE_PROGRAM)
+    {
+        /* A cleared Tekken Force run ends here, at its result, then the title. */
+        t3_force_handoff_t run;
+#if defined(T3_FORCE_RESULT_PROBE)
+        if(!got_arg || (arg_bytes!=T3_FORCE_HANDOFF_BYTES && arg[0]!=PHASE_MENU)) {   /* once, not after it */
+            const t3_force_handoff_t sample={.level=3,.section=T3_FORCE_SECTION_RESULT,.character=5,
+                .flags=T3_FORCE_RESULT_PROBE,.score=123456,.hiscore=234567,.kills=137,
+                .bosses={4*4,10*4,13*4+1,19*4},.new_record=1};
+            uint8_t block[T3_FORCE_HANDOFF_BYTES];
+            t3_force_handoff_pack(&sample,block);
+            __builtin_memcpy(arg,block,sizeof block);
+            arg_bytes=sizeof block;got_arg=1;
+        }
+#endif
+        if(got_arg && t3_force_handoff_unpack(arg,arg_bytes,&run) && run.section==T3_FORCE_SECTION_RESULT) {
+            /* Then the title, from a fresh start: the result's pictures took VDP1 VRAM the select needs,
+             * and texture memory is never given back. */
+            const uint8_t title[BOOT_ARG_BYTES]={PHASE_MENU};
+            force_result_flow(&run);
+            SAT_PANIC_IF_ERROR(sat_exec(g_volume,"MENU.BIN",title,sizeof title));
+        }
+    }
+#endif
     unsigned mode=MODE_ARCADE;
     if(g_arg[0]==PHASE_RESULT) {result_flow();g_arg[0]=0;}
     if(g_arg[0]==PHASE_ENDING) {ending_flow();g_arg[0]=0;}
@@ -900,9 +1144,16 @@ int main(void) {
     if(g_arg[0]!=PHASE_SELECT)mode=title_flow();
 #if defined(T3_FORCE_PROGRAM)
     if(g_arg[0]!=PHASE_SELECT && mode==MODE_FORCE) {
-        /* Tekken Force is its own program (docs/TEKKEN_FORCE_PLAN.md): level 1, the first character, no keys. */
+        /* Force uses the single-player selection flow, then its own executable. */
+        select_flow(&g_arg[ARG_PICK0],0,1);
         t3_force_handoff_t start={0};
         uint8_t block[T3_FORCE_HANDOFF_BYTES];
+        t3_force_progress_t progress={0};
+        (void)t3_force_save_load(&progress);
+        start.keys=progress.keys;start.hiscore=progress.hiscore;
+        if(progress.doctor)start.flags=T3_FORCE_FLAG_DOCTOR_UNLOCKED;
+        for(unsigned i=0;i<4;++i)start.bosses[i]=255u;
+        start.character=g_arg[ARG_PICK0];
         start.seed=g_now;
         t3_force_handoff_pack(&start,block);
         backdrop_show(0);
@@ -957,7 +1208,7 @@ int main(void) {
         start_fight();
     }
     select_flow(&g_arg[1],((g_arg[4]>>2)&3u)==T3_RUN_ARCADE && !(g_arg[4]&(ARG_PRACTICE|ARG_VERSUS)) &&
-        !(g_arg[ARG_LADDER]&LADDER_CHALLENGE));
+        !(g_arg[ARG_LADDER]&LADDER_CHALLENGE),0);
     g_arg[0]=PHASE_FIGHT;
     start_fight();
     for(;;) {}

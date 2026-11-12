@@ -1,7 +1,7 @@
 #ifndef T3_SATURN_FIGHTER_PACK_H
 #define T3_SATURN_FIGHTER_PACK_H
 /* One program, one disc file per selectable fighter (scripts/build_fighter_packs.py).
- * The fight phase opens the two chosen packs on a clean machine; each loader
+ * The fight phase opens its chosen packs on a clean machine; each loader
  * below reads its own section. Boot-time Master code only. */
 #include <stddef.h>
 #include <stdint.h>
@@ -10,6 +10,19 @@
 #include "psx_projected_mesh.h"
 #include "saturn/core.h"
 #include "t3_roster.h"
+#if defined(T3_FORCE_PROGRAM)
+#include "t3_force_boss_limits.h"
+sat_result_t t3_fighter_packs_open_boss(unsigned player,unsigned character,unsigned costume);
+/* Preload the two distinct original enemy models used by a regular level. */
+sat_result_t t3_fighter_packs_open_force(unsigned player,unsigned first_key,unsigned second_key);
+unsigned t3_fighter_packs_count(void);
+/* Regular-stage scratch in the unused tail of the third asset's store. */
+void* t3_fighter_pack_force_scratch(void);
+/* After bank/camera loading: unused arena, excluding resident asset stores.
+ * Invalidated by opening/reloading packs. No caller may retain it across that. */
+void* t3_fighter_pack_unused_arena(uint32_t* bytes);
+#define T3_FORCE_PACK_SCRATCH_BYTES 4096u
+#endif
 
 enum {
     T3_PACK_HOT=0,T3_PACK_ARCHIVE,T3_PACK_BANK,T3_PACK_CAMERA,
@@ -68,6 +81,7 @@ typedef struct {
     uint32_t hand_row_count;
     const uint8_t* shadow; /* the TK3psSDW block (build_fighter_packs.py, shadow_mesh) */
     uint32_t shadow_faces; /* 0 without one */
+    const uint8_t* body_shapes; /* 48 bytes: body joint spheres for collision (build_fighter_packs.py) */
     const uint8_t* bank; /* in the arena, after t3_fighter_packs_load_banks */
     uint32_t bank_bytes;
 } t3_fighter_pack_t;

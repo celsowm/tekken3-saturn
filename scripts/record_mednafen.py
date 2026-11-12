@@ -16,9 +16,30 @@ def record(args):
              '-ss.bios_na_eu',str(args.bios.resolve()),'-qtrecord',str(movie),str(cue)]
     env=dict(os.environ)
     neutral=args.neutral_input or args.workload in saturn_workload.RELEASE_PROFILES
+    if getattr(args,'backup_from',None) and not neutral:raise ValueError('--backup-from needs an isolated neutral-input profile')
+    if getattr(args,'backup_from',None) and getattr(args,'resume_from',None):raise ValueError('choose a cold backup boot or a saved-state resume')
+    backup_files=[]
     if neutral:
         profile=out/'mednafen-profile';profile.mkdir()
         env['MEDNAFEN_HOME']=str(profile)
+        backup_from=getattr(args,'backup_from',None)
+        if backup_from is not None:
+            (profile/'sav').mkdir()
+            for extension in ('bkr','bcr'):
+                found=list((backup_from/'mednafen-profile/sav').glob('*.'+extension))
+                if len(found)!=1:raise ValueError('--backup-from needs one '+extension+' backup RAM file')
+                source=found[0]
+                shutil.copy2(source,profile/'sav'/('force-backup.'+extension))
+                backup_files.append(dict(source=str(source.resolve()),sha256=hashlib.sha256(source.read_bytes()).hexdigest()))
+            # Backup RAM is hardware state, independent of the program image.
+            # A fixed name in this isolated profile also supports a new build.
+            command[-1:-1]=['-filesys.fname_sav','force-backup.%x']
+        resume_from=getattr(args,'resume_from',None)
+        if resume_from is not None:
+            states=list((resume_from/'mednafen-profile/mcs').glob('*.mca'))
+            if len(states)!=1:raise ValueError('--resume-from needs exactly one saved emulator state')
+            (profile/'mcs').mkdir()
+            shutil.copy2(states[0],profile/'mcs'/states[0].name)
         # Empty bindings are valid Mednafen input settings. Apply them only
         # inside this private profile, never to the user's interactive config.
         settings=[]
@@ -32,10 +53,12 @@ def record(args):
         if getattr(args,'input_script',None):
             settings += ['-ss.input.port1.gamepad.start','keyboard 0x0 40',
                          '-ss.input.port1.gamepad.right','keyboard 0x0 79',
+                         # Down arrow (SDL 81, macOS keycode 125) walks the menus.
+                         '-ss.input.port1.gamepad.down','keyboard 0x0 81',
                          '-ss.input.port1.gamepad.x','keyboard 0x0 4',
                          '-ss.input.port1.gamepad.a','keyboard 0x0 29']
         command[-1:-1]=settings
-    if args.save_state:
+    if args.save_state or getattr(args,'resume_from',None):
         # Save the state on the SIGINT exit; scripts/mednafen_state.py reads it.
         if not neutral:raise ValueError('--save-state needs the private profile of neutral input')
         command[-1:-1]=['-autosave','1']
@@ -46,6 +69,9 @@ def record(args):
                   scope='Actual CD boot; inspect the recording to establish encounter coverage',
                   workload_profile=args.workload,workload=workload,neutral_input=neutral,port2_none=args.port2_none,
                   save_state=args.save_state,audio=args.audio,start_after=start_after,
+                  resume_from=str(args.resume_from.resolve()) if getattr(args,'resume_from',None) else None,
+                  backup_from=str(args.backup_from.resolve()) if getattr(args,'backup_from',None) else None,
+                  backup_files=backup_files,
                   cue_sha256=hashlib.sha256(cue.read_bytes()).hexdigest(),
                   mednafen_home=env.get('MEDNAFEN_HOME'))
     cue_files=re.findall(r'^\s*FILE\s+"([^"]+)"\s+BINARY\s*$',cue.read_text(),re.IGNORECASE|re.MULTILINE)
@@ -53,8 +79,15 @@ def record(args):
     metadata['cue_files']=[dict(path=str((cue.parent/name).resolve()),
                                 sha256=hashlib.sha256((cue.parent/name).read_bytes()).hexdigest())
                            for name in cue_files]
-    for name in ('tekken3_saturn.elf','tekken3_saturn.app.bin','disc/tekken3_saturn.bin'):
+    program=getattr(args,'program','tekken3_saturn')
+    for name in (f'{program}.elf',f'{program}.app.bin',f'disc/{program}.bin'):
         metadata[name+'_sha256']=hashlib.sha256((build/name).read_bytes()).hexdigest()
+    prior_run=getattr(args,'resume_from',None)
+    if prior_run:
+        prior=json.loads((prior_run/'run.json').read_text())
+        key=f'{program}.elf_sha256'
+        if prior.get(key)!=metadata[key] or [q['sha256'] for q in prior.get('cue_files',[])]!=[q['sha256'] for q in metadata['cue_files']]:
+            raise ValueError('saved-state/backup reuse requires the same executable and disc image')
     with (out/'mednafen.log').open('w') as log:
         process=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
         (out/'pid').write_text(str(process.pid))
@@ -89,12 +122,15 @@ def record(args):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build',type=Path,default=Path('build/paul-combat'))
+    p.add_argument('--program',default='tekken3_saturn',help='executable basename whose build hashes are recorded')
     p.add_argument('--cue',type=Path,help='alternate CUE, for example a mixed-mode audio disc')
     p.add_argument('--bios',type=Path,required=True);p.add_argument('--out',type=Path,required=True)
     p.add_argument('--mednafen',default=shutil.which('mednafen') or 'mednafen')
     p.add_argument('--workload',choices=saturn_workload.PROFILES,default='diagnostic')
     p.add_argument('--neutral-input',action='store_true',help='isolated emulator profile with both pads held neutral')
     p.add_argument('--port2-none',action='store_true',help='leave port 2 empty (CPU opponent)')
+    p.add_argument('--backup-from',type=Path,help='cold boot with backup RAM copied from a previous isolated recording')
+    p.add_argument('--resume-from',type=Path,help='resume one saved state from a previous isolated recording of this disc')
     p.add_argument('--save-state',action='store_true',help='keep the emulator state at exit (mednafen-profile/mcs)')
     p.add_argument('--audio',action='store_true',help='enable emulator audio for an audible playback check')
     p.add_argument('--start-after',type=float,help='on macOS, send START after this many seconds using an isolated profile')

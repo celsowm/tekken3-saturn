@@ -14,6 +14,7 @@ zoom on a 704x448 screen); only the parts that move are VDP1 sprites:
                             256 RGB555 words (bit 15 set), width*height bytes.
   PORT00..21.BIN            glow word + pad word, 116 RGB555 words, 128x208 bytes (126 used), codes 1..116,
                             0 transparent: one big portrait per fighter id.
+  LOAD.BIN                  original NOW LOADING glyphs, LUT4 with their own palette.
   menu_layout.h             the coordinates the art was composed with.
 """
 import argparse
@@ -36,6 +37,9 @@ W, H = 352, 448
 PORT_W, PORT_H, PORT_COLOURS = 126, 208, 92
 PORT_STRIDE = 128                       # VDP1 textures are a multiple of 8 wide
 FACES, FACE_W, FACE_H = 20, 32, 58
+# The Force result's boss faces on the 352 x 448 backdrop: 32 x 58 PS1 pixels mapped as the menu maps
+# the 368 x 480 screen, in 63 colours each (codes 1..63; the menu adds 64 per boss).
+FACE_BG_W, FACE_BG_H, FACE_COLOURS = 31, 54, 63
 CELL_W, CELL_H, PITCH = 28, 50, 34
 TILE_MAP = 0x5F864                       # select.ovl 0x80118BDC - 0x800B9378, 8 x 8 tile indices
 NAME_W, NAME_H = 96, 16
@@ -52,6 +56,34 @@ def word(r, g, b):
 def archives(record, minimum):
     data = Path(record).read_bytes()
     return [f.tims for f in overlay_images.scan(data, 0x80100000) if f.archive and len(f.tims) >= minimum]
+
+
+def hud_face(tims, ident):
+    """HUD face `ident` (system texture 9 + ident, as FUN_8004BBC0 draws it) as RGB."""
+    blocks = {b[0]: b for b in system_textures.tim_blocks(tims[9 + ident][1])}
+    palette = struct.unpack_from('<256H', blocks['clut'][5])
+    _, _, _, words, rows, data = blocks['image']
+    pix = np.frombuffer(data, np.uint8)[:words * 2 * rows].reshape(rows, words * 2)
+    face = Image.new('RGB', (FACE_W, FACE_H))
+    face.putdata([rgb555(palette[int(v)]) for v in pix.flatten()])
+    return face
+
+
+def faces(exe, out):
+    """FACES.BIN: every HUD face for the Force result's boss list (draw_sim.force_screen_draw).
+
+    'T3FC0001', u16 faces, u16 w, u16 h; per face FACE_COLOURS palette words, then w*h codes 1..63."""
+    tims = system_textures.members(exe, 'usa')
+    blob = bytearray(b'T3FC0001' + struct.pack('>HHH', FACES, FACE_BG_W, FACE_BG_H))
+    for ident in range(FACES):
+        small = hud_face(tims, ident).resize((FACE_BG_W, FACE_BG_H), Image.Resampling.LANCZOS)
+        quantised = small.quantize(colors=FACE_COLOURS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+        rgb = quantised.getpalette()[:3 * FACE_COLOURS]
+        rgb += [0] * (3 * FACE_COLOURS - len(rgb))
+        blob += struct.pack(f'>{FACE_COLOURS}H', *(word(*rgb[3 * i:3 * i + 3]) for i in range(FACE_COLOURS)))
+        blob += (np.asarray(quantised, np.uint8) + 1).tobytes()
+    (out / 'FACES.BIN').write_bytes(bytes(blob))
+    return {'MENU_FACES': FACES, 'MENU_FACE_W': FACE_BG_W, 'MENU_FACE_H': FACE_BG_H, 'MENU_FACE_COLOURS': FACE_COLOURS}
 
 
 def tim_image(tim, tmp):
@@ -172,13 +204,7 @@ def select(record, exe, out, tmp):
     grid = [[7, 4, 5, 1, 6, 8, 0, 3, 2, 9], [19, 12, 11, 13, 14, 20, 10, 16, 15, 18]]  # select_grid.c
     faces = {}
     for ident in range(FACES):
-        blocks = {b[0]: b for b in system_textures.tim_blocks(tims[9 + ident][1])}
-        palette = struct.unpack_from('<256H', blocks['clut'][5])
-        _, _, _, words, rows, data = blocks['image']
-        pix = np.frombuffer(data, np.uint8)[:words * 2 * rows].reshape(rows, words * 2)
-        face = Image.new('RGB', (FACE_W, FACE_H))
-        face.putdata([rgb555(palette[int(v)]) for v in pix.flatten()])
-        faces[ident] = face.resize((CELL_W, CELL_H), Image.Resampling.LANCZOS)
+        faces[ident] = hud_face(tims, ident).resize((CELL_W, CELL_H), Image.Resampling.LANCZOS)
     for row, ids in enumerate(grid):
         y = grid_y + row * (CELL_H + 2)
         for column, ident in enumerate(ids):
@@ -258,6 +284,9 @@ class Fonts:
     def palette(self, k):
         return [self.word(256 + 16 * (k & 15) + i, ((k >> 4) + 24) | 480) for i in range(16)]
 
+    def advance(self, font):
+        return struct.unpack_from('<I5H2B', self.exe, FONT_TABLE - 0x80010000 + 0x800 + 16 * font)[1]
+
     def render(self, text, font):
         table, advance, _, width, height, page, _, _ = struct.unpack_from(
             '<I5H2B', self.exe, FONT_TABLE - 0x80010000 + 0x800 + 16 * font)
@@ -319,6 +348,15 @@ def texts(exe, out):
     add('COPYRIGHT', 0, 'white', 0, '@1994 1995 1996 1998 NAMCO LTD.')
     add('RESERVED', 0, 'white', 0, 'ALL RIGHTS RESERVED')
     add('NOW_LOADING', 0, 'white', 0, 'NOW LOADING...')
+    # Standalone loading graphic for FORCE.BIN: the disc's original glyphs
+    # and palette, LUT4 so it survives changes to the stage/HUD CRAM banks.
+    glyphs = fonts.render('NOW LOADING...', 0)
+    height, width = glyphs.shape
+    padded = np.zeros((height, (width + 7) & ~7), np.uint8)
+    padded[:, :width] = glyphs
+    packed = (padded[:, 0::2] << 4) | padded[:, 1::2]
+    (out / 'LOAD.BIN').write_bytes(b'T3LD0001' +
+        struct.pack('>HH16H', padded.shape[1], height, *colours['white']) + packed.tobytes())
     for number, mode in enumerate(MODES):
         label = mode + ' MODE'
         normal = 'cyan' if mode == 'OPTION' else 'red'
@@ -330,6 +368,24 @@ def texts(exe, out):
         add(f'TAG_{tag}', 1, 'white', 0, tag)
     for digit in range(10):
         add(f'DIGIT{digit}', 1, 'yellow', 2, str(digit))
+    # Group 2: the Tekken Force result (result.ovl FUN_800F1F08). Its format strings name the font and
+    # the colour; the CLUT is the colour plus the font's CLUT offset (hud.md: 16 for font 1, 32 for
+    # font 2): the title 32, font 1's colours 2, 5, 6, 8 at 18, 21, 22, 24. Codes 112..191: the second
+    # portrait slot, unused on that screen.
+    for i, k in enumerate((32, 18, 21, 22, 24)):
+        palettes.append((2, 112 + 16 * i, [(v & 0x7FFF) | 0x8000 if v else 0 for v in fonts.palette(k)]))
+        code_of[(2, f'c{k}')] = 112 + 16 * i
+    for name, colour, font, string in (
+            ('FR_TITLE', 0, 2, 'TEKKEN FORCE'), ('FR_SCORE', 5, 1, 'YOUR SCORE:'),
+            ('FR_HIGH', 5, 1, 'HIGH SCORE:'), ('FR_RECORD6', 6, 1, 'NEW RECORD!!'),
+            ('FR_RECORD2', 2, 1, 'NEW RECORD!!'), ('FR_SAVED', 8, 1, 'YOU SAVED'),
+            ('FR_DOCTOR6', 6, 1, 'DR.BOSKONOVITCH!'), ('FR_DOCTOR2', 2, 1, 'DR.BOSKONOVITCH!'),
+            ('FR_KEYS', 5, 1, 'KEYS:'), ('FR_COPPER', 2, 1, 'COPPER'), ('FR_SILVER', 6, 1, 'SILVER'),
+            ('FR_GOLD', 5, 1, 'GOLD'), ('FR_CONTINUED', 8, 1, 'TO BE CONTINUED...'),
+            ('FR_BOSS', 5, 1, 'BOSS:'), ('FR_FORCE', 5, 1, 'FORCE:')):
+        add(name, 2, f'c{colour + 16 * font}', font, string)
+    for digit in range(10):
+        add(f'FR_DIGIT{digit}', 2, 'c22', 1, str(digit))
     blob = bytearray(b'T3TX0001' + struct.pack('>HH', len(palettes), len(pictures)))
     for group, code, words in palettes:
         blob += struct.pack('>BB16H', group, code, *words)
@@ -339,7 +395,9 @@ def texts(exe, out):
     lines = ['/* Generated by scripts/pack_menu_art.py: ids of the pictures in TEXT.BIN. */', 'enum {']
     lines += [f'    TX_{name}={i},' for i, (name, *_rest) in enumerate(names)]
     lines += [f'    TX_COUNT={len(names)},']
-    lines += ['    TX_GROUP0=%d,' % sum(1 for n in names if n[1] == 0), '};']
+    lines += ['    TX_GROUP0=%d,' % sum(1 for n in names if n[1] == 0)]
+    # font 1's advance, for the result's right-aligned %8D / %4D numbers and the second part of YOU SAVED
+    lines += ['    TX_FONT1_ADVANCE=%d,' % fonts.advance(1), '};']
     lines += ['/* width, height of the original glyph rows (before padding to 8) */',
               'static const unsigned short g_text_size[TX_COUNT][2]={'] + \
         [f'    {{{w},{h}}},' for _, _, w, h in names] + ['};']
@@ -387,6 +445,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         names(args.select, out, tmp)
     texts(args.exe.read_bytes(), out)
+    layout.update(faces(args.exe.read_bytes(), out))
     lines = ['/* Generated by scripts/pack_menu_art.py: where the baked art puts things. */',
              f'enum {{ MENU_BG_W={W}, MENU_BG_H={H}, MENU_PORT_W={PORT_W}, MENU_PORT_H={PORT_H},']
     lines += [f'       {k}={v},' for k, v in layout.items()]

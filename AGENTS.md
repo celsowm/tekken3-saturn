@@ -28,8 +28,8 @@ builds and several SDK copies behind. Do not repeat that.
   `T3_LOCAL_ARCADE_OVERLAY`, a disc silently loses the intro and the VS screen),
   and `build/ending-movies` (`T3_LOCAL_ENDING_MOVIES`: the arcade endings).
 - **Play the full game.** `scripts/play_mednafen.py` refuses a disc without the
-  intro, the VS screen, the ending movies and the menus. Never hand the user a
-  disc it rejects.
+  intro, the VS screen, the ending movies, the menus and Tekken Force. Never
+  hand the user a disc it rejects.
 - **Name for deletion.** Give experiment outputs a shared prefix so one
   pattern removes them. Delete by an explicit list, never a bare wildcard.
 - Everything under `build/` and `assets/imported/` is git-ignored. Anything

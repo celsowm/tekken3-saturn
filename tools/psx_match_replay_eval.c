@@ -63,11 +63,13 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
         const uint32_t base=0x800A9228u+i*0x188Cu;
         const unsigned type=(unsigned)i16(base+0x16);
         config.character[i]=(uint8_t)i16(base+0x18);
-        if(type==bank.bank_type)config.actor_bank[i]=NULL;
-        else if(second.data && type==second.bank_type)config.actor_bank[i]=&second;
-        else if(getenv("T3_FORCE_START") && i>0 && second.data) {   /* a level start after a boss: the enemy records still hold the boss */
+        if(second.data && type==second.bank_type)config.actor_bank[i]=&second;
+        else if(getenv("T3_FORCE_START") && i>0 && second.data) {
+            /* a level start or restart after a boss: the enemy records still hold the boss (even one of the player's
+             * own character), and the level reloads them as enemies */
             config.actor_bank[i]=&second;config.character[i]=21;
-        } else return 0;
+        } else if(type==bank.bank_type)config.actor_bank[i]=NULL;
+        else return 0;
     }
     /* The merged move index links each fighter's bank to the other's. */
     {
@@ -240,7 +242,27 @@ static int seed(const char* path,uint32_t sx,uint32_t sz,uint32_t previous,uint3
     }
 #endif
     if(!t3_psx_match_init(&game,&config))return 0;
-    if(start_seed)return 1; /* No original state is copied into a fresh match. */
+    if(start_seed) {
+#if T3_PSX_FIGHTERS>2
+        /* T3_FORCE_RAM_SEED: a stretch that resumes a level (the player's x, z and health, the keys, score and
+         * timer carry over) starts from the recorded RAM image's runner globals and player record. */
+        if(config.start_force && getenv("T3_FORCE_RAM_SEED")) {
+            reference_seed_relaxed=1;
+            config.round_gap_frames=(uint8_t)strtoul(getenv("T3_FORCE_GAP")?getenv("T3_FORCE_GAP"):"50",NULL,0);
+            if(!reference_seed_state(sx,sz,previous,ramp))return 0;
+            /* The new level's first frame clears the previous level's tally and keeps its enemies out of the fight. */
+            game.flow.played=0;
+            for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+                game.round_actor[i].wins=0;
+                if(i)game.fighter[i].body.active=0;
+            }
+            game.force.keys=i32(0x800B70D0u);
+            game.force.score=u32(0x800B70ECu);
+            game.camera.rand=u32(0x800A39B8u);game.camera.ai_rand=u32(0x800ADCA0u);game.input_frame_seen=u32(0x80095464u);
+        }
+#endif
+        return 1; /* No original state is copied into a fresh match. */
+    }
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         const uint32_t b=0x800A9228u+i*0x188Cu;
         game.fighter[i].blink.timer=i16(b+0x128E);

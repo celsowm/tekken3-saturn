@@ -6,7 +6,9 @@
 #define T3_PERF_MODE 0
 #endif
 /* Modes 1/2 deliberately remove drawing work and are diagnostic only. */
+#ifndef T3_DRAW_ACTORS
 #define T3_DRAW_ACTORS (T3_PERF_MODE == 2 ? 1u : 2u)
+#endif
 #if defined(T3_PERF_SAMPLES)
 enum { T3_PERF_CAPACITY=1024, T3_PERF_VERSION=2 };
 typedef struct {
