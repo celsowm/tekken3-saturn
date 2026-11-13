@@ -31,19 +31,27 @@ for event in events {
                                  keyDown: event.down) else { exit(1) }
     // SDL's command-line process is not necessarily an NSRunningApplication.
     // System Events identifies and focuses the exact Unix process instead.
-    let focus = Process()
-    let output = Pipe()
-    focus.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    focus.arguments = ["-e", "tell application \"System Events\" to set frontmost of first process whose unix id is \(pid) to true",
-                       "-e", "tell application \"System Events\" to get unix id of first process whose frontmost is true"]
-    focus.standardOutput = output
-    try focus.run()
-    focus.waitUntilExit()
-    let focused = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard focus.terminationStatus == 0, focused == String(pid) else {
-        fputs("Mednafen focus failed: expected PID \(pid), got \(focused ?? "none"); no key sent\n", stderr)
-        exit(1)
+    // Another window can take the front during a long take (a terminal that
+    // raises itself, for one): focus again, and skip only this key if it fails.
+    var focused: String? = nil
+    for attempt in 0..<3 {
+        if attempt > 0 { Thread.sleep(forTimeInterval: 0.05) }
+        let focus = Process()
+        let output = Pipe()
+        focus.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        focus.arguments = ["-e", "tell application \"System Events\" to set frontmost of first process whose unix id is \(pid) to true",
+                           "-e", "tell application \"System Events\" to get unix id of first process whose frontmost is true"]
+        focus.standardOutput = output
+        try focus.run()
+        focus.waitUntilExit()
+        focused = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if focus.terminationStatus == 0, focused == String(pid) { break }
+        focused = nil
+    }
+    guard focused != nil else {
+        fputs("Mednafen focus failed at \(event.at) s: expected PID \(pid); key \(event.key) skipped\n", stderr)
+        continue
     }
     // SDL polls the keyboard state. A process-targeted Quartz event does not
     // update that state; post through HID after checking the focused process.

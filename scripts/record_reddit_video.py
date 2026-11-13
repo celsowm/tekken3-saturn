@@ -22,8 +22,11 @@ PUNCH_X, PUNCH_Y, KICK_A, KICK_B, JUMP_C, GUARD = 0, 1, 6, 7, 8, 12
 def input_script(args):
     # START skips the movie, leaves the title and confirms ARCADE MODE: one press short and an idle menu falls into the
     # CPU demo. The select cursors begin on Paul and Law, the pair of the first demo, so they move before each pick.
-    lines = [f'{at} {RETURN} 0.15' for at in (args.skip_movie, args.title_start, args.arcade)]
-    for pick, moves in (((args.pick_p1, args.p1_moves),) if args.ladder else
+    lines = [f'{at} {RETURN} 0.15' for at in (args.skip_movie, args.title_start)]
+    # TEKKEN FORCE MODE is five steps down from ARCADE MODE (scripts/menu_flow.py --down 5).
+    lines += [f'{args.arcade + 0.4 * i:.2f} {DOWN} 0.1' for i in range(5 if args.force_mode else 0)]
+    lines.append(f'{args.arcade + (2.2 if args.force_mode else 0):.2f} {RETURN} 0.15')
+    for pick, moves in (((args.pick_p1, args.p1_moves),) if args.ladder or args.force_mode else
                         ((args.pick_p1, args.p1_moves), (args.pick_cpu, args.cpu_moves))):
         key = RIGHT if moves > 0 else LEFT
         lines += [f'{pick - 0.5 * (abs(moves) - i):.2f} {key} 0.1' for i in range(abs(moves))]
@@ -35,7 +38,8 @@ def input_script(args):
         for _ in range(rng.randint(2, 4)):
             lines.append(f'{at:.2f} {rng.choice((PUNCH_X, PUNCH_Y, KICK_A, KICK_B))} 0.08')
             at += rng.uniform(0.25, 0.5)
-        move = rng.choice((GUARD, JUMP_C, DOWN, LEFT))
+        # Force walks a level from left to right: no step back.
+        move = rng.choice((GUARD, JUMP_C, DOWN) if args.force_mode else (GUARD, JUMP_C, DOWN, LEFT))
         lines.append(f'{at:.2f} {move} {rng.uniform(0.2, 0.6):.2f}')
         at += rng.uniform(0.5, 1.0)
     return '\n'.join(lines) + '\n'
@@ -59,6 +63,8 @@ def main():
     p.add_argument('--keep-raw', action='store_true')
     p.add_argument('--inputs', type=Path, help='a key script of "SECONDS KEYCODE HOLD" lines, used instead of the generated one')
     p.add_argument('--ladder', action='store_true', help='V0.3 arcade mode: only P1 picks, the CPU opponent is drawn')
+    p.add_argument('--force-mode', action='store_true',
+                   help='V0.4 Tekken Force: --arcade starts the five DOWN presses to TEKKEN FORCE MODE, then START; only P1 picks')
     args = p.parse_args()
     work = args.out.parent
     work.mkdir(parents=True, exist_ok=True)
