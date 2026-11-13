@@ -1240,7 +1240,7 @@ Frames (Ymir, private, `saturn-hud/`):
 - The pickup probe showed LIFE UP! over the player (checked, not kept).
 
 NOW LOADING and the bonus time left use the same print path but were not seen in a frame. No probe reaches level
-state 4 or a state 6 with bonus time.
+state 4 or a state 6 with bonus time. (Both seen since; see "NOW LOADING and the bonus time left on screen".)
 
 ### Update: the enemies' names (2026-11-13)
 
@@ -1262,6 +1262,21 @@ Frames (Ymir, private, `saturn-hud/`): `enemy-name-crow-f1301.png` (CROW on leve
 
 Frame rate (70 s): 611 fields, 5 discarded, **181 images, worst gap 7**, with the same hashes. That matches the
 control above (181, 7).
+
+### Update: NOW LOADING and the bonus time left on screen (2026-11-13)
+
+`T3_FORCE_BOSS_PROBE` now ends the level script once, setting state 3. Before, it set state 5 and the area change on
+every tick until the boss loaded. The runner then shows state 4 and raises the area change itself. A write-watch on
+the level state (Ymir `--watch-write`) reads 3 → 4 → 5, then 6 when the boss fight starts.
+
+- **Bonus time left:** in state 6, during the boss fight, the RAM dump shows 2,168 frames left and round state 1. The
+  frame (`saturn-hud/bonus-left-boss-f1600.png`) shows `36"23` in font 0, colour 5, over the fighters. The earlier
+  boss frame (2,300) was after the round had ended (round state 9), when nothing is drawn.
+- **NOW LOADING:** state 4 lasts one tick, and the area change loads the boss in the same tick, before that image is
+  presented. The video resets (about 20 black fields), then the load screen shows NOW LOADING... at the same place over
+  the level's panorama until the boss is ready (`saturn-hud/now-loading-boss-load.png`). On the PS1 the text stays
+  over the last fight frame during the load. Here the fighters and floor are gone, because `sat_init` clears VDP1.
+  That is a known difference; keeping the frame would mean keeping VDP1 through the reload.
 
 ### Fix: the player's side walls follow the camera (2026-11-13)
 

@@ -1319,11 +1319,14 @@ int main(void) {
         }
 #endif
 #if T3_FORCE_BOSS_PROBE
-        if(!g_boss_loaded && g_owned_match.ticks>=200u && g_owned_match.flow.state==T3_ROUND_FIGHT) {
+        static uint8_t boss_probe_started;
+        if(!boss_probe_started && !g_boss_loaded && g_owned_match.ticks>=200u && g_owned_match.flow.state==T3_ROUND_FIGHT) {
+            boss_probe_started=1;
             /* The real boundary occurs in a live fight, after RoundIntro has
-             * enabled the input owners. Keep that setup in the diagnostic. */
-            g_owned_match.force.state=5;
-            g_owned_match.flow.state=T3_ROUND_AREA_CHANGE;
+             * enabled the input owners. Keep that setup in the diagnostic: the
+             * level script's end (state 3), so the runner itself shows NOW
+             * LOADING (state 4) and raises the area change. */
+            g_owned_match.force.state=3;
         }
 #endif
         if(!g_boss_loaded && g_owned_match.flow.state==T3_ROUND_AREA_CHANGE) {
