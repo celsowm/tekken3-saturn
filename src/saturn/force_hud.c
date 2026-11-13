@@ -13,10 +13,11 @@
 #include "saturn/render3d.h"
 #include "saturn/vdp1.h"
 
-/* FHUD.BIN's HUD pieces (extract_force_hud.py), its glyphs from GLYPH on, then the keys, the name and
- * the two composed labels. */
+/* FHUD.BIN's HUD pieces (extract_force_hud.py), its glyphs from GLYPH on and the four enemies' names
+ * after them, then the keys, the player's name, the boss's name and the two composed labels. */
 enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY, PLATE, DIGIT=6, GLYPH=16, MAX_PIECES=128,
-       KEY=MAX_PIECES, NAME=KEY+3, LABEL_SCORE, LABEL_HI, SEPARATORS, TEXTURES, FONTS=3, COLOURS=16 };
+       KEY=MAX_PIECES, NAME=KEY+3, BOSS_NAME, LABEL_SCORE, LABEL_HI, SEPARATORS, TEXTURES, FONTS=3,
+       COLOURS=16, ENEMY_FONT=0xFE, ENEMIES=4, FIRST_ENEMY_MODEL=21 };
 /* print_text's fonts (hud.md): glyph width, height and advance. */
 static const struct {uint8_t width,height,advance;} FONT[FONTS]={{10,16,9},{14,24,13},{24,40,22}};
 static sat_vdp1_texture_t g_tex[TEXTURES];
@@ -24,6 +25,11 @@ static uint8_t g_glyph[FONTS][96];          /* the piece of each character from 
 static uint16_t g_palette[FONTS][COLOURS];  /* the text colours FHUD.BIN carries */
 static uint16_t g_palettes[FONTS];          /* which of them it carries (bits) */
 static uint16_t g_name_width;
+/* The enemies' names: FHUD.BIN's grunt pieces and widths, and the boss pack's right-aligned sheet
+ * (width 0 when actor 1 is not a boss). */
+static uint8_t g_enemy_piece[ENEMIES];
+static uint16_t g_enemy_width[ENEMIES];
+static uint16_t g_boss_name_width;
 /* The mode line's two labels (font 0), each composed once into one texture: one sprite, not one per
  * letter. */
 static const char* const LABEL_TEXT[2]={"SCORE","HI-SCORE"};
@@ -87,15 +93,20 @@ sat_result_t t3_force_hud_init(void* scratch,unsigned bytes) {
     const unsigned pieces=le16(data+8),palettes=le16(data+10);
     if(pieces<=GLYPH || pieces>MAX_PIECES)return SAT_ERR_VERSION;
     __builtin_memset(g_glyph,0,sizeof g_glyph);
+    __builtin_memset(g_enemy_piece,0,sizeof g_enemy_piece);
     g_palettes[0]=g_palettes[1]=g_palettes[2]=0;
     uint32_t at=12;
     for(unsigned i=0;i<pieces;++i) {
         if(at+44u>size)return SAT_ERR_VERSION;
-        const unsigned padded=le16(data+at+2),height=le16(data+at+4),count=le16(data+at+6);
+        const unsigned width=le16(data+at),padded=le16(data+at+2),height=le16(data+at+4),count=le16(data+at+6);
         const unsigned font=data[at+8],c=data[at+9];
         if(!padded || padded&7u || count!=padded*height/2u || at+44u+count>size)return SAT_ERR_VERSION;
         if((i<GLYPH)!=(font==0xFFu))return SAT_ERR_VERSION;
-        if(i>=GLYPH) {
+        if(font==ENEMY_FONT) {
+            if(c>=ENEMIES || g_enemy_piece[c] || !width || width>padded)return SAT_ERR_VERSION;
+            g_enemy_piece[c]=(uint8_t)i;
+            g_enemy_width[c]=(uint16_t)width;
+        } else if(i>=GLYPH) {
             if(font>=FONTS || c<33u || c>=128u || height!=FONT[font].height || padded<FONT[font].width)
                 return SAT_ERR_VERSION;
             g_glyph[font][c-32u]=(uint8_t)i;
@@ -115,6 +126,7 @@ sat_result_t t3_force_hud_init(void* scratch,unsigned bytes) {
         g_palettes[font]|=(uint16_t)(1u<<colour);
     }
     if(at!=size)return SAT_ERR_VERSION;
+    for(unsigned k=0;k<ENEMIES;++k)if(!g_enemy_piece[k])return SAT_ERR_VERSION;
     for(unsigned l=0;l<2u;++l) {
         unsigned n=0;
         for(;LABEL_TEXT[l][n];++n)if(!glyph_of(0,LABEL_TEXT[l][n]))return SAT_ERR_VERSION;
@@ -151,6 +163,19 @@ sat_result_t t3_force_hud_init(void* scratch,unsigned bytes) {
     g_name_width=(uint16_t)be16(data);
     for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+8u+2u*j);
     SAT_TRY(upload(&g_tex[NAME],lut,data+40u,padded,height));
+    /* A boss pack in actor 1 carries a name sheet too (the enemy packs carry none): its second,
+     * right-aligned side. */
+    g_boss_name_width=0;
+    const uint32_t boss_bytes=t3_fighter_pack_section_bytes(1,T3_PACK_NAMES);
+    if(boss_bytes) {
+        if(boss_bytes<8u || boss_bytes>bytes)return SAT_ERR_CAPACITY;
+        SAT_TRY(t3_fighter_pack_read(1,T3_PACK_NAMES,0,data,boss_bytes));
+        const unsigned boss_padded=be16(data+2),boss_height=be16(data+4),side=32u+boss_padded*boss_height/2u;
+        if(!boss_padded || boss_padded&7u || 8u+2u*side!=boss_bytes)return SAT_ERR_VERSION;
+        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+8u+side+2u*j);
+        SAT_TRY(upload(&g_tex[BOSS_NAME],lut,data+40u+side,boss_padded,boss_height));
+        g_boss_name_width=(uint16_t)be16(data);
+    }
     return make_separators(data,bytes);
 }
 
@@ -186,6 +211,19 @@ sat_result_t t3_force_hud_player_name(void) {
     SAT_TRY(draw(PLATE,10,66+9,14+g_name_width+4,66+19,0));
     const int padded=(g_name_width+7)&~7;
     return draw(NAME,14,66,14+padded,66+16,0);
+}
+
+sat_result_t t3_force_hud_enemy_name(unsigned row,unsigned model) {
+    /* force.ovl FUN_800B362C: the name flush right at x 354, y 66 or 114, on plate 0. */
+    unsigned piece=BOSS_NAME,width=g_boss_name_width;
+    if(model-FIRST_ENEMY_MODEL<ENEMIES) {
+        piece=g_enemy_piece[model-FIRST_ENEMY_MODEL];
+        width=g_enemy_width[model-FIRST_ENEMY_MODEL];
+    }
+    if(!width || row>1u)return SAT_OK;
+    const int right=354,y=66+48*(int)row,padded=(int)(width+7u)&~7;
+    SAT_TRY(draw(PLATE,right-(int)width-4,y+9,right+4,y+19,0));
+    return draw(piece,right-padded,y,right,y+16,0);
 }
 
 sat_result_t t3_force_hud_timer(unsigned seconds) {

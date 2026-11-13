@@ -891,7 +891,7 @@ static sat_result_t draw_force_hud(void) {
     if(!g_run_end && !lv->text_off) {
     /* FUN_800B3790 and the mode line: the player's bar at (10, 40) with the name under it, the
      * enemies' bars right-aligned at x 358 (y 40 and 88), the timer, the scores, the keys and the
-     * progress bar. Enemy names are not drawn yet: the enemy packs carry no name sheets. */
+     * progress bar. Each enemy's name sits under its bar (y 66 and 114). */
     const t3_psx_hud_bar_t* bar=&g_owned_match.hud_bars[0];
     SAT_TRY(t3_force_hud_bar(10,40,T3_FORCE_PLAYER_BAR,bar->drawn,bar->recent));
     SAT_TRY(t3_force_hud_player_name());
@@ -903,6 +903,7 @@ static sat_result_t draw_force_hud(void) {
         if(width<=4)continue;
         bar=&g_owned_match.hud_bars[i];
         SAT_TRY(t3_force_hud_bar(202-(width-T3_FORCE_PLAYER_BAR),i==1u?40:88,width,bar->drawn,bar->recent));
+        SAT_TRY(t3_force_hud_enemy_name(i-1u,t3_characters_force_model(i)));
     }
     SAT_TRY(t3_force_hud_timer(g_owned_match.flow.timer>0?((unsigned)g_owned_match.flow.timer+59u)/60u:0u));
     SAT_TRY(t3_force_hud_scores(lv->score,lv->hiscore_run));

@@ -7,11 +7,15 @@
 #include "saturn/core.h"
 #include <stdint.h>
 
-/* FHUD.BIN (extract_force_hud.py), KEYS.BIN and the player's name sheet (pack section NAMES).
+/* FHUD.BIN (extract_force_hud.py), KEYS.BIN and the name sheets of the player and of a boss in actor
+ * 1 (pack section NAMES).
  * `scratch` holds the largest of them while they upload. Run again after every sat_init. */
 sat_result_t t3_force_hud_init(void* scratch,unsigned bytes);
 
 /* All coordinates are the original 384 x 480 ones; lengths in original pixels. */
+/* force.ovl FUN_800B362C: enemy row 0 or 1's name, right-aligned at x 354 on its plate; `model` is
+ * t3_characters_force_model's (21..24 the Force grunts, otherwise the loaded boss). */
+sat_result_t t3_force_hud_enemy_name(unsigned row,unsigned model);
 /* FUN_800B3790: a bar `width` wide at x, y, filled from its right end (fill, then recent damage). */
 sat_result_t t3_force_hud_bar(int x,int y,int width,int fill,int recent);
 /* FUN_8004EB9C as force.ovl places it: the player's name at (14, 66) on its plate. */

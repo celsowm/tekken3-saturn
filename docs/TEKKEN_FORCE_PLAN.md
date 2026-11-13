@@ -26,7 +26,7 @@ PS1 reference frames of Force level 1 (Backstreets) now exist: PCSX-Redux built 
 `scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). The fight HUD and
 force.ovl's texts (LIFE UP!, "+n SEC", NOW LOADING..., the bonus time left, STAGE CLEAR!! and the tally) now draw the
 original's pieces and fonts in its layout (see "The Force HUD in the original art" and "force.ovl's texts in the
-original fonts"). Only the enemies' names are missing: the enemy packs carry no name sheets.
+original fonts"), and each enemy's name sits under its bar (see "The enemies' names").
 
 ## What the mode is
 
@@ -1174,7 +1174,7 @@ Differences from the original:
   half-transparent at twice the colour: scene / 2 + colour x pulse.
 - VDP1 half-transparency blends only with VDP1 pixels. Below the bar is the floor, which is VDP1, so the bar
   blends as it should on levels 1-3.
-- The enemies' names are not drawn: the enemy packs carry no name sheets.
+- The enemies' names were not drawn yet. (Done since; see "The enemies' names".)
 - LIFE UP!, +n SEC, the stage-clear tally and NOW LOADING still use the debug font. (Done next; see the following
   section.)
 
@@ -1241,6 +1241,27 @@ Frames (Ymir, private, `saturn-hud/`):
 
 NOW LOADING and the bonus time left use the same print path but were not seen in a frame. No probe reaches level
 state 4 or a state 6 with bonus time.
+
+### Update: the enemies' names (2026-11-13)
+
+force.ovl FUN_800B362C draws each enemy's name under its bar, right-aligned at x 354, y 66 and 114, on plate 0. It
+uses the same visibility as the bars. The remake's `hud.py` documents where the names come from: every grunt's costume
+ARC (slots 47-50, keys 0x54-0x57) keeps all four names on its name page. Grunt k is at V = 16 k, through CLUT 0x7F10.
+The widths are the character records' byte +5 (CROW 37, FALCON 49, HAWK 34, OWL 27).
+
+- `extract_force_hud.py` now takes `--raw` and adds the four names to FHUD.BIN (24,360 bytes, 92 pieces). They are
+  right-aligned pieces tagged with font 0xFE and the grunt's index. `extract_psx_hud.extract_name` takes the starting
+  row.
+- A boss is a roster pack, which already carries both name sheets. `t3_force_hud_init` uploads its right-aligned
+  side when actor 1's pack has a NAMES section. The grunt packs have none, so a level's grunts use FHUD.BIN.
+- `t3_force_hud_enemy_name(row, t3_characters_force_model(actor))`: models 21-24 are the grunts; any other model is
+  the boss.
+
+Frames (Ymir, private, `saturn-hud/`): `enemy-name-crow-f1301.png` (CROW on level 1) and
+`enemy-name-boss-f2300.png` (`T3_FORCE_BOSS_PROBE`: LAW from the boss pack's sheet).
+
+Frame rate (70 s): 611 fields, 5 discarded, **181 images, worst gap 7**, with the same hashes. That matches the
+control above (181, 7).
 
 ### Update: the Force result screen in the original art (2026-11-12)
 

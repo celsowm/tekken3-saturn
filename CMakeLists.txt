@@ -1918,16 +1918,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             if(NOT T3_FORCE_BOSS_PROBE_CHARACTER MATCHES "^([0-9]|1[0-9]|20)$")
                 message(FATAL_ERROR "T3_FORCE_BOSS_PROBE_CHARACTER must be 0..20")
             endif()
-            # FHUD.BIN: the original pieces of the Force fight HUD (force_hud.c).
+            # FHUD.BIN: the original pieces of the Force fight HUD (force_hud.c) and the enemies' names.
             if(NOT T3_LOCAL_HUD_EXE OR NOT EXISTS "${T3_LOCAL_HUD_EXE}")
                 message(FATAL_ERROR "tekken3_force requires T3_LOCAL_HUD_EXE for FHUD.BIN")
             endif()
             set(_t3_force_hud "${CMAKE_BINARY_DIR}/generated/private_force_hud/FHUD.BIN")
             add_custom_command(OUTPUT "${_t3_force_hud}"
                 COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_force_hud.py"
-                    --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_force_hud}"
+                    --exe "${T3_LOCAL_HUD_EXE}" --raw "${T3_LOCAL_SFX}/raw" --out "${_t3_force_hud}"
                 DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_force_hud.py"
                     "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/fighter_roster.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
                     "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
                     "${T3_LOCAL_HUD_EXE}"
                 VERBATIM)

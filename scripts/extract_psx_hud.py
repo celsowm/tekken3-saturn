@@ -84,10 +84,11 @@ def extract(vram, spec):
                                           height=height, clut=clut, visible_pixels=visible)
 
 
-def extract_name(char_vram, system_vram, spec):
-    """One fighter's name sprite: page 2 of the costume ARC, zero-padded
-    towards the sprite's outer side so the art stays flush with its anchor
-    when the padded sheet is drawn scaled (FUN_8004EB9C, hud.py)."""
+def extract_name(char_vram, system_vram, spec, v=0):
+    """One fighter's name sprite: page 2 of the costume ARC from row v (Tekken
+    Force's enemies stack theirs 16 rows apart), zero-padded towards the
+    sprite's outer side so the art stays flush with its anchor when the padded
+    sheet is drawn scaled (FUN_8004EB9C, hud.py)."""
     name, _, width, align = spec
     clut_x, clut_y = 16 * (NAME_CLUT & 63), (NAME_CLUT >> 6) & 511
     palette = [word(system_vram, clut_x + i, clut_y) for i in range(16)]
@@ -99,7 +100,7 @@ def extract_name(char_vram, system_vram, spec):
     for y in range(NAME_HEIGHT):
         indices = []
         for x in range(width):
-            packed = char_vram[y * 1024 + NAME_PAGE_WORD + (NAME_U + x) // 4]
+            packed = char_vram[(v + y) * 1024 + NAME_PAGE_WORD + (NAME_U + x) // 4]
             index = (packed >> (4 * ((NAME_U + x) & 3))) & 15
             visible += palette[index] != 0
             indices.append(index)
