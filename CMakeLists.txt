@@ -1895,6 +1895,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 VERBATIM COMMENT "Build PRIVATE original Force boss costumes")
             option(T3_FORCE_DEBUG_HUD "Show Force input and renderer diagnostics" OFF)
             option(T3_FORCE_INPUT_PROBE "Diagnostic only: replay walking and attacks in Force" OFF)
+            # The replay's start, fields after the level's loading: the probe's counts move by an image with the start
+            # alone, so an A/B samples a few starts (docs/TEKKEN_FORCE_PLAN.md, Force sound on).
+            set(T3_FORCE_PROBE_START_FIELDS 0 CACHE STRING "Diagnostic only: fields the input probe waits before the level")
+            set(T3_FORCE_PROBE_TEXT_PAD 0 CACHE STRING "Diagnostic only: bytes of code ahead of the game library (layout A/B)")
             option(T3_FORCE_PARALLEL_SKINNING "Split visible Force skin vertices between both SH-2 CPUs" OFF)
             option(T3_FORCE_NO_FLOOR "Skip the floor (frame-rate A/B control)" OFF)
             option(T3_FORCE_NO_FLOOR_FADE "Skip the level 1-2 floor's distance fade (frame-rate A/B control)" OFF)
@@ -1945,6 +1949,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 T3_COLD_LOW_WRAM=1 T3_HIGH_TEXTURE_DESCRIPTORS=1 T3_FORCE_PACK_COUNT=25
                 T3_FORCE_DEBUG_HUD=$<BOOL:${T3_FORCE_DEBUG_HUD}>
                 T3_FORCE_INPUT_PROBE=$<BOOL:${T3_FORCE_INPUT_PROBE}>
+                T3_FORCE_PROBE_START_FIELDS=${T3_FORCE_PROBE_START_FIELDS}
                 T3_FORCE_NO_FLOOR=$<BOOL:${T3_FORCE_NO_FLOOR}>
                 T3_FORCE_NO_FLOOR_FADE=$<BOOL:${T3_FORCE_NO_FLOOR_FADE}>
                 T3_FORCE_POSE_CACHE_ENTRIES=${T3_FORCE_POSE_CACHE_ENTRIES}
@@ -1957,25 +1962,37 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 T3_FORCE_VARIANT_PROBE_LEVEL=${T3_FORCE_VARIANT_PROBE_LEVEL})
             # The combat sounds, the fighters' voices and the level runner's own sounds (key bank 3) from one SFX.BIN.
             set(_t3_force_sfx_files "")
-            # Off by default: it links and plays; the probe replay reaches tick 600 one field later (642 against 641,
-            # within the measured noise), with the same images (docs/TEKKEN_FORCE_PLAN.md, Force sound).
-            option(T3_FORCE_SFX "Play combat sounds, voices and the level runner's sounds in Tekken Force" OFF)
+            # On by default: over four code layouts the probe replay makes as many images with sound as without
+            # (Mednafen 723 / 721, Ymir 933 / 930), worst gap no larger (docs/TEKKEN_FORCE_PLAN.md, Force sound on).
+            option(T3_FORCE_SFX "Play combat sounds, voices and the level runner's sounds in Tekken Force" ON)
             if(T3_FORCE_SFX AND T3_LOCAL_SFX)
                 set(_t3_force_sfx_gen "${CMAKE_BINARY_DIR}/generated/force_sfx")
                 add_custom_command(OUTPUT "${_t3_force_sfx_gen}/SFX.BIN" "${_t3_force_sfx_gen}/t3_local_sfx.h"
                     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" --with-force
                         --exe "${T3_LOCAL_SFX}/SLUS_004.02" --out "${_t3_force_sfx_gen}/tables" --generated "${_t3_force_sfx_gen}"
                     DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" "${T3_LOCAL_SFX}/SLUS_004.02" VERBATIM)
+                # FSFX.BIN: the full disc also carries the versus SFX.BIN, which lacks the runner's sounds.
+                add_custom_command(OUTPUT "${_t3_force_sfx_gen}/FSFX.BIN"
+                    COMMAND "${CMAKE_COMMAND}" -E copy "${_t3_force_sfx_gen}/SFX.BIN" "${_t3_force_sfx_gen}/FSFX.BIN"
+                    DEPENDS "${_t3_force_sfx_gen}/SFX.BIN" VERBATIM)
                 target_sources(tekken3_force PRIVATE src/saturn/sfx.c "${_t3_force_sfx_gen}/t3_local_sfx.h")
                 target_include_directories(tekken3_force PRIVATE "${_t3_force_sfx_gen}")
-                target_compile_definitions(tekken3_force PRIVATE T3_SFX=1)
-                set(_t3_force_sfx_files "${_t3_force_sfx_gen}/SFX.BIN")
+                target_compile_definitions(tekken3_force PRIVATE T3_SFX=1 T3_SFX_FILE="FSFX.BIN")
+                set(_t3_force_sfx_files "${_t3_force_sfx_gen}/FSFX.BIN")
             endif()
             target_compile_options(tekken3_force PRIVATE -Wall -Wextra -O2)
             if(T3_FORCE_PARALLEL_SKINNING)
                 target_compile_definitions(tekken3_force PRIVATE T3_PARALLEL_SKINNING=1)
             endif()
             target_link_libraries(tekken3_force PRIVATE tekken3_fight_force LibSaturn::Saturn)
+            if(T3_FORCE_INPUT_PROBE)
+                target_sources(tekken3_force PRIVATE src/saturn/probe_text_pad.c)
+                set_source_files_properties(src/saturn/probe_text_pad.c PROPERTIES
+                    COMPILE_DEFINITIONS "T3_FORCE_PROBE_TEXT_PAD=${T3_FORCE_PROBE_TEXT_PAD}")
+                if(T3_FORCE_PROBE_TEXT_PAD)
+                    target_link_options(tekken3_force PRIVATE "-Wl,--undefined=_g_t3_probe_text_pad")
+                endif()
+            endif()
             target_link_options(tekken3_force PRIVATE "-Wl,-T,${CMAKE_SOURCE_DIR}/src/saturn/hot_wram.ld")
             set_property(TARGET tekken3_force APPEND PROPERTY LINK_DEPENDS "${CMAKE_SOURCE_DIR}/src/saturn/hot_wram.ld")
             libsaturn_configure_executable(tekken3_force)
@@ -2062,7 +2079,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 ${_t3_enemy_files}
                 "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN" "${_t3_force_hud}"
                 "${_t3_boss_gen}/BOSSPAK.BIN" ${_t3_item_files}
-                "${_t3_menu_gen}/LOAD.BIN" "${T3_LOCAL_PSX_FORCED_REACTION}")
+                "${_t3_menu_gen}/LOAD.BIN" "${T3_LOCAL_PSX_FORCED_REACTION}" ${_t3_force_sfx_files})
         elseif(TARGET tekken3_force_probe)
             target_sources(tekken3_menu PRIVATE src/game/psx_force_handoff.c src/game/force_progress.c src/saturn/force_save.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_FORCE_PROGRAM=1)

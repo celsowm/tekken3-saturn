@@ -1782,7 +1782,6 @@ A/B on the probe replay, tick 600, same input and state hashes:
 | sound off (control) | 641 | 641 / 36 | 605 | 134 |
 | `T3_FORCE_SFX=ON` | 645 | 645 / 40 | 605 | 134 |
 | `T3_FORCE_SFX=ON`, play calls return at once (temporary build) | 640 | 640 / 35 | 605 | 134 |
-
 | `T3_FORCE_SFX=ON`, play time read from the raw FRT (current) | 642 | 642 / 37 | 605 | 134 |
 | sound off, cold faces 383 (data placement only) | 641 | 641 / 36 | 605 | 134 |
 
@@ -1794,6 +1793,50 @@ either: the counts are threshold effects (a few frames close to a field boundary
 timing changes). Builds doing identical work have measured 640 and 641, so 642 against 641 is within that noise, and the
 image count is the same. The option still defaults to off until that last field is settled by a second probe or the
 user accepts it.
+
+#### Force sound on (2026-11-13)
+
+`T3_FORCE_SFX` now defaults to ON. Mednafen models the SH-2 cache, so code layout alone moves the probe's tick-600
+image count by one and its worst gap by a field. One build against another therefore says little. The A/B now sums
+four layouts. `T3_FORCE_PROBE_TEXT_PAD` (input-probe builds only, `src/saturn/probe_text_pad.c`) puts 0, 1040, 2064 or
+3088 bytes of code ahead of the game library, and `scripts/mednafen_force_rate_sweep.py` rebuilds, runs and sums them.
+`T3_FORCE_PROBE_START_FIELDS` delays the level's start by whole fields for the same purpose. The Ymir probe
+(`lib-saturn/harness`, `--sh2-cache on`, 3000 fields) gives the same comparison in about 10 s a run.
+
+| Build, four layouts summed | Mednafen images / worst gap | Ymir images / worst gap |
+|---|---|---|
+| HEAD control (before this change), per run | 181 / 7 | 213 / 5 |
+| sound off | 721 / 7 | 930 / 5 |
+| `T3_FORCE_SFX=ON` | 723 / 7 | 933 / 5 |
+
+Sound on makes as many images as sound off, and its worst gap is no larger. The image was recovered by these changes:
+
+- **Faces before the wait.** The level loop waited for the field of the last flush before skinning anything. In VDP1
+  1-cycle mode the command lists are built straight in VRAM, so only that part has to wait. Skinning, projection and
+  culling write only Work RAM. The loop now builds the characters' faces (`sat_scene_begin` and
+  `t3_characters_render`) first, then waits, then begins the frame and draws the floor, the items and the HUD. This
+  took Ymir from 213 to 233 images a run. For this, LibSaturn's `reserve_overlay_commands(0)` now succeeds before the
+  frame is begun: reserving nothing needs no list. `sat_scene_begin` with no overlay commands may run before
+  `sat_begin_frame`.
+- **Sound statistics only when something plays.** `sfx.c` read `sat_audio_get_stats` every frame. On the Ymir profile
+  (`scripts/ymir_profile_diff.py`, per-function cycles from `--debug-profile`) that cost 145k cycles in the window,
+  more than the audio update itself (78k). It now refreshes the statistics after init and after a frame that played
+  something. The update is timed with the raw FRT (`g_t3_sfx_update_frc`).
+- **The HUD's scaled sprites.** `sat_draw_sprite_scaled_screen` fills the HAL request directly, without the second
+  initialisation check and the intermediate copies.
+
+Hypotheses that were tested and ruled out (temporary builds, all reverted): the sound's own work, `sfx.c` in a separate
+library, disc read order, scratch-buffer contents, in-level disc reads (there are none), CD interrupts (the A-bus
+interrupt is masked) and the cache control register.
+
+The full disc already has a versus `SFX.BIN`, so the Force sounds are copied there as `FSFX.BIN`. Under the old name
+Force would have read the versus file and failed its version check. `scripts/play_mednafen.py` now requires
+`FSFX.BIN`. Started from the full disc's mode list on Ymir (`scripts/menu_flow.py --title-at 2250 --down 5`), Force
+goes from the select screen to NOW LOADING and into level 1, and its timer runs.
+
+The save path borrows its BUP workspace from the scene-face buffer (`sat_save_init_in`, `SAT_SAVE_WORKSPACE_BYTES`).
+On Mednafen with the real BIOS, store, load and readback succeed (`g_save_result` 0). Ymir's injection boot has no
+BIOS backup library, so it shows PROGRESS NOT SAVED.
 
 ### Versus A/B on the current source (2026-11-08)
 

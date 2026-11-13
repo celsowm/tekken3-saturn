@@ -27,11 +27,20 @@ def main():
     p.add_argument('--out', type=Path, default=ROOT / 'build/menu-flow')
     p.add_argument('--frames', type=int, default=4200)
     p.add_argument('--right', type=int, default=0, help='extra RIGHT presses for P1 on the select')
+    p.add_argument('--title-at', type=int, default=400,
+                   help='field of START on the title; the mode list is worked from 80 fields later')
+    p.add_argument('--down', type=int, default=0,
+                   help='DOWN presses on the mode list before choosing (5: Tekken Force)')
     p.add_argument('--series', type=int, nargs=3, metavar=('FROM', 'TO', 'STEP'),
                    help='also keep these fields and print each one\'s size and mean brightness, to time black gaps')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    script = ['0 NONE', '400 START', '406 NONE', '480 START', '486 NONE']
+    script = ['0 NONE', f'{args.title_at} START', f'{args.title_at + 6} NONE']
+    at = args.title_at + 80
+    for _ in range(args.down):
+        script += [f'{at} DOWN', f'{at + 6} NONE']
+        at += 20
+    script += [f'{at} START', f'{at + 6} NONE']
     at = 1500
     for _ in range(args.right):
         script += [f'{at} RIGHT', f'{at + 6} NONE']

@@ -1149,7 +1149,8 @@ int main(void) {
         t3_force_handoff_t start={0};
         uint8_t block[T3_FORCE_HANDOFF_BYTES];
         t3_force_progress_t progress={0};
-        (void)t3_force_save_load(&progress);
+        static uint32_t workspace[SAT_SAVE_WORKSPACE_BYTES/4u];
+        (void)t3_force_save_load(&progress,workspace,sizeof workspace);
         start.keys=progress.keys;start.hiscore=progress.hiscore;
         if(progress.doctor)start.flags=T3_FORCE_FLAG_DOCTOR_UNLOCKED;
         for(unsigned i=0;i<4;++i)start.bosses[i]=255u;

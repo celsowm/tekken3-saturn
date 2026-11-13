@@ -870,7 +870,9 @@ static void save_force_progress(void) {
     if(keys>3u)keys=3u;
     if(g_progress.keys<keys)g_progress.keys=(uint8_t)keys;
     if(lv->mode_flags&T3_FORCE_FLAG_SAVED_DOCTOR)g_progress.doctor=1;
-    g_save_result=t3_force_save_store(&g_progress);
+    /* The face queue is rebuilt for every image, so between images it lends the Boot ROM's backup library its
+     * 24 KiB, which would otherwise stay reserved in High Work RAM for the whole run. */
+    g_save_result=t3_force_save_store(&g_progress,g_force_scene_faces,sizeof g_force_scene_faces);
 }
 
 static uint32_t result_ticks(void) {
@@ -1147,7 +1149,7 @@ int main(void) {
     if (sat_exec_arg(arg, sizeof arg, &arg_bytes) == SAT_OK && t3_force_handoff_unpack(arg, arg_bytes, &start)) {
         lev_name[3] = (char)('1' + (start.level<4u?start.level:3u));
     } else {
-        g_save_result=t3_force_save_load(&g_progress);
+        g_save_result=t3_force_save_load(&g_progress,g_force_scene_faces,sizeof g_force_scene_faces);
         start.keys=g_progress.keys;start.hiscore=g_progress.hiscore;
         if(g_progress.doctor)start.flags=T3_FORCE_FLAG_DOCTOR_UNLOCKED;
     }
@@ -1240,6 +1242,9 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_force_hud_init(g_force_scene_faces, sizeof g_force_scene_faces));
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_force_scene_faces, sizeof g_force_scene_faces));
     t3_combat_events_reset();
+#if T3_FORCE_INPUT_PROBE
+    for(unsigned k=T3_FORCE_PROBE_START_FIELDS;k;--k)SAT_PANIC_IF_ERROR(sat_wait_vblank());
+#endif
 
     /* Main loop. */
     uint32_t previous_field=sat_field_count();
@@ -1444,6 +1449,19 @@ int main(void) {
         /* Update characters (clip selection, animation advance). */
         SAT_PANIC_IF_ERROR(t3_characters_tick(&g_portable_match));
 
+        /* The characters' faces first: skinning, projection and culling write only Work RAM (a scene without an
+         * overlay reserves no command), so they run before any wait below. */
+        SAT_PANIC_IF_ERROR(sat_scene_begin(&scene, &g_scene_camera, SAT_FX16_ONE / 4,
+            320, 224, 0));
+        if(!g_run_end)SAT_PANIC_IF_ERROR(t3_characters_render(&scene, &g_portable_match));
+#if T3_FORCE_INPUT_PROBE
+        if(g_owned_match.ticks>=600u && !g_force_probe_skin_checked) {
+            uint32_t checked;
+            SAT_PANIC_IF_ERROR(t3_characters_force_check_skin(&checked));
+            g_force_probe_skin_checked=checked;
+        }
+#endif
+
         /* The VDP1 (1-cycle mode) takes the last list at the next field start, and then leaves the bank this image is
          * built in. When the ticks have run past that field start there is nothing to wait for. Level 4's staircase
          * is written to VDP2 VRAM directly, so it keeps the VBlank. The scroll reaches the VDP2 at a VBlank either
@@ -1453,21 +1471,9 @@ int main(void) {
         update_stage_layer_scroll(be32(g_level_header+12));
         SAT_PANIC_IF_ERROR(sat_vdp2_layers_commit());
 
-        /* Begin frame and draw. */
+        /* Begin the list: the floor first (direct VDP1 commands), then the items and the scene. */
         SAT_PANIC_IF_ERROR(sat_begin_frame());
-        SAT_PANIC_IF_ERROR(sat_scene_begin(&scene, &g_scene_camera, SAT_FX16_ONE / 4,
-            320, 224, 0));
-
-        /* The floor first (direct VDP1 commands), then the characters, then the scene. */
         SAT_PANIC_IF_ERROR(draw_force_floor(&scene));
-        if(!g_run_end)SAT_PANIC_IF_ERROR(t3_characters_render(&scene, &g_portable_match));
-#if T3_FORCE_INPUT_PROBE
-        if(g_owned_match.ticks>=600u && !g_force_probe_skin_checked) {
-            uint32_t checked;
-            SAT_PANIC_IF_ERROR(t3_characters_force_check_skin(&checked));
-            g_force_probe_skin_checked=checked;
-        }
-#endif
         SAT_PANIC_IF_ERROR(draw_force_items(&scene));
 #if T3_FORCE_INPUT_PROBE
         if(scene.faces.cold_count>g_force_probe_cold[0])g_force_probe_cold[0]=scene.faces.cold_count;

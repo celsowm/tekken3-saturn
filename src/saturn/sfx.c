@@ -12,6 +12,10 @@
 #if defined(T3_FIGHTER_PACKS)
 #include "fighter_pack.h"
 #endif
+/* The sample file on the disc: Tekken Force's own holds the level runner's sounds too. */
+#ifndef T3_SFX_FILE
+#define T3_SFX_FILE "SFX.BIN"
+#endif
 
 /* Sound codes and rates: Tekken3Remake docs/research/code/sound.md
  * (PolyForm Noncommercial; the rules are re-implemented, not copied). */
@@ -29,9 +33,11 @@ static uint8_t g_ready;
 /* Sound requests with no extracted sample, and the first distinct ones as
  * (kind<<24 | player<<16 | code). Dumped by scripts/saturn_probe.py. */
 volatile uint32_t g_t3_sfx_unmapped,g_t3_sfx_unmapped_count,g_t3_sfx_unmapped_seen[16];
-/* play_frc: FRT ticks (sat_time_frc) spent in sat_sound_play; two raw timer reads cost less than sat_time_ms. */
-volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_frc,g_t3_sfx_play_max_frc,g_t3_sfx_update_ms,g_t3_sfx_ko_voices;
-/* LibSaturn's audio statistics, refreshed each update: Sound RAM and voice pressure of a real fight. */
+/* play_frc / update_frc: FRT ticks (sat_time_frc) spent in sat_sound_play and sat_audio_update; two raw timer reads
+ * cost less than sat_time_ms. */
+volatile uint32_t g_t3_sfx_played,g_t3_sfx_play_frc,g_t3_sfx_play_max_frc,g_t3_sfx_update_frc,g_t3_sfx_ko_voices;
+/* LibSaturn's audio statistics, read after the loading and after an image that played something (they change only
+ * then): Sound RAM and voice pressure of a real fight. */
 volatile uint32_t g_t3_sfx_ram_used,g_t3_sfx_ram_capacity,g_t3_sfx_ram_high_water,g_t3_sfx_resident_sounds,
                   g_t3_sfx_voice_steals,g_t3_sfx_failed_plays;
 /* Play requests per sound: shared sounds by table index, voices by [actor][pack voice row]. The residency
@@ -40,6 +46,14 @@ volatile uint32_t g_t3_sfx_shared_plays[T3_SFX_COUNT];
 #if defined(T3_FIGHTER_PACKS)
 volatile uint32_t g_t3_sfx_voice_plays[2][T3_ROSTER_VOICES];
 #endif
+
+static void refresh_stats(void) {
+    sat_audio_stats_t stats;
+    if(sat_audio_get_stats(&stats)!=SAT_OK)return;
+    g_t3_sfx_ram_used=stats.sound_ram_used;g_t3_sfx_ram_capacity=stats.sound_ram_capacity;
+    g_t3_sfx_ram_high_water=stats.sound_ram_high_water;g_t3_sfx_resident_sounds=stats.resident_sounds;
+    g_t3_sfx_voice_steals=stats.voice_steals;g_t3_sfx_failed_plays=stats.failed_play_requests;
+}
 
 #if defined(T3_FIGHTER_PACKS)
 _Static_assert(T3_ROSTER_MAX_VOICE_SAMPLES>0u,"voices");
@@ -76,7 +90,7 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
     if(scratch_bytes<T3_ROSTER_MAX_VOICE_SAMPLES)return SAT_ERR_INVALID_ARG;
 #endif
     if((st=t3_disc_volume(&volume))!=SAT_OK)return st;
-    if((st=sat_cdfs_lookup(volume,"SFX.BIN",&file))!=SAT_OK)return st;
+    if((st=sat_cdfs_lookup(volume,T3_SFX_FILE,&file))!=SAT_OK)return st;
     if(file.size!=T3_SFX_FILE_BYTES)return SAT_ERR_VERSION;
     if((st=sat_audio_init())!=SAT_OK)return st;
     for(unsigned i=0;i<T3_SFX_COUNT;++i) {
@@ -108,6 +122,7 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
     } else SAT_TRY(load_voices(1,scratch,scratch_bytes));
 #endif
     g_ready=1u;
+    refresh_stats();
     return SAT_OK;
 }
 
@@ -203,15 +218,10 @@ void t3_sfx_play_events(const t3_combat_event_t* events,unsigned count) {
         }
 #endif
     }
-    const uint32_t updated=sat_time_ms();
+    const uint16_t updated=sat_time_frc();
     (void)sat_audio_update();
-    g_t3_sfx_update_ms+=sat_time_ms()-updated;
-    sat_audio_stats_t stats;
-    if(sat_audio_get_stats(&stats)==SAT_OK) {
-        g_t3_sfx_ram_used=stats.sound_ram_used;g_t3_sfx_ram_capacity=stats.sound_ram_capacity;
-        g_t3_sfx_ram_high_water=stats.sound_ram_high_water;g_t3_sfx_resident_sounds=stats.resident_sounds;
-        g_t3_sfx_voice_steals=stats.voice_steals;g_t3_sfx_failed_plays=stats.failed_play_requests;
-    }
+    g_t3_sfx_update_frc+=(uint16_t)(sat_time_frc()-updated);
+    if(count)refresh_stats();
 }
 
 /* The round announcer (FUN_8003DCE0): "round" or "final round" at frame 61 of the
