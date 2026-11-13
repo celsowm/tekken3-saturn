@@ -84,9 +84,9 @@ uses bank 9.
   show interlace flicker: screenshots composite both fields, so flicker is not
   measured anywhere in this work.
 - **Not in the menus yet.** No costume choice (one costume per fighter, so a
-  choice would change nothing), and Team Battle and Tekken Force are listed but
-  do nothing: team needs a roster of members with swap-in, Tekken Force needs
-  its own stages.
+  choice would change nothing), and Team Battle is listed but does nothing:
+  team needs a roster of members with swap-in. TEKKEN FORCE MODE starts the
+  separate Force executable (`FORCE.BIN`, see `docs/TEKKEN_FORCE_PLAN.md`).
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has

@@ -19,6 +19,13 @@ tick rate stays at 60/s. `FRAME` counts submitted images. Displayed-image
 cadence still needs a physical-hardware check (see
 [COLD_LOW_WRAM_EXPERIMENT](COLD_LOW_WRAM_EXPERIMENT.md#costs-and-limits)).
 
+Tekken Force is a separate executable with up to three actors and is not held
+to this gate. Its rate is measured on the input-probe replay
+(`scripts/mednafen_force_rate.py`): about 180 images by logic tick 600 (about
+640 fields), so about 17 images/s with a worst gap of 7 fields, sound on or
+off. Its A/Bs sum four code layouts (`scripts/mednafen_force_rate_sweep.py`);
+see "Force sound on" in [TEKKEN_FORCE_PLAN.md](TEKKEN_FORCE_PLAN.md).
+
 ## Where the time went
 
 `T3_OVERLAP_VDP1` removes the vblank wait, so an image costs whichever CPU

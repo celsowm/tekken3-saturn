@@ -155,3 +155,12 @@ lifetimes, memory bounds, screenshots and test limitations are documented
 in [the variant follow-up](TEKKEN_FORCE_PLAN.md#resident-enemy-variants-and-palette-isolation-2026-11-11).
 Natural progression across every stage and the remaining performance,
 audio, stage, HUD/result, ranking and whole-disc checks are still open.
+
+## Repair follow-up (2026-11-13)
+
+Audio, the stage (floor, level 4's staircase), the HUD in the original art,
+the force.ovl texts and the result screen are done; see the plan's later
+sections, ending with "Force sound on". The full disc passes
+`play_mednafen.py` and its TEKKEN FORCE MODE reaches level 1 on Ymir. The
+ranking is port-wide and left out. A complete played run through every stage
+on the full disc is still open.

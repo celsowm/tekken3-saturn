@@ -1,6 +1,6 @@
 # Tekken Force: plan
 
-Status (2026-11-11): **Force is still incomplete.** The separate three-actor
+Status (2026-11-13): **Force plays with sound; a complete played run is still to be confirmed.** The separate three-actor
 Saturn executable builds, boots, and displays an animated player on the stage
 panorama. Physical-input conversion and elapsed-field scheduling are connected;
 the host input regression covers both target sides. The frontend now draws
@@ -16,9 +16,11 @@ exercise combat and live boss costume loading.
 Cold boots verify key persistence, and probes reach the final challenge and
 Doctor B. rescue. Original chicken pickups now render and a labelled device
 probe verifies healing and the rising message. The Force result screen now runs in MENU.BIN with the
-original picture, fonts, colours, timings and sounds (see "Update: the Force result screen"). A complete
-played run, sound and the ranking must still be finished; the floor and level 4's staircase are drawn (see "Panorama
-scale and level 4's staircase"). The host comparisons now cover
+original picture, fonts, colours, timings and sounds (see "Update: the Force result screen"). Sound is on by default
+and costs no images (see "Force sound on"). On Ymir the full disc's TEKKEN FORCE MODE goes through the select screen
+into level 1 with its sounds (`FSFX.BIN`). A complete played run is still to be confirmed. The ranking is
+port-wide and left out (see "Not planned here: the ranking after the result"). The floor and level 4's staircase are
+drawn (see "Panorama scale and level 4's staircase"). The host comparisons now cover
 every compared frame of the three recordings, including `force_run`'s carried-state
 levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
 requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
