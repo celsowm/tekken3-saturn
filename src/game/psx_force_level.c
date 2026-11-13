@@ -412,6 +412,10 @@ void t3_force_level_setup(t3_force_level_t* s,int level){
     if(level>3)s->state=8;
 }
 
+uint32_t t3_force_stage_bonus(const uint8_t* t,int level){
+    return t && level>=0 && level<4?tab32(t,STAGE_BONUS+4*(int64_t)level):0u;
+}
+
 int t3_force_bar_width(const uint8_t* t,int type){
     return t && type>=0 && type<=4?tab16(t,KILL_SECONDS+4*(int64_t)type):0;
 }

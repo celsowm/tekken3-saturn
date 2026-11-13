@@ -13,21 +13,30 @@
 #include "saturn/render3d.h"
 #include "saturn/vdp1.h"
 
-/* FHUD.BIN's order (extract_force_hud.py), then the three keys. */
-enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY, PLATE, DIGIT=6, GLYPH=16, PIECES=34,
-       KEY=PIECES, NAME=KEY+3, LABEL_SCORE, LABEL_HI, TEXTURES, PALETTES=3, GLYPH_W=10, GLYPH_H=16,
-       ADVANCE=9 };
-static const char MODE_CHARS[]="SCOREHI-0123456789";
-_Static_assert(sizeof MODE_CHARS-1==PIECES-GLYPH,"FHUD.BIN glyph order");
+/* FHUD.BIN's HUD pieces (extract_force_hud.py), its glyphs from GLYPH on, then the keys, the name and
+ * the two composed labels. */
+enum { CAP_LEFT=0, CAP_RIGHT, HEALTH, DAMAGE, EMPTY, PLATE, DIGIT=6, GLYPH=16, MAX_PIECES=128,
+       KEY=MAX_PIECES, NAME=KEY+3, LABEL_SCORE, LABEL_HI, SEPARATORS, TEXTURES, FONTS=3, COLOURS=16 };
+/* print_text's fonts (hud.md): glyph width, height and advance. */
+static const struct {uint8_t width,height,advance;} FONT[FONTS]={{10,16,9},{14,24,13},{24,40,22}};
 static sat_vdp1_texture_t g_tex[TEXTURES];
-static uint16_t g_palette[PALETTES];   /* font 0 colours 5, 2, 6 */
+static uint8_t g_glyph[FONTS][96];          /* the piece of each character from ' ', 0 for none */
+static uint16_t g_palette[FONTS][COLOURS];  /* the text colours FHUD.BIN carries */
+static uint16_t g_palettes[FONTS];          /* which of them it carries (bits) */
 static uint16_t g_name_width;
-/* The two labels, each composed once into one texture: one sprite instead of one per letter. */
+/* The mode line's two labels (font 0), each composed once into one texture: one sprite, not one per
+ * letter. */
 static const char* const LABEL_TEXT[2]={"SCORE","HI-SCORE"};
 static uint16_t g_label_width[2];
+static sat_result_t make_separators(uint8_t* scratch,unsigned bytes);
 
 static unsigned le16(const uint8_t* p) {return (unsigned)p[0]|(unsigned)p[1]<<8;}
 static unsigned be16(const uint8_t* p) {return (unsigned)p[0]<<8|(unsigned)p[1];}
+
+static unsigned glyph_of(unsigned font,char c) {
+    const unsigned k=(unsigned char)c;
+    return font<FONTS && k>=32u && k<128u?g_glyph[font][k-32u]:0u;
+}
 
 static sat_result_t read_file(const char* name,uint8_t* out,unsigned capacity,uint32_t* size) {
     sat_cdfs_volume_t* volume;
@@ -48,16 +57,16 @@ static sat_result_t upload(sat_vdp1_texture_t* tex,const uint16_t* colours,const
     return sat_tex_upload_lut4_pixels(tex,texels,(uint16_t)padded,(uint16_t)height,lut);
 }
 
-/* Lays `text`'s glyphs ADVANCE texels apart into `out` (padded texels wide, LUT4, left pixel in the
+/* Lays `text`'s font-0 glyphs an advance apart into `out` (padded texels wide, LUT4, left pixel in the
  * high nibble); a later glyph's opaque texels win where two overlap. */
-static void compose(const char* text,const uint8_t* const* glyph,const unsigned* glyph_padded,
+static void compose(const char* text,const uint8_t* const* texels,const uint16_t* pitch,
                     uint8_t* out,unsigned padded) {
-    for(unsigned i=0;i<padded*GLYPH_H/2u;++i)out[i]=0;
-    for(unsigned pen=0;*text;++text,pen+=ADVANCE) {
-        unsigned g=0;
-        while(MODE_CHARS[g]!=*text)++g;
-        for(unsigned y=0;y<GLYPH_H;++y)for(unsigned x=0;x<GLYPH_W;++x) {
-            const uint8_t b=glyph[g][y*glyph_padded[g]/2u+x/2u];
+    const unsigned w=FONT[0].width,h=FONT[0].height;
+    for(unsigned i=0;i<padded*h/2u;++i)out[i]=0;
+    for(unsigned pen=0;*text;++text,pen+=FONT[0].advance) {
+        const unsigned g=glyph_of(0,*text);
+        for(unsigned y=0;y<h;++y)for(unsigned x=0;x<w;++x) {
+            const uint8_t b=texels[g][y*pitch[g]/2u+x/2u];
             const unsigned nib=x&1u?b&15u:b>>4,to=pen+x;
             if(!nib)continue;
             uint8_t* o=&out[y*padded/2u+to/2u];
@@ -70,42 +79,51 @@ sat_result_t t3_force_hud_init(void* scratch,unsigned bytes) {
     uint8_t* data=scratch;
     uint16_t lut[16];
     uint32_t size;
-    const uint8_t* glyph[PIECES-GLYPH];
-    unsigned glyph_padded[PIECES-GLYPH];
+    const uint8_t* texels[MAX_PIECES];
+    uint16_t pitch[MAX_PIECES];
     SAT_TRY(read_file("FHUD.BIN",data,bytes,&size));
-    static const uint8_t magic[8]={'T','3','F','H','U','D','1',0};
+    static const uint8_t magic[8]={'T','3','F','H','U','D','2',0};
     for(unsigned j=0;j<8;++j)if(size<12u || data[j]!=magic[j])return SAT_ERR_VERSION;
-    if(le16(data+8)!=PIECES || le16(data+10)!=PALETTES)return SAT_ERR_VERSION;
+    const unsigned pieces=le16(data+8),palettes=le16(data+10);
+    if(pieces<=GLYPH || pieces>MAX_PIECES)return SAT_ERR_VERSION;
+    __builtin_memset(g_glyph,0,sizeof g_glyph);
+    g_palettes[0]=g_palettes[1]=g_palettes[2]=0;
     uint32_t at=12;
-    for(unsigned i=0;i<PIECES;++i) {
-        if(at+40u>size)return SAT_ERR_VERSION;
+    for(unsigned i=0;i<pieces;++i) {
+        if(at+44u>size)return SAT_ERR_VERSION;
         const unsigned padded=le16(data+at+2),height=le16(data+at+4),count=le16(data+at+6);
-        if(!padded || padded&7u || count!=padded*height/2u || at+40u+count>size)return SAT_ERR_VERSION;
-        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+at+8u+2u*j);
-        SAT_TRY(upload(&g_tex[i],lut,data+at+40u,padded,height));
+        const unsigned font=data[at+8],c=data[at+9];
+        if(!padded || padded&7u || count!=padded*height/2u || at+44u+count>size)return SAT_ERR_VERSION;
+        if((i<GLYPH)!=(font==0xFFu))return SAT_ERR_VERSION;
         if(i>=GLYPH) {
-            if(height!=GLYPH_H || padded<GLYPH_W)return SAT_ERR_VERSION;
-            glyph[i-GLYPH]=data+at+40u;
-            glyph_padded[i-GLYPH]=padded;
+            if(font>=FONTS || c<33u || c>=128u || height!=FONT[font].height || padded<FONT[font].width)
+                return SAT_ERR_VERSION;
+            g_glyph[font][c-32u]=(uint8_t)i;
         }
-        at+=40u+count;
+        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+at+12u+2u*j);
+        texels[i]=data+at+44u;
+        pitch[i]=(uint16_t)padded;
+        SAT_TRY(upload(&g_tex[i],lut,texels[i],padded,height));
+        at+=44u+count;
     }
-    /* The glyphs share colour 5's table; the palette picks each label's colour when drawn. */
-    for(unsigned l=0;l<2u;++l) {
-        unsigned n=0;
-        while(LABEL_TEXT[l][n])++n;
-        const unsigned padded=(ADVANCE*(n-1u)+GLYPH_W+7u)&~7u;
-        if(size+padded*GLYPH_H/2u>bytes)return SAT_ERR_CAPACITY;
-        compose(LABEL_TEXT[l],glyph,glyph_padded,data+size,padded);
-        SAT_TRY(upload(&g_tex[LABEL_SCORE+l],lut,data+size,padded,GLYPH_H));
-        g_label_width[l]=(uint16_t)padded;
-    }
-    for(unsigned i=0;i<PALETTES;++i,at+=32u) {
-        if(at+32u>size)return SAT_ERR_VERSION;
-        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+at+2u*j);
-        SAT_TRY(sat_vdp1_upload_lut(lut,&g_palette[i]));
+    for(unsigned i=0;i<palettes;++i,at+=36u) {
+        if(at+36u>size)return SAT_ERR_VERSION;
+        const unsigned font=data[at],colour=data[at+1];
+        if(font>=FONTS || colour>=COLOURS)return SAT_ERR_VERSION;
+        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+at+4u+2u*j);
+        SAT_TRY(sat_vdp1_upload_lut(lut,&g_palette[font][colour]));
+        g_palettes[font]|=(uint16_t)(1u<<colour);
     }
     if(at!=size)return SAT_ERR_VERSION;
+    for(unsigned l=0;l<2u;++l) {
+        unsigned n=0;
+        for(;LABEL_TEXT[l][n];++n)if(!glyph_of(0,LABEL_TEXT[l][n]))return SAT_ERR_VERSION;
+        const unsigned padded=(FONT[0].advance*(n-1u)+FONT[0].width+7u)&~7u;
+        if(size+padded*FONT[0].height/2u>bytes)return SAT_ERR_CAPACITY;
+        compose(LABEL_TEXT[l],texels,pitch,data+size,padded);
+        SAT_TRY(upload(&g_tex[LABEL_SCORE+l],lut,data+size,padded,FONT[0].height));
+        g_label_width[l]=(uint16_t)padded;
+    }
     /* KEYS.BIN (build_force_icons.py): big-endian count, then per key width, height, 16 colours and
      * 4-bit texels; the 20-texel rows pad to 24 for VDP1. */
     SAT_TRY(read_file("KEYS.BIN",data,bytes,&size));
@@ -132,7 +150,8 @@ sat_result_t t3_force_hud_init(void* scratch,unsigned bytes) {
     if(!padded || padded&7u || 8u+2u*(32u+padded*height/2u)!=name_bytes)return SAT_ERR_VERSION;
     g_name_width=(uint16_t)be16(data);
     for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+8u+2u*j);
-    return upload(&g_tex[NAME],lut,data+40u,padded,height);
+    SAT_TRY(upload(&g_tex[NAME],lut,data+40u,padded,height));
+    return make_separators(data,bytes);
 }
 
 #define X(x) t3_psx_viewport_x(x)
@@ -175,35 +194,131 @@ sat_result_t t3_force_hud_timer(unsigned seconds) {
     return draw(DIGIT+seconds%10u,184,22,184+16,22+46,0);
 }
 
-/* print_text with font 0 (advance 9, 10 x 16 glyphs): a space advances the pen. */
-static int text(const char* s,int pen,uint16_t palette,sat_result_t* st) {
-    for(;*s;++s,pen+=9) {
-        if(*s==' ')continue;
-        unsigned g=0;
-        while(MODE_CHARS[g] && MODE_CHARS[g]!=*s)++g;
-        if(*st==SAT_OK && MODE_CHARS[g])*st=draw(GLYPH+g,pen,24,pen+10,24+16,palette);
+/* print_text (FUN_8004D15C) of an already formatted line: a space advances the pen; a character
+ * without a glyph or a colour FHUD.BIN lacks draws nothing. Returns the pen after the line. */
+static int print(unsigned font,unsigned colour,int pen,int y,const char* s,sat_result_t* st) {
+    const int w=FONT[font].width,h=FONT[font].height;
+    const int known=colour<COLOURS && (g_palettes[font]>>colour&1u);
+    for(;*s;++s,pen+=FONT[font].advance) {
+        const unsigned g=glyph_of(font,*s);
+        if(g && known && *st==SAT_OK)*st=draw(g,pen,y,pen+w,y+h,g_palette[font][colour]);
     }
     return pen;
 }
 
-/* %8D: the value right-aligned in eight places (values over 99,999,999 print 99999999). */
-static sat_result_t number(uint32_t value,int pen) {
-    char digits[9];
+/* A %D or %d value into `out` (at least 10 bytes): with `width` and a shorter value, spaces before it
+ * (they advance the pen) or zeros with `zeros`; a longer value keeps its last `width` digits. Values
+ * above 99,999,999 print 99999999. */
+static const char* format(char* out,uint32_t value,unsigned width,int zeros) {
     if(value>99999999u)value=99999999u;
-    int at=8;
-    digits[at]=0;
-    do {digits[--at]=(char)('0'+value%10u);value/=10u;} while(value && at);
-    sat_result_t st=SAT_OK;
-    text(digits+at,pen+9*at,g_palette[2],&st);
-    return st;
+    char* p=out+9;
+    *p=0;
+    unsigned n=0;
+    do {*--p=(char)('0'+value%10u);value/=10u;++n;} while(value);
+    if(width && n>width)return out+9-width;
+    for(;width && n<width;++n)*--p=zeros?'0':' ';
+    return p;
 }
 
 sat_result_t t3_force_hud_scores(uint32_t score,uint32_t hiscore) {
-    /* "SCORE " at 19 and "HI-SCORE " at 208 (the space advances the pen), each as its composed label. */
-    SAT_TRY(draw(LABEL_SCORE,19,24,19+g_label_width[0],24+GLYPH_H,g_palette[0]));
-    SAT_TRY(number(score,19+6*ADVANCE));
-    SAT_TRY(draw(LABEL_HI,208,24,208+g_label_width[1],24+GLYPH_H,g_palette[1]));
-    return number(hiscore,208+9*ADVANCE);
+    /* ModeCaption mode 10: "%c%f%H%VSCORE %c%8D" at 19 and the same for HI-SCORE at 208, y 24, the
+     * labels composed (colours 5 and 2), the values in colour 6. */
+    char buffer[10];
+    sat_result_t st=SAT_OK;
+    SAT_TRY(draw(LABEL_SCORE,19,24,19+g_label_width[0],24+FONT[0].height,g_palette[0][5]));
+    print(0,6,19+6*FONT[0].advance,24,format(buffer,score,8,0),&st);
+    SAT_TRY(st);
+    SAT_TRY(draw(LABEL_HI,208,24,208+g_label_width[1],24+FONT[0].height,g_palette[0][2]));
+    print(0,6,208+9*FONT[0].advance,24,format(buffer,hiscore,8,0),&st);
+    return st;
+}
+
+sat_result_t t3_force_hud_life_up(int x,int y,int32_t clock) {
+    sat_result_t st=SAT_OK;
+    print(0,clock&2?2u:5u,x,y,"LIFE UP!",&st);
+    return st;
+}
+
+sat_result_t t3_force_hud_seconds(int x,int y,unsigned seconds) {
+    /* "+" (font 0, colour 5) 4 below, the number (font 1, colour 5), "SEC" (font 0, colour 6) 6 below. */
+    char buffer[10];
+    sat_result_t st=SAT_OK;
+    x=print(0,5,x,y+4,"+",&st);
+    x=print(1,5,x,y,format(buffer,seconds,0,0),&st);
+    print(0,6,x,y+6,"SEC",&st);
+    return st;
+}
+
+sat_result_t t3_force_hud_loading(void) {
+    sat_result_t st=SAT_OK;
+    print(0,6,0xF2,0x1A6,"NOW LOADING...",&st);
+    return st;
+}
+
+sat_result_t t3_force_hud_bonus_left(int x,int y,int32_t frames) {
+    /* "%2D\"%02D": seconds and hundredths (FUN_800B1778 state 6, colour 5). */
+    char buffer[10];
+    sat_result_t st=SAT_OK;
+    const int32_t seconds=frames/60%60,hundredths=(int32_t)((int64_t)frames*100/60%100);
+    x=print(0,5,x,y,format(buffer,(uint32_t)seconds,2,0),&st);
+    x=print(0,5,x,y,"\"",&st);
+    print(0,5,x,y,format(buffer,(uint32_t)hundredths,2,1),&st);
+    return st;
+}
+
+sat_result_t t3_force_hud_stage_clear(void) {
+    sat_result_t st=SAT_OK;
+    print(2,8,41,112,"STAGE CLEAR!!",&st);
+    return st;
+}
+
+/* m'ss"cc of a frame count, as tekken_force's tally prints it. */
+static int clock_text(unsigned colour,int x,int y,int32_t t,int32_t cs,sat_result_t* st) {
+    char buffer[10];
+    x=print(1,colour,x,y,format(buffer,(uint32_t)(t/3600%60),2,1),st);
+    x=print(1,colour,x,y,"'",st);
+    x=print(1,colour,x,y,format(buffer,(uint32_t)(t/60-60*(t/3600)),2,1),st);
+    x=print(1,colour,x,y,"\"",st);
+    return print(1,colour,x,y,format(buffer,(uint32_t)cs,2,1),st);
+}
+
+sat_result_t t3_force_hud_tally(const t3_force_hud_tally_t* t) {
+    /* FUN_800B1778 state 7 (font 1, x 0x2F): the lines 30 frames apart at y 0xB4, 0xE8, 0x11C, 0x150. */
+    char buffer[10];
+    sat_result_t st=SAT_OK;
+    int x;
+    if(t->frame>=0x1E) {
+        x=print(1,4,0x2F,0xB4,"STAGE BONUS : ",&st);
+        print(1,4,x,0xB4,format(buffer,t->stage_bonus,5,0),&st);
+    }
+    if(t->frame>=0x3C) {
+        x=print(1,1,0x2F,0xE8,"CLEAR BONUS : ",&st);
+        print(1,1,x,0xE8,format(buffer,t->clear_bonus,5,0),&st);
+    }
+    int32_t cs=0;
+    if(t->frame>=0x5A) {
+        cs=(int32_t)((int64_t)t->clear_time*100/60%100);
+        x=print(1,5,0x2F,0x11C,"CLEAR TIME : ",&st);
+        clock_text(5,x,0x11C,t->clear_time,cs,&st);
+    }
+    if(t->frame<0x78)return st;
+    switch(t->last) {
+    case T3_FORCE_TALLY_BONUS_TIME: {
+        /* The hundredths add up with the clear time's to a whole second. */
+        int32_t c=(int32_t)((int64_t)t->bonus_time*100/60%100);
+        if(cs+c<100)c=100-cs;
+        x=print(1,6,0x2F,0x150,"BONUS TIME : ",&st);
+        clock_text(6,x,0x150,t->bonus_time,c,&st);
+        break;}
+    case T3_FORCE_TALLY_KEY:
+        print(1,t->frame&2?6u:2u,0x56,0x150,"YOU GOT A KEY!!",&st);
+        break;
+    case T3_FORCE_TALLY_FINAL:
+        print(1,t->frame&4?6u:2u,0x22,0x150,"CHALLENGE FINAL STAGE!!",&st);
+        break;
+    default:break;
+    }
+    return st;
 }
 
 sat_result_t t3_force_hud_keys(unsigned keys) {
@@ -236,6 +351,28 @@ static uint16_t segment(unsigned i,int scale) {
     return SAT_RGB555(c[0],c[1],c[2]);
 }
 
+/* The five separators (LINE_G2, white at the top to grey) never move: one sprite of them, its rows
+ * shading through LUT entries 1 to `height`. */
+static sat_result_t make_separators(uint8_t* scratch,unsigned bytes) {
+    const unsigned left=(unsigned)X(0x3F),height=(unsigned)(Y(BAR_BOTTOM)-Y(BAR_TOP));
+    const unsigned padded=((unsigned)X(0x3F+4*SEGMENT)-left+1u+7u)&~7u;
+    if(height<2u || height>15u || padded*height/2u>bytes)return SAT_ERR_CAPACITY;
+    uint16_t lut[16]={0};
+    for(unsigned r=0;r<height;++r) {
+        const unsigned v=31u-15u*r/(height-1u);
+        lut[1u+r]=SAT_RGB555(v,v,v);
+    }
+    for(unsigned i=0;i<padded*height/2u;++i)scratch[i]=0;
+    for(int k=0;k<5;++k) {
+        const unsigned x=(unsigned)X(0x3F+SEGMENT*k)-left;
+        for(unsigned r=0;r<height;++r) {
+            uint8_t* o=&scratch[r*padded/2u+x/2u];
+            *o=(uint8_t)(x&1u?(*o&0xF0u)|(1u+r):(*o&0x0Fu)|(1u+r)<<4);
+        }
+    }
+    return upload(&g_tex[SEPARATORS],lut,scratch,padded,height);
+}
+
 sat_result_t t3_force_hud_progress(int level,int mark,int sine) {
     /* Lit segments are their colour half over the scene, later ones and the current one past the
      * marker the scene halved (black, half-transparent); the current one up to the marker adds its
@@ -257,13 +394,9 @@ sat_result_t t3_force_hud_progress(int level,int mark,int sine) {
     if(level==4)SAT_TRY(quad(x0,x0+0xC,BAR_TOP,BAR_BOTTOM,segment(3u,2*pulse),half));
     /* The separators shade from white at the top to grey (LINE_G2); the marker is white. */
     const int16_t top=(int16_t)NY(BAR_TOP),bottom=(int16_t)(NY(BAR_BOTTOM)-1);
-    const uint16_t fade[4]={sat_gouraud_rgb(15,15,15),sat_gouraud_rgb(15,15,15),
-                            sat_gouraud_rgb(0,0,0),sat_gouraud_rgb(0,0,0)};
-    for(int k=0;k<5;++k) {
-        const int16_t x=(int16_t)NX(0x3F+SEGMENT*k);
-        const sat_quad2_t line={{x,x,x,x},{top,top,bottom,bottom}};
-        SAT_TRY(sat_draw_quad2_polygon_gouraud(&line,SAT_RGB555(16,16,16),fade));
-    }
+    const sat_vdp1_texture_t* lines=&g_tex[SEPARATORS];
+    SAT_TRY(sat_draw_sprite_scaled_screen(lines,(int16_t)(X(0x3F)+lines->width/2),
+        (int16_t)(Y(BAR_TOP)+lines->height/2),lines->width,lines->height,0));
     const int16_t m=(int16_t)NX(mark);
     const sat_quad2_t marker={{m,m,m,m},{top,top,bottom,bottom}};
     SAT_TRY(sat_draw_quad2_polygon(&marker,SAT_RGB555(31,31,31)));

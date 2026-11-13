@@ -118,6 +118,8 @@ int32_t t3_force_enemy_health(const t3_force_level_t* s,const uint8_t* tables,in
  * half-word); the player's is T3_FORCE_PLAYER_BAR. */
 enum { T3_FORCE_PLAYER_BAR=0x9C };
 int t3_force_bar_width(const uint8_t* tables,int type);
+/* STAGE BONUS of a level (0x800B0BD0, the tally's first line); 0 outside levels 0-3. */
+uint32_t t3_force_stage_bonus(const uint8_t* tables,int level);
 
 /* The flat vector of the golden cases: the state's fields in the order of tests/test_psx_force_level.c. */
 void t3_force_level_load(t3_force_level_t* s,const int32_t* v);

@@ -23,9 +23,10 @@ every compared frame of the three recordings, including `force_run`'s carried-st
 levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
 requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
 PS1 reference frames of Force level 1 (Backstreets) now exist: PCSX-Redux built with
-`scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). The fight HUD now draws
-the original's pieces in its layout (see "The Force HUD in the original art"); its pop-ups, the stage-clear tally,
-NOW LOADING and the enemies' names still use the debug font.
+`scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). The fight HUD and
+force.ovl's texts (LIFE UP!, "+n SEC", NOW LOADING..., the bonus time left, STAGE CLEAR!! and the tally) now draw the
+original's pieces and fonts in its layout (see "The Force HUD in the original art" and "force.ovl's texts in the
+original fonts"). Only the enemies' names are missing: the enemy packs carry no name sheets.
 
 ## What the mode is
 
@@ -1174,7 +1175,8 @@ Differences from the original:
 - VDP1 half-transparency blends only with VDP1 pixels. Below the bar is the floor, which is VDP1, so the bar
   blends as it should on levels 1-3.
 - The enemies' names are not drawn: the enemy packs carry no name sheets.
-- LIFE UP!, +n SEC, the stage-clear tally and NOW LOADING still use the debug font.
+- LIFE UP!, +n SEC, the stage-clear tally and NOW LOADING still use the debug font. (Done next; see the following
+  section.)
 
 **Frame rate** (`scripts/mednafen_force_rate.py`, 70 s). The probe now also records the most fields between two
 images up to tick 600 (word 11). Same input and state hashes (1714359845, 2578104655):
@@ -1194,6 +1196,51 @@ calls convert themselves). The first runs had the bar off-screen. The 181 above 
 Frames (Ymir, private, `assets/imported/ps1-force-reference/saturn-hud/`): level 1 at field 1301, laid out as
 `after-c`. Also the boss boundary probe at fields 2000-2400: the HUD reloads after the boss is loaded, with the
 boss's bar and the carried score, and the run ends in GAME OVER as before.
+
+### Update: force.ovl's texts in the original fonts (2026-11-13)
+
+`force_hud.c` now prints force.ovl's texts the way print_text (FUN_8004D15C) lays them out: the font's advance per
+character, a space advancing the pen, `%5D` right-aligned by spaces, `%02d` zero-padded. The strings and their
+arguments are the remake's (`mode_hud_view.gd` `_force`, `force_sim.py` tally); the strings were checked in Rev.1's
+force.ovl (0x800B0D54-0x800B0EF0):
+
+| Text | Font, colour | Where | When |
+|---|---|---|---|
+| `LIFE UP!` | 0, 2/5 flashing (clock & 2) | the item's rising popup | item state 2 |
+| `+` `n` `SEC` | 0 col 5 (+4), 1 col 5, 0 col 6 (+6) | the enemy's rising popup | slot state 6, 60 frames |
+| `NOW LOADING...` | 0, 6 | (0xF2, 0x1A6) | level state 4 |
+| `%2D"%02D` (bonus left) | 0, 5 | over the player's root - 500, x - 0x16 | level state 6, bonus time and health left |
+| `STAGE CLEAR!!` | 2, 8 | (41, 112) | round state 8 |
+| tally: STAGE BONUS, CLEAR BONUS, CLEAR TIME, then BONUS TIME / YOU GOT A KEY!! / CHALLENGE FINAL STAGE!! | 1; 4, 1, 5, 6 / 6-2 / 6-2 | x 0x2F (0x56, 0x22), y 0xB4 + 0x34 per line | level state 7, 30 frames apart |
+
+The debug box and `PRESS START` of the old tally are gone: the original has neither. LOAD.BIN still shows NOW
+LOADING while the executable starts, before FHUD.BIN is read.
+
+FHUD.BIN is now version 2 (22,840 bytes, 88 pieces, 9 tables). Each glyph is tagged with its font and character, and
+each table with its font and colour. Glyph texels are stored once per font, and the table picks the colour.
+`extract_force_hud.py` takes each font's characters from the texts it lists, so a text cannot lack a glyph. The
+first build lacked font 0's `F`: LIFE UP! drew as `LI E UP!`.
+
+The five separators never move, so they are now one sprite, built once into a texture with their white-to-grey
+rows. That replaces five gouraud polygons, each of which staged its own shading table. With the new texts the probe
+first read 180 images. Disabling the "+n SEC" draws changed nothing, so the drop was not the draws themselves. The
+separator sprite brought it back:
+
+| Build | Fields | Discarded | Images | Worst gap (fields) |
+|---|---|---|---|---|
+| control (`ea14e1e`) | 613 | 8 | 181 | 7 |
+| texts, separators as five polygons | 611 | 6 | 180 | 7 |
+| **texts, separators as one sprite** | 612 | 7 | 181 | 7 |
+
+Frames (Ymir, private, `saturn-hud/`):
+- `clear-probe-tally.png` (`T3_FORCE_CLEAR_PROBE`): STAGE CLEAR!! over the tally lines in their colours, YOU GOT A
+  KEY!!, then the key icon, then the result screen.
+- `plus-seconds.png`: "+2 SEC" over a grunt. A temporary, since removed, edit to the pickup probe zeroed the grunt's
+  health at tick 420; the timer gains the seconds.
+- The pickup probe showed LIFE UP! over the player (checked, not kept).
+
+NOW LOADING and the bonus time left use the same print path but were not seen in a frame. No probe reaches level
+state 4 or a state 6 with bonus time.
 
 ### Update: the Force result screen in the original art (2026-11-12)
 

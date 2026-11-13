@@ -25,4 +25,26 @@ sat_result_t t3_force_hud_keys(unsigned keys);
 /* FUN_800B3D34: the four level segments, the marker at `mark` (original x) and its pointer;
  * `sine` is the executable's sine (4096 = 1) at the bar's phase. */
 sat_result_t t3_force_hud_progress(int level,int mark,int sine);
+
+/* force.ovl's texts in print_text's fonts (FHUD.BIN), at their original positions. */
+/* FUN_800B4374: LIFE UP! at x, y, flashing between colours 2 and 5 with the level clock. */
+sat_result_t t3_force_hud_life_up(int x,int y,int32_t clock);
+/* "+n SEC" over a defeated enemy: the pen from x, the number in font 1. */
+sat_result_t t3_force_hud_seconds(int x,int y,unsigned seconds);
+/* State 4: NOW LOADING... at (0xF2, 0x1A6). */
+sat_result_t t3_force_hud_loading(void);
+/* State 6: the bonus time left (seconds and hundredths of `frames`) over the player. */
+sat_result_t t3_force_hud_bonus_left(int x,int y,int32_t frames);
+/* Round state 8: STAGE CLEAR!! (font 2, colour 8) at (41, 112). */
+sat_result_t t3_force_hud_stage_clear(void);
+
+enum { T3_FORCE_TALLY_NONE=-1, T3_FORCE_TALLY_BONUS_TIME=0, T3_FORCE_TALLY_KEY=1, T3_FORCE_TALLY_FINAL=2 };
+typedef struct {
+    int32_t frame;          /* the tally's count: a line every 30 frames */
+    uint32_t stage_bonus,clear_bonus;
+    int32_t clear_time,bonus_time;   /* frames */
+    int last;               /* T3_FORCE_TALLY_*: the fourth line */
+} t3_force_hud_tally_t;
+/* State 7: the stage clear tally. */
+sat_result_t t3_force_hud_tally(const t3_force_hud_tally_t* tally);
 #endif

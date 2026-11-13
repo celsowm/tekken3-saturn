@@ -918,21 +918,19 @@ static sat_result_t draw_force_hud(void) {
     }
     const uint8_t* sine=g_owned_config.force_trig+2u*(lv->bar_phase&0xFFFu);
     SAT_TRY(t3_force_hud_progress(lv->level,mark,(int16_t)(sine[0]|sine[1]<<8)));
+    }
+    if(!g_run_end) {
+    /* The popups keep the original's x and y (y in 1/16 dots) of the rising text. */
     for(unsigned i=0;i<T3_FORCE_ITEMS;++i) {
         const t3_force_item_t* it=&lv->item[i];
-        if(it->state==2)SAT_TRY(sat_hud_text(hud,"LIFE UP!",
-            ((int16_t)it->popup_x-192)*320/368+160,
-            ((int16_t)it->popup_y>>4)*224/480));
+        if(it->state==2)SAT_TRY(t3_force_hud_life_up((int16_t)it->popup_x,(int16_t)it->popup_y>>4,lv->clock));
     }
     for(unsigned i=0;i<T3_FORCE_SLOTS;++i) {
         const t3_force_slot_t* slot=&lv->slot[i];
         if(slot->state==6 && lv->clock<(int16_t)slot->popup_until && slot->type>=0 && slot->type<=4) {
             const unsigned at=0x128u+4u*(unsigned)slot->type+2u;
-            const uint32_t seconds=g_force_tables[at]|(uint32_t)g_force_tables[at+1]<<8;
-            const int x=((int16_t)slot->popup_x-192)*320/368+160;
-            const int y=((int16_t)slot->popup_y>>4)*224/480;
-            SAT_TRY(sat_hud_value(hud,"+",seconds,x,y));
-            SAT_TRY(sat_hud_text(hud," SEC",x+16,y));
+            const unsigned seconds=g_force_tables[at]|(unsigned)g_force_tables[at+1]<<8;
+            SAT_TRY(t3_force_hud_seconds((int16_t)slot->popup_x,(int16_t)slot->popup_y>>4,seconds));
         }
     }
 #if T3_FORCE_BOSS_PROBE
@@ -941,25 +939,27 @@ static sat_result_t draw_force_hud(void) {
 #if T3_FORCE_INPUT_PROBE
     SAT_TRY(sat_hud_text_centered(hud,"INPUT REPLAY",160,196));
 #endif
-    }
-    if(g_run_end) {
-        SAT_TRY(draw_run_result());
-    } else if(lv->state==7) {
-        SAT_TRY(sat_draw_rect_screen(24,68,272,132,SAT_RGB555(0,0,0)));
-        SAT_TRY(sat_hud_text_centered(hud,"STAGE CLEAR",160,76));
-        if(lv->tally>=30)SAT_TRY(sat_hud_value(hud,"STAGE BONUS",
-            ((uint32_t)lv->level+1u)*5000u,32,96));
-        if(lv->tally>=60)SAT_TRY(sat_hud_value(hud,"CLEAR BONUS",(uint32_t)lv->clear_bonus,32,112));
-        if(lv->tally>=90)SAT_TRY(sat_hud_value(hud,"CLEAR TIME",(uint32_t)lv->clear_time/60u,32,128));
-        if(lv->tally>=120) {
-            if(lv->key_earned)SAT_TRY(sat_hud_text_centered(hud,"YOU GOT A KEY!",160,152));
-            else if(lv->final_challenge)SAT_TRY(sat_hud_text_centered(hud,"CHALLENGE FINAL STAGE!",160,152));
-            else if(lv->level<3 && lv->bonus_time!=0)
-                SAT_TRY(sat_hud_value(hud,"BONUS TIME",(uint32_t)lv->bonus_time/60u,32,152));
-            SAT_TRY(sat_hud_text_centered(hud,"PRESS START",160,180));
+    if(g_owned_match.flow.state==T3_ROUND_STAGE_CLEAR)SAT_TRY(t3_force_hud_stage_clear());
+    if(lv->state==4) {
+        SAT_TRY(t3_force_hud_loading());
+    } else if(lv->state==6) {
+        /* The bonus time left over the player: 500 units above the root (FUN_800B1778 state 6). */
+        const t3_psx_fighter_t* player=&g_owned_match.fighter[0];
+        if(lv->bonus_time>0 && player->health_q16>0) {
+            const int32_t point[3]={player->ground.root.x,player->ground.root.y-500,player->ground.root.z};
+            int32_t screen[3];
+            t3_psx_camera_project(&g_owned_match.force_view,point,screen);
+            SAT_TRY(t3_force_hud_bonus_left(screen[0]-0x16,screen[1],lv->bonus_time));
         }
-    } else if(lv->state==3 || lv->state==4) {
-        SAT_TRY(draw_loading());
+    } else if(lv->state==7) {
+        const t3_force_hud_tally_t tally={lv->tally,t3_force_stage_bonus(g_force_tables,lv->level),
+            (uint32_t)lv->clear_bonus,lv->clear_time,lv->bonus_time,
+            lv->level<3 && lv->bonus_time?T3_FORCE_TALLY_BONUS_TIME:lv->key_earned?T3_FORCE_TALLY_KEY:
+            lv->final_challenge?T3_FORCE_TALLY_FINAL:T3_FORCE_TALLY_NONE};
+        SAT_TRY(t3_force_hud_tally(&tally));
+    }
+    } else {
+        SAT_TRY(draw_run_result());
     }
 #if T3_FORCE_CLEAR_PROBE
     SAT_TRY(sat_hud_text_centered(hud,"CLEAR PATH PROBE",160,196));
