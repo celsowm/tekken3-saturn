@@ -6,41 +6,45 @@ import json
 from pathlib import Path
 import zipfile
 
+from play_mednafen import missing_features
+
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.3 - SEGA SATURN FAN PORT (DEMO)
+README = '''TEKKEN 3 V0.4 - SEGA SATURN FAN PORT (DEMO)
 
 HOW TO PLAY
 Open music.cue in a Saturn emulator (Mednafen, Ymir...) with a compatible Saturn
 BIOS, or use a Saturn disc loader. Keep music.bin next to music.cue. A BIOS and
 emulator are not included.
 
-WHAT IS NEW IN V0.3: A REAL ARCADE MODE
-- ARCADE MODE is the one-player ten-fight ladder. You pick only your fighter; the
-  VS screen shows STAGE 1 to 10 and each opponent is drawn like the original's
-  ladder (four of the original ten, four others, Heihachi, then Ogre). The CPU
-  gets harder with every fight. All 14 stages are in: every fighter fights on
-  its own home stage, with its own music.
-- Lose and CONTINUE? counts down from 9 (A/B/C/X/Y/Z cut it short, START
-  retries); at 0 it is GAME OVER, then the title.
-- At fight 10, win a round against Ogre and he returns as True Ogre.
-- After fight 10 the winner's ending movie plays, then a closing screen.
-- A NEW CHALLENGER: press START on controller 2 during a fight. Both players
-  pick, they fight, and the winner carries the run on.
-- VS MODE is the two-player match, as before.
-Still from V0.2: the boot intro (LibSaturn logo, then the Tekken 3 opening; START
-skips it) and the VS screen shown while the fight loads.
+WHAT IS NEW IN V0.4: TEKKEN FORCE
+- TEKKEN FORCE MODE is in. Pick your fighter and walk through the four
+  side-scrolling levels against Crow, Falcon, Hawk and Owl, up to two at a time,
+  with each level's boss at its end. The level script, enemy AI, camera and walls
+  are ported from the original's code and checked frame by frame against
+  recordings of the original.
+- The timer, the bonus seconds per defeat, roast chicken, LIFE UP!, the keys,
+  NOW LOADING, STAGE CLEAR!!, the tally and the result screen, in the original's
+  art, fonts and sounds.
+- Three keys open the final stage against Doctor B. The keys, the high score and
+  Doctor B. are saved to the Saturn's internal memory (a few free blocks; it
+  never formats the memory).
+- Smoother fights: the benchmark fight runs at about 29.5 images per second in
+  Mednafen, against about 25.6 before this version.
+Still from V0.3: ARCADE MODE (the ten-fight ladder with all 14 stages, CONTINUE?,
+True Ogre, the endings and NEW CHALLENGER), VS MODE, the boot intro and the VS
+screen.
 
 PLAYING
-Press START at the title, then ARCADE MODE (one player) or VS MODE (two players,
-connect a second controller first).
+Press START at the title, then ARCADE MODE (one player), VS MODE (two players,
+connect a second controller first) or TEKKEN FORCE MODE (one player).
 Saturn pad: D-pad moves, X/Y punches, A/B kicks, L guard, R crouch, C jump.
 In OPTION MODE, UP/DOWN picks a row and LEFT/RIGHT changes it: DEBUG shows a
 performance report, MUSIC turns the CD music off.
 Example Mednafen keys: arrows move, A/S punch, Z/X kick, C jump, Q guard,
 W crouch, Return START. Set these in your emulator.
 
-Not in yet: the staff roll, the ending captions, the Ogre cutscene, costumes and
-the ranking screen.
+Not in yet: Team Battle, the staff roll, the ending captions, the Ogre cutscene,
+costumes and the ranking screen.
 
 REAL SATURN
 This build has run in emulators. On a real Saturn it is not verified: the movie
@@ -79,6 +83,10 @@ def main():
     cue_text = cue.read_text()
     if not cue_text.startswith('FILE "music.bin" BINARY\n') or 'TRACK 02 AUDIO' not in cue_text:
         parser.error('expected mixed-mode CUE pointing to music.bin')
+    missing = missing_features(cue)
+    if missing is None or missing:
+        parser.error('not the full game (scripts/play_mednafen.py would refuse it): '
+                     + ('; '.join(missing) if missing else 'no staged disc root'))
     files = {'music.cue': cue, 'music.bin': binary, 'LICENSE': ROOT / 'LICENSE',
              'NOTICE.md': ROOT / 'NOTICE.md'}
     manifest = {'elf_sha256': digest(elf), 'files': {name: digest(path) for name, path in files.items()}}

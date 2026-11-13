@@ -3,6 +3,15 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## V0.4: Tekken Force
+
+TEKKEN FORCE MODE starts the separate Force executable from the mode list: four levels, the bosses, the keys, Doctor B.'s
+final stage, the result screen and its sounds, with the keys, high score and Doctor B. saved to internal memory:
+[TEKKEN_FORCE_PLAN.md](TEKKEN_FORCE_PLAN.md). The disc also needs `-DT3_LOCAL_FORCE_LEVELS` and `-DT3_FORCE_SFX=ON`
+(the default) with `-DT3_LOCAL_SFX`. The versus renderer work since V0.3 (R1-R13 in
+[POST_VRAM_EXECUTION_TRACKER.md](POST_VRAM_EXECUTION_TRACKER.md)) took the Mednafen benchmark fight from 25.57 to
+29.46 images/s. `scripts/package_itch_demo.py` now refuses a disc that `scripts/play_mednafen.py` would refuse.
+
 ## V0.3: arcade mode
 
 ARCADE MODE is the one-player ten-fight ladder with CONTINUE?, True Ogre, the winner's ending movie and
