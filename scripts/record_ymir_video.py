@@ -32,7 +32,10 @@ SHOT = re.compile(r'^\[probe\] frame (\d+) -> \S+ \(\d+x\d+\) audio (\d+)$', re.
 
 
 def route(args):
-    script = ['0 NONE', f'{args.title_at} START', f'{args.title_at + 6} NONE']
+    # START twice during the opening movie skips it, so the title is up by --title-at (as scripts/menu_flow.py's
+    # early presses do).
+    script = ['0 NONE', f'{args.skip_at} START', f'{args.skip_at + 6} NONE', f'{args.skip_at + 60} START',
+              f'{args.skip_at + 66} NONE', f'{args.title_at} START', f'{args.title_at + 6} NONE']
     at = args.title_at + 80
     for _ in range(args.down):
         script += [f'{at} DOWN', f'{at + 6} NONE']
@@ -45,10 +48,10 @@ def route(args):
     script += [f'{args.pick_at} START', f'{args.pick_at + 6} NONE']
     rng, at = random.Random(args.seed), args.fight_from
     while at < args.frames:
-        walk = rng.randint(30, 90)
-        script.append(f'{at} RIGHT')
-        at += walk
-        for _ in range(rng.randint(2, 5)):
+        # Forward, forward and hold: a run covers the level before its timer ends.
+        script += [f'{at} RIGHT', f'{at + 4} NONE', f'{at + 8} RIGHT']
+        at += 8 + rng.randint(30, 60)
+        for _ in range(rng.randint(3, 7)):
             script += [f'{at} {rng.choice(("X", "Y", "A", "B", "RIGHT+X", "RIGHT+A", "DOWN+B"))}', f'{at + 4} NONE']
             at += rng.randint(14, 26)
         if rng.random() < 0.3:
@@ -67,6 +70,7 @@ def main():
     p.add_argument('--from-field', type=int, default=0, help='first field in the video')
     p.add_argument('--step', type=int, default=2, help='fields per video frame')
     p.add_argument('--pad', type=Path, help='a pad script used instead of the generated route')
+    p.add_argument('--skip-at', type=int, default=1700, help='START during the opening movie')
     p.add_argument('--title-at', type=int, default=2250)
     p.add_argument('--down', type=int, default=0, help='DOWN presses on the mode list (5: TEKKEN FORCE MODE)')
     p.add_argument('--right', type=int, default=0, help='RIGHT presses on the select before the pick')
