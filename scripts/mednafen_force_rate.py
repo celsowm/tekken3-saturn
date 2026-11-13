@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run a Tekken Force disc (a T3_FORCE_INPUT_PROBE build) for N seconds in an isolated Mednafen profile and print the
 rate counters the probe leaves at tick 600 (g_force_probe_600: input hash, state hash, fields, observed fields,
-discarded fields, scheduled ticks, images, pose cache hits/misses/evictions) from the exit save state.
+discarded fields, scheduled ticks, images, pose cache hits/misses/evictions, worst fields between two images) from
+the exit save state.
 No recording: the cost is the save state only. Run it on the candidate and the control build and compare.
 
     scripts/mednafen_force_rate.py --build build/force-work --out build/force-rate-a --seconds 70

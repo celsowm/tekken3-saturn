@@ -14,15 +14,14 @@ void t3_psx_hud_bar_reset(t3_psx_hud_bar_t* bar) {
     if(bar)*bar=(t3_psx_hud_bar_t){0};
 }
 
-int t3_psx_hud_bar_step(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health) {
-    if(!bar || max_health<BAR_LENGTH || health<0 || BAR_HEALTH_OVER(health,max_health))return 0;
+void t3_psx_hud_bar_step_room(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health,int room) {
     int target=bar->target;
     if(bar->last_health!=health) {
         bar->last_health=health;
-        const int unit=max_health/BAR_LENGTH;
-        target=(health-1+unit)/unit;
+        const int unit=max_health/room;
+        target=unit?(health-1+unit)/unit:0;
     }
-    if(target>BAR_LENGTH)target=BAR_LENGTH;
+    if(target>room)target=room;
     const int drawn=bar->drawn;
     int recent=drawn;
     if(drawn<bar->recent)
@@ -33,5 +32,10 @@ int t3_psx_hud_bar_step(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health)
     bar->target=(int16_t)target;
     bar->drawn=(int16_t)grown;
     bar->recent=(int16_t)recent;
+}
+
+int t3_psx_hud_bar_step(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health) {
+    if(!bar || max_health<BAR_LENGTH || health<0 || BAR_HEALTH_OVER(health,max_health))return 0;
+    t3_psx_hud_bar_step_room(bar,health,max_health,BAR_LENGTH);
     return 1;
 }

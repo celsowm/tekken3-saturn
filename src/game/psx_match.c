@@ -1965,9 +1965,20 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     }
     /* HudRoundUpdate runs before CameraDirector and before HitApply. Replay
      * playback skips it; its ending branch resumes it on this same tick. */
-    if(!playback)for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)
-        if(!t3_psx_hud_bar_step(&n->hud_bars[i],n->fighter[i].health_q16,
-                               n->config->max_health_q16))return 0;
+    if(!playback)for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
+        const t3_psx_fighter_t* f=&n->fighter[i];
+#if T3_PSX_FIGHTERS>2
+        if(n->config->start_force) {
+            /* force.ovl FUN_800B3118: the player's bar and each shown enemy's (not
+             * invulnerable, past the intro), as wide as its type's table entry. */
+            if(i && (f->body.invulnerable || n->flow.state==T3_ROUND_INTRO))continue;
+            const int width=i?t3_force_bar_width(n->config->force_tables,n->force.slot[i-1].type):T3_FORCE_PLAYER_BAR;
+            if(width>4)t3_psx_hud_bar_step_room(&n->hud_bars[i],f->health_q16,f->health_max,width-4);
+            continue;
+        }
+#endif
+        if(!t3_psx_hud_bar_step(&n->hud_bars[i],f->health_q16,n->config->max_health_q16))return 0;
+    }
     /* HudRoundUpdate's ResultWinVoice follow-up (round_hud.gd). It allocates
      * before CameraDirector/EffectsUpdate; the pool's voice wait then runs. */
     if(!playback && n->config->effects && n->flow.counter==1 &&

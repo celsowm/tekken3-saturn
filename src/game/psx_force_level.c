@@ -318,6 +318,8 @@ void t3_force_level_step(t3_force_level_t* s,const uint8_t* t,const uint8_t* scr
     s->event_count=0;
     if(level_script(s,t,script))emit(s,T3_FORCE_EVENT_AREA_CHANGE,0,0,0);
     for(int i=0;i<T3_FORCE_SLOTS;++i)enemy_slot(s,t,i);
+    s->bar_phase+=0x40; /* every frame the level runs (the pause menu stops the fight) */
+    if(!s->bar_done&&s->flag_70e8)s->bar_done=1;
     items(s);
     if(s->score>(uint32_t)SCORE_CAP)s->score=(uint32_t)SCORE_CAP;
     if(s->hiscore_run<s->score){s->hiscore_flag=1;s->hiscore_run=s->score;}
@@ -408,6 +410,10 @@ void t3_force_level_setup(t3_force_level_t* s,int level){
         s->fighter[i].index=(uint8_t)(i+1);
     }
     if(level>3)s->state=8;
+}
+
+int t3_force_bar_width(const uint8_t* t,int type){
+    return t && type>=0 && type<=4?tab16(t,KILL_SECONDS+4*(int64_t)type):0;
 }
 
 int32_t t3_force_enemy_health(const t3_force_level_t* s,const uint8_t* t,int type){

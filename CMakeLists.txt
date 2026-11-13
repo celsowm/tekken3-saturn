@@ -1918,7 +1918,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             if(NOT T3_FORCE_BOSS_PROBE_CHARACTER MATCHES "^([0-9]|1[0-9]|20)$")
                 message(FATAL_ERROR "T3_FORCE_BOSS_PROBE_CHARACTER must be 0..20")
             endif()
-            add_executable(tekken3_force src/saturn/force_save.c src/saturn/force_main.c src/saturn/disc.c src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c src/saturn/perf.c src/saturn/sim_profile.c src/saturn/combat_events.c src/saturn/cold_data.c src/saturn/fighter_pack.c src/saturn/roster_names.c src/saturn/stage_vdp2.c
+            # FHUD.BIN: the original pieces of the Force fight HUD (force_hud.c).
+            if(NOT T3_LOCAL_HUD_EXE OR NOT EXISTS "${T3_LOCAL_HUD_EXE}")
+                message(FATAL_ERROR "tekken3_force requires T3_LOCAL_HUD_EXE for FHUD.BIN")
+            endif()
+            set(_t3_force_hud "${CMAKE_BINARY_DIR}/generated/private_force_hud/FHUD.BIN")
+            add_custom_command(OUTPUT "${_t3_force_hud}"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_force_hud.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_force_hud}"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_force_hud.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                    "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                    "${T3_LOCAL_HUD_EXE}"
+                VERBATIM)
+            add_executable(tekken3_force src/saturn/force_save.c src/saturn/force_main.c src/saturn/force_hud.c src/saturn/disc.c src/saturn/characters.c src/saturn/move_probe.c src/saturn/psx_skin_bridge.c src/saturn/perf.c src/saturn/sim_profile.c src/saturn/combat_events.c src/saturn/cold_data.c src/saturn/fighter_pack.c src/saturn/roster_names.c src/saturn/stage_vdp2.c
+                "${_t3_force_hud}"
                 "${_t3_gen}/t3_generated_character.c"
                 "${_t3_logic_gen}/t3_local_divmot.c"
                 "${_t3_pack_gen}/t3_roster.h" "${_t3_boss_gen}/t3_force_boss_limits.h" ${_t3_pack_files})
@@ -1973,7 +1987,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                     "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV2.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV3.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV4.BIN"
                     "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN"
                     ${_t3_enemy_files}
-                    "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN"
+                    "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN" "${_t3_force_hud}"
                     "${_t3_boss_gen}/BOSSPAK.BIN" ${_t3_item_files}
                     "${_t3_menu_gen}/LOAD.BIN" ${_t3_force_sfx_files}
                     "${T3_LOCAL_PSX_FORCED_REACTION}"
@@ -2044,7 +2058,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${T3_LOCAL_FORCE_LEVELS}/LEV1.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV2.BIN" "${T3_LOCAL_FORCE_LEVELS}/LEV3.BIN"
                 "${T3_LOCAL_FORCE_LEVELS}/LEV4.BIN" "${T3_LOCAL_FORCE_LEVELS}/TRIG.BIN" "${T3_LOCAL_FORCE_LEVELS}/TABLES.BIN"
                 ${_t3_enemy_files}
-                "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN"
+                "${T3_LOCAL_FORCE_LEVELS}/BOSS.BIN" "${T3_LOCAL_FORCE_LEVELS}/KEYS.BIN" "${_t3_force_hud}"
                 "${_t3_boss_gen}/BOSSPAK.BIN" ${_t3_item_files}
                 "${_t3_menu_gen}/LOAD.BIN" "${T3_LOCAL_PSX_FORCED_REACTION}")
         elseif(TARGET tekken3_force_probe)

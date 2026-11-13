@@ -135,10 +135,12 @@ GLYPH_FILE_NAMES = {'!': 'excl', '.': 'dot', '?': 'query'}
 MESSAGE_CHARS = 'ABCDEFGHIJKLMNOPRSTUWXY!.?123456789V'
 REPLAY_CHARS = 'REPLAY'
 FONT_TABLE = 0x80021D64
+# hud.md's font table: advance, line height, glyph width and height, texture page, CLUT offset.
+FONT_METRICS = {0: (9, 18, 10, 16, 0x2D, 0), 1: (13, 26, 14, 24, 0x2D, 16), 2: (22, 42, 24, 40, 0x2E, 32)}
 
 
 def text_clut_xy(colour, font=2):
-    k = colour + (16 if font == 1 else 32)
+    k = colour + FONT_METRICS[font][5]
     return 256 + 16 * (k & 15), ((k >> 4) + 24) | 480
 
 
@@ -150,8 +152,7 @@ def extract_glyph(vram, exe, char, colour, font=2):
     """
     table, advance, line, width, height, page_id, offset, _ = struct.unpack_from(
         '<I5H2B', exe, FONT_TABLE - 0x80010000 + 0x800 + 16 * font)
-    expected = (13, 26, 14, 24, 0x2D, 16) if font == 1 else (22, 42, 24, 40, 0x2E, 32)
-    if (advance, line, width, height, page_id, offset) != expected:
+    if (advance, line, width, height, page_id, offset) != FONT_METRICS[font]:
         raise ValueError(f'font {font}: unexpected USA descriptor')
     page_x = (page_id & 15) * 64
     page_y = ((page_id >> 4) & 1) * 256

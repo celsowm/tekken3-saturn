@@ -106,6 +106,10 @@ implementation of Tekken3Remake.
   `src/saturn/original_hud.c`, `scripts/extract_psx_hud.py` (HUD sprites,
   font texels, metrics and CLUT rules from `docs/research/code/hud.md`
   and `tools/remake_import/hud.py`),
+  `src/saturn/force_hud.c`, `scripts/extract_force_hud.py` (the Tekken Force fight HUD: bar,
+  name, score line, key and progress bar layout and colours from `docs/research/code/hud.md`,
+  `remake/presentation/hud/mode_hud_view.gd`, `tools/research/draw_sim.py` and
+  `tools/research/force_sim.py`),
   `src/game/move_lifecycle.c`, `src/game/psx_ground.c`,
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and

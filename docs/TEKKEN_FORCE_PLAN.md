@@ -23,8 +23,9 @@ every compared frame of the three recordings, including `force_run`'s carried-st
 levels 2-4. The full-game disc passes `play_mednafen.py`'s gate, which now also
 requires FORCE.BIN, LEV1.BIN and BOSSPAK.BIN. The diagnostic Force disc is not a deliverable.
 PS1 reference frames of Force level 1 (Backstreets) now exist: PCSX-Redux built with
-`scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). Compared with them, the
-Saturn level still draws a debug HUD where the original draws the Force HUD (step 6).
+`scripts/pcsx_redux_reseek.patch` reaches the level (see "PS1 reference frames of level 1"). The fight HUD now draws
+the original's pieces in its layout (see "The Force HUD in the original art"); its pop-ups, the stage-clear tally,
+NOW LOADING and the enemies' names still use the debug font.
 
 ## What the mode is
 
@@ -1140,8 +1141,59 @@ Compared with the Saturn frame of level 1 kept from the panorama work (Mednafen,
 - The HUD does not match. The original has `SCORE` and its value at the top left, a large two-digit timer at the
   top centre, `HI-SCORE` at the top right, and a cyan life bar with the player's name plate below it. A four-part
   progress bar sits at the bottom centre. The Saturn build still draws the debug text: `STAGE`, `TIME`, `SCORE`,
-  `HI`, `KEYS` and `DEFEATED`. This is step 6's Force HUD, still open.
+  `HI`, `KEYS` and `DEFEATED`. This is step 6's Force HUD, still open. (Done next; see the following section.)
 - The original draws a dark blob shadow under the player.
+
+### Update: the Force HUD in the original art (2026-11-12)
+
+`src/saturn/force_hud.c` draws the Force fight HUD from the USA executable's own pieces, in the original 384 x 480
+coordinates mapped like the versus HUD (`psx_viewport.h`). The rules are the remake's (`draw_sim.py` force_health,
+`force_sim.py` progress_draw and key_icons, `mode_hud_view.gd`):
+
+- **Bars** (force.ovl FUN_800B3118). The player's is 0x9C wide at (10, 40). An enemy's width is the kill-time
+  table's first half-word for its type, right-aligned at x 202 + 0x9C (y 40 and 88). It is shown when the enemy is
+  not invulnerable and the round is not in its intro. Health, recent damage and empty run left from x + width - 2.
+  `t3_psx_hud_bar_step_room` is the duel's rule over the bar's own width less 4 (any maximum); hidden bars do not step.
+- **Name plate, timer, score line.** The player's name sheet (pack section NAMES) on the plate at (14, 66); the two
+  timer digits at x 169; ModeCaption mode 10: `SCORE` (colour 5) at 19 and `HI-SCORE` (colour 2) at 208, y 24,
+  font 0, the values right-aligned in eight places in colour 6.
+- **Keys**: one 20 x 36 icon per key earned at x 0, 20, 40, y 420 (KEYS.BIN).
+- **Progress bar** (FUN_800B3D34): the four 60-pixel segments from x 64 at y 436-452, the separators shading white
+  to grey, the marker at 60 pixels per 0x8000 of camera travel from the level start (capped at the segment's end,
+  at the end once the level is over, x0 + 0xC on level 4), and the blue-to-white pointer whose width follows the
+  sine at a phase that steps 0x40 per tick.
+
+FHUD.BIN (`scripts/extract_force_hud.py`, 7,972 bytes) holds the bar pieces, the plate, the digits and font 0's
+`SCOREHI-0123456789` with the three text tables; the build makes it from `T3_LOCAL_HUD_EXE` and puts it on both
+discs. The two labels are composed into one texture each when loaded.
+
+Differences from the original:
+
+- The current segment is additive on the PS1 (scene + colour x pulse). VDP1 has no additive mode, so it is
+  half-transparent at twice the colour: scene / 2 + colour x pulse.
+- VDP1 half-transparency blends only with VDP1 pixels. Below the bar is the floor, which is VDP1, so the bar
+  blends as it should on levels 1-3.
+- The enemies' names are not drawn: the enemy packs carry no name sheets.
+- LIFE UP!, +n SEC, the stage-clear tally and NOW LOADING still use the debug font.
+
+**Frame rate** (`scripts/mednafen_force_rate.py`, 70 s). The probe now also records the most fields between two
+images up to tick 600 (word 11). Same input and state hashes (1714359845, 2578104655):
+
+| Build | Fields | Discarded | Images | Worst gap (fields) |
+|---|---|---|---|---|
+| control (`1b31047` + the gap counter) | 612 | 7 | 180 | 7 |
+| first HUD, one glyph per letter | 611 | 6 | 179 | — |
+| **current HUD** (composed labels, one quad for the unlit run) | 613 | 8 | 181 | 7 |
+
+The first version cost one image; the progress bar was the cause (without it: 180). It cost the same opaque as
+half-transparent, so the cost was CPU-side per command, not VDP1 blending. Composing `SCORE` and `HI-SCORE` once
+saves 11 sprites a frame. Drawing the unlit segments and the rest of the current one as one quad saves up to 3 more.
+Note: `sat_draw_quad2_polygon*` take native coordinates, with 0, 0 at the screen centre (the screen-space sprite
+calls convert themselves). The first runs had the bar off-screen. The 181 above is with it on screen.
+
+Frames (Ymir, private, `assets/imported/ps1-force-reference/saturn-hud/`): level 1 at field 1301, laid out as
+`after-c`. Also the boss boundary probe at fields 2000-2400: the HUD reloads after the boss is loaded, with the
+boss's bar and the carried score, and the run ends in GAME OVER as before.
 
 ### Update: the Force result screen in the original art (2026-11-12)
 

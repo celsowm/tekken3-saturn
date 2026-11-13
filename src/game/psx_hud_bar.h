@@ -12,4 +12,7 @@ typedef struct {
 
 void t3_psx_hud_bar_reset(t3_psx_hud_bar_t* bar);
 int t3_psx_hud_bar_step(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health);
+/* force.ovl FUN_800B3118 (tekken_force.gd bars_step): the same rule over `room` fill pixels (a Force
+ * bar's width less its caps), with any maximum: a zero unit leaves the target at 0. */
+void t3_psx_hud_bar_step_room(t3_psx_hud_bar_t* bar,int32_t health,int32_t max_health,int room);
 #endif

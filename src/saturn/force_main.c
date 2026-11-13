@@ -32,6 +32,7 @@
 #include "saturn/exec.h"
 #include "cold_data.h"
 #include "fighter_pack.h"
+#include "force_hud.h"
 #include "sfx.h"
 #include "saturn/hud.h"
 #include "tick_clock.h"
@@ -138,7 +139,15 @@ static void init_force_pose_cache(void) {
  * candidate. Exclude pointers/padding so memory placement can be compared. */
 static uint32_t g_force_probe_input_hash=2166136261u,g_force_probe_state_hash=2166136261u;
 static uint32_t g_force_probe_start_field;
-static volatile uint32_t g_force_probe_600[11];
+/* Word 11: the most fields between two published images up to tick 600 (the worst case). */
+static volatile uint32_t g_force_probe_600[12];
+static uint32_t g_force_probe_last_image;
+static void force_probe_image(uint32_t field) {
+    if(g_force_probe_600[0]==0u && g_force_probe_last_image>=g_force_probe_start_field &&
+       g_force_probe_last_image!=0u && field-g_force_probe_last_image>g_force_probe_600[11])
+        g_force_probe_600[11]=field-g_force_probe_last_image;
+    g_force_probe_last_image=field;
+}
 
 static volatile uint32_t g_force_probe_skin_checked;
 /* The most cold faces (no material program) and skipped faces in one frame: sizes T3_FORCE_COLD_FACES. */
@@ -875,31 +884,40 @@ static sat_result_t draw_run_result(void) {
 }
 
 /* Screen-space presentation reads the runner after all simulation ticks for
- * this image. Health uses each record's maximum (grunts have much less than
- * the player); healing may temporarily put the player above that maximum. */
+ * this image. The bars draw FUN_800B3118's fields (psx_match.c), each over its own width. */
 static sat_result_t draw_force_hud(void) {
     const t3_force_level_t* lv=&g_owned_match.force;
-    const t3_psx_fighter_t* player=&g_owned_match.fighter[0];
     const sat_hud_t* hud=&g_debug_hud;
-    const uint32_t health=player->health_q16>0?(uint32_t)player->health_q16:0u;
-    if(!g_run_end) {
-    if(lv->level>3)SAT_TRY(sat_hud_text(hud,"FINAL STAGE",8,6));
-    else SAT_TRY(sat_hud_value(hud,"STAGE ",(uint32_t)lv->level+1u,8,6));
-    SAT_TRY(sat_hud_value(hud,"TIME ",g_owned_match.flow.timer>0?
-        ((uint32_t)g_owned_match.flow.timer+59u)/60u:0u,208,6));
-    SAT_TRY(sat_hud_bar(hud,8,18,152,7,health>(uint32_t)player->health_max?(uint32_t)player->health_max:health,(uint32_t)player->health_max,
-        SAT_RGB555(8,2,2),SAT_RGB555(3,28,7)));
-    SAT_TRY(sat_hud_value(hud,"SCORE ",lv->score,8,30));
-    SAT_TRY(sat_hud_value(hud,"HI ",lv->hiscore_run,176,30));
+    if(!g_run_end && !lv->text_off) {
+    /* FUN_800B3790 and the mode line: the player's bar at (10, 40) with the name under it, the
+     * enemies' bars right-aligned at x 358 (y 40 and 88), the timer, the scores, the keys and the
+     * progress bar. Enemy names are not drawn yet: the enemy packs carry no name sheets. */
+    const t3_psx_hud_bar_t* bar=&g_owned_match.hud_bars[0];
+    SAT_TRY(t3_force_hud_bar(10,40,T3_FORCE_PLAYER_BAR,bar->drawn,bar->recent));
+    SAT_TRY(t3_force_hud_player_name());
     for(unsigned i=1;i<3;++i) {
         const t3_psx_fighter_t* enemy=&g_owned_match.fighter[i];
-        if(!t3_psx_match_fighter_shown(&g_owned_match,i) || enemy->health_q16<=0)continue;
-        SAT_TRY(sat_hud_bar(hud,8+(int)(i-1u)*160,44,144,4,
-            (uint32_t)enemy->health_q16,(uint32_t)enemy->health_max,
-            SAT_RGB555(5,2,2),SAT_RGB555(29,20,3)));
-        SAT_TRY(sat_hud_text(hud,t3_fighter_name(t3_characters_force_model(i)),
-            8+(int)(i-1u)*160,50));
+        if(!t3_psx_match_fighter_shown(&g_owned_match,i) || enemy->body.invulnerable ||
+           g_owned_match.flow.state==T3_ROUND_INTRO)continue;
+        const int width=t3_force_bar_width(g_force_tables,lv->slot[i-1u].type);
+        if(width<=4)continue;
+        bar=&g_owned_match.hud_bars[i];
+        SAT_TRY(t3_force_hud_bar(202-(width-T3_FORCE_PLAYER_BAR),i==1u?40:88,width,bar->drawn,bar->recent));
     }
+    SAT_TRY(t3_force_hud_timer(g_owned_match.flow.timer>0?((unsigned)g_owned_match.flow.timer+59u)/60u:0u));
+    SAT_TRY(t3_force_hud_scores(lv->score,lv->hiscore_run));
+    SAT_TRY(t3_force_hud_keys((unsigned)lv->keys));
+    /* FUN_800B3D34's marker: 60 pixels per 0x8000 of camera travel through the level's segment. */
+    const int start=60*lv->level;
+    int mark=start+0x7C;
+    if(lv->level==4)mark=start+0x4C;
+    else if(!lv->bar_done) {
+        const int32_t v=(int32_t)((uint32_t)(lv->camera_x-lv->origin)*60u);
+        mark=start+0x40+v/0x8000;
+        if(mark>start+0x7C)mark=start+0x7C;
+    }
+    const uint8_t* sine=g_owned_config.force_trig+2u*(lv->bar_phase&0xFFFu);
+    SAT_TRY(t3_force_hud_progress(lv->level,mark,(int16_t)(sine[0]|sine[1]<<8)));
     for(unsigned i=0;i<T3_FORCE_ITEMS;++i) {
         const t3_force_item_t* it=&lv->item[i];
         if(it->state==2)SAT_TRY(sat_hud_text(hud,"LIFE UP!",
@@ -923,8 +941,6 @@ static sat_result_t draw_force_hud(void) {
 #if T3_FORCE_INPUT_PROBE
     SAT_TRY(sat_hud_text_centered(hud,"INPUT REPLAY",160,196));
 #endif
-    SAT_TRY(sat_hud_value(hud,"KEYS ",(uint32_t)lv->keys,8,210));
-    SAT_TRY(sat_hud_value(hud,"DEFEATED ",lv->kills,152,210));
     }
     if(g_run_end) {
         SAT_TRY(draw_run_result());
@@ -1081,6 +1097,7 @@ static sat_result_t load_force_boss(const t3_force_handoff_t* start) {
     SAT_TRY(sat_hud_init(&g_debug_hud,&g_debug_font,7u,8u));
     SAT_TRY(init_force_items());
     SAT_TRY(init_force_floor());
+    SAT_TRY(t3_force_hud_init(g_force_scene_faces,sizeof g_force_scene_faces));
     SAT_TRY(t3_cold_data_load());
     const t3_fighter_pack_t* player=t3_fighter_pack(0);
     const t3_fighter_pack_t* boss=t3_fighter_pack(1);
@@ -1219,6 +1236,7 @@ int main(void) {
     scene.faces.cold_capacity=T3_FORCE_COLD_FACES;
 
     /* Initialize Force-specific systems. */
+    SAT_PANIC_IF_ERROR(t3_force_hud_init(g_force_scene_faces, sizeof g_force_scene_faces));
     SAT_PANIC_IF_ERROR(t3_sfx_init(g_force_scene_faces, sizeof g_force_scene_faces));
     t3_combat_events_reset();
 
@@ -1477,5 +1495,8 @@ int main(void) {
         }
         published_field=sat_field_count();
         ++g_force_images;
+#if T3_FORCE_INPUT_PROBE
+        force_probe_image(published_field);
+#endif
     }
 }

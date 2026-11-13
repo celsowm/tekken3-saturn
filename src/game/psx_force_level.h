@@ -94,6 +94,9 @@ typedef struct {
     uint16_t countdown_sound[5]; /* sounds at 5..1 seconds left (0x8009747E in the executable) */
     t3_force_event_t events[T3_FORCE_EVENTS];
     unsigned event_count;
+    /* FUN_800B396C's progress bar (0x800B6DE8, 0x800B6DEC): its sine phase, and whether the level ended. */
+    uint32_t bar_phase;
+    uint8_t bar_done;
 } t3_force_level_t;
 
 /* Reject truncated/placeholder tables before a newly spawned actor can receive
@@ -111,6 +114,10 @@ void t3_force_level_step(t3_force_level_t* s,const uint8_t* tables,const uint8_t
 void t3_force_level_setup(t3_force_level_t* s,int level);
 /* The health of an enemy of `type` (0..4; 4 is the level's boss) in this level (16.16). */
 int32_t t3_force_enemy_health(const t3_force_level_t* s,const uint8_t* tables,int type);
+/* The HUD bar width of an enemy of `type` in original pixels (FUN_800B3118: the kill-time table's first
+ * half-word); the player's is T3_FORCE_PLAYER_BAR. */
+enum { T3_FORCE_PLAYER_BAR=0x9C };
+int t3_force_bar_width(const uint8_t* tables,int type);
 
 /* The flat vector of the golden cases: the state's fields in the order of tests/test_psx_force_level.c. */
 void t3_force_level_load(t3_force_level_t* s,const int32_t* v);
