@@ -1263,6 +1263,27 @@ Frames (Ymir, private, `saturn-hud/`): `enemy-name-crow-f1301.png` (CROW on leve
 Frame rate (70 s): 611 fields, 5 discarded, **181 images, worst gap 7**, with the same hashes. That matches the
 control above (181, 7).
 
+### Fix: the player's side walls follow the camera (2026-11-13)
+
+Playing showed an invisible wall well before the screen's edge. ArenaBounds in mode 8 holds the player's x, measured
+from the camera's view-space x (`0x800B70F0`), between −0.323·z − 2,553 and 0.329·z + 1,971 (`modes.md`). The owned
+match never set that value. Only the replay evaluator wrote it, from the recording. On the Saturn it stayed 0, so the
+walls stood at the level's start. The camera is about 32,000 units in by the end of level 1.
+
+The original writes `0x800B70F0` in the panorama draw (FUN_800B4DF8, `force_sim.py background_draw`): ApplyMatrixLV of
+the camera's position (camera record +0x14) through the view matrix. The next frame's ArenaBounds reads it.
+`force_camera_frame` now computes it the same way before the camera moves, so the value comes from the last frame's
+camera and view. `t3_psx_camera_view_x` is `apply_lv`'s first row in 32-bit arithmetic: a rotation's entries are at
+most 4,096, so every product fits. The 64-bit version's 18 library multiplies cost one image. The two versions agree on
+20 million random inputs.
+
+Checked against the original: `force_run` from frame 261, the first level (7,522 rows, `T3_ORIGINAL_MATCH_START=11`,
+`T3_FORCE_BOSS_LIKE=1`, `T3_FORCE_REFILL=1`) is still exact on every row. The port's value equals the recorded one on
+every frame. The evaluator no longer injects the recorded value; it reports any frame where the two differ.
+
+Frame rate (70 s): the input hash is unchanged; the state hash changes because the player now walks past the old wall
+(2578104655 → 2983578197). 612 fields, 7 discarded, **181 images, worst gap 7**, against the control's 181 and 7.
+
 ### Update: the Force result screen in the original art (2026-11-12)
 
 A cleared run (`T3_FORCE_RUN_RESULT`) no longer draws the debug-font result in FORCE.BIN. It saves its progress,

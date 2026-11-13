@@ -352,15 +352,17 @@ int main(int argc,char** argv) {
         video.side_known=0;video.screen_known=0;video.fighter_view=NULL;video.physical_inputs=1;
         video.screen_x[0]=video.screen_x[1]=0;
 #endif
-        /* Tekken Force: the camera's view-space x the walls read (the owned build computes it from its view) */
-#if T3_PSX_FIGHTERS>2
-        if(config.start_force && fields>=16)game.force_view_x=view_x;
-#endif
+
         ai_frame=call;
         int ok=original_round_flow?
             (getenv("T3_REPLAY_IN_PLACE")?t3_psx_match_step_original_in_place(&game,p0,p1,&video):
                                      t3_psx_match_step_original(&game,p0,p1,&video)):
             t3_psx_match_step(&game,p0,p1);
+#if T3_PSX_FIGHTERS>2
+        /* The walls' camera view x is the port's own (force_camera_frame); report where it leaves the recording's. */
+        if(config.start_force && fields>=16 && game.force_view_x!=view_x)
+            fprintf(stderr,"force view x differs at frame %u: %d, recorded %d\n",frame,game.force_view_x,view_x);
+#endif
         /* The Tekken Force recordings refill the player's health and the timer after a frame when they run low
          * (flow_trace.py refill): the recorder's doing, not the game's. */
         if(ok && config.start_force && getenv("T3_FORCE_REFILL")) {

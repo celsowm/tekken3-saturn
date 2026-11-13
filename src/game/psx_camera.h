@@ -247,6 +247,9 @@ int t3_psx_camera_joint_matrix(const t3_psx_camera_matrix_t* view,const t3_psx_j
  * (offset 192, 240; -0x400..0x3FF) and depth. Fighter +0x1278 is joint
  * 11's screen x. */
 void t3_psx_camera_project(const t3_psx_camera_matrix_t* matrix,const int32_t point[3],int32_t out[3]);
+/* ApplyMatrixLV's x through the view's rotation alone: a world point's view-space x (FUN_800B4DF8 turns the
+ * camera's position into 0x800B70F0 this way). */
+int32_t t3_psx_camera_view_x(const t3_psx_camera_matrix_t* matrix,const int32_t point[3]);
 /* FUN_8004B05C: translate the original view to a world-space model origin
  * before separately projecting its signed-16 local vertices. */
 void t3_psx_camera_translate_view(const t3_psx_camera_matrix_t* view,const int32_t origin[3],

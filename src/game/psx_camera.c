@@ -1527,6 +1527,19 @@ T3_PROJECT_HOT static inline void camera_project_transformed(const t3_psx_camera
 void t3_psx_camera_project(const t3_psx_camera_matrix_t* m,const int32_t p[3],int32_t out[3]) {
     int32_t v[3];apply_lv(m->m,p,v);camera_project_transformed(m,v,out);
 }
+/* apply_lv's first row in 32 bits: a rotation's entries are at most 4096, so each 15-bit-half product fits and the
+ * high sum wraps exactly as w32 does (no 64-bit multiplies on the SH-2, once per frame). */
+int32_t t3_psx_camera_view_x(const t3_psx_camera_matrix_t* m,const int32_t p[3]) {
+    uint32_t hi=0;int32_t lo=0;
+    for(unsigned k=0;k<3;k++) {
+        const int32_t comp=p[k],row=m->m[0][k];
+        int32_t h,l;
+        if(comp>=0){h=comp>>15;l=comp&0x7FFF;}
+        else {h=-(int32_t)((uint32_t)-(int64_t)comp>>15);l=-(int32_t)((uint32_t)-(int64_t)comp&0x7FFF);}
+        hi+=(uint32_t)(row*h);lo+=row*l;
+    }
+    return (int32_t)((uint32_t)(lo>>12)+hi*8u);
+}
 void t3_psx_camera_translate_view(const t3_psx_camera_matrix_t* view,const int32_t origin[3],
                                   t3_psx_camera_matrix_t* out) {
     t3_psx_camera_matrix_t result=*view;int32_t offset[3];

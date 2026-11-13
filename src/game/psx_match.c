@@ -1701,6 +1701,10 @@ static int force_boss(t3_psx_match_t* n) {
 /* The camera runs first in the frame, from the player's root as the last frame left it. */
 static void force_camera_frame(t3_psx_match_t* n) {
     if(!n->config->force_trig)return;
+    /* The walls read the camera's view-space x (0x800B70F0) that the last frame's panorama (FUN_800B4DF8)
+     * wrote: the camera's position through the view it drew with (zero before the first view: the matrix is). */
+    const int32_t eye[3]={n->force_cam.x,n->force_cam.y,n->force_cam.z};
+    n->force_view_x=t3_psx_camera_view_x(&n->force_view,eye);
     const t3_vec3i_t r=n->fighter[0].ground.root;
     t3_force_camera_frame(&n->force_cam,n->config->force_trig,n->force_roll,r.x,r.z);
     const t3_psx_trig_t trig={n->config->force_trig,0x2800u};
