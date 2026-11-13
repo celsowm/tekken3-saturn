@@ -6,7 +6,13 @@
 set -eu
 state='tell application "System Events"
  set frontApp to name of first process whose frontmost is true
- tell process "Safari" to return frontApp & " windows=" & (count of windows) & " sheets=" & (count of sheets of window 1)
+ tell process "Safari"
+  set n to 0
+  repeat with w in windows
+   set n to n + (count of sheets of w)
+  end repeat
+  return frontApp & " windows=" & (count of windows) & " sheets=" & n
+ end tell
 end tell'
 case "${1:-}" in
 "") sed -n '2,6p' "$0"; exit 2 ;;
@@ -18,7 +24,12 @@ osascript -e 'on run argv
  tell application "System Events"
   if (name of first process whose frontmost is true) is not "Safari" then error "Safari is not in front"
   tell process "Safari"
-   if (count of sheets of window 1) is 0 then error "no file dialog open"
+   -- The dialog is a sheet of whichever window opened it, not always window 1.
+   set n to 0
+   repeat with w in windows
+    set n to n + (count of sheets of w)
+   end repeat
+   if n is 0 then error "no file dialog open"
    keystroke "g" using {command down, shift down}
    delay 1
    keystroke (item 1 of argv)

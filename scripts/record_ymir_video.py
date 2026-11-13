@@ -52,7 +52,8 @@ def route(args):
         script += [f'{at} RIGHT', f'{at + 4} NONE', f'{at + 8} RIGHT']
         at += 8 + rng.randint(30, 60)
         for _ in range(rng.randint(3, 7)):
-            script += [f'{at} {rng.choice(("X", "Y", "A", "B", "RIGHT+X", "RIGHT+A", "DOWN+B"))}', f'{at + 4} NONE']
+            script += [f'{at} {rng.choice(("X", "Y", "A", "B", "RIGHT+X", "RIGHT+A", "DOWN+B", "DOWN+RIGHT+Y"))}',
+                       f'{at + 4} NONE']
             at += rng.randint(14, 26)
         if rng.random() < 0.3:
             script += [f'{at} {rng.choice(("L", "C", "DOWN"))}', f'{at + rng.randint(10, 30)} NONE']
