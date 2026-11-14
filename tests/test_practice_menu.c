@@ -28,12 +28,20 @@ int main(void){
     go_to(&m,T3_PM_ROW_REPLAY);
     for(int i=0;i<4;++i)t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.replay_setting==4);                      /* MANUAL */
     t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.replay_setting==0);                                          /* wraps */
+    /* COMMAND LIST: opens with a button when the character has lines; the cursor wraps and pages by five. */
+    m.command_count[0]=12;
+    go_to(&m,T3_PM_ROW_COMMAND_LIST);t3_practice_menu_step(&m,T3_PM_OK);assert(m.command_open && m.command_cursor==0);
+    t3_practice_menu_step(&m,T3_PM_UP);assert(m.command_cursor==11);
+    t3_practice_menu_step(&m,T3_PM_DOWN);assert(m.command_cursor==0);
+    t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.command_cursor==3);
+    t3_practice_menu_step(&m,T3_PM_START);assert(m.open && !m.command_open);                  /* START closes the list, not the menu */
+    m.command_count[0]=0;t3_practice_menu_step(&m,T3_PM_OK);assert(!m.command_open);          /* nothing to show */
     go_to(&m,T3_PM_ROW_KEY_DISPLAY);t3_practice_menu_step(&m,T3_PM_OK);assert(m.key_display==0);
     /* VS CPU: the dummy page gives way to the CPU's, counters are cleared. */
     go_to(&m,T3_PM_ROW_MODE);t3_practice_menu_step(&m,T3_PM_RIGHT);
     assert(m.sub==T3_PM_SUB_VS_CPU && m.counter_attacks==0);
     n=t3_practice_menu_rows(&m,rows);
-    assert(n==9 && rows[1]==T3_PM_ROW_CPU_DIFFICULTY && rows[2]==T3_PM_ROW_CPU_LEVEL);
+    assert(n==10 && rows[1]==T3_PM_ROW_CPU_DIFFICULTY && rows[2]==T3_PM_ROW_CPU_LEVEL);
     go_to(&m,T3_PM_ROW_CPU_DIFFICULTY);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.cpu_difficulty==2);
     t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.cpu_difficulty==0);
     go_to(&m,T3_PM_ROW_CPU_LEVEL);
@@ -44,7 +52,7 @@ int main(void){
     go_to(&m,T3_PM_ROW_MODE);t3_practice_menu_step(&m,T3_PM_RIGHT);
     assert(m.sub==T3_PM_SUB_COMBO && m.key_display==1 && m.combo_type==0);
     n=t3_practice_menu_rows(&m,rows);
-    assert(n==8 && rows[1]==T3_PM_ROW_COMBO_PLAYER && rows[2]==T3_PM_ROW_COMBO_TYPE);
+    assert(n==9 && rows[1]==T3_PM_ROW_COMBO_PLAYER && rows[2]==T3_PM_ROW_COMBO_TYPE);
     go_to(&m,T3_PM_ROW_COMBO_TYPE);
     t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.combo_type==1);
     t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.combo_type==0);   /* wraps at 3 */

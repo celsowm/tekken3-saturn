@@ -42,6 +42,7 @@ def prepare(source, out, music_cue=None):
     overlay = ROOT / 'third_party/Tekken3Remake/work/jp_rev1/bns/006_practice.ovl'
     if overlay.is_file():   # COMBO TRAINING's tables (Japan Rev.1's practice overlay, as Tekken3Remake extracts them)
         commands.append(['extract_practice_combos.py', '--overlay', str(overlay), '--out', str(out / 'practice-combos')])
+    commands.append(['extract_command_lists.py', '--assets', str(out), '--out', str(out / 'practice-commands')])   # COMMAND LIST's text
     if music_cue is not None:
         commands.append(['build_stage_themes.py', '--image', str(music_cue.resolve()),
                          '--out', str(out / 'stage-music')])

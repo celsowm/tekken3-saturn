@@ -10,6 +10,7 @@
 #include "practice_menu.h"
 #include "practice_keys.h"
 #include "practice_signal.h"
+#include "practice_commands.h"
 #include "fighter_light.h"
 #include "fight.h"
 #include "sim_profile.h"
@@ -720,6 +721,13 @@ static unsigned g_demo_ticks;
 /* Practice: P2 is a dummy (or a second human), the match starts again by itself, START leaves. */
 static uint8_t g_practice;
 static t3_practice_menu_t g_pmenu;
+/* COMMAND LIST's text (scripts/extract_command_lists.py's C source, when the build has it). */
+extern const uint8_t t3_practice_command_blob[] __attribute__((weak));
+extern const uint32_t t3_practice_command_blob_size __attribute__((weak));
+static const uint8_t* command_blob(uint32_t* size) {
+    *size=&t3_practice_command_blob_size?t3_practice_command_blob_size:0u;
+    return &t3_practice_command_blob[0]?t3_practice_command_blob:NULL;
+}
 #if defined(T3_PRACTICE_SELFTEST)
 static uint32_t g_selftest_frame;
 #endif
@@ -1395,6 +1403,31 @@ static void draw_hud(void) {
             /* The pause menu: debug-font rows until the original's layout (FUN_800B5978) is drawn. */
             static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
             static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
+            if(g_pmenu.command_open) {
+                /* COMMAND LIST (FUN_800789E4): the list scrolls under the cursor; names and commands as text. */
+                uint32_t size;const uint8_t* blob=command_blob(&size);
+                const unsigned who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
+                const unsigned lines=g_pmenu.command_count[who];
+                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"COMMAND LIST",112,30));
+                for(unsigned row=0;row<14u && blob;++row) {
+                    unsigned first=g_pmenu.command_cursor>=7u?g_pmenu.command_cursor-7u:0u;
+                    if(first+14u>lines)first=lines>14u?lines-14u:0u;
+                    const unsigned index=first+row;
+                    const char *name,*command;
+                    if(index>=lines || !t3_practice_command_line(blob,size,g_picks[who],index,&name,&command))break;
+                    char line[24];
+                    unsigned n=0;
+                    line[n++]=index==g_pmenu.command_cursor?'>':' ';
+                    for(const char* c=name;*c && n<22u;++c)line[n++]=*c;
+                    line[n]=0;
+                    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,8,50+12*(int)row));
+                    char cmd[18];
+                    n=0;
+                    for(const char* c=command;*c && n<16u;++c)cmd[n++]=*c;
+                    cmd[n]=0;
+                    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,cmd,200,50+12*(int)row));
+                }
+            } else {
             uint8_t rows[T3_PM_MAX_ROWS];
             const unsigned count=t3_practice_menu_rows(&g_pmenu,rows);
             SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"PRACTICE",120,100));
@@ -1415,6 +1448,7 @@ static void draw_hud(void) {
                     value=g_pmenu.combo_count[g_pmenu.combo_player&1u]?number:"NONE";
                     break;
                 }
+                case T3_PM_ROW_COMMAND_LIST:label="COMMAND LIST";break;
                 case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(g_pmenu.replay_setting);break;
                 case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=g_pmenu.freeze_signal?"ON":"OFF";break;
                 case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=g_pmenu.key_display?"ON":"OFF";break;
@@ -1429,6 +1463,7 @@ static void draw_hud(void) {
                 if(r==g_pmenu.cursor)line[0]='>';
                 SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,60,116+12*(int)r));
                 if(value[0])SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,value,190,116+12*(int)r));
+            }
             }
         }
 #if defined(T3_PRACTICE_SELFTEST)
@@ -2240,6 +2275,9 @@ int main(void) {
                 {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
                 {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{345,SAT_PAD_DOWN,0},{348,SAT_PAD_RIGHT,0},{351,SAT_PAD_RIGHT,0},{354,SAT_PAD_RIGHT,0},{357,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},{600,SAT_PAD_Z,0},
                 {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
+                {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},
+                {1060,SAT_PAD_A,0},{1080,SAT_PAD_DOWN,0},{1090,SAT_PAD_DOWN,0},{1100,SAT_PAD_RIGHT,0},{1140,SAT_PAD_A,0},
+                {1145,SAT_PAD_UP,0},{1150,SAT_PAD_UP,0},{1155,SAT_PAD_UP,0},{1160,SAT_PAD_UP,0},{1165,SAT_PAD_UP,0},{1170,SAT_PAD_START,0},
                 {1400,SAT_PAD_START,0},{1410,SAT_PAD_UP,0},{1430,SAT_PAD_RIGHT,0},{1445,SAT_PAD_RIGHT,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
             frame=++g_selftest_frame;
@@ -2263,6 +2301,10 @@ int main(void) {
             if(pad0.pressed&SAT_PAD_RIGHT)keys|=T3_PM_RIGHT;
             if(pad0.pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))keys|=T3_PM_OK;
             if(pad0.pressed&SAT_PAD_START)keys|=T3_PM_START;
+            {
+                uint32_t size;const uint8_t* blob=command_blob(&size);
+                for(unsigned who=0;who<2u;++who)g_pmenu.command_count[who]=(uint16_t)(blob?t3_practice_command_count(blob,size,g_picks[who]):0u);
+            }
             g_pmenu.combo_count[0]=(uint8_t)t3_move_probe_practice_combo_count(0u);
             g_pmenu.combo_count[1]=(uint8_t)t3_move_probe_practice_combo_count(1u);
             const unsigned was_open=g_pmenu.open;

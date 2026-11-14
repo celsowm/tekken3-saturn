@@ -24,7 +24,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_for
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
     src/game/arcade_ladder.c)
-target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c)
+target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c src/game/practice_commands.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 # Most fields one image may catch up; below 60/N images/s the game plays slower.
 set(T3_CATCH_UP_FIELDS "6" CACHE STRING "Most fields of game time one image catches up")
@@ -62,7 +62,7 @@ add_library(tekken3_fight_force STATIC
     src/game/psx_ai.c src/game/psx_ai_game.c
     src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
         src/game/arcade_ladder.c
-    src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c
+    src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c src/game/practice_commands.c
     src/game/tick_clock.c
     src/game/psx_local_pose.c
     src/game/psx_hud_bar.c
@@ -1716,6 +1716,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_saturn PRIVATE src/saturn/fighter_light.c)
             target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_LIGHTING=1)
         endif()
+        set(T3_LOCAL_PRACTICE_COMMANDS "" CACHE FILEPATH "Private command lists as C (scripts/extract_command_lists.py)")
+        if(T3_LOCAL_PRACTICE_COMMANDS)
+            get_filename_component(T3_LOCAL_PRACTICE_COMMANDS "${T3_LOCAL_PRACTICE_COMMANDS}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PRACTICE_COMMANDS}")
+                message(FATAL_ERROR "Private command lists not found")
+            endif()
+            target_sources(tekken3_saturn PRIVATE "${T3_LOCAL_PRACTICE_COMMANDS}")
+        endif()
         set(T3_LOCAL_PRACTICE_COMBOS "" CACHE FILEPATH "Private practice combo tables as C (scripts/extract_practice_combos.py)")
         if(T3_LOCAL_PRACTICE_COMBOS)
             get_filename_component(T3_LOCAL_PRACTICE_COMBOS "${T3_LOCAL_PRACTICE_COMBOS}" ABSOLUTE)
@@ -2536,6 +2544,10 @@ else()
         target_link_libraries(test_practice_replay PRIVATE tekken3_fight)
         target_compile_options(test_practice_replay PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME practice_replay_settings COMMAND test_practice_replay)
+        add_executable(test_practice_commands tests/test_practice_commands.c)
+        target_link_libraries(test_practice_commands PRIVATE tekken3_fight)
+        target_compile_options(test_practice_commands PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME practice_command_list COMMAND test_practice_commands)
         add_executable(test_practice_data tests/test_practice_data.c)
         target_link_libraries(test_practice_data PRIVATE tekken3_fight)
         target_compile_options(test_practice_data PRIVATE -Wall -Wextra -Werror -UNDEBUG)

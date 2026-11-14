@@ -33,7 +33,7 @@ unsigned t3_practice_menu_rows(const t3_practice_menu_t* m,uint8_t rows[T3_PM_MA
     if(m->sub==T3_PM_SUB_VS_CPU){rows[n++]=T3_PM_ROW_CPU_DIFFICULTY;rows[n++]=T3_PM_ROW_CPU_LEVEL;}
     else if(m->sub==T3_PM_SUB_COMBO){rows[n++]=T3_PM_ROW_COMBO_PLAYER;rows[n++]=T3_PM_ROW_COMBO_TYPE;}
     else {rows[n++]=T3_PM_ROW_DUMMY;rows[n++]=T3_PM_ROW_COUNTER;}
-    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;rows[n++]=T3_PM_ROW_REPLAY;
+    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;rows[n++]=T3_PM_ROW_REPLAY;rows[n++]=T3_PM_ROW_COMMAND_LIST;
     if(m->sub!=T3_PM_SUB_COMBO)rows[n++]=T3_PM_ROW_KEY_DISPLAY;   /* combo training keeps the display on */
     rows[n++]=T3_PM_ROW_SELECT;rows[n++]=T3_PM_ROW_EXIT;
     return n;
@@ -45,6 +45,19 @@ static uint8_t cycle(uint8_t v,unsigned count,int step) {
 }
 
 unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
+    if(m->command_open) {
+        /* FUN_800789E4: up and down move by one, left and right by five, wrapping; a face button or Start leaves. */
+        const unsigned count=m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u];
+        int d=(pressed&T3_PM_DOWN)?1:(pressed&T3_PM_UP)?-1:(pressed&T3_PM_RIGHT)?5:(pressed&T3_PM_LEFT)?-5:0;
+        if(count && d) {
+            int v=(int)(m->command_cursor<count?m->command_cursor:0u)+d;
+            while(v<0)v+=(int)count;
+            while(v>=(int)count)v-=(int)count;
+            m->command_cursor=(uint16_t)v;
+        }
+        if(pressed&(T3_PM_OK|T3_PM_START))m->command_open=0;
+        return T3_PM_NONE;
+    }
     if(pressed&T3_PM_START){m->open=(uint8_t)!m->open;return T3_PM_NONE;}
     if(!m->open)return T3_PM_NONE;
     uint8_t rows[T3_PM_MAX_ROWS];
@@ -67,6 +80,9 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     case T3_PM_ROW_COUNTER:if(step)m->counter_attacks^=1u;break;
     case T3_PM_ROW_ATTACK_DATA:if(step)m->attack_data^=1u;break;
     case T3_PM_ROW_FREEZE_SIGNAL:if(step)m->freeze_signal^=1u;break;
+    case T3_PM_ROW_COMMAND_LIST:   /* a face button opens it (when the character has a list) */
+        if((pressed&T3_PM_OK) && m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u]){m->command_open=1;m->command_cursor=0;}
+        break;
     case T3_PM_ROW_REPLAY:   /* OFF, +4, +5, +6 COMBO, MANUAL (not in combo training) */
         if(step)m->replay_setting=cycle(m->replay_setting,m->sub==T3_PM_SUB_COMBO?T3_REPLAY_SETTINGS-1u:T3_REPLAY_SETTINGS,step);
         break;
