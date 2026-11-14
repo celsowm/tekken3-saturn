@@ -178,9 +178,15 @@ The hit markers are not drawn while the pause menu or the command list is open (
 Hwoarang against Law on the test disc (pad 2 connected, the dummy on CONTROLLER) the command list showed both columns, and
 scrolled to Hwoarang's later lines the green and gold cards with their flat header cards appeared.
 
-## Checked against the original's code
+## Checked against the original and on the shipped disc
 
-The tech-roll line follows FUN_800B7704 (practice_sim.py `tech_roll_line`): TECH ROLL at x 198 on the setting's line, the 10 x 16 arrow
-at the pen of the 'u' or 'd' mark (x + 10 cells of 9 pixels), in the row's colour. The command list's title is the USA executable's
-own string. The shipped disc (`build/saturn`, `music.cue`) boots on Mednafen into the opening movie with this code; it has no
-scripted pad, so its practice flow is shown by the menu-built disc, which is the same configuration plus the two self-test pads.
+The tech-roll line, the pause pages, the HUD, the key display, the combo counter and the menu's cursor, input and backdrop are
+compared with the original overlay running in the CPU harness: `verify_practice_sim.py` (TechRoll 1000 cases, PausePage, PracticeHud,
+KeyDisplay, ComboCounter, MenuCursor, MenuInput, MenuBackdrop: 0 mismatches), so the arrow's place is the original routine's. The
+command list's title is the USA executable's own string.
+
+The shipped disc (`build/saturn`, `music.cue`) was driven into practice mode on the headless Ymir probe with a pad script
+(`scripts/ymir_practice_flow.py`; no window, no keyboard): the opening movie, the title, UP twice to PRACTICE MODE, the select, the
+practice fight with its attack data, START for MODE SELECT, the FREE page, TECH ROLL with its arrow, FREEZE SIGNAL on and the fighters
+tinted green and red, the key pictures, and the command list (WHEN FACING RIGHT, cards with pictures, the easing) and back.
+Key injection into Mednafen is not used: it takes the keyboard.
