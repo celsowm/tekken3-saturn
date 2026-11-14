@@ -1468,7 +1468,7 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"LZ ",(uint32_t)t3_move_probe_owned_value(1u,3u),252,170));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MN ",(uint32_t)(g_pmenu.open|(g_pmenu.dummy<<4)|(g_pmenu.freeze_signal<<8)),252,130));
 #endif
-        if(g_pmenu.attack_data) {
+        if(g_pmenu.attack_data && !g_pmenu.open) {   /* not over the menu or the command list */
             /* The hit markers (FUN_800B75AC): a burst with its level label at the hit's screen point; as text without the pictures. */
             for(unsigned k=0;k<T3_PRACTICE_MARKERS;++k) {
                 if(t3_move_probe_practice_state()->markers.frames[k]<=0)continue;
@@ -1505,14 +1505,6 @@ static void draw_hud(void) {
                 }
             }
             if(prompt && !original_text)SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,prompt,100,24));
-        }
-        if(g_pmenu.freeze_signal && !g_pmenu.open) {
-            /* FREEZE SIGNAL (FUN_800B6CF4): a bar under each name, green while that fighter can act, red while it cannot.
-             * The original tints the fighter's back light; with fighter lighting off (the shipped build) this stands in. */
-            for(unsigned who=0;who<2u;++who) {
-                const uint16_t colour=t3_move_probe_practice_state()->can_act[who]?SAT_RGB555(2,30,4):SAT_RGB555(31,3,3);
-                SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,who?256:8,44,56,4,1u,1u,colour,colour));
-            }
         }
         if(g_pmenu.key_display && !g_pmenu.command_open) {
             /* The key display (FUN_800B7C84): the new directions and buttons, oldest first from x 12, 23 apart, along y 400. */
@@ -2312,8 +2304,13 @@ int main(void) {
                 {1400,SAT_PAD_START,0},{1405,SAT_PAD_DOWN,0},{1410,SAT_PAD_DOWN,0},{1415,SAT_PAD_DOWN,0},{1420,SAT_PAD_DOWN,0},{1425,SAT_PAD_DOWN,0},
                 {1430,SAT_PAD_A,0},{1440,SAT_PAD_DOWN,0},{1450,SAT_PAD_A,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0},
-                /* the command list */
-                {1750,SAT_PAD_START,0},{1755,SAT_PAD_DOWN,0},{1760,SAT_PAD_A,0},{1790,SAT_PAD_DOWN,0},{1800,SAT_PAD_DOWN,0}};
+                /* FREE, the dummy on CONTROLLER, the command list (both columns when pad 2 is connected) */
+                {1750,SAT_PAD_START,0},{1755,SAT_PAD_DOWN,0},{1760,SAT_PAD_DOWN,0},{1765,SAT_PAD_DOWN,0},{1770,SAT_PAD_DOWN,0},
+                {1775,SAT_PAD_DOWN,0},{1780,SAT_PAD_DOWN,0},{1785,SAT_PAD_DOWN,0},{1790,SAT_PAD_A,0},{1795,SAT_PAD_UP,0},
+                {1800,SAT_PAD_UP,0},{1805,SAT_PAD_A,0},{1810,SAT_PAD_DOWN,0},{1815,SAT_PAD_DOWN,0},
+                {1820,SAT_PAD_RIGHT,0},{1825,SAT_PAD_RIGHT,0},{1830,SAT_PAD_RIGHT,0},{1835,SAT_PAD_RIGHT,0},{1840,SAT_PAD_RIGHT,0},
+                {1845,SAT_PAD_RIGHT,0},{1850,SAT_PAD_RIGHT,0},{1855,SAT_PAD_RIGHT,0},{1860,SAT_PAD_UP,0},{1865,SAT_PAD_A,0},
+                {1900,SAT_PAD_DOWN,0},{1930,SAT_PAD_RIGHT,0},{1990,SAT_PAD_RIGHT,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
 #if defined(T3_WALK_SELFTEST)
@@ -2361,6 +2358,10 @@ int main(void) {
                 const t3_practice_settings_t settings=practice_settings(&pad1);
                 t3_move_probe_practice_apply(&settings);
             }
+            /* FREEZE SIGNAL (FUN_800B6CF4, FUN_8003AA6C): the fighters' colours tinted green while they can act, red while they cannot */
+            for(unsigned who=0;who<2u;++who)
+                SAT_PANIC_IF_ERROR(t3_characters_tint(who,g_pmenu.freeze_signal && !g_pmenu.open?
+                    (t3_move_probe_practice_state()->can_act[who]?1u:2u):0u));
 #if !defined(T3_BOOT_FIGHTER_0)
             if(way==T3_PM_CHARACTER_SELECT)restart_program(PHASE_SELECT);
             if(way==T3_PM_LEAVE)restart_program(PHASE_MENU);

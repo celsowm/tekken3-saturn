@@ -34,6 +34,8 @@ typedef void (*t3_character_load_progress_fn)(void* context, t3_character_load_s
  * No render frame is open; the caller may present loading progress here. */
 sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* context);
 sat_result_t t3_characters_reset(void);
+/* Practice's freeze signal: tints an actor's CRAM palette banks (0 none, 1 green, 2 red); a no-op when the state is unchanged. */
+sat_result_t t3_characters_tint(unsigned actor,unsigned state);
 sat_result_t t3_characters_tick(const t3_match_t* game);
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game);
 #if defined(T3_FORCE_PROGRAM)

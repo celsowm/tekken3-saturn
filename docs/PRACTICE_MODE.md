@@ -163,8 +163,22 @@ combos, the command list) and on the menu-built disc (title, PRACTICE MODE, play
 HUD, key pictures and combos). The shipped disc (`build/saturn`, `music.cue`) was rebuilt with the practice command lists and
 combos and passes `play_mednafen.py`'s feature check.
 
+## FREEZE SIGNAL's tint
+
+The original tints each fighter's back light (FUN_8003AA6C) green while it can act and red while it cannot. Fighter lighting would
+cost frame rate (docs/FIGHTER_FIDELITY.md: 21.96 img/s against 24.8) and cannot fit VDP1 VRAM beside the practice fonts, so the
+port tints the fighter's CRAM palette banks instead (`t3_characters_tint` in `characters.c`): at load each actor's INDEX8 palettes
+are kept, and when the signal changes the colours are rewritten a sixth of the way to green or red (bit 15 and index 0 kept).
+That is a few hundred words written only when a fighter's state flips, so there is no per-frame cost and no frame-rate change.
+On Mednafen the fighters turned green and red as they could and could not act, on the test disc and on the menu-built disc.
+
+## Hit markers and menus
+
+The hit markers are not drawn while the pause menu or the command list is open (a HIGH marker showed over the list). With
+Hwoarang against Law on the test disc (pad 2 connected, the dummy on CONTROLLER) the command list showed both columns, and
+scrolled to Hwoarang's later lines the green and gold cards with their flat header cards appeared.
+
 ## Not ported
 
-FREEZE SIGNAL's back-light tint: it is `fighter_light.c`'s per-actor back colour and needs fighter lighting. docs/FIGHTER_FIDELITY.md
-measured that lighting at 21.96 img/s against 24.8 (the Gouraud drawing alone costs 0.8 img/s), and the rule there is that nothing
-ships that lowers the frame rate, so it stays off in the shipped build and the two bars stand in.
+The command list's pre-rendered title word (plain text here) and the tech-roll line's exact arrow position were not compared
+against the original pixel for pixel.
