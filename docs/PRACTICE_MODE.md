@@ -12,6 +12,7 @@ adaptation with attribution in `NOTICE.md`). Files: `src/game/practice_data.c` (
 - START opens a pause menu; the fight stands still while it is open. Rows: MODE (FREE, VS CPU), TRAINING DUMMY (STAND,
   CROUCH, STAND GUARD, CROUCH GUARD, GUARD ALL, AUTO GUARD, UKEMI MAE, UKEMI OKU, CONTROLLER) and COUNTER ATTACKS on
   FREE, CPU DIFFICULTY and CPU LEVEL on VS CPU, then ATTACK DATA, FREEZE SIGNAL, KEY DISPLAY, PLAYER SELECT, EXIT.
+- COMBO TRAINING: a third MODE (COMBO PLAYER, COMBO TYPE); Select plays the guide.
 - Attack data per side: TOTAL DMG, DMG of the last hit, its share (PCT), COMBO; a hit marker per clean hit (text level:
   HIGH, MID, LOW, UNBLOCKABLE); the key display (last inputs as text, e.g. `R+1`).
 - FREEZE SIGNAL: `t3_practice_can_act` (a port of `FUN_800B3520`) and a per-actor back colour in `fighter_light.c`
@@ -41,8 +42,25 @@ query and reset lists.
   dummy; full health bars; and no TIME UP through tick 3301, round 1. The freeze signal's colour was not seen (the test
   disc has no fighter lighting).
 
+## COMBO TRAINING
+
+`scripts/extract_practice_combos.py` reads the combo tables (62 combos for 17 bank types) from practice.ovl (Japan Rev.1's
+overlay under `third_party/Tekken3Remake/work/jp_rev1/bns/`) into a private blob and a C source;
+`prepare_game_assets.py` runs it, `build_game_disc.py` passes `-DT3_LOCAL_PRACTICE_COMBOS`, and `move_probe.c` reads the
+weak `t3_practice_combo_blob` symbols (no tables: no combos). `practice_guide.c` is the guide and recorder state machine
+(`_guide_step`, `_guide_ready`, `_guide_play`, `load_guide`). While the guide plays, its scripted word replaces the guided
+fighter's pad for that frame only (the original resets the input mode every frame). Select is the Saturn pad's Z.
+The golden test replays 362 guide frames of the original trace with 0 mismatches; the trace only covers READY, STAND and
+PLAY, so recording and replay are covered by unit tests only, and the stance slot and lying state, which the records do
+not hold, are taken from what the original did.
+
+In the emulator the test disc's scripted pad went FREE, VS CPU, COMBO TRAINING, pressed Select, and Paul played the combo
+(COMBO 3, HIGH markers, TOTAL DMG 84) against the standing dummy; the prompt returned to `PLAY = SELECT` afterwards.
+The test disc has no arena wall, so a scripted walk of several hundred frames pushes both fighters past the renderer's
+±30000 range and ends in `INVALID ARG` (`t3_psx_skin_placement`); the scripted walks are short for that reason.
+
 ## Not ported
 
-COMBO TRAINING (needs the executable's combo tables), COMMAND LIST (move-list text), REPLAY SETTINGS (a replay
-recorder driven from practice), the key display's and hit markers' sprites, and the original-font layout of the menu and
-readouts (debug font for now).
+COMMAND LIST (move-list text), REPLAY SETTINGS (a replay recorder driven from practice), the FREE page's Select recorder
+trigger (a button chord in the original), the key display's and hit markers' sprites, and the original-font layout of the
+menu and readouts (debug font for now).

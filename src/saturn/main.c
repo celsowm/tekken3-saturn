@@ -187,7 +187,7 @@ typedef struct {
     sat_pad_state_t pads[2];
     uint32_t first,count,epoch;
     t3_practice_settings_t practice;   /* practice's menu settings (the Slave applies them) */
-    uint16_t practice_pad;             /* the player's physical pad word for the key ring */
+    uint16_t practice_pad,practice_pressed;   /* the player's physical pad word and its new presses (key ring, guide) */
 } simulation_job_t;
 static simulation_job_t g_simulation_job T3_HOT_WRAM;
 /* Simulation and fused actor preparation run sequentially on this stack.
@@ -733,23 +733,27 @@ static uint32_t g_run_mark;
 
 
 /* The player's physical pad word as the original logs it (practice's key ring). */
-static uint16_t practice_pad_word(const sat_pad_state_t* pad) {
+static uint16_t practice_bits(uint16_t mask) {
     uint16_t word=0;
-    if(pad->held&SAT_PAD_UP)word|=0x1000u;
-    if(pad->held&SAT_PAD_RIGHT)word|=0x2000u;
-    if(pad->held&SAT_PAD_DOWN)word|=0x4000u;
-    if(pad->held&SAT_PAD_LEFT)word|=0x8000u;
-    if(pad->held&SAT_PAD_X)word|=0x80u;
-    if(pad->held&SAT_PAD_Y)word|=0x10u;
-    if(pad->held&SAT_PAD_A)word|=0x40u;
-    if(pad->held&SAT_PAD_B)word|=0x20u;
+    if(mask&SAT_PAD_UP)word|=0x1000u;
+    if(mask&SAT_PAD_RIGHT)word|=0x2000u;
+    if(mask&SAT_PAD_DOWN)word|=0x4000u;
+    if(mask&SAT_PAD_LEFT)word|=0x8000u;
+    if(mask&SAT_PAD_X)word|=0x80u;
+    if(mask&SAT_PAD_Y)word|=0x10u;
+    if(mask&SAT_PAD_A)word|=0x40u;
+    if(mask&SAT_PAD_B)word|=0x20u;
+    if(mask&SAT_PAD_Z)word|=0x100u;   /* the original's Select */
     return word;
 }
+static uint16_t practice_pad_word(const sat_pad_state_t* pad) {return practice_bits(pad->held);}
+static uint16_t practice_pad_pressed(const sat_pad_state_t* pad) {return practice_bits(pad->pressed);}
 /* The menu's settings as the CPU that runs the ticks needs them. */
 static t3_practice_settings_t practice_settings(const sat_pad_state_t* pad1) {
     return (t3_practice_settings_t){.on=g_practice,.sub=g_pmenu.sub,.dummy=g_pmenu.dummy,.counter=g_pmenu.counter_attacks,
         .human2=(uint8_t)(pad1 && pad1->connected),.cpu_difficulty=g_pmenu.cpu_difficulty,.cpu_level=g_pmenu.cpu_level,
-        .freeze=(uint8_t)(g_pmenu.freeze_signal && !g_pmenu.open)};
+        .freeze=(uint8_t)(g_pmenu.freeze_signal && !g_pmenu.open),
+        .combo_player=g_pmenu.combo_player,.combo_type=g_pmenu.combo_type,.paused=g_pmenu.open};
 }
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
@@ -1144,7 +1148,7 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
     for(uint32_t i=0;i<job->count;++i) {
         t3_input_t p1=controller(&job->pads[0],view->fighters[0].facing);
         t3_input_t p2=controller(&job->pads[1],view->fighters[1].facing);
-        if(job->practice.on)p2=t3_move_probe_practice_p2(p2);
+        if(job->practice.on){p1=t3_move_probe_practice_p1(p1);p2=t3_move_probe_practice_p2(p2);}
         if(job->first+i) {p1.pressed=0;p2.pressed=0;}
 #if defined(T3_REPLAY_INPUT_TAPE)
         t3_input_tape_step(view->total_ticks,&p1,&p2);
@@ -1156,7 +1160,7 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
         if(st!=SAT_OK)return st;
         T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
         t3_move_probe_tick(view);
-        if(job->practice.on)t3_move_probe_practice_tick(job->practice_pad);
+        if(job->practice.on)t3_move_probe_practice_tick(job->practice_pad,i?0u:job->practice_pressed);
         t3_combat_events_tick(view->total_ticks);
         T3_SIM_END(bridge_started);
         t3_sim_tick_end();
@@ -1171,7 +1175,7 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
 static sat_result_t simulation_submit(const sat_pad_state_t pads[2],uint32_t first,
         uint32_t count,sat_parallel_handle_t* handle) {
     g_simulation_job=(simulation_job_t){{pads[0],pads[1]},first,count,g_simulation_epoch,practice_settings(&pads[1]),
-                                        practice_pad_word(&pads[0])};
+                                        practice_pad_word(&pads[0]),practice_pad_pressed(&pads[0])};
     return sat_parallel_submit(SIMULATION_TASK,&g_simulation_job,sizeof(g_simulation_job),
         &g_game,sizeof(g_game),handle);
 }
@@ -1388,7 +1392,7 @@ static void draw_hud(void) {
         }
         if(g_pmenu.open) {
             /* The pause menu: debug-font rows until the original's layout (FUN_800B5978) is drawn. */
-            static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU"};
+            static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
             static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
             uint8_t rows[T3_PM_MAX_ROWS];
             const unsigned count=t3_practice_menu_rows(&g_pmenu,rows);
@@ -1402,6 +1406,14 @@ static void draw_hud(void) {
                 case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[g_pmenu.cpu_difficulty%3u];break;
                 case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(g_pmenu.cpu_level);break;
                 case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=g_pmenu.attack_data?"ON":"OFF";break;
+                case T3_PM_ROW_COMBO_PLAYER:label="COMBO PLAYER";value=g_pmenu.combo_player?"2":"1";break;
+                case T3_PM_ROW_COMBO_TYPE: {
+                    static char number[3];
+                    label="COMBO TYPE";
+                    number[0]=(char)('1'+g_pmenu.combo_type%9u);number[1]=0;
+                    value=g_pmenu.combo_count[g_pmenu.combo_player&1u]?number:"NONE";
+                    break;
+                }
                 case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=g_pmenu.freeze_signal?"ON":"OFF";break;
                 case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=g_pmenu.key_display?"ON":"OFF";break;
                 case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
@@ -1431,6 +1443,23 @@ static void draw_hud(void) {
                 const char* level=(a&0x18u)==0x18u?"MID":(a&0x10u)?"HIGH":(a&0x08u)?"LOW":"UNBLOCKABLE";
                 SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,level,120,120+12*(int)k));
             }
+        }
+        if(!g_pmenu.open) {
+            /* The guide's prompts (FUN_800B6898, modes.md): Select plays the combo guide. */
+            const t3_practice_guide_t* guide=&t3_move_probe_practice_state()->guide;
+            const char* prompt=NULL;
+            if(g_pmenu.sub==T3_PM_SUB_COMBO) {
+                if(!g_pmenu.combo_count[g_pmenu.combo_player&1u])prompt="NO COMBOS";
+                else switch(guide->state) {
+                    case T3_GUIDE_READY:prompt="PLAY = SELECT";break;
+                    case T3_GUIDE_RECORD_WAIT:prompt="START REC = ANY KEY";break;
+                    case T3_GUIDE_RECORDING:prompt="REC (STOP = SEL)";break;
+                    case T3_GUIDE_PLAY:prompt="PLAY";break;
+                    case T3_GUIDE_MODE:prompt="GUIDE MODE";break;
+                    default:break;
+                }
+            }
+            if(prompt)SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,prompt,100,24));
         }
         if(g_pmenu.freeze_signal && !g_pmenu.open) {
             /* FREEZE SIGNAL (FUN_800B6CF4): a bar under each name, green while that fighter can act, red while it cannot.
@@ -2207,10 +2236,12 @@ int main(void) {
             static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
                 {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
                 {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},
-                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0}};
+                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},
+                {1400,SAT_PAD_START,0},{1410,SAT_PAD_UP,0},{1430,SAT_PAD_RIGHT,0},{1445,SAT_PAD_RIGHT,0},{1470,SAT_PAD_START,0},
+                {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
-            if((frame>400u && frame<700u) || (frame>820u && frame<1300u)) {   /* walk up and punch */
+            if((frame>400u && frame<460u) || (frame>820u && frame<880u)) {   /* walk up a little and punch (this test disc has no arena wall) */
                 pad0.held|=SAT_PAD_RIGHT;
                 if(frame%24u==0u){pad0.pressed|=SAT_PAD_X;pad0.held|=SAT_PAD_X;}
             }
@@ -2226,6 +2257,8 @@ int main(void) {
             if(pad0.pressed&SAT_PAD_RIGHT)keys|=T3_PM_RIGHT;
             if(pad0.pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))keys|=T3_PM_OK;
             if(pad0.pressed&SAT_PAD_START)keys|=T3_PM_START;
+            g_pmenu.combo_count[0]=(uint8_t)t3_move_probe_practice_combo_count(0u);
+            g_pmenu.combo_count[1]=(uint8_t)t3_move_probe_practice_combo_count(1u);
             const unsigned way=t3_practice_menu_step(&g_pmenu,keys);
             {   /* VS CPU makes the dummy a CPU fighter at the page's difficulty and level (AiReset) */
                 const t3_practice_settings_t settings=practice_settings(&pad1);
@@ -2352,7 +2385,7 @@ int main(void) {
                 (t3_move_probe_owned() ? (t3_input_t){0} : t3_cpu_input(&g_game, 1));
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
             /* Practice: the dummy is scripted unless TRAINING DUMMY says CONTROLLER (the second pad). */
-            if(g_practice && t3_move_probe_owned())p2 = t3_move_probe_practice_p2(p2);
+            if(g_practice && t3_move_probe_owned()){p1 = t3_move_probe_practice_p1(p1);p2 = t3_move_probe_practice_p2(p2);}
 #endif
             if (i > 0u) {
                 p1.pressed = 0; /* a press belongs to only one sim frame */
@@ -2367,7 +2400,7 @@ int main(void) {
             } else t3_match_step(&g_game,p1,p2);
             T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
             t3_move_probe_tick(&g_game);
-            if(g_practice)t3_move_probe_practice_tick(practice_pad_word(&pad0));
+            if(g_practice)t3_move_probe_practice_tick(practice_pad_word(&pad0),i?0u:practice_pad_pressed(&pad0));
             t3_combat_events_tick(g_game.total_ticks);
             T3_SIM_END(bridge_started);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
@@ -2401,7 +2434,7 @@ int main(void) {
         g_prepare_handle=0;g_stage_on_worker=0;
         if(deferred) {
             g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch,practice_settings(&pad1),
-                                             practice_pad_word(&pad0)};
+                                             practice_pad_word(&pad0),practice_pad_pressed(&pad0)};
             t3_characters_set_worker_start(start_prepare_simulation);
         }
 #if defined(T3_MASTER_SKIN_PERCENT_SLOW)

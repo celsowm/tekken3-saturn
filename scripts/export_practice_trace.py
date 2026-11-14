@@ -105,6 +105,14 @@ def facts(rec, s_next, p, base):
             throw_bit, u16(rec, 0xA0), u8(rec, 0x16), s16(rec, 0x80)]
 
 
+def guide_block(practice, s):
+    """S's guide state: 11 scalars, the ring head of both players, and the 50 ring words."""
+    heads = [s32(s, 0x1E8), s32(s, 0x1EC)]
+    ring = [struct.unpack_from('<I', s, 0xB0 + 4 * i)[0] for i in range(50)]
+    return [u8(s, 0x82), u8(s, 0xA3), u8(s, 0xA4), u8(s, 0xA2), u8(s, 0xA1), u8(s, 0xA8), s32(s, 0x178),
+            struct.unpack_from('<I', s, 0x17C)[0], s32(s, 0x180), heads[0], heads[1]] + ring
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--trace', type=Path, default=TRACE)
@@ -118,6 +126,9 @@ def main():
     key_prev = None
     key_rows = 0
     marker_out = args.out.with_name('markers.txt').open('w')
+    guide_out = args.out.with_name('guide.txt').open('w')
+    guide_prev = None
+    guide_rows = 0
     with args.out.open('w') as out, keys.open('w') as key_out:
         for ranges, records in frames(header, body):
             addr, practice = ranges['practice']
@@ -127,7 +138,27 @@ def main():
             if not active:
                 prev = None
                 key_prev = None
+                guide_prev = None
                 continue
+            # the guide / recorder (FUN_800B3808's state machine): S's guide block before and after the frame
+            round_addr0, round_bytes0 = ranges['round']
+            fight_now = s32(round_bytes0, 0x80097350 - round_addr0) == 1
+            blk = guide_block(practice, s)
+            if (guide_prev is not None and guide_prev[2] and fight_now and u8(s, PAUSED) == 0 and u8(guide_prev[1], PAUSED) == 0
+                    and u8(guide_prev[1], 0x87) != 0 and u8(s, 0x87) != 0):
+                cp = s8(s, 0x7B)
+                if cp in (0, 1):
+                    rec = records[cp]
+                    me = records[s8(s, 0x84)] if s8(s, 0x84) in (0, 1) else records[0]
+                    pad = struct.unpack_from('<I', practice, 8 + 4 * cp)[0] & 0xFFFF
+                    inputs = [s8(s, 0x77), u8(s, 0x87), s8(s, 0x7C), cp, u16(s, 0), u16(s, 2), u16(s, 8), pad,
+                              u8(rec, 0xC6), u16(rec, 0xA0), u8(rec, 0xD0),
+                              1 if struct.unpack_from('<I', rec, 0x1A4)[0] else 0, 1 if s16(rec, 0x19A) == 4 else 0,
+                              1 if u8(rec, 0x32) else 0, u8(rec, 0x16), u16(me, 0xA0)]
+                    script_prev, script_next = u16(guide_prev[3][cp], 0x408), u16(rec, 0x408)
+                    guide_out.write(' '.join(str(v) for v in inputs + guide_prev[0] + [script_prev] + blk + [script_next]) + '\n')
+                    guide_rows += 1
+            guide_prev = (blk, s, True, records)
             # the key ring (FUN_800B7B08): the combo player's ring before and after, with the frame's pad word
             cp = s8(s, 0x7B)
             round_addr, round_bytes = ranges['round']
@@ -155,7 +186,7 @@ def main():
                 out.write(' '.join(str(v) for v in row) + '\n')
                 kept += 1
             prev = (nxt, s)
-    print(f'{kept} frames -> {args.out}, {key_rows} key frames -> {keys}')
+    print(f'{kept} frames -> {args.out}, {key_rows} key frames -> {keys}, {guide_rows} guide frames')
     return 0 if kept else 1
 
 

@@ -76,6 +76,8 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
         command.append('-DT3_LOCAL_TITLE_OVERLAY=' + str(assets / 'raw/010.bin'))
     if (assets / 'raw/009.bin').is_file():
         command.append('-DT3_LOCAL_SELECT_OVERLAY=' + str(assets / 'raw/009.bin'))
+    if (assets / 'practice-combos.c').is_file():
+        command.append('-DT3_LOCAL_PRACTICE_COMBOS=' + str(assets / 'practice-combos.c'))
     if music:command.append('-DT3_STAGE_CDDA_WAV=' + str(wav))
     if boot_payloads is not None:
         boot_payloads = boot_payloads.resolve()

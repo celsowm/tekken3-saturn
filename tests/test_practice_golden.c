@@ -4,8 +4,10 @@
  * Skipped (77) without the file: it is derived from the game and is not in git. */
 #include "practice_data.h"
 #include "practice_keys.h"
+#include "practice_guide.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void load_player(t3_practice_player_t* p,const long v[16]) {
     p->total=(int32_t)v[0];p->combo_damage=(int32_t)v[1];p->shown_damage=(int32_t)v[2];
@@ -24,6 +26,57 @@ static void store(const t3_practice_player_t* p,long v[16]) {
 int main(int argc,char** argv) {
     FILE* f=fopen(argc>1?argv[1]:"build/practice-golden/cases.txt","r");
     if(!f){puts("no practice golden cases: skipped");return 77;}
+    unsigned guide_frames=0,guide_bad=0;
+    {   /* The guide and recorder: S's guide block before a frame, the inputs and facts, and the block after. */
+        FILE* gf=fopen(argc>4?argv[4]:"build/practice-golden/guide.txt","r");
+        static uint8_t blob[16384];uint32_t blob_size=0;
+        FILE* bf=fopen(argc>5?argv[5]:"build/practice-golden/practice-combos.bin","rb");
+        if(bf){blob_size=(uint32_t)fread(blob,1,sizeof blob,bf);fclose(bf);}
+        long w[140];
+        static const char* const NAMES[8]={"state","prompt","prompt_timer","guide_prompt","guide_length","resumed_input","replay_pos","replay_word"};
+        while(gf && blob_size) {
+            unsigned n=0;
+            while(n<140 && fscanf(gf,"%ld",&w[n])==1)++n;
+            if(n<140)break;
+            const long* in=w;const long* prev=w+16;const long script_prev=w[16+61];const long* next=w+16+62;const long script_next=w[16+62+61];
+            t3_practice_guide_t g;memset(&g,0,sizeof g);
+            g.state=(uint8_t)prev[0];g.prompt=(uint8_t)prev[1];g.prompt_timer=(uint8_t)prev[2];g.guide_prompt=(uint8_t)prev[3];
+            g.guide_length=(uint8_t)prev[4];g.resumed_input=(uint8_t)prev[5];g.replay_pos=(int32_t)prev[6];
+            g.replay_word=(uint32_t)prev[7];g.move_count=(int32_t)prev[8];g.script=(uint16_t)script_prev;
+            const unsigned cp=(unsigned)in[3];
+            g.ring.head=(int32_t)prev[9+cp];
+            for(unsigned i=0;i<50;++i)g.ring.word[i]=(uint32_t)prev[11+i];
+            const unsigned bank=(unsigned)in[14];
+            t3_practice_combo_t combo;
+            const int have=in[2]>=0 && t3_practice_combo_get(blob,blob_size,bank,(unsigned)in[2],&combo);
+            t3_practice_guide_in_t gi={.sub=(uint8_t)in[0],.guide_on=(uint8_t)in[1],.combo_type=(int8_t)in[2],
+                .combo_known=t3_practice_combo_count(blob,blob_size,bank)!=0,.combo=have?&combo:NULL,
+                .select_pressed=(in[5]&0x100)!=0,.select_held=(in[4]&0x100)!=0,.held_down=(in[4]&0x4000)!=0,
+                .held_horizontal=(in[4]&0xA000)!=0,.mapped_record_key=(in[6]&0xF0FF)!=0,.pad_word=(uint16_t)in[7],
+                .side_flag=(uint8_t)in[8],.cur_slot=(uint16_t)in[9],.hit_clean=(uint8_t)in[10],.move_pending=(uint8_t)in[11],
+                .hold_turn=(uint8_t)in[12],.turned=(uint8_t)in[13],.me_cur_slot=(uint16_t)in[15],.stance_slot=0xFFFFu,.me_stance_slot=0xFFFFu};
+            /* The records hold neither the stance slot nor the move row's state: take them from what the original did. */
+            if(prev[0]==T3_GUIDE_STAND) {
+                if(next[0]!=T3_GUIDE_STAND)gi.stance_slot=gi.cur_slot;
+                else if(gi.cur_slot==3||gi.cur_slot==4||gi.cur_slot==5)gi.lying=1;
+            }
+            if(prev[0]==T3_GUIDE_REPLAY_END && next[0]!=T3_GUIDE_REPLAY_END)gi.me_stance_slot=gi.me_cur_slot;
+            t3_practice_guide_step(&g,&gi);
+            long got[8]={g.state,g.prompt,g.prompt_timer,g.guide_prompt,g.guide_length,g.resumed_input,g.replay_pos,(long)g.replay_word};
+            int bad=0;
+            for(unsigned k=0;k<8;++k) {
+                const long want=k==7?(long)(uint32_t)next[7]:next[k];
+                if(got[k]!=want){if(guide_bad<12)fprintf(stderr,"guide frame %u: %s got %ld, original %ld (state %ld -> %ld)\n",guide_frames+1,NAMES[k],got[k],want,prev[0],next[0]);bad=1;}
+            }
+            if(g.ring.head!=(int32_t)next[9+cp]){if(guide_bad<12)fprintf(stderr,"guide frame %u: head %d, original %ld\n",guide_frames+1,g.ring.head,next[9+cp]);bad=1;}
+            for(unsigned i=0;i<50;++i)if(g.ring.word[i]!=(uint32_t)next[11+i]){if(guide_bad<12)fprintf(stderr,"guide frame %u: ring[%u] %08x, original %08lx\n",guide_frames+1,i,(unsigned)g.ring.word[i],(unsigned long)next[11+i]&0xFFFFFFFFul);bad=1;break;}
+            if((prev[0]==T3_GUIDE_STAND||prev[0]==T3_GUIDE_PLAY||prev[0]==T3_GUIDE_REPLAY) && g.script!=(uint16_t)script_next){
+                if(guide_bad<12)fprintf(stderr,"guide frame %u: script %04x, original %04lx (state %ld)\n",guide_frames+1,g.script,(unsigned long)script_next&0xFFFF,prev[0]);bad=1;}
+            guide_bad+=(unsigned)bad;++guide_frames;
+        }
+        if(gf)fclose(gf);
+        printf("guide and recorder: %u frames, %u mismatching\n",guide_frames,guide_bad);
+    }
     unsigned marker_frames=0,marker_bad=0;
     {   /* The hit markers: S+0x54's four (attack word, frames left) and the index at S+0x74. */
         FILE* m=fopen(argc>3?argv[3]:"build/practice-golden/markers.txt","r");
@@ -97,5 +150,5 @@ int main(int argc,char** argv) {
     }
     fclose(f);
     printf("%u frames, %u clean hits, %u frames inside a combo, %u mismatches\n",lines,seen_hit,seen_combo,bad);
-    return lines && !bad && !key_bad && !marker_bad?0:1;
+    return lines && !bad && !key_bad && !marker_bad && !guide_bad?0:1;
 }

@@ -25,8 +25,10 @@ unsigned t3_practice_menu_rows(const t3_practice_menu_t* m,uint8_t rows[T3_PM_MA
     unsigned n=0;
     rows[n++]=T3_PM_ROW_MODE;
     if(m->sub==T3_PM_SUB_VS_CPU){rows[n++]=T3_PM_ROW_CPU_DIFFICULTY;rows[n++]=T3_PM_ROW_CPU_LEVEL;}
+    else if(m->sub==T3_PM_SUB_COMBO){rows[n++]=T3_PM_ROW_COMBO_PLAYER;rows[n++]=T3_PM_ROW_COMBO_TYPE;}
     else {rows[n++]=T3_PM_ROW_DUMMY;rows[n++]=T3_PM_ROW_COUNTER;}
-    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;rows[n++]=T3_PM_ROW_KEY_DISPLAY;
+    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;
+    if(m->sub!=T3_PM_SUB_COMBO)rows[n++]=T3_PM_ROW_KEY_DISPLAY;   /* combo training keeps the display on */
     rows[n++]=T3_PM_ROW_SELECT;rows[n++]=T3_PM_ROW_EXIT;
     return n;
 }
@@ -52,6 +54,7 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
             m->sub=cycle(m->sub,T3_PM_SUBS,step);
             if(m->sub==T3_PM_SUB_FREE)m->attack_data=1;
             else {m->counter_attacks=0;m->dummy=T3_DUMMY_STAND;}
+            if(m->sub==T3_PM_SUB_COMBO){m->key_display=1;m->combo_type=0;}
         }
         break;
     case T3_PM_ROW_DUMMY:if(step)m->dummy=cycle(m->dummy,T3_DUMMY_SETTINGS,step);break;
@@ -60,6 +63,12 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     case T3_PM_ROW_FREEZE_SIGNAL:if(step)m->freeze_signal^=1u;break;
     case T3_PM_ROW_KEY_DISPLAY:if(step)m->key_display^=1u;break;
     case T3_PM_ROW_CPU_DIFFICULTY:if(step)m->cpu_difficulty=cycle(m->cpu_difficulty,3,step);break;
+    case T3_PM_ROW_COMBO_PLAYER:   /* the other player's character, and the first of its combos */
+        if(step){m->combo_player^=1u;m->combo_type=0;}
+        break;
+    case T3_PM_ROW_COMBO_TYPE:     /* cycles through the character's combos */
+        if(step && m->combo_count[m->combo_player&1u])m->combo_type=cycle(m->combo_type,m->combo_count[m->combo_player&1u],step);
+        break;
     case T3_PM_ROW_CPU_LEVEL:if(step)m->cpu_level=cycle(m->cpu_level,10,step);break;
     case T3_PM_ROW_SELECT:if(pressed&T3_PM_OK){m->open=0;return T3_PM_CHARACTER_SELECT;}break;
     case T3_PM_ROW_EXIT:if(pressed&T3_PM_OK){m->open=0;return T3_PM_LEAVE;}break;

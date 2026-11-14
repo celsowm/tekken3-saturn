@@ -11,14 +11,16 @@
 
 enum { T3_PM_UP=1,T3_PM_DOWN=2,T3_PM_LEFT=4,T3_PM_RIGHT=8,T3_PM_OK=16,T3_PM_START=32 };
 /* The sub-modes (S+0x77) and the items. */
-enum { T3_PM_SUB_FREE,T3_PM_SUB_VS_CPU,T3_PM_SUBS };
+enum { T3_PM_SUB_FREE,T3_PM_SUB_VS_CPU,T3_PM_SUB_COMBO,T3_PM_SUBS };
 enum { T3_PM_ROW_MODE,T3_PM_ROW_DUMMY,T3_PM_ROW_COUNTER,T3_PM_ROW_CPU_DIFFICULTY,T3_PM_ROW_CPU_LEVEL,
-       T3_PM_ROW_ATTACK_DATA,T3_PM_ROW_FREEZE_SIGNAL,T3_PM_ROW_KEY_DISPLAY,T3_PM_ROW_SELECT,T3_PM_ROW_EXIT };
+       T3_PM_ROW_ATTACK_DATA,T3_PM_ROW_FREEZE_SIGNAL,T3_PM_ROW_KEY_DISPLAY,T3_PM_ROW_COMBO_PLAYER,T3_PM_ROW_COMBO_TYPE,T3_PM_ROW_SELECT,T3_PM_ROW_EXIT };
 enum { T3_PM_NONE=0,T3_PM_CHARACTER_SELECT,T3_PM_LEAVE };
 enum { T3_PM_MAX_ROWS=8 };
 typedef struct {
     uint8_t open,cursor,sub;
     uint8_t dummy,counter_attacks,attack_data,key_display,freeze_signal;   /* S+0x7D, 0x9E, 0x9D, 0xA0, 0x83 */
+    uint8_t combo_player,combo_type;                          /* S+0x7B, 0x7C (a combo of the player's character) */
+    uint8_t combo_count[2];                                   /* set by the caller: the combos of each player's character */
     uint8_t cpu_difficulty,cpu_level;                         /* S+0x7E (0 EASY..2 HARD), 0x7F (0 STAGE 1..9 FINAL) */
 } t3_practice_menu_t;
 void t3_practice_menu_reset(t3_practice_menu_t* m);      /* FUN_800B2D74's defaults */

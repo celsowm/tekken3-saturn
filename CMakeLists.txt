@@ -24,7 +24,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_for
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
     src/game/arcade_ladder.c)
-target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c)
+target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
 # Most fields one image may catch up; below 60/N images/s the game plays slower.
 set(T3_CATCH_UP_FIELDS "6" CACHE STRING "Most fields of game time one image catches up")
@@ -62,7 +62,7 @@ add_library(tekken3_fight_force STATIC
     src/game/psx_ai.c src/game/psx_ai_game.c
     src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
         src/game/arcade_ladder.c
-    src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c
+    src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c
     src/game/tick_clock.c
     src/game/psx_local_pose.c
     src/game/psx_hud_bar.c
@@ -1716,6 +1716,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_saturn PRIVATE src/saturn/fighter_light.c)
             target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_LIGHTING=1)
         endif()
+        set(T3_LOCAL_PRACTICE_COMBOS "" CACHE FILEPATH "Private practice combo tables as C (scripts/extract_practice_combos.py)")
+        if(T3_LOCAL_PRACTICE_COMBOS)
+            get_filename_component(T3_LOCAL_PRACTICE_COMBOS "${T3_LOCAL_PRACTICE_COMBOS}" ABSOLUTE)
+            if(NOT EXISTS "${T3_LOCAL_PRACTICE_COMBOS}")
+                message(FATAL_ERROR "Private practice combo tables not found")
+            endif()
+            target_sources(tekken3_saturn PRIVATE "${T3_LOCAL_PRACTICE_COMBOS}")
+        endif()
         if(T3_BOOT_FIGHTERS)
             list(GET T3_BOOT_FIGHTERS 0 _t3_boot_fighter_0)
             list(GET T3_BOOT_FIGHTERS 1 _t3_boot_fighter_1)
@@ -2510,12 +2518,16 @@ else()
         add_executable(test_practice_golden tests/test_practice_golden.c)
         target_link_libraries(test_practice_golden PRIVATE tekken3_fight)
         target_compile_options(test_practice_golden PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-        add_test(NAME practice_attack_data_original_trace COMMAND test_practice_golden ${CMAKE_SOURCE_DIR}/build/practice-golden/cases.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/keys.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/markers.txt)
+        add_test(NAME practice_attack_data_original_trace COMMAND test_practice_golden ${CMAKE_SOURCE_DIR}/build/practice-golden/cases.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/keys.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/markers.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/guide.txt ${CMAKE_SOURCE_DIR}/build/practice-golden/practice-combos.bin)
         set_tests_properties(practice_attack_data_original_trace PROPERTIES SKIP_RETURN_CODE 77)
         add_executable(test_practice_signal tests/test_practice_signal.c)
         target_link_libraries(test_practice_signal PRIVATE tekken3_fight)
         target_compile_options(test_practice_signal PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME practice_freeze_signal COMMAND test_practice_signal)
+        add_executable(test_practice_guide tests/test_practice_guide.c)
+        target_link_libraries(test_practice_guide PRIVATE tekken3_fight)
+        target_compile_options(test_practice_guide PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME practice_guide_and_recorder COMMAND test_practice_guide)
         add_executable(test_practice_data tests/test_practice_data.c)
         target_link_libraries(test_practice_data PRIVATE tekken3_fight)
         target_compile_options(test_practice_data PRIVATE -Wall -Wextra -Werror -UNDEBUG)

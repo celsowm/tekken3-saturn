@@ -36,6 +36,19 @@ int main(void){
     go_to(&m,T3_PM_ROW_CPU_LEVEL);
     for(int i=0;i<8;++i)t3_practice_menu_step(&m,T3_PM_RIGHT);
     assert(m.cpu_level==0);                                                      /* 2 + 8 wraps at 10 */
+    /* COMBO TRAINING: the player and the combo of that character. */
+    m.combo_count[0]=3;m.combo_count[1]=0;
+    go_to(&m,T3_PM_ROW_MODE);t3_practice_menu_step(&m,T3_PM_RIGHT);
+    assert(m.sub==T3_PM_SUB_COMBO && m.key_display==1 && m.combo_type==0);
+    n=t3_practice_menu_rows(&m,rows);
+    assert(n==7 && rows[1]==T3_PM_ROW_COMBO_PLAYER && rows[2]==T3_PM_ROW_COMBO_TYPE);
+    go_to(&m,T3_PM_ROW_COMBO_TYPE);
+    t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.combo_type==1);
+    t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.combo_type==0);   /* wraps at 3 */
+    t3_practice_menu_step(&m,T3_PM_LEFT);assert(m.combo_type==2);
+    go_to(&m,T3_PM_ROW_COMBO_PLAYER);t3_practice_menu_step(&m,T3_PM_RIGHT);
+    assert(m.combo_player==1 && m.combo_type==0);
+    go_to(&m,T3_PM_ROW_COMBO_TYPE);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.combo_type==0);          /* none to pick */
     go_to(&m,T3_PM_ROW_MODE);t3_practice_menu_step(&m,T3_PM_RIGHT);
     assert(m.sub==T3_PM_SUB_FREE && m.attack_data==1);                           /* FREE turns ATTACK DATA on */
     go_to(&m,T3_PM_ROW_SELECT);assert(t3_practice_menu_step(&m,T3_PM_OK)==T3_PM_CHARACTER_SELECT && !m.open);
