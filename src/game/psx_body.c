@@ -171,11 +171,12 @@ int t3_psx_body_separate_force(t3_psx_body_actor_t actors[2],uint32_t pair_dista
     actors[0]=n[0];actors[1]=n[1];return 1;
 }
 #endif
-/* The original's normal stages are unbounded for practical purposes (|x|, |z| <= 300,000, stages.md "Arena limits"). The
- * Saturn renderer cannot place a fighter beyond 30,000 (t3_psx_skin_placement) and ends the frame with an error there, so the
- * console build walls the arena in at 24,000, far outside the 9,000-unit floor; the host builds keep the original limit. */
+/* The original's normal stages are unbounded for practical purposes (|x|, |z| <= 300,000, stages.md "Arena limits"), and its camera
+ * follows the pair anywhere. The Saturn build's camera and renderer stop following a pair about 9,000 units from the origin (both
+ * fighters walked off the screen on Mednafen), so the console build walls the arena in at 7,500, inside the 9,000-unit floor; the
+ * host builds keep the original limit. */
 #if defined(__sh__)
-#define T3_ARENA_LIMIT 24000
+#define T3_ARENA_LIMIT 7500
 #else
 #define T3_ARENA_LIMIT 300000
 #endif
