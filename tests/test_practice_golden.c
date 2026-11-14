@@ -105,7 +105,7 @@ int main(int argc,char** argv) {
             unsigned n=0;
             while(n<20 && fscanf(m,"%ld",&w[n])==1)++n;
             if(n<20)break;
-            t3_practice_markers_t mk={{0},{0},(uint8_t)w[0]};
+            t3_practice_markers_t mk={{0},{0},(uint8_t)w[0],{{0}}};
             for(unsigned i=0;i<4;++i){mk.attack[i]=(int16_t)w[1+2*i];mk.frames[i]=(int16_t)w[2+2*i];}
             t3_practice_markers_step(&mk,(uint16_t)w[10],(int)w[9]);
             ++marker_frames;

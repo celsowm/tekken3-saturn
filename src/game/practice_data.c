@@ -102,6 +102,20 @@ void t3_practice_data_step(t3_practice_data_t* d,const t3_practice_facts_t facts
     player_data(&d->p[1],&facts[1],&facts[0]);
 }
 
+unsigned t3_practice_marker_kind(unsigned attack_word) {
+    switch(attack_word) {
+    case 0x217u:case 0x31Fu:case 0x51Fu:return 1;
+    case 0x10Fu:return 2;
+    case 0x607u:case 0x706u:return 3;
+    case 0x800u:return 4;
+    default:return 0;
+    }
+}
+
+void t3_practice_markers_point(t3_practice_markers_t* m,const int32_t point[3]) {
+    for(unsigned axis=0;axis<3u;++axis)m->point[m->index][axis]=point[axis];
+}
+
 void t3_practice_markers_step(t3_practice_markers_t* m,uint16_t player_attack,int dummy_hit_clean) {
     for(unsigned i=0;i<T3_PRACTICE_MARKERS;++i)m->frames[i]=(int16_t)(m->frames[i]>0?m->frames[i]-1:0);
     if(dummy_hit_clean) {

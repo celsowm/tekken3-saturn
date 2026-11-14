@@ -7,7 +7,7 @@
 #include "saturn/cdfs.h"
 #include "saturn/vdp1.h"
 
-enum { ARROWS=36,BUTTONS=32,PICTURES=ARROWS+BUTTONS };
+enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,PICTURES };
 static sat_vdp1_texture_t g_tex[PICTURES];
 static uint8_t g_ready;
 
@@ -61,6 +61,18 @@ sat_result_t t3_practice_icons_arrow(unsigned pad,unsigned colour,int x,int y) {
     default:break;
     }
     return draw(index*4u+(colour&3u),x,y,19,31);
+}
+
+sat_result_t t3_practice_icons_marker(unsigned kind,int x,int y) {
+    /* FUN_800B75AC at the hit's screen point: the burst 48 x 48 under a 48 x 16 label (high, mid, low), or the exclamation
+     * mark 12 x 48 over a red burst for an unblockable attack. */
+    if(kind==3u) {
+        SAT_TRY(draw(RED_BURST,x-24,y-24,48,48));
+        return draw(BANG,x-6,y-24,12,48);
+    }
+    if(kind>2u)return SAT_OK;
+    SAT_TRY(draw(BURST,x-24,y-24,48,48));
+    return draw(LABELS+kind,x-24,y-8,48,16);
 }
 
 sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y) {

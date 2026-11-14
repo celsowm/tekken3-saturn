@@ -1476,10 +1476,21 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MN ",(uint32_t)(g_pmenu.open|(g_pmenu.dummy<<4)|(g_pmenu.freeze_signal<<8)),252,130));
 #endif
         if(g_pmenu.attack_data) {
-            /* The hit markers (FUN_800B75AC) as text: the level of each live marker, by what blocks the attack. */
+            /* The hit markers (FUN_800B75AC): a burst with its level label at the hit's screen point; as text without the pictures. */
             for(unsigned k=0;k<T3_PRACTICE_MARKERS;++k) {
                 if(t3_move_probe_practice_state()->markers.frames[k]<=0)continue;
                 const unsigned a=(unsigned)t3_move_probe_practice_state()->markers.attack[k];
+#if defined(T3_PRACTICE_ICONS) && defined(T3_ORIGINAL_FIGHTER_PROJECTION)
+                if(t3_practice_icons_ready()) {
+                    t3_psx_camera_matrix_t camera;
+                    if(t3_move_probe_camera_matrix(&camera)) {
+                        int32_t screen[3];
+                        t3_psx_camera_project(&camera,t3_move_probe_practice_state()->markers.point[k],screen);
+                        SAT_PANIC_IF_ERROR(t3_practice_icons_marker(t3_practice_marker_kind(a),screen[0],screen[1]));
+                    }
+                    continue;
+                }
+#endif
                 const char* level=(a&0x18u)==0x18u?"MID":(a&0x10u)?"HIGH":(a&0x08u)?"LOW":"UNBLOCKABLE";
                 SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,level,120,120+12*(int)k));
             }

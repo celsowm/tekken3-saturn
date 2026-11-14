@@ -107,8 +107,16 @@ the guide's colours), `src/saturn/practice_icons.c` uploads and draws them, and 
 is a build input (`T3_PRACTICE_ICONS`); without it the display stays text. On Mednafen the arrow and the pink LP
 icons showed along the bottom for the scripted walk and punches.
 
+## The hit markers' pictures
+
+PKEYS.BIN also carries the markers' burst, the HIGH, MID and LOW labels, and the exclamation mark on a red burst for
+unblockable attacks (page 15; the overlay's marker table). A marker's kind comes from the attack word as in
+`practice_sim.py`'s `hit_marker`, its position from the attack segment's end at contact (`fighter[attacker].hit_gate.segment`
+into the attacker's `strike` segments, projected through the fight camera), and it lasts 60 frames. On Mednafen the burst with
+its HIGH label appeared on the dummy at the hit. The segment's end stands in for HitTest's slot point, which the C match does
+not keep; for attacks whose joint is 0x18 or more the original uses the defender's zone joint instead, which is not done.
+
 ## Not ported
 
-The original glyph and button-icon rendering of the command list and the hit markers' sprites, and the original-font layout
-of the menu and readouts (debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped
-build); the bars stand in.
+The original glyph and button-icon rendering of the command list, and the original-font layout of the menu and readouts
+(debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped build); the bars stand in.

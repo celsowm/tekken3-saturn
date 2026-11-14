@@ -8,7 +8,8 @@ in texture page 6 of the system VRAM; the coordinates are the overlay's (the arr
 
 PKEYS.BIN (little endian): `T3PKEY1\\0`, u16 pieces; per piece u16 width, padded width, height, texel bytes, 16 u16 Saturn
 colours (0 transparent) and LUT4 texels (left texel in the high nibble). Pieces: 36 arrows (index * 4 + colour, index 0-8 as
-in the overlay) then 32 buttons (mask * 2 + guide, mask 1 LP, 2 RP, 4 LK, 8 RK). The output is retail-derived: keep it
+in the overlay), 32 buttons (mask * 2 + guide, mask 1 LP, 2 RP, 4 LK, 8 RK), then the hit markers' burst, three labels
+(high, mid, low), the exclamation mark and the red burst. The output is retail-derived: keep it
 under assets/imported or build/.
 
     scripts/build_practice_icons.py --exe assets/imported/practice-menu/SLUS_004.02 --title assets/imported/practice-menu/raw/010.bin \\
@@ -32,6 +33,10 @@ ICONS_RECT = (384, 224, 35, 32)       # the title archive's plain TIM that stays
 # the picture's (v << 8 | u) and its flip flags (1 horizontal, 2 vertical).
 ARROWS = ((0xE028, 0), (0xE050, 2), (0xE03C, 3), (0xE064, 1), (0xE03C, 1), (0xE050, 0), (0xE03C, 0), (0xE064, 0), (0xE03C, 2))
 ARROW_CLUTS = (0x7FB2, 0x7FB3, 0x7FB4, 0x7FB5)      # colours 0-3
+# FUN_800B75AC's hit markers (page 15, (960, 256)): per kind the 48 x 16 label picture (the overlay's table at 0x800B9154:
+# CLUT 0x7FB6, u 0xA0, v 0xC0 / 0xD0 / 0xE0 for high, mid, low), the 48 x 48 burst (CLUT 0x7FB7, u 0xD0, v 0xC0) and, for
+# an unblockable attack, a 12 x 48 exclamation mark (CLUT 0x7FF6, u 0x90) on a red burst (CLUT 0x7FF7).
+MARKER_PAGE = (960, 256)
 ARROW_W, ARROW_H = 19, 31
 BUTTON_W, BUTTON_H = 20, 32
 
@@ -51,6 +56,20 @@ def with_icons(vram, title):
                 vram[dst:dst + 2 * w] = tim[20 + row * 2 * w:20 + (row + 1) * 2 * w]
             return vram
     raise ValueError('the title overlay has no picture at ' + str(ICONS_RECT))
+
+
+def marker(vram, clut, u, v, width, height):
+    x, y = 16 * (clut & 63), (clut >> 6) & 511
+    pal = [hud.word(vram, x + i, y) for i in range(16)]
+    rows = []
+    for row in range(height):
+        out = []
+        for col in range(width):
+            packed = hud.word(vram, MARKER_PAGE[0] + (u + col) // 4, MARKER_PAGE[1] + v + row)
+            index = (packed >> (4 * ((u + col) & 3))) & 15
+            out.append(pal[index] if index else 0)
+        rows.append(out)
+    return encode(f'marker {clut:x}/{u:x}/{v:x}', rows)
 
 
 def palette(vram, clut):
@@ -157,6 +176,9 @@ def main():
     vram = with_icons(hud.system_textures.build_vram(hud.system_textures.members(exe, 'usa')), args.title.read_bytes())
     pieces = [arrow(vram, i, c) for i in range(len(ARROWS)) for c in range(4)]
     pieces += [button(vram, m, g) for m in range(16) for g in (0, 1)]
+    pieces += [marker(vram, 0x7FB7, 0xD0, 0xC0, 48, 48)]                              # 68: the burst
+    pieces += [marker(vram, 0x7FB6, 0xA0, 0xC0 + 0x10 * k, 48, 16) for k in range(3)]  # 69-71: HIGH, MID, LOW
+    pieces += [marker(vram, 0x7FF6, 0x90, 0xC0, 12, 48), marker(vram, 0x7FF7, 0xD0, 0xC0, 48, 48)]   # 72, 73: !, red burst
     blob = b'T3PKEY1\0' + struct.pack('<H', len(pieces)) + b''.join(pieces)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(blob)

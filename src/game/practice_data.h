@@ -39,7 +39,15 @@ int16_t t3_practice_react_chain(int16_t chain,const t3_practice_facts_t* f);
 /* The hit markers (FUN_800B3808, practice_mode.gd _attack_data): four, each the attacker's attack word and the
  * frames left; a clean hit on the dummy takes the next one for 60 frames. */
 enum { T3_PRACTICE_MARKERS=4,T3_PRACTICE_MARKER_FRAMES=0x3C };
-typedef struct { int16_t attack[T3_PRACTICE_MARKERS],frames[T3_PRACTICE_MARKERS]; uint8_t index; } t3_practice_markers_t;
+typedef struct {
+    int16_t attack[T3_PRACTICE_MARKERS],frames[T3_PRACTICE_MARKERS];
+    uint8_t index;
+    int32_t point[T3_PRACTICE_MARKERS][3];   /* the hit's world point (the attack segment's end at contact), for the presentation */
+} t3_practice_markers_t;
+/* A marker's picture by its attack word (practice_sim.py hit_marker's kind): 0 high, 1 mid, 2 low, 3 unblockable, 4 none. */
+unsigned t3_practice_marker_kind(unsigned attack_word);
+/* After a step that took a marker: where it hit. */
+void t3_practice_markers_point(t3_practice_markers_t* m,const int32_t point[3]);
 void t3_practice_markers_step(t3_practice_markers_t* m,uint16_t player_attack,int dummy_hit_clean);
 void t3_practice_data_reset(t3_practice_data_t* d);
 /* Once per fight frame, after both fighters' hits: `me` is player 0's record, `dummy` player 1's. */

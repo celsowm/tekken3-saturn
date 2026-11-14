@@ -1677,6 +1677,14 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
     t3_move_probe_practice_facts(facts);
     t3_practice_data_step(&st->data,facts);
     t3_practice_markers_step(&st->markers,facts[0].attack,facts[1].hit_clean);
+    if(facts[1].hit_clean) {   /* where it hit: the attack segment's end at contact (HitTest's slot point) */
+        const int8_t segment=g_owned_match.fighter[0].hit_gate.segment;   /* the gate is kept on the attacker */
+        if(segment>=0 && segment<2) {
+            const t3_vec3i_t end=g_owned_match.fighter[0].strike.segments[segment].end;
+            const int32_t point[3]={end.x,end.y,end.z};
+            t3_practice_markers_point(&st->markers,point);
+        }
+    }
     if(st->set.freeze)for(unsigned i=0;i<2u;++i)st->can_act[i]=(uint8_t)t3_move_probe_practice_can_act(i);
     {   /* REPLAY SETTINGS (FUN_800B8D50): a combo's or Select's replay of the last frames, inside the running fight */
         const t3_psx_fighter_t* me=&g_owned_match.fighter[0];const t3_psx_fighter_t* dummy=&g_owned_match.fighter[1];

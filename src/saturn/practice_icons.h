@@ -14,4 +14,6 @@ int t3_practice_icons_ready(void);
 /* Original 384 x 480 coordinates (the key display's y is 400). `pad` is an item's word from t3_practice_keys_items. */
 sat_result_t t3_practice_icons_arrow(unsigned pad,unsigned colour,int x,int y);
 sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y);
+/* A hit marker (kind 0 high, 1 mid, 2 low, 3 unblockable) centred on the original screen point (x, y). */
+sat_result_t t3_practice_icons_marker(unsigned kind,int x,int y);
 #endif
