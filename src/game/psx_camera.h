@@ -223,6 +223,8 @@ int t3_psx_camera_loser_start(t3_psx_camera_t* camera,const t3_psx_camera_tables
                               const t3_psx_camera_frame_t* frame);
 /* FUN_80069824 at a KO replay's start, and FUN_800696FC each replay frame
  * (the replay runs this instead of the director). */
+/* Ends a replay inside a running fight (practice): the fight camera restarts. */
+void t3_psx_camera_replay_end(t3_psx_camera_t* camera,const t3_psx_camera_fighter_t fighters[2]);
 int t3_psx_camera_replay_start(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables,
                                const t3_psx_camera_fighter_t fighters[2],
                                const t3_psx_camera_frame_t* frame);

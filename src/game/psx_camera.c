@@ -1347,6 +1347,16 @@ int t3_psx_camera_replay_start(cam_t* c,const tab_t* t,const fig_t f[2],const t3
     return 1;
 }
 
+/* Practice's replay ends inside the running fight: the fight camera takes over again, framing the pair from a restart. (The KO
+ * replay never needs this: a round follows it. Without it the replay's camera keeps its full weight, `enabled` stays 0 and the
+ * camera stands still while the fighters walk out of the picture.) */
+void t3_psx_camera_replay_end(cam_t* c,const fig_t f[2]) {
+    if(!c || !f || !c->replay_on)return;
+    c->replay_on=0;
+    t3_psx_camera_reset(c);
+    init_sources(c,f);
+}
+
 int t3_psx_camera_step(cam_t* c,const tab_t* t,const fig_t f[2],const t3_psx_camera_frame_t* fr,int16_t* phase) {
     if(!c || !tables_ok(t) || !f || !fr || !fr->rand || !phase)return 0;
     c->skip_side=-1;

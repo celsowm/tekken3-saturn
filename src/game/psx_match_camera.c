@@ -163,6 +163,13 @@ void t3_psx_match_camera_capture(const t3_psx_match_t* m,t3_psx_camera_fighter_t
     if(m->config->camera)fighters(m,before);
 }
 
+void t3_psx_match_camera_replay_end(t3_psx_match_t* m) {
+    t3_psx_camera_fighter_t f[2];
+    if(!m->config->camera || !m->camera.started)return;
+    fighters(m,f);
+    t3_psx_camera_replay_end(&m->camera.camera,f);
+}
+
 int t3_psx_match_camera_replay(t3_psx_match_t* m,t3_psx_camera_fighter_t f[2],int first) {
     const t3_psx_fight_camera_config_t* config=m->config->camera;
     t3_psx_fight_camera_t* c=&m->camera;

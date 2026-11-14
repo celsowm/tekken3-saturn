@@ -1663,7 +1663,7 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
     if(st->replaying) {   /* a replay plays: the fight stands still; only the replay's own end is watched */
         const int mode=g_owned_match.replay.mode;
         st->replaying=(uint8_t)(mode>=1 && mode<=4);
-        if(mode==T3_REPLAY_DONE)t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);
+        if(mode==T3_REPLAY_DONE){t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);t3_psx_match_camera_replay_end(&g_owned_match);}
         return;
     }
     {   /* a new input after 30 idle frames starts an empty ring (FUN_800B7968) */
@@ -1690,7 +1690,7 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
         const t3_psx_fighter_t* me=&g_owned_match.fighter[0];const t3_psx_fighter_t* dummy=&g_owned_match.fighter[1];
         const int mode=g_owned_match.replay.mode;
         st->replaying=(uint8_t)(mode>=1 && mode<=4);
-        if(mode==T3_REPLAY_DONE)t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);   /* the replay ends: recording again */
+        if(mode==T3_REPLAY_DONE){t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);t3_psx_match_camera_replay_end(&g_owned_match);}   /* the replay ends: recording again, the fight camera back */
         const t3_practice_player_t* d=&st->data.p[1];
         t3_practice_replay_in_t in={.setting=st->set.replay,.paused=st->set.paused,.replaying=st->replaying,
             .select_pressed=(pressed_word&0x100u)!=0,.combo=d->combo,.last=st->last_combo,.ended=d->ended,

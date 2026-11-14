@@ -116,16 +116,41 @@ into the attacker's `strike` segments, projected through the fight camera), and 
 its HIGH label appeared on the dummy at the hit. The segment's end stands in for HitTest's slot point, which the C match does
 not keep; for attacks whose joint is 0x18 or more the original uses the defender's zone joint instead, which is not done.
 
-## The menu's original font
+## The menu's structure and font
 
-`t3_practice_menu_draw` (`practice_hud.c`) draws the pause menu and the command list in the original font on the original's
-panel (dark blue (0, 16, 48), light grey frame, 240 x 316 at (64, 40); title font 1 at (72, 56), rows font 0 from y 110, 22 apart,
-the cursor's row colour 10 and the others 11, values right-aligned to column 25). On Mednafen the menu showed with its rows and
-the highlighted cursor row. Without PFONT.BIN the debug-font rows remain. The row set is the port's own (a MODE row instead of
-the original's separate MODE SELECT page and OK/CANCEL row), and the command list is a scrolling text list of 11 rows rather than
-FUN_800789E4's screen with button sprites.
+`practice_menu.c` follows the original's pages (FUN_800B49C4, FUN_800B4C8C, FUN_800B4E4C): the first pause opens MODE SELECT
+(FREE, VS CPU, COMBO TRAINING, PLAYER SELECT, RESET; moving the cursor onto a sub-mode resets it as in the original, a face
+button chooses). A page starts with OK/CANCEL (it reads CANCEL until a value changes, then OK; a face button resumes the fight)
+and COMMAND LIST, then the sub-mode's items, and ends with RETURN TO MODE SELECT. Each page has its own cursor, a face button on
+a value row sends the cursor back to the first row, and left and right change the value. The menu comes back on the page it left.
+`t3_practice_menu_draw` (`practice_hud.c`) draws them in the original font on the original panels (dark blue (0, 16, 48) in a
+light grey frame; MODE SELECT 172 x 192 at (8, 40), a page 240 x 316 at (64, 40); title font 1 at (72, 56); rows font 0 from y
+110, the cursor row colour 10 and the others 11; values right-aligned to column 25; the dummy's setting on the line under its
+label; COMBO PLAYER n- with the character's name at x 207; RETURN TO MODE SELECT at y 328). Differences: the tech-roll settings
+print UKEMI MAE and UKEMI OKU rather than TECH ROLL with an arrow sprite, and Start closes the menu (as it did before the
+port's pages existed). Without PFONT.BIN the debug-font rows remain.
+
+## The command list screen
+
+`scripts/extract_command_lists.py` now keeps each command's arrow (0x80-0x90) and button (0x91-0xA0) codes in the blob next to the
+ASCII. `command_screen` (`practice_hud.c`, FUN_800789E4) draws five cards 64 pixels apart in a 182-pixel column (grey frame, dark
+blue body, the light top fading from it), the cursor's move as the top card and the rest following (wrapping), the title bar and
+rules, the name at 6 pixels a cell (wrapping at 28 cells; the font has capitals only, so the mixed case is capitalised), and the
+command with the key display's arrow and button pictures at 20 pixels each. `PUSH BUTTON TO EXIT` is at the bottom; the key display
+is hidden while the list shows. On Mednafen the list of the player's character scrolled with its names and pictures. Not done:
+the easing scroll between cards (it jumps), the second column for the dummy on CONTROLLER, the special card colours of two
+characters (kind 6 and 0xF), and the original's pre-rendered title word (the title is text).
+
+## The replay's camera
+
+A REPLAY (Select with MANUAL, or after a combo) ran the KO replay's camera (`t3_psx_camera_replay_start`: the fight source's weight
+0, the script source's weight full, `enabled` 0). Nothing gave the fight camera back, because in the original a round follows a KO
+replay. After a practice replay the camera stood still while the fighters walked, and soon both were off the screen (seen on
+Mednafen, with W1 = 4096 and the eye fixed). `t3_psx_camera_replay_end` (called where the practice code resets the replay ring)
+resets the director and re-seeds the sources, so the fight camera restarts on the pair. Checked on Mednafen: after the replays and a
+combo the camera follows the pair to the arena wall.
 
 ## Not ported
 
-The command list's button-icon glyphs and FUN_800789E4's own screen layout, the original's MODE SELECT page, and FREEZE SIGNAL's
-back-light tint (needs fighter lighting, off in the shipped build; the bars stand in).
+FREEZE SIGNAL's back-light tint: it is `fighter_light.c`'s per-actor back colour and needs fighter lighting, which costs frame time
+and so stays off in the shipped build (a change only ships if an A/B shows no loss in images per second); the two bars stand in.

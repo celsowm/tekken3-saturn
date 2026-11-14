@@ -66,18 +66,25 @@ int t3_practice_font_ready(void) {return g_ready;}
 unsigned t3_practice_font_advance(unsigned font) {return font?13u:9u;}
 unsigned t3_practice_font_line(unsigned font) {return font?26u:18u;}
 
-sat_result_t t3_practice_font_text(unsigned font,unsigned colour,const char* text,int x,int y) {
+/* `advance` is the pen step in original pixels and `height` the line's glyph height: the glyphs are drawn scaled by
+ * advance / the font's advance across and height / 16 (font 0) or / 24 (font 1) down. */
+sat_result_t t3_practice_font_text_sized(unsigned font,unsigned colour,const char* text,int x,int y,unsigned advance,unsigned height) {
     if(!g_ready || font>=FONTS || colour>=COLOURS || !g_palette_known[font][colour])return SAT_OK;
-    const unsigned advance=t3_practice_font_advance(font);
+    const unsigned base=t3_practice_font_advance(font),base_height=font?24u:16u;
     for(int pen=x;*text;++text,pen+=(int)advance) {
         const unsigned c=(unsigned char)*text;
         if(c<0x21u || c>=0x21u+CHARS || !g_glyph[font][c-0x21u])continue;
         const unsigned piece=g_glyph[font][c-0x21u]-1u;
+        const int pw=(int)(g_padded[piece]*advance/base),ph=(int)(g_height[piece]*height/base_height);
         const int sx=t3_psx_viewport_x(pen),sy=t3_psx_viewport_y(y);
-        const int w=t3_psx_viewport_x(pen+(int)g_padded[piece])-sx,h=t3_psx_viewport_y(y+(int)g_height[piece])-sy;
+        const int w=t3_psx_viewport_x(pen+pw)-sx,h=t3_psx_viewport_y(y+ph)-sy;
         if(w<=0 || h<=0)continue;
         SAT_TRY(sat_draw_sprite_scaled_screen(&g_tex[piece],(int16_t)(sx+w/2),(int16_t)(sy+h/2),(uint16_t)w,(uint16_t)h,
                                               g_palette[font][colour]));
     }
     return SAT_OK;
+}
+
+sat_result_t t3_practice_font_text(unsigned font,unsigned colour,const char* text,int x,int y) {
+    return t3_practice_font_text_sized(font,colour,text,x,y,t3_practice_font_advance(font),font?24u:16u);
 }

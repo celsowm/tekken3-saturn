@@ -16,4 +16,6 @@ unsigned t3_practice_font_advance(unsigned font);
 unsigned t3_practice_font_line(unsigned font);
 /* Prints `text` (capitals, digits and punctuation; a space advances) from the original coordinates (x, y), the pen of `%H%V`. */
 sat_result_t t3_practice_font_text(unsigned font,unsigned colour,const char* text,int x,int y);
+/* The same with the pen step and glyph height set (the command list's 6 x 12 text is font 0 at advance 6, height 12). */
+sat_result_t t3_practice_font_text_sized(unsigned font,unsigned colour,const char* text,int x,int y,unsigned advance,unsigned height);
 #endif

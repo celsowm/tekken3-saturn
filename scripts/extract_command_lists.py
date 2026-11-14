@@ -30,6 +30,20 @@ def plain(text):
     return ''.join(c if 32 <= ord(c) < 127 else '?' for c in text)
 
 
+def command_bytes(text, atlas, font, exe):
+    """A command as bytes the list screen draws: ASCII, with the original's arrow (0x80-0x90, index as in move_text.arrow) and
+    button (0x91-0xA0, mask 1 LP, 2 RP, 4 LK, 8 RK) codes kept as they are, so the screen can draw their pictures. Spaces
+    are one cell each; a pre-rendered word is read back as its ASCII."""
+    out = bytearray()
+    for b in text:
+        if 0x80 <= b <= 0xA0:
+            out.append(b)
+        else:
+            piece = mt.decode(bytes([b]), atlas, font, exe).replace('{', '').replace('}', '')
+            out += ''.join(c if 32 <= ord(c) < 127 else '?' for c in piece).encode()
+    return bytes(out).strip(b' ')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--assets', type=Path, required=True, help='prepare_game_assets.py output (SLUS_004.02, raw/)')
@@ -48,11 +62,10 @@ def main():
                 font = mt.ascii_font(atlas)
                 fields = members[4][1:].split(b'\0')[:2 * members[4][0]]
                 for name, command in zip(fields[::2], fields[1::2]):
-                    lines.append((plain(mt.decode(name, atlas, font, exe)),
-                                  plain(mt.decode(command, atlas, font, exe).rstrip(',').replace(',+', '+'))))
+                    lines.append((plain(mt.decode(name, atlas, font, exe)), command_bytes(command, atlas, font, exe)))
         blob += struct.pack('<H', len(lines))
         for name, command in lines:
-            blob += name.encode() + b'\0' + command.encode() + b'\0'
+            blob += name.encode() + b'\0' + command + b'\0'
         total += len(lines)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.with_suffix('.bin').write_bytes(blob)

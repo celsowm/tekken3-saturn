@@ -948,8 +948,8 @@ static uint8_t g_picks[2]={0,1};
 typedef struct {const uint8_t* blob;uint32_t size;unsigned who,lines,first;} command_view_t;
 static int command_view_line(void* context,unsigned row,const char** name,const char** command) {
     const command_view_t* cv=context;
-    const unsigned index=cv->first+row;
-    return index<cv->lines && t3_practice_command_line(cv->blob,cv->size,g_picks[cv->who],index,name,command);
+    const unsigned index=cv->lines?(cv->first+row)%cv->lines:0u;
+    return cv->lines && t3_practice_command_line(cv->blob,cv->size,g_picks[cv->who],index,name,command);
 }
 #endif
 
@@ -1433,10 +1433,8 @@ static void draw_hud(void) {
             cv.blob=command_blob(&size);cv.size=size;
             cv.who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
             cv.lines=g_pmenu.command_count[cv.who];
-            cv.first=g_pmenu.command_cursor>=5u?g_pmenu.command_cursor-5u:0u;
-            if(cv.first+11u>cv.lines)cv.first=cv.lines>11u?cv.lines-11u:0u;
-            const t3_practice_menu_view_t view={.menu=&g_pmenu,.player_name={t3_fighter_name(g_picks[0]),t3_fighter_name(g_picks[1])},.command_rows=cv.blob?11u:0u,
-                .command_cursor_row=g_pmenu.command_cursor-cv.first,.command_line=command_view_line,.context=&cv};
+            cv.first=g_pmenu.command_cursor;   /* the cursor's move is the top card; the rest follow, wrapping */
+            const t3_practice_menu_view_t view={.menu=&g_pmenu,.player_name={t3_fighter_name(g_picks[0]),t3_fighter_name(g_picks[1])},.command_rows=cv.blob?5u:0u,.command_line=command_view_line,.context=&cv};
             menu_in_original_font=t3_practice_menu_draw(&view);
         }
 #endif
@@ -1464,6 +1462,7 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PX ",(uint32_t)t3_move_probe_owned_value(0u,1u),252,140));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"LX ",(uint32_t)t3_move_probe_owned_value(1u,1u),252,150));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PZ ",(uint32_t)t3_move_probe_owned_value(0u,3u),252,160));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"LZ ",(uint32_t)t3_move_probe_owned_value(1u,3u),252,170));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MN ",(uint32_t)(g_pmenu.open|(g_pmenu.dummy<<4)|(g_pmenu.freeze_signal<<8)),252,130));
 #endif
         if(g_pmenu.attack_data) {
@@ -1512,7 +1511,7 @@ static void draw_hud(void) {
                 SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,who?256:8,44,56,4,1u,1u,colour,colour));
             }
         }
-        if(g_pmenu.key_display) {
+        if(g_pmenu.key_display && !g_pmenu.command_open) {
             /* The key display (FUN_800B7C84): the new directions and buttons, oldest first from x 12, 23 apart, along y 400. */
 #if defined(T3_PRACTICE_ICONS)
             if(t3_practice_icons_ready()) {
@@ -2309,7 +2308,9 @@ int main(void) {
                 /* COMBO TRAINING */
                 {1400,SAT_PAD_START,0},{1405,SAT_PAD_DOWN,0},{1410,SAT_PAD_DOWN,0},{1415,SAT_PAD_DOWN,0},{1420,SAT_PAD_DOWN,0},{1425,SAT_PAD_DOWN,0},
                 {1430,SAT_PAD_A,0},{1440,SAT_PAD_DOWN,0},{1450,SAT_PAD_A,0},{1470,SAT_PAD_START,0},
-                {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
+                {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0},
+                /* the command list */
+                {1750,SAT_PAD_START,0},{1755,SAT_PAD_DOWN,0},{1760,SAT_PAD_A,0},{1790,SAT_PAD_DOWN,0},{1800,SAT_PAD_DOWN,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
 #if defined(T3_WALK_SELFTEST)

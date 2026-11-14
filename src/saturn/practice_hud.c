@@ -4,6 +4,7 @@
 #include "practice_hud.h"
 #include "practice_font.h"
 #include "practice_menu.h"
+#include "practice_icons.h"
 #include "psx_viewport.h"
 #include "saturn/color.h"
 #include "saturn/vdp1.h"
@@ -115,22 +116,80 @@ static void value_text(unsigned colour,const char* text,int y) {
     t3_practice_font_text(0,colour,text,72+(int)(length<25u?25u-length:0u)*9,y);
 }
 
+/* ---- the command list screen (FUN_800789E4): cards 64 pixels apart in a 182-pixel column, the cursor's move on top ---- */
+static unsigned lerp5(unsigned a,unsigned b,unsigned step,unsigned steps) {return a+(b>a?(b-a)*step/steps:0u)-(a>b?(a-b)*step/steps:0u);}
+
+/* The font has capitals only: the list's mixed case is drawn in capitals. */
+static char capital(char c) {return (char)(c>='a' && c<='z'?c-'a'+'A':c);}
+
+/* A command: ASCII at 6 pixels a cell, the arrows (0x80-0x90) and buttons (0x91-0xA0) as 20-pixel pictures. */
+static void command_text(const char* command,int x,int y) {
+    static const uint16_t DIRECTION[8]={0xC000u,0x4000u,0x6000u,0x8000u,0x2000u,0x9000u,0x1000u,0x3000u};   /* db d df b f ub u uf */
+    char run[40];
+    unsigned n=0;
+    for(const uint8_t* c=(const uint8_t*)command;;++c) {
+        if(n && (*c==0 || *c>=0x80 || n>=sizeof run-1u)) {
+            run[n]=0;
+            t3_practice_font_text_sized(0,1,run,x,y,6,16);
+            x+=(int)n*6;n=0;
+        }
+        if(!*c)break;
+        if(*c<0x80){run[n++]=capital((char)*c);continue;}
+        if(*c<=0x90) {
+            const unsigned index=*c-0x80u;
+            (void)t3_practice_icons_arrow(index==16u?0u:DIRECTION[index&7u],index&8u?1u:0u,x,y-12);
+        } else if(*c<=0xA0) {
+            const unsigned mask=*c-0x91u;
+            const unsigned pad=((mask&1u)?0x80u:0u)|((mask&2u)?0x10u:0u)|((mask&4u)?0x40u:0u)|((mask&8u)?0x20u:0u);
+            (void)t3_practice_icons_button(pad,0u,x,y-12);
+        }
+        x+=20;
+    }
+}
+
+static int command_screen(const t3_practice_menu_view_t* view) {
+    const int x0=0;
+    /* the title bar and its rules, then each card: a grey frame, the dark blue body, the light top fading from it */
+    panel(x0+1,92,182,23,SAT_RGB555(2,4,12));
+    panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
+    t3_practice_font_text(0,1,"COMMAND LIST",x0+8,96);
+    for(unsigned row=0;row<view->command_rows && row<5u;++row) {
+        const char *name,*command;
+        if(!view->command_line(view->context,row,&name,&command))break;
+        const int y=118+(int)row*64;
+        panel(x0+2,y-3,180,66,SAT_RGB555(26,26,26));
+        panel(x0+3,y-2,178,63,SAT_RGB555(2,4,12));
+        for(unsigned band=0;band<6u;++band)
+            panel(x0+3,y-2+(int)band*4,178,4,SAT_RGB555(lerp5(2,8,band,5),lerp5(4,18,band,5),lerp5(12,23,band,5)));
+        unsigned length=0;
+        while(name[length])++length;
+        if(length>=29u) {   /* a long name wraps at 28 cells */
+            char first[29],rest[40];
+            unsigned i;
+            for(i=0;i<28u;++i)first[i]=capital(name[i]);
+            first[28]=0;
+            for(i=0;name[28+i] && i<39u;++i)rest[i]=capital(name[28+i]);
+            rest[i]=0;
+            t3_practice_font_text_sized(0,1,first,x0+6,y,6,16);
+            t3_practice_font_text_sized(0,1,rest,x0+6,y+12,6,16);
+        } else {
+            char upper[29];
+            unsigned i;
+            for(i=0;name[i] && i<28u;++i)upper[i]=capital(name[i]);
+            upper[i]=0;
+            t3_practice_font_text_sized(0,1,upper,x0+6,y+6,6,16);
+        }
+        command_text(command,x0+6,y+39);
+    }
+    t3_practice_font_text(0,1,"PUSH BUTTON TO EXIT",6,440);
+    return 1;
+}
+
 int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
     if(!t3_practice_font_ready())return 0;
     const t3_practice_menu_t* m=view->menu;
+    if(m->command_open)return command_screen(view);
     backdrop(m->mode_select);
-    if(m->command_open) {
-        t3_practice_font_text(1,10,"COMMAND LIST",72,56);
-        for(unsigned row=0;row<view->command_rows;++row) {
-            const char *name,*command;
-            if(!view->command_line(view->context,row,&name,&command))break;
-            const unsigned colour=row==view->command_cursor_row?10u:11u;
-            const int y=110+(int)row*22;
-            t3_practice_font_text(0,colour,name,72,y);
-            t3_practice_font_text(0,colour,command,72+81,y);
-        }
-        return 1;
-    }
     if(m->mode_select) {
         /* FUN_800B5834 */
         static const char* const LABELS[T3_PM_SELECT_ROWS]={"FREE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};

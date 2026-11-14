@@ -325,6 +325,8 @@ int t3_psx_match_camera_frame(t3_psx_match_t* match);
 /* A replay frame: `before` holds the fighters captured before the replay
  * renders the frame; `first` on the replay's first frame. */
 void t3_psx_match_camera_capture(const t3_psx_match_t* match,t3_psx_camera_fighter_t before[2]);
+/* A replay inside a running fight (practice) ended: the fight camera takes over again. */
+void t3_psx_match_camera_replay_end(t3_psx_match_t* match);
 int t3_psx_match_camera_replay(t3_psx_match_t* match,t3_psx_camera_fighter_t before[2],int first);
 /* After the fighters moved: their screen x and, when live, the shakes they start. */
 int t3_psx_match_camera_after(t3_psx_match_t* match,int live);
