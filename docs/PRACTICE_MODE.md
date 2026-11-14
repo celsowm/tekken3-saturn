@@ -88,7 +88,17 @@ poses play back and `REPLAY` blinks; when it ends the ring records again. On Med
 earlier positions with the blinking `REPLAY` text and the fight resumed. Sounds, effects and the replay camera are not
 replayed separately from the KO replay's own handling.
 
+## COMMAND LIST
+
+`scripts/extract_command_lists.py` decodes each roster character's USA command list (ARC member 4: names and commands) with
+Tekken3Remake's `move_text.py` into a private blob and C source (403 lines for 21 characters, 10.7 KB); `prepare_game_assets.py`
+runs it and `build_game_disc.py` passes `-DT3_LOCAL_PRACTICE_COMMANDS`. `practice_commands.c` parses it, `practice_menu.c` has
+the COMMAND LIST row and the scrolling (up and down by one, left and right by five, wrapping; a face button or START leaves),
+and `main.c` draws the list as text. On Mednafen the list of the player's character scrolled with its real names and commands.
+It is plain text in the debug font, not the original's glyph atlas and button sprites.
+
 ## Not ported
 
-COMMAND LIST (move-list text), the key display's and hit markers' sprites, and the original-font layout of the menu and readouts (debug
-font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped build); the bars stand in.
+The original glyph and button-icon rendering of the command list, the key display's and hit markers' sprites, and the
+original-font layout of the menu and readouts (debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting
+(off in the shipped build); the bars stand in.

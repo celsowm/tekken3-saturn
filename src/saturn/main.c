@@ -1391,7 +1391,7 @@ static void draw_hud(void) {
     if(g_practice) {
         /* modes.md Practice HUD: TOTAL DMG for each side (columns 23 and 1), the last hit's DMG and share, and the
          * combo counter, in the debug font until the original's fonts cover digits. */
-        for(unsigned side=0;side<2u;++side) {
+        for(unsigned side=0;side<2u && g_pmenu.attack_data && !g_pmenu.command_open;++side) {
             const t3_practice_player_t* pd=&t3_move_probe_practice_state()->data.p[side^1u];   /* the hits the other side landed */
             const int x=side?232:8;
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TOTAL DMG:",(uint32_t)pd->total,x,60));

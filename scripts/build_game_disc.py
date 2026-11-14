@@ -45,7 +45,7 @@ def roster_inputs():
     return [f'raw/{record:03}.bin' for record in all_records()]
 
 
-def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=None, boot_fighters=None):
+def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=None, boot_fighters=None, check=True):
     inputs = INPUTS
     assets, build, prefix, libsaturn = (p.resolve() for p in (assets, build, prefix, libsaturn))
     private_root = (ROOT / 'assets/imported').resolve()
@@ -60,7 +60,8 @@ def configure_command(assets, build, prefix, libsaturn, music, boot_payloads=Non
     if not toolchain.is_file():missing.append(str(toolchain))
     if not (libsaturn / 'include/saturn/core.h').is_file():missing.append(str(libsaturn / 'include/saturn/core.h'))
     if missing:raise ValueError('missing build inputs: ' + ', '.join(missing))
-    check_sdk(prefix)
+    if check:
+        check_sdk(prefix)
     command = ['cmake', '-S', str(ROOT), '-B', str(build), '-G', 'Ninja',
                '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_TOOLCHAIN_FILE=' + str(toolchain),
                '-DCMAKE_PREFIX_PATH=' + str(prefix), '-DLIBSATURN_SOURCE_DIR=' + str(libsaturn)]
@@ -99,12 +100,17 @@ def main():
     parser.add_argument('--boot-fighters', type=int, nargs=2, metavar=('P1', 'P2'),
                         help='test build: start straight into this pair of character ids')
     parser.add_argument('--configure-only', action='store_true')
+    parser.add_argument('--skip-sdk-check', action='store_true',
+                        help='do not stop at check_demo_sdk.py (its sound registry check can say "cannot verify")')
+    parser.add_argument('--define', action='append', default=[], metavar='NAME=VALUE',
+                        help='an extra CMake cache entry, e.g. --define T3_PRACTICE_SELFTEST=ON (repeatable)')
     args = parser.parse_args()
     try:
         if args.build.exists() and any(args.build.iterdir()):
             raise ValueError('use a fresh empty build directory')
         command = configure_command(args.assets, args.build, args.prefix, args.libsaturn, args.music,
-                                    args.boot_payloads, args.boot_fighters)
+                                    args.boot_payloads, args.boot_fighters, check=not args.skip_sdk_check)
+        command += ['-D' + definition for definition in args.define]
         subprocess.run(command, cwd=ROOT, check=True)
         if not args.configure_only:
             subprocess.run(['cmake', '--build', str(args.build.resolve()), '--parallel', '4'], cwd=ROOT, check=True)
