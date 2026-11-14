@@ -223,7 +223,8 @@ static int command_screen(const t3_practice_menu_view_t* view) {
         panel(x0+1,92,182,23,SAT_RGB555(2,4,12));
         panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
         panel(x0+2,435,180,2,SAT_RGB555(28,28,28));
-        t3_practice_font_text(0,1,"COMMAND LIST",x0+8,96);
+        /* the USA list's title is the atlas word 0x01 (STR_TITLE at 0x80027C4C: "\xFFp\x01"), "When Facing Right", at (x0 + 0x3C, 0x61) */
+        t3_practice_font_text_sized(0,1,"WHEN FACING RIGHT",x0+60,97,6,16);
     }
     t3_practice_font_text(0,1,"PUSH BUTTON TO EXIT",6,440);
     return 1;

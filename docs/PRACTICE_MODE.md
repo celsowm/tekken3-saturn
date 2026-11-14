@@ -143,7 +143,7 @@ the original's window (y 116 to 436: a card's text and pictures show once they f
 on CONTROLLER and pad 2 connected a second column (x 184) shows the dummy's list, moved by pad 2. Character 6's lines 6 to 13
 and 14 on get the original's green and gold cards with a flat header card at the start of each group, and character 15 shows one
 card mid screen (`card_colours`, `command_column`); the colours and the second column were not seen on Mednafen (the test disc
-plays Paul against Law). The original's pre-rendered title word is plain text here. On Mednafen the list of the player's
+plays Paul against Law). The title is the USA list's own: STR_TITLE (0x80027C4C) is the atlas word 0x01, "When Facing Right", drawn at (x0 + 60, 97) in the font's capitals. On Mednafen the list of the player's
 character scrolled with its names and pictures.
 
 ## The replay's camera
@@ -178,7 +178,9 @@ The hit markers are not drawn while the pause menu or the command list is open (
 Hwoarang against Law on the test disc (pad 2 connected, the dummy on CONTROLLER) the command list showed both columns, and
 scrolled to Hwoarang's later lines the green and gold cards with their flat header cards appeared.
 
-## Not ported
+## Checked against the original's code
 
-The command list's pre-rendered title word (plain text here) and the tech-roll line's exact arrow position were not compared
-against the original pixel for pixel.
+The tech-roll line follows FUN_800B7704 (practice_sim.py `tech_roll_line`): TECH ROLL at x 198 on the setting's line, the 10 x 16 arrow
+at the pen of the 'u' or 'd' mark (x + 10 cells of 9 pixels), in the row's colour. The command list's title is the USA executable's
+own string. The shipped disc (`build/saturn`, `music.cue`) boots on Mednafen into the opening movie with this code; it has no
+scripted pad, so its practice flow is shown by the menu-built disc, which is the same configuration plus the two self-test pads.
