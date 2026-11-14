@@ -283,6 +283,14 @@ static void frame_begin(pads_t* pads) {
     SAT_PANIC_IF_ERROR(sat_input_poll());
     SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pads->pad[0]));
     SAT_PANIC_IF_ERROR(sat_pad_tap_state(1,0,&pads->pad[1]));
+#if defined(T3_MENU_SELFTEST)
+    {   /* A scripted pad 1 for the emulator check (no key injection): title, two UP to PRACTICE, then A at intervals through the
+         * select screen. The counter restarts with each program, so the same script also drives the select. */
+        static const struct {unsigned at;uint16_t pressed;} STEPS[]={{150u,SAT_PAD_START},{400u,SAT_PAD_UP},{460u,SAT_PAD_UP},{600u,SAT_PAD_A}};
+        for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(g_now>=STEPS[k].at && g_now<STEPS[k].at+2u)pads->pad[0].pressed|=STEPS[k].pressed;
+        if(g_now>=800u && (g_now%200u)<2u)pads->pad[0].pressed|=SAT_PAD_A;
+    }
+#endif
     SAT_PANIC_IF_ERROR(sat_begin_frame());
 }
 
