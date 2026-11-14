@@ -97,8 +97,18 @@ the COMMAND LIST row and the scrolling (up and down by one, left and right by fi
 and `main.c` draws the list as text. On Mednafen the list of the player's character scrolled with its real names and commands.
 It is plain text in the debug font, not the original's glyph atlas and button sprites.
 
+## The key display's pictures
+
+`scripts/build_practice_icons.py` bakes PKEYS.BIN (68 pictures, 28 KB) from the USA executable's system textures plus the pad
+pictures the title overlay uploads for the fights (a plain 4-bit TIM at VRAM (384, 224)): nine arrows in four colours and the
+face-button icons (16 combinations on the guide-coloured plate; the two sprites of FUN_800B721C composited, the symbols
+over the plate). `practice_keys.c` ports the item rule of FUN_800B7C84 (new directions and newly held buttons, the last 15,
+the guide's colours), `src/saturn/practice_icons.c` uploads and draws them, and CMake builds the pack when the title overlay
+is a build input (`T3_PRACTICE_ICONS`); without it the display stays text. On Mednafen the arrow and the pink LP
+icons showed along the bottom for the scripted walk and punches.
+
 ## Not ported
 
-The original glyph and button-icon rendering of the command list, the key display's and hit markers' sprites, and the
-original-font layout of the menu and readouts (debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting
-(off in the shipped build); the bars stand in.
+The original glyph and button-icon rendering of the command list and the hit markers' sprites, and the original-font layout
+of the menu and readouts (debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped
+build); the bars stand in.

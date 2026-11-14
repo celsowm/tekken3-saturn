@@ -722,6 +722,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_sources(tekken3_saturn PRIVATE src/saturn/original_hud.c
             "${_t3_hud_gen}/HUD.BIN")
         list(APPEND _t3_stage_disc_files "${_t3_hud_gen}/HUD.BIN")
+        # Practice's key display pictures (PKEYS.BIN): arrows and button icons from the title screen's pad textures.
+        if(T3_LOCAL_TITLE_OVERLAY AND EXISTS "${T3_LOCAL_TITLE_OVERLAY}")
+            add_custom_command(OUTPUT "${_t3_hud_gen}/PKEYS.BIN"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_practice_icons.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --title "${T3_LOCAL_TITLE_OVERLAY}" --out "${_t3_hud_gen}/PKEYS.BIN"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_practice_icons.py" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                    "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                    "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/overlay_images.py"
+                    "${T3_LOCAL_HUD_EXE}" "${T3_LOCAL_TITLE_OVERLAY}"
+                VERBATIM)
+            target_sources(tekken3_saturn PRIVATE src/saturn/practice_icons.c "${_t3_hud_gen}/PKEYS.BIN")
+            list(APPEND _t3_stage_disc_files "${_t3_hud_gen}/PKEYS.BIN")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_PRACTICE_ICONS=1)
+        endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD=1)
         if(T3_ORIGINAL_HUD_BARS)
             target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD_BARS=1)

@@ -11,6 +11,9 @@
 #include "practice_keys.h"
 #include "practice_signal.h"
 #include "practice_commands.h"
+#if defined(T3_PRACTICE_ICONS)
+#include "practice_icons.h"
+#endif
 #include "fighter_light.h"
 #include "fight.h"
 #include "sim_profile.h"
@@ -1508,7 +1511,20 @@ static void draw_hud(void) {
             }
         }
         if(g_pmenu.key_display) {
-            /* The key display (FUN_800B7C84): the last inputs, newest on the right, as text until its sprites exist. */
+            /* The key display (FUN_800B7C84): the new directions and buttons, oldest first from x 12, 23 apart, along y 400. */
+#if defined(T3_PRACTICE_ICONS)
+            if(t3_practice_icons_ready()) {
+                const t3_practice_state_t* ps=t3_move_probe_practice_state();
+                t3_practice_key_item_t items[T3_KEY_ITEMS];
+                const unsigned count=t3_practice_keys_items(&ps->keys,ps->guide.replay_pos,ps->guide.prompt,ps->guide.prompt_timer,
+                                                            ps->guide.guide_prompt!=0,items);
+                for(unsigned k=0;k<count;++k) {
+                    const int x=12+23*(int)k;
+                    if(items[k].pad&0xF000u)SAT_PANIC_IF_ERROR(t3_practice_icons_arrow(items[k].pad,items[k].colour,x,400));
+                    else SAT_PANIC_IF_ERROR(t3_practice_icons_button(items[k].pad,items[k].colour,x,400));
+                }
+            } else
+#endif
             for(unsigned age=0;age<7u;++age) {
                 char text[8];
                 t3_practice_keys_text(&t3_move_probe_practice_state()->keys,age,text);
@@ -2189,6 +2205,9 @@ int main(void) {
 #endif
 #if defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(t3_original_hud_init(g_faces,sizeof g_faces));
+#if defined(T3_PRACTICE_ICONS)
+    if(g_practice)(void)t3_practice_icons_init(g_faces,sizeof g_faces);   /* without the file or the room the key display stays text */
+#endif
 #if defined(T3_FIGHTER_PACKS)
     SAT_PANIC_IF_ERROR(t3_original_hud_load_names(g_faces,sizeof g_faces));
 #endif

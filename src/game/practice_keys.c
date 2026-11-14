@@ -37,6 +37,39 @@ void t3_practice_keys_log(t3_practice_keys_t* k,uint16_t pad,int side_flag) {
     k->head=head;
 }
 
+unsigned t3_practice_keys_items(const t3_practice_keys_t* k,int guide_end,unsigned prompt,unsigned prompt_timer,int recording,
+                                t3_practice_key_item_t out[T3_KEY_ITEMS]) {
+    unsigned dir_col=0,btn_col=1,dir_guide=0,btn_guide=1;   /* colours before and after the guide's end */
+    if(prompt==2 || (prompt==3 && (prompt_timer&0x10u))){dir_col=3;btn_col=0;dir_guide=3;btn_guide=0;}
+    else if(prompt==4 || prompt==5){dir_col=0;btn_col=1;dir_guide=3;btn_guide=0;}
+    t3_practice_key_item_t items[2*T3_KEY_RING_WORDS];
+    unsigned n=0,since=0;
+    unsigned prev_dir=0,prev_btn=0;
+    int i=k->head+1;
+    i=i<0?T3_KEY_RING_WORDS-1:i<T3_KEY_RING_WORDS?i:0;
+    for(unsigned step=0;step<T3_KEY_RING_WORDS;++step) {
+        const uint32_t e=k->word[i];
+        if(i==0)since=0;
+        const unsigned d=(e>>8)&0xFFu,b=e&0xFFu;
+        if(d && d!=prev_dir) {
+            items[n++]=(t3_practice_key_item_t){(uint16_t)(d<<12),(uint8_t)(guide_end<i?dir_guide:dir_col)};
+            ++since;
+        }
+        if(b & (b^prev_btn)) {
+            items[n++]=(t3_practice_key_item_t){(uint16_t)(b<<4),(uint8_t)(guide_end<i?btn_guide:btn_col)};
+            ++since;
+        }
+        prev_dir=d;prev_btn=b;
+        ++i;
+        if(i>=T3_KEY_RING_WORDS)i=0;
+    }
+    unsigned shown;
+    if(recording){shown=since<15u?since:15u;if(shown>=n)shown=n;}
+    else shown=n<15u?n:15u;
+    for(unsigned j=0;j<shown;++j)out[j]=items[n-shown+j];
+    return shown;
+}
+
 void t3_practice_keys_text(const t3_practice_keys_t* k,unsigned age,char out[8]) {
     unsigned n=0;
     out[0]=0;
