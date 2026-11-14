@@ -14,6 +14,10 @@
 #if defined(T3_PRACTICE_ICONS)
 #include "practice_icons.h"
 #endif
+#if defined(T3_PRACTICE_FONT)
+#include "practice_font.h"
+#include "practice_hud.h"
+#endif
 #include "fighter_light.h"
 #include "fight.h"
 #include "sim_profile.h"
@@ -1373,10 +1377,12 @@ static void draw_hud(void) {
     t3_move_probe_hud_bars(current_bars);
     const t3_psx_hud_bar_t* bars=current_bars;
 #endif
-    SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X0,BAR_Y,BAR_WIDTH,
-        bars[0].drawn*BAR_FILL/152,bars[0].recent*BAR_FILL/152,1));
-    SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X1,BAR_Y,BAR_WIDTH,
-        bars[1].drawn*BAR_FILL/152,bars[1].recent*BAR_FILL/152,0));
+    if(!g_practice) {   /* practice sets hud_shown to 0 (practice_mode.gd frame): no bars, timer, marks or names */
+        SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X0,BAR_Y,BAR_WIDTH,
+            bars[0].drawn*BAR_FILL/152,bars[0].recent*BAR_FILL/152,1));
+        SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X1,BAR_Y,BAR_WIDTH,
+            bars[1].drawn*BAR_FILL/152,bars[1].recent*BAR_FILL/152,0));
+    }
 #else
     health_bar(BAR_X0,1,game->fighters[0].health,&g_recent_damage[0]);
     health_bar(BAR_X1,0,game->fighters[1].health,&g_recent_damage[1]);
@@ -1394,7 +1400,16 @@ static void draw_hud(void) {
     if(g_practice) {
         /* modes.md Practice HUD: TOTAL DMG for each side (columns 23 and 1), the last hit's DMG and share, and the
          * combo counter, in the debug font until the original's fonts cover digits. */
-        for(unsigned side=0;side<2u && g_pmenu.attack_data && !g_pmenu.command_open;++side) {
+        int original_text=0;
+#if defined(T3_PRACTICE_FONT)
+        if(!g_pmenu.open && !g_pmenu.command_open) {   /* FUN_800B6898 in the original font (PFONT.BIN) */
+            const t3_practice_hud_t hud={.state=t3_move_probe_practice_state(),.sub=g_pmenu.sub,.replay_setting=g_pmenu.replay_setting,
+                .attack_data=g_pmenu.attack_data,.recorder=g_pmenu.recorder,
+                .combo_known=(uint8_t)(g_pmenu.combo_count[g_pmenu.combo_player&1u]!=0)};
+            original_text=t3_practice_hud_draw(&hud);
+        }
+#endif
+        for(unsigned side=0;side<2u && g_pmenu.attack_data && !g_pmenu.command_open && !original_text;++side) {
             const t3_practice_player_t* pd=&t3_move_probe_practice_state()->data.p[side^1u];   /* the hits the other side landed */
             const int x=side?232:8;
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TOTAL DMG:",(uint32_t)pd->total,x,60));
@@ -1511,7 +1526,7 @@ static void draw_hud(void) {
                     default:break;
                 }
             }
-            if(prompt)SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,prompt,100,24));
+            if(prompt && !original_text)SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,prompt,100,24));
         }
         if(g_pmenu.freeze_signal && !g_pmenu.open) {
             /* FREEZE SIGNAL (FUN_800B6CF4): a bar under each name, green while that fighter can act, red while it cannot.
@@ -1544,16 +1559,18 @@ static void draw_hud(void) {
         }
     } else
     SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,t3_original_hud_x(169),1));
-    for(unsigned mark=0;mark<2;++mark) {
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
-        SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,t3_original_hud_x(202+14*(int)mark),25));
+    if(!g_practice) {
+        for(unsigned mark=0;mark<2;++mark) {
+            SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
+            SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,t3_original_hud_x(202+14*(int)mark),25));
+        }
+        SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(10),27,NAME_PLATE(0)));
+        SAT_PANIC_IF_ERROR(t3_original_hud_name(0,t3_original_hud_x(14),23,NAME_PADDED(0)*7/8));
+        /* P2's name is right-anchored at 354 (FUN_8004EB9C): the plate spans the
+         * art plus 4 texels each side and the padded sheet ends at the anchor. */
+        SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(350-NAME_WIDTH(1)),27,NAME_PLATE(1)));
+        SAT_PANIC_IF_ERROR(t3_original_hud_name(1,t3_original_hud_x(354-NAME_PADDED(1)),23,NAME_PADDED(1)*7/8));
     }
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(10),27,NAME_PLATE(0)));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(0,t3_original_hud_x(14),23,NAME_PADDED(0)*7/8));
-    /* P2's name is right-anchored at 354 (FUN_8004EB9C): the plate spans the
-     * art plus 4 texels each side and the padded sheet ends at the anchor. */
-    SAT_PANIC_IF_ERROR(t3_original_hud_plate(t3_original_hud_x(350-NAME_WIDTH(1)),27,NAME_PLATE(1)));
-    SAT_PANIC_IF_ERROR(t3_original_hud_name(1,t3_original_hud_x(354-NAME_PADDED(1)),23,NAME_PADDED(1)*7/8));
 #else
     SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud, "TIME ", (game->timer + 59u) / 60u, 125, 35));
 #endif
@@ -2218,6 +2235,9 @@ int main(void) {
     SAT_PANIC_IF_ERROR(t3_original_hud_init(g_faces,sizeof g_faces));
 #if defined(T3_PRACTICE_ICONS)
     if(g_practice)(void)t3_practice_icons_init(g_faces,sizeof g_faces);   /* without the file or the room the key display stays text */
+#endif
+#if defined(T3_PRACTICE_FONT)
+    if(g_practice)(void)t3_practice_font_init(g_faces,sizeof g_faces);    /* likewise the HUD text stays in the debug font */
 #endif
 #if defined(T3_FIGHTER_PACKS)
     SAT_PANIC_IF_ERROR(t3_original_hud_load_names(g_faces,sizeof g_faces));
