@@ -1435,76 +1435,26 @@ static void draw_hud(void) {
             cv.lines=g_pmenu.command_count[cv.who];
             cv.first=g_pmenu.command_cursor>=5u?g_pmenu.command_cursor-5u:0u;
             if(cv.first+11u>cv.lines)cv.first=cv.lines>11u?cv.lines-11u:0u;
-            const t3_practice_menu_view_t view={.menu=&g_pmenu,.command_rows=cv.blob?11u:0u,
+            const t3_practice_menu_view_t view={.menu=&g_pmenu,.player_name={t3_fighter_name(g_picks[0]),t3_fighter_name(g_picks[1])},.command_rows=cv.blob?11u:0u,
                 .command_cursor_row=g_pmenu.command_cursor-cv.first,.command_line=command_view_line,.context=&cv};
             menu_in_original_font=t3_practice_menu_draw(&view);
         }
 #endif
         if(g_pmenu.open && !menu_in_original_font) {
-            /* The pause menu: debug-font rows until the original's layout (FUN_800B5978) is drawn. */
-            static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
-            static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
-            if(g_pmenu.command_open) {
-                /* COMMAND LIST (FUN_800789E4): the list scrolls under the cursor; names and commands as text. */
-                uint32_t size;const uint8_t* blob=command_blob(&size);
-                const unsigned who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
-                const unsigned lines=g_pmenu.command_count[who];
-                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"COMMAND LIST",112,30));
-                for(unsigned row=0;row<14u && blob;++row) {
-                    unsigned first=g_pmenu.command_cursor>=7u?g_pmenu.command_cursor-7u:0u;
-                    if(first+14u>lines)first=lines>14u?lines-14u:0u;
-                    const unsigned index=first+row;
-                    const char *name,*command;
-                    if(index>=lines || !t3_practice_command_line(blob,size,g_picks[who],index,&name,&command))break;
-                    char line[24];
-                    unsigned n=0;
-                    line[n++]=index==g_pmenu.command_cursor?'>':' ';
-                    for(const char* c=name;*c && n<22u;++c)line[n++]=*c;
-                    line[n]=0;
-                    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,8,50+12*(int)row));
-                    char cmd[18];
-                    n=0;
-                    for(const char* c=command;*c && n<16u;++c)cmd[n++]=*c;
-                    cmd[n]=0;
-                    SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,cmd,200,50+12*(int)row));
-                }
-            } else {
+            /* Without PFONT.BIN: the page in the debug font, one line per item. */
             uint8_t rows[T3_PM_MAX_ROWS];
-            const unsigned count=t3_practice_menu_rows(&g_pmenu,rows);
-            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"PRACTICE",120,100));
-            for(unsigned r=0;r<count;++r) {
-                const char* label="";const char* value="";
-                switch(rows[r]) {
-                case T3_PM_ROW_MODE:label="MODE";value=SUBS[g_pmenu.sub];break;
-                case T3_PM_ROW_DUMMY:label="TRAINING DUMMY";value=t3_practice_dummy_name(g_pmenu.dummy);break;
-                case T3_PM_ROW_COUNTER:label="COUNTER ATTACKS";value=g_pmenu.counter_attacks?"ON":"OFF";break;
-                case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[g_pmenu.cpu_difficulty%3u];break;
-                case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(g_pmenu.cpu_level);break;
-                case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=g_pmenu.attack_data?"ON":"OFF";break;
-                case T3_PM_ROW_COMBO_PLAYER:label="COMBO PLAYER";value=g_pmenu.combo_player?"2":"1";break;
-                case T3_PM_ROW_COMBO_TYPE: {
-                    static char number[3];
-                    label="COMBO TYPE";
-                    number[0]=(char)('1'+g_pmenu.combo_type%9u);number[1]=0;
-                    value=g_pmenu.combo_count[g_pmenu.combo_player&1u]?number:"NONE";
-                    break;
-                }
-                case T3_PM_ROW_COMMAND_LIST:label="COMMAND LIST";break;
-                case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(g_pmenu.replay_setting);break;
-                case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=g_pmenu.freeze_signal?"ON":"OFF";break;
-                case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=g_pmenu.key_display?"ON":"OFF";break;
-                case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
-                case T3_PM_ROW_EXIT:label="EXIT";break;
-                default:break;
-                }
-                char line[24]="  ";
+            const unsigned count=g_pmenu.mode_select?0u:t3_practice_menu_rows(&g_pmenu,rows);
+            static const char* const SELECT[T3_PM_SELECT_ROWS]={"FREE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
+            static const char* const ITEMS[]={"OK","COMMAND LIST","TRAINING DUMMY","COUNTER ATTACKS","CPU DIFFICULTY","CPU LEVEL",
+                "ATTACK DATA","FREEZE SIGNAL","REPLAY SETTINGS","KEY DISPLAY","COMBO PLAYER","COMBO TYPE","RETURN TO MODE SELECT"};
+            const unsigned lines=g_pmenu.mode_select?(unsigned)T3_PM_SELECT_ROWS:count;
+            for(unsigned r=0;r<lines;++r) {
+                char line[40]="  ";
                 unsigned n=2;
-                for(const char* c=label;*c && n<22u;++c)line[n++]=*c;
+                for(const char* c=g_pmenu.mode_select?SELECT[r]:ITEMS[rows[r]];*c && n<38u;++c)line[n++]=*c;
                 line[n]=0;
-                if(r==g_pmenu.cursor)line[0]='>';
-                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,60,116+12*(int)r));
-                if(value[0])SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,value,190,116+12*(int)r));
-            }
+                if(r==t3_practice_menu_cursor(&g_pmenu))line[0]='>';
+                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,60,100+12*(int)r));
             }
         }
 #if defined(T3_PRACTICE_SELFTEST)
@@ -2348,13 +2298,17 @@ int main(void) {
         {   /* A scripted pad 1 for the emulator check (no key injection): open the menu, change rows, close, fight. */
             uint32_t frame;
             static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
-                {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
+                /* the first pause opens MODE SELECT: FREE, then the dummy to CROUCH, counters, freeze signal, replay MANUAL */
+                {240,SAT_PAD_START,0},{250,SAT_PAD_A,0},{255,SAT_PAD_DOWN,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
                 {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{345,SAT_PAD_DOWN,0},{348,SAT_PAD_RIGHT,0},{351,SAT_PAD_RIGHT,0},{354,SAT_PAD_RIGHT,0},{357,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},{600,SAT_PAD_Z,0},
-                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
-                {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},
-                {1060,SAT_PAD_A,0},{1080,SAT_PAD_DOWN,0},{1090,SAT_PAD_DOWN,0},{1100,SAT_PAD_RIGHT,0},{1140,SAT_PAD_A,0},
-                {1145,SAT_PAD_UP,0},{1150,SAT_PAD_UP,0},{1155,SAT_PAD_UP,0},{1160,SAT_PAD_UP,0},{1165,SAT_PAD_UP,0},{1170,SAT_PAD_START,0},
-                {1400,SAT_PAD_START,0},{1410,SAT_PAD_UP,0},{1430,SAT_PAD_RIGHT,0},{1445,SAT_PAD_RIGHT,0},{1470,SAT_PAD_START,0},
+                /* the dummy back to STAND, then the recorder chord as the menu closes */
+                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{755,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
+                /* RETURN TO MODE SELECT, VS CPU (HARD, a later stage) */
+                {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},{1050,SAT_PAD_DOWN,0},{1060,SAT_PAD_DOWN,0},
+                {1070,SAT_PAD_A,0},{1080,SAT_PAD_DOWN,0},{1090,SAT_PAD_A,0},{1100,SAT_PAD_DOWN,0},{1110,SAT_PAD_DOWN,0},{1120,SAT_PAD_RIGHT,0},{1130,SAT_PAD_DOWN,0},{1140,SAT_PAD_RIGHT,0},{1170,SAT_PAD_START,0},
+                /* COMBO TRAINING */
+                {1400,SAT_PAD_START,0},{1405,SAT_PAD_DOWN,0},{1410,SAT_PAD_DOWN,0},{1415,SAT_PAD_DOWN,0},{1420,SAT_PAD_DOWN,0},{1425,SAT_PAD_DOWN,0},
+                {1430,SAT_PAD_A,0},{1440,SAT_PAD_DOWN,0},{1450,SAT_PAD_A,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
@@ -2402,7 +2356,7 @@ int main(void) {
 #else
             (void)way;
 #endif
-            if(g_pmenu.open) {pad0.pressed=0;pad0.held=0;pad1.pressed=0;pad1.held=0;}
+            if(g_pmenu.open || was_open) {pad0.pressed=0;pad0.held=0;pad1.pressed=0;pad1.held=0;}
             pad0.pressed&=(uint16_t)~SAT_PAD_START;
         }
 #endif

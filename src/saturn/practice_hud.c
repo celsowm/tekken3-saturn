@@ -97,10 +97,15 @@ static void panel(int x,int y,int w,int h,unsigned rgb555) {
                                (uint16_t)(0x8000u|rgb555));
 }
 
-/* The dark blue panel (0, 16, 48) in its light grey frame, as the backdrop's 240 x 316 page at (64, 40). */
-static void backdrop(void) {
-    panel(63,38,242,320,SAT_RGB555(28,28,28));
-    panel(64,40,240,316,SAT_RGB555(0,2,6));
+/* The dark blue panel (0, 16, 48) in its light grey frame: MODE SELECT's 172 x 192 at (8, 40), a page's 240 x 316 at (64, 40). */
+static void backdrop(int mode_select) {
+    if(mode_select) {
+        panel(7,38,174,196,SAT_RGB555(28,28,28));
+        panel(8,40,172,192,SAT_RGB555(0,2,6));
+    } else {
+        panel(63,38,242,320,SAT_RGB555(28,28,28));
+        panel(64,40,240,316,SAT_RGB555(0,2,6));
+    }
 }
 
 /* A value right-aligned to column 25 from the menu's left edge. */
@@ -113,7 +118,7 @@ static void value_text(unsigned colour,const char* text,int y) {
 int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
     if(!t3_practice_font_ready())return 0;
     const t3_practice_menu_t* m=view->menu;
-    backdrop();
+    backdrop(m->mode_select);
     if(m->command_open) {
         t3_practice_font_text(1,10,"COMMAND LIST",72,56);
         for(unsigned row=0;row<view->command_rows;++row) {
@@ -126,39 +131,68 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
         }
         return 1;
     }
-    static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
+    if(m->mode_select) {
+        /* FUN_800B5834 */
+        static const char* const LABELS[T3_PM_SELECT_ROWS]={"FREE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
+        t3_practice_font_text(1,10,"MODE SELECT",16,56);
+        for(unsigned r=0;r<T3_PM_SELECT_ROWS;++r)
+            t3_practice_font_text(0,r==m->select_cursor?10u:11u,LABELS[r],16,110+(int)r*22);
+        return 1;
+    }
+    /* FUN_800B5978, FUN_800B5ED4, FUN_800B6368: the page; row `r` of the item list keeps the colour of the cursor. */
     static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
+    static const char* const OFF_ON[2]={"OFF","ON"};
+    static const char* const TITLES[T3_PM_SUBS]={"FREE","VS.CPU","COMBO TRAINING"};
     uint8_t rows[T3_PM_MAX_ROWS];
     const unsigned count=t3_practice_menu_rows(m,rows);
-    t3_practice_font_text(1,10,"PRACTICE MODE",72,56);
+    const unsigned cursor=m->cursors[m->sub%T3_PM_SUBS];
+    t3_practice_font_text(1,10,TITLES[m->sub%T3_PM_SUBS],72,56);
+    int y=110;
     for(unsigned r=0;r<count;++r) {
+        const unsigned colour=r==cursor?10u:11u;
         const char* label="";const char* value="";
-        char number[3]={0,0,0};
-        switch(rows[r]) {
-        case T3_PM_ROW_MODE:label="MODE";value=SUBS[m->sub];break;
+        char number[12]={0};
+        const unsigned row=rows[r];
+        switch(row) {
+        case T3_PM_ROW_OK_CANCEL:label=m->changed?"CANCEL":"OK";break;
+        case T3_PM_ROW_COMMAND_LIST:label="COMMAND LIST";break;
         case T3_PM_ROW_DUMMY:label="TRAINING DUMMY";value=t3_practice_dummy_name(m->dummy);break;
-        case T3_PM_ROW_COUNTER:label="COUNTER ATTACKS";value=m->counter_attacks?"ON":"OFF";break;
+        case T3_PM_ROW_COUNTER:label="COUNTER ATTACKS";value=OFF_ON[m->counter_attacks&1u];break;
         case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[m->cpu_difficulty%3u];break;
         case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(m->cpu_level);break;
-        case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=m->attack_data?"ON":"OFF";break;
-        case T3_PM_ROW_COMBO_PLAYER:label="COMBO PLAYER";value=m->combo_player?"2":"1";break;
+        case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=OFF_ON[m->attack_data&1u];break;
+        case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=OFF_ON[m->freeze_signal&1u];break;
+        case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(m->replay_setting);break;
+        case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=OFF_ON[m->key_display&1u];break;
+        case T3_PM_ROW_COMBO_PLAYER: {
+            /* `COMBO PLAYER n-` and the character's name at x 207 */
+            const unsigned who=m->combo_player&1u;
+            char text[24]="COMBO PLAYER ";
+            unsigned n=13;
+            text[n++]=(char)('1'+who);text[n++]='-';text[n]=0;
+            t3_practice_font_text(0,colour,text,72,y);
+            if(view->player_name[who])t3_practice_font_text(0,colour,view->player_name[who],207,y);
+            y+=22;
+            continue;
+        }
         case T3_PM_ROW_COMBO_TYPE:
             label="COMBO TYPE";
-            number[0]=(char)('1'+m->combo_type%9u);
+            number[0]=(char)('1'+m->combo_type%8u);
             value=m->combo_count[m->combo_player&1u]?number:"NONE";
             break;
-        case T3_PM_ROW_COMMAND_LIST:label="COMMAND LIST";break;
-        case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(m->replay_setting);break;
-        case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=m->freeze_signal?"ON":"OFF";break;
-        case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=m->key_display?"ON":"OFF";break;
-        case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
-        case T3_PM_ROW_EXIT:label="EXIT";break;
+        case T3_PM_ROW_RETURN:label="RETURN TO MODE SELECT";y=328;break;
         default:break;
         }
-        const unsigned colour=r==m->cursor?10u:11u;
-        const int y=110+(int)r*22;
-        t3_practice_font_text(0,colour,label,72,y);
-        if(value[0])value_text(colour,value,y);
+        if(row==T3_PM_ROW_DUMMY) {   /* the label, then the setting on the next line */
+            t3_practice_font_text(0,colour,label,72,y);
+            y+=22;
+            value_text(colour,value,y);
+        } else {
+            t3_practice_font_text(0,colour,label,72,y);
+            if(value[0])value_text(colour,value,y);
+        }
+        y+=22;
+        if(row==T3_PM_ROW_COMMAND_LIST)y=162;
     }
     return 1;
 }
