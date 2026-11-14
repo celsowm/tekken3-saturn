@@ -42,6 +42,16 @@ query and reset lists.
   dummy; full health bars; and no TIME UP through tick 3301, round 1. The freeze signal's colour was not seen (the test
   disc has no fighter lighting).
 
+## The menu-built disc
+
+A disc built the shipped way (`build_game_disc.py` without `--boot-fighters`, with `-DT3_MENU_SELFTEST=ON
+-DT3_PRACTICE_SELFTEST=ON`) was recorded with Mednafen's own movie recorder (`-video.driver softfb -qtrecord`, no window
+or keys needed; the movie was deleted after its frames were read). The scripted pad went through the title (START), two UP
+from ARCADE MODE to PRACTICE MODE, A, the player select (Paul against Law), the loading screens, and into the practice
+fight: the practice HUD (TOTAL DMG, DMG, PCT, COMBO, the key display `R`, `R+1`), the green freeze-signal bars, the pause
+menu with its rows, and the attack data after punches (TOTAL DMG 14, DMG 6, PCT 7). So the arg-based entry
+(`ARG_FLAGS` bit 1) and the menu's hand-over to the fight program work in the shipped flow.
+
 ## COMBO TRAINING
 
 `scripts/extract_practice_combos.py` reads the combo tables (62 combos for 17 bank types) from practice.ovl (Japan Rev.1's
