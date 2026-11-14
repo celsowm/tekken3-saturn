@@ -28,6 +28,11 @@ typedef struct {
     uint8_t dummy,counter_attacks,attack_data,key_display,freeze_signal;   /* S+0x7D, 0x9E, 0x9D, 0xA0, 0x83 */
     uint8_t command_open;                                     /* S+0x9F: the command list shows */
     uint16_t command_cursor;                                  /* its first line */
+    int16_t command_offset;                                   /* the scroll's pixels still to ease out (64 a line) */
+    uint16_t command_cursor2;                                 /* the dummy's list (CONTROLLER), moved by pad 2 */
+    int16_t command_offset2;
+    uint8_t command_two;                                      /* set by the caller: the dummy's list shows too */
+    unsigned pressed2;                                        /* set by the caller: pad 2's edges (T3_PM_*) for the second list */
     uint16_t command_count[2];                                /* set by the caller: the lines of each player's character */
     uint8_t replay_setting;                                   /* S+0x81: T3_REPLAY_OFF..MANUAL (MANUAL is not on COMBO TRAINING) */
     uint8_t recorder;                                         /* S+0x87 in FREE: set by the chord held as the menu closes */

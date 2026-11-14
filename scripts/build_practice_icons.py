@@ -179,6 +179,11 @@ def main():
     pieces += [marker(vram, 0x7FB7, 0xD0, 0xC0, 48, 48)]                              # 68: the burst
     pieces += [marker(vram, 0x7FB6, 0xA0, 0xC0 + 0x10 * k, 48, 16) for k in range(3)]  # 69-71: HIGH, MID, LOW
     pieces += [marker(vram, 0x7FF6, 0x90, 0xC0, 12, 48), marker(vram, 0x7FF7, 0xD0, 0xC0, 48, 48)]   # 72, 73: !, red burst
+    # 74-77: the tech-roll line's up and down arrows (FUN_800B7704: 10 x 16 at u 0x78 / 0x82, v 0xE0) in menu colours 10 and 11
+    for colour in (10, 11):
+        x, y = hud.text_clut_xy(colour, 0)
+        pal = palette(vram, (y << 6) | (x // 16))
+        pieces += [encode(f'tech {colour}/{u:x}', region(vram, u, 0xE0, 10, 16, pal)) for u in (0x78, 0x82)]
     blob = b'T3PKEY1\0' + struct.pack('<H', len(pieces)) + b''.join(pieces)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(blob)

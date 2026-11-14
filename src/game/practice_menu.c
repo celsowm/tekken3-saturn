@@ -61,17 +61,31 @@ static void select_sub(t3_practice_menu_t* m,unsigned sub) {
     }
 }
 
+/* One list's frame: the d-pad moves the cursor (wrapping) and adds 64 pixels a line to the offset, which then eases out by a third
+ * of itself (plus a pixel) each frame. */
+static void command_scroll(uint16_t* cursor,int16_t* offset,unsigned count,unsigned pressed) {
+    const int d=(pressed&T3_PM_DOWN)?1:(pressed&T3_PM_UP)?-1:(pressed&T3_PM_RIGHT)?5:(pressed&T3_PM_LEFT)?-5:0;
+    if(count && d) {
+        int v=(int)(*cursor<count?*cursor:0u)+d;
+        while(v<0)v+=(int)count;
+        while(v>=(int)count)v-=(int)count;
+        *cursor=(uint16_t)v;
+        *offset=(int16_t)(*offset+64*d);
+    }
+    if(*offset) {
+        int magnitude=*offset<0?-*offset:*offset;
+        magnitude-=(magnitude+3)/3;
+        if(magnitude<0)magnitude=0;
+        *offset=(int16_t)(*offset<0?-magnitude:magnitude);
+    }
+}
+
 unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     if(m->command_open) {
-        /* FUN_800789E4: up and down move by one, left and right by five, wrapping; a face button or Start leaves. */
-        const unsigned count=m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u];
-        int d=(pressed&T3_PM_DOWN)?1:(pressed&T3_PM_UP)?-1:(pressed&T3_PM_RIGHT)?5:(pressed&T3_PM_LEFT)?-5:0;
-        if(count && d) {
-            int v=(int)(m->command_cursor<count?m->command_cursor:0u)+d;
-            while(v<0)v+=(int)count;
-            while(v>=(int)count)v-=(int)count;
-            m->command_cursor=(uint16_t)v;
-        }
+        /* FUN_800789E4: up and down move by one, left and right by five, wrapping, the list easing to its new place; a face
+         * button or Start leaves. */
+        command_scroll(&m->command_cursor,&m->command_offset,m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u],pressed);
+        if(m->command_two)command_scroll(&m->command_cursor2,&m->command_offset2,m->command_count[1],m->pressed2);
         if(pressed&(T3_PM_OK|T3_PM_START))m->command_open=0;
         return T3_PM_NONE;
     }
@@ -114,7 +128,7 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     case T3_PM_ROW_FREEZE_SIGNAL:if(step)m->freeze_signal^=1u,m->changed=0;break;
     case T3_PM_ROW_COMMAND_LIST:   /* a face button opens it (when the character has a list) */
         value_row=0;
-        if(face && m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u]){m->command_open=1;m->command_cursor=0;}
+        if(face && m->command_count[m->sub==T3_PM_SUB_COMBO?(m->combo_player&1u):0u]){m->command_open=1;m->command_cursor=m->command_cursor2=0;m->command_offset=m->command_offset2=0;}
         break;
     case T3_PM_ROW_REPLAY:   /* OFF, +4, +5, +6 COMBO, MANUAL (not in combo training) */
         if(step)m->replay_setting=cycle(m->replay_setting,m->sub==T3_PM_SUB_COMBO?T3_REPLAY_SETTINGS-1u:T3_REPLAY_SETTINGS,step),m->changed=0;

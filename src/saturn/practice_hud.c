@@ -147,39 +147,83 @@ static void command_text(const char* command,int x,int y) {
     }
 }
 
-static int command_screen(const t3_practice_menu_view_t* view) {
-    const int x0=0;
-    /* the title bar and its rules, then each card: a grey frame, the dark blue body, the light top fading from it */
-    panel(x0+1,92,182,23,SAT_RGB555(2,4,12));
-    panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
-    t3_practice_font_text(0,1,"COMMAND LIST",x0+8,96);
-    for(unsigned row=0;row<view->command_rows && row<5u;++row) {
+/* A rectangle cut to the list's window (y 116 to 436: the original's draw areas). */
+static void window_panel(int x,int y,int w,int h,unsigned rgb555) {
+    const int top=116,bottom=436;
+    if(y<top){h-=top-y;y=top;}
+    if(y+h>bottom)h=bottom-y;
+    if(h>0)panel(x,y,w,h,rgb555);
+}
+static int in_window(int y,int h) {return y>=116 && y+h<=436;}
+
+/* The special cards: character 6's lines 6-13 and 14 on are green and gold, the first of each group a flat header. */
+static void card_colours(unsigned character,unsigned index,unsigned* edge,unsigned* fill,int* boxed) {
+    *edge=SAT_RGB555(2,4,12);*fill=SAT_RGB555(8,18,23);*boxed=1;
+    if(character!=6u)return;
+    int first=0;
+    if(index>=6u && index<=13u){*edge=SAT_RGB555(0,8,4);*fill=SAT_RGB555(10,20,11);first=index<7u;}
+    else if(index>=14u){*edge=SAT_RGB555(8,6,2);*fill=SAT_RGB555(20,18,4);first=index<15u;}
+    if(first){*fill=SAT_RGB555(2,4,12);*boxed=0;}
+}
+
+static void command_column(const t3_practice_menu_view_t* view,unsigned column,int x0) {
+    const t3_practice_command_column_t* col=&view->column[column];
+    if(!col->active || !col->lines)return;
+    /* FUN_800789E4: the offset slides the cards; the first one drawn starts above the window */
+    const int off=col->offset;
+    const int shift=off/64+(off>0?1:0);
+    int y=off+118-64*shift;
+    int index=(int)col->cursor-shift;
+    while(index<0)index+=(int)col->lines;
+    while(index>=(int)col->lines)index-=(int)col->lines;
+    unsigned rows=6;
+    if(col->character==15u){y=246;rows=1;}   /* a single card, mid screen */
+    for(unsigned row=0;row<rows;++row,y+=64) {
         const char *name,*command;
-        if(!view->command_line(view->context,row,&name,&command))break;
-        const int y=118+(int)row*64;
-        panel(x0+2,y-3,180,66,SAT_RGB555(26,26,26));
-        panel(x0+3,y-2,178,63,SAT_RGB555(2,4,12));
-        for(unsigned band=0;band<6u;++band)
-            panel(x0+3,y-2+(int)band*4,178,4,SAT_RGB555(lerp5(2,8,band,5),lerp5(4,18,band,5),lerp5(12,23,band,5)));
+        if(!view->command_line(view->context,column,(unsigned)index,&name,&command))break;
+        unsigned edge,fill;
+        int boxed;
+        card_colours(col->character,(unsigned)index,&edge,&fill,&boxed);
+        window_panel(x0+2,y-3,180,66,SAT_RGB555(26,26,26));
+        window_panel(x0+3,y-2,178,63,edge);
+        if(boxed) {
+            for(unsigned band=0;band<6u;++band)
+                window_panel(x0+3,y-2+(int)band*4,178,4,SAT_RGB555(lerp5((edge>>0)&31u,(fill>>0)&31u,band,5),
+                    lerp5((edge>>5)&31u,(fill>>5)&31u,band,5),lerp5((edge>>10)&31u,(fill>>10)&31u,band,5)));
+        } else window_panel(x0+3,y-2,178,26,fill);
         unsigned length=0;
         while(name[length])++length;
-        if(length>=29u) {   /* a long name wraps at 28 cells */
-            char first[29],rest[40];
+        const int name_y=length>=29u?y:y+6;
+        if(in_window(name_y,16)) {
+            char first[29];
             unsigned i;
-            for(i=0;i<28u;++i)first[i]=capital(name[i]);
-            first[28]=0;
+            for(i=0;name[i] && i<28u;++i)first[i]=capital(name[i]);
+            first[i]=0;
+            t3_practice_font_text_sized(0,1,first,x0+6,name_y,6,16);
+        }
+        if(length>=29u && in_window(y+12,16)) {   /* a long name wraps at 28 cells */
+            char rest[40];
+            unsigned i;
             for(i=0;name[28+i] && i<39u;++i)rest[i]=capital(name[28+i]);
             rest[i]=0;
-            t3_practice_font_text_sized(0,1,first,x0+6,y,6,16);
             t3_practice_font_text_sized(0,1,rest,x0+6,y+12,6,16);
-        } else {
-            char upper[29];
-            unsigned i;
-            for(i=0;name[i] && i<28u;++i)upper[i]=capital(name[i]);
-            upper[i]=0;
-            t3_practice_font_text_sized(0,1,upper,x0+6,y+6,6,16);
         }
-        command_text(command,x0+6,y+39);
+        if(in_window(y+27,32))command_text(command,x0+6,y+39);
+        if(++index>=(int)col->lines)index=0;
+    }
+}
+
+static int command_screen(const t3_practice_menu_view_t* view) {
+    /* the cards first, then the title bars and rules over the window's edges */
+    command_column(view,0,0);
+    command_column(view,1,184);
+    for(unsigned column=0;column<2u;++column) {
+        if(!view->column[column].active)continue;
+        const int x0=column?184:0;
+        panel(x0+1,92,182,23,SAT_RGB555(2,4,12));
+        panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
+        panel(x0+2,435,180,2,SAT_RGB555(28,28,28));
+        t3_practice_font_text(0,1,"COMMAND LIST",x0+8,96);
     }
     t3_practice_font_text(0,1,"PUSH BUTTON TO EXIT",6,440);
     return 1;
@@ -245,7 +289,11 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
         if(row==T3_PM_ROW_DUMMY) {   /* the label, then the setting on the next line */
             t3_practice_font_text(0,colour,label,72,y);
             y+=22;
-            value_text(colour,value,y);
+            if(m->dummy==T3_DUMMY_UKEMI_MAE || m->dummy==T3_DUMMY_UKEMI_OKU) {
+                /* FUN_800B7704: TECH ROLL and an arrow (down for the front roll, up for the back) at x 198 */
+                t3_practice_font_text(0,colour,"TECH ROLL",72+126,y);
+                (void)t3_practice_icons_tech_arrow(m->dummy==T3_DUMMY_UKEMI_MAE,colour,(72+126+90),y);
+            } else value_text(colour,value,y);
         } else {
             t3_practice_font_text(0,colour,label,72,y);
             if(value[0])value_text(colour,value,y);

@@ -126,9 +126,9 @@ a value row sends the cursor back to the first row, and left and right change th
 `t3_practice_menu_draw` (`practice_hud.c`) draws them in the original font on the original panels (dark blue (0, 16, 48) in a
 light grey frame; MODE SELECT 172 x 192 at (8, 40), a page 240 x 316 at (64, 40); title font 1 at (72, 56); rows font 0 from y
 110, the cursor row colour 10 and the others 11; values right-aligned to column 25; the dummy's setting on the line under its
-label; COMBO PLAYER n- with the character's name at x 207; RETURN TO MODE SELECT at y 328). Differences: the tech-roll settings
-print UKEMI MAE and UKEMI OKU rather than TECH ROLL with an arrow sprite, and Start closes the menu (as it did before the
-port's pages existed). Without PFONT.BIN the debug-font rows remain.
+label; COMBO PLAYER n- with the character's name at x 207; RETURN TO MODE SELECT at y 328). The tech-roll settings print TECH ROLL with the original's down (UKEMI MAE) or up (UKEMI OKU) arrow picture
+(PKEYS.BIN pieces 74-77, menu colours 10 and 11; seen on Mednafen). Start closes the menu (as it did before the port's pages
+existed). Without PFONT.BIN the debug-font rows remain.
 
 ## The command list screen
 
@@ -137,9 +137,14 @@ ASCII. `command_screen` (`practice_hud.c`, FUN_800789E4) draws five cards 64 pix
 blue body, the light top fading from it), the cursor's move as the top card and the rest following (wrapping), the title bar and
 rules, the name at 6 pixels a cell (wrapping at 28 cells; the font has capitals only, so the mixed case is capitalised), and the
 command with the key display's arrow and button pictures at 20 pixels each. `PUSH BUTTON TO EXIT` is at the bottom; the key display
-is hidden while the list shows. On Mednafen the list of the player's character scrolled with its names and pictures. Not done:
-the easing scroll between cards (it jumps), the second column for the dummy on CONTROLLER, the special card colours of two
-characters (kind 6 and 0xF), and the original's pre-rendered title word (the title is text).
+is hidden while the list shows. The list eases between cards as FUN_800789E4 does (the offset gains 64 pixels a line and loses a
+third of itself plus a pixel each frame; `command_scroll` in `practice_menu.c`, tested in `test_practice_menu`), the cards cut to
+the original's window (y 116 to 436: a card's text and pictures show once they fit, its rectangles are clipped). With the dummy
+on CONTROLLER and pad 2 connected a second column (x 184) shows the dummy's list, moved by pad 2. Character 6's lines 6 to 13
+and 14 on get the original's green and gold cards with a flat header card at the start of each group, and character 15 shows one
+card mid screen (`card_colours`, `command_column`); the colours and the second column were not seen on Mednafen (the test disc
+plays Paul against Law). The original's pre-rendered title word is plain text here. On Mednafen the list of the player's
+character scrolled with its names and pictures.
 
 ## The replay's camera
 
@@ -150,7 +155,16 @@ Mednafen, with W1 = 4096 and the eye fixed). `t3_psx_camera_replay_end` (called 
 resets the director and re-seeds the sources, so the fight camera restarts on the pair. Checked on Mednafen: after the replays and a
 combo the camera follows the pair to the arena wall.
 
+## Verification of the finished port
+
+`test_practice_menu` (pages, cursors, easing, second list), `test_practice_camera_replay` (the camera handed back after a replay),
+the earlier golden tests, and Mednafen on the test disc (scripted pad: MODE SELECT, the three pages, tech roll arrow, replays,
+combos, the command list) and on the menu-built disc (title, PRACTICE MODE, player select, loading, the practice fight with its
+HUD, key pictures and combos). The shipped disc (`build/saturn`, `music.cue`) was rebuilt with the practice command lists and
+combos and passes `play_mednafen.py`'s feature check.
+
 ## Not ported
 
-FREEZE SIGNAL's back-light tint: it is `fighter_light.c`'s per-actor back colour and needs fighter lighting, which costs frame time
-and so stays off in the shipped build (a change only ships if an A/B shows no loss in images per second); the two bars stand in.
+FREEZE SIGNAL's back-light tint: it is `fighter_light.c`'s per-actor back colour and needs fighter lighting. docs/FIGHTER_FIDELITY.md
+measured that lighting at 21.96 img/s against 24.8 (the Gouraud drawing alone costs 0.8 img/s), and the rule there is that nothing
+ships that lowers the frame rate, so it stays off in the shipped build and the two bars stand in.

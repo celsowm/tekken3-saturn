@@ -7,7 +7,7 @@
 #include "saturn/cdfs.h"
 #include "saturn/vdp1.h"
 
-enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,PICTURES };
+enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,TECH,PICTURES=TECH+4 };
 static sat_vdp1_texture_t g_tex[PICTURES];
 static uint8_t g_ready;
 
@@ -79,4 +79,9 @@ sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y) 
     /* FUN_800B721C: LP 0x80, RP 0x10, LK 0x40, RK 0x20 as mask bits 1, 2, 4, 8; the guide colour picks the plate. */
     const unsigned mask=((pad&0x80u)?1u:0u)|((pad&0x10u)?2u:0u)|((pad&0x40u)?4u:0u)|((pad&0x20u)?8u:0u);
     return draw(ARROWS+mask*2u+(colour?1u:0u),x,y,20,32);
+}
+
+sat_result_t t3_practice_icons_tech_arrow(unsigned down,unsigned colour,int x,int y) {
+    /* FUN_800B7704: the 'u' and 'd' marks of the tech-roll line, 10 x 16 pictures in the row's colour (10 or 11). */
+    return draw(TECH+(colour==10u?0u:2u)+(down?1u:0u),x,y,10,16);
 }

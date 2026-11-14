@@ -945,11 +945,10 @@ uint32_t g_t3_vdp1_peak[2];
 
 static uint8_t g_picks[2]={0,1};
 #if defined(T3_PRACTICE_FONT)
-typedef struct {const uint8_t* blob;uint32_t size;unsigned who,lines,first;} command_view_t;
-static int command_view_line(void* context,unsigned row,const char** name,const char** command) {
+typedef struct {const uint8_t* blob;uint32_t size;unsigned character[2];} command_view_t;
+static int command_view_line(void* context,unsigned column,unsigned index,const char** name,const char** command) {
     const command_view_t* cv=context;
-    const unsigned index=cv->lines?(cv->first+row)%cv->lines:0u;
-    return cv->lines && t3_practice_command_line(cv->blob,cv->size,g_picks[cv->who],index,name,command);
+    return t3_practice_command_line(cv->blob,cv->size,cv->character[column],index,name,command);
 }
 #endif
 
@@ -1431,10 +1430,14 @@ static void draw_hud(void) {
             command_view_t cv={0};
             uint32_t size;
             cv.blob=command_blob(&size);cv.size=size;
-            cv.who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
-            cv.lines=g_pmenu.command_count[cv.who];
-            cv.first=g_pmenu.command_cursor;   /* the cursor's move is the top card; the rest follow, wrapping */
-            const t3_practice_menu_view_t view={.menu=&g_pmenu,.player_name={t3_fighter_name(g_picks[0]),t3_fighter_name(g_picks[1])},.command_rows=cv.blob?5u:0u,.command_line=command_view_line,.context=&cv};
+            const unsigned who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
+            cv.character[0]=g_picks[who];cv.character[1]=g_picks[1];
+            t3_practice_menu_view_t view={.menu=&g_pmenu,.player_name={t3_fighter_name(g_picks[0]),t3_fighter_name(g_picks[1])},
+                .command_line=command_view_line,.context=&cv};
+            if(cv.blob) {
+                view.column[0]=(t3_practice_command_column_t){1u,g_pmenu.command_count[who],g_pmenu.command_cursor,g_picks[who],g_pmenu.command_offset};
+                view.column[1]=(t3_practice_command_column_t){g_pmenu.command_two,g_pmenu.command_count[1],g_pmenu.command_cursor2,g_picks[1],g_pmenu.command_offset2};
+            }
             menu_in_original_font=t3_practice_menu_draw(&view);
         }
 #endif
@@ -2298,10 +2301,10 @@ int main(void) {
             uint32_t frame;
             static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
                 /* the first pause opens MODE SELECT: FREE, then the dummy to CROUCH, counters, freeze signal, replay MANUAL */
-                {240,SAT_PAD_START,0},{250,SAT_PAD_A,0},{255,SAT_PAD_DOWN,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
+                {240,SAT_PAD_START,0},{250,SAT_PAD_A,0},{255,SAT_PAD_DOWN,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{275,SAT_PAD_RIGHT,0},{280,SAT_PAD_RIGHT,0},{283,SAT_PAD_RIGHT,0},{286,SAT_PAD_RIGHT,0},{288,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
                 {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{345,SAT_PAD_DOWN,0},{348,SAT_PAD_RIGHT,0},{351,SAT_PAD_RIGHT,0},{354,SAT_PAD_RIGHT,0},{357,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},{600,SAT_PAD_Z,0},
                 /* the dummy back to STAND, then the recorder chord as the menu closes */
-                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{755,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
+                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{755,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{765,SAT_PAD_LEFT,0},{770,SAT_PAD_LEFT,0},{775,SAT_PAD_LEFT,0},{780,SAT_PAD_LEFT,0},{785,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
                 /* RETURN TO MODE SELECT, VS CPU (HARD, a later stage) */
                 {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},{1050,SAT_PAD_DOWN,0},{1060,SAT_PAD_DOWN,0},
                 {1070,SAT_PAD_A,0},{1080,SAT_PAD_DOWN,0},{1090,SAT_PAD_A,0},{1100,SAT_PAD_DOWN,0},{1110,SAT_PAD_DOWN,0},{1120,SAT_PAD_RIGHT,0},{1130,SAT_PAD_DOWN,0},{1140,SAT_PAD_RIGHT,0},{1170,SAT_PAD_START,0},
@@ -2341,6 +2344,13 @@ int main(void) {
             }
             g_pmenu.combo_count[0]=(uint8_t)t3_move_probe_practice_combo_count(0u);
             g_pmenu.combo_count[1]=(uint8_t)t3_move_probe_practice_combo_count(1u);
+            g_pmenu.command_two=(uint8_t)(g_pmenu.sub==T3_PM_SUB_FREE && g_pmenu.dummy==T3_DUMMY_CONTROLLER && pad1.connected &&
+                g_pmenu.command_count[1]!=0u);
+            g_pmenu.pressed2=0;
+            if(pad1.pressed&SAT_PAD_UP)g_pmenu.pressed2|=T3_PM_UP;
+            if(pad1.pressed&SAT_PAD_DOWN)g_pmenu.pressed2|=T3_PM_DOWN;
+            if(pad1.pressed&SAT_PAD_LEFT)g_pmenu.pressed2|=T3_PM_LEFT;
+            if(pad1.pressed&SAT_PAD_RIGHT)g_pmenu.pressed2|=T3_PM_RIGHT;
             const unsigned was_open=g_pmenu.open;
             const unsigned way=t3_practice_menu_step(&g_pmenu,keys);
             /* FREE's input recorder (S+0x87): on when the menu closes with this chord held (the original's L2+R2+L1+R1+circle). */

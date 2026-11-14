@@ -16,11 +16,18 @@ int t3_practice_hud_draw(const t3_practice_hud_t* hud);
 
 /* The pause menu or the command list in the original font, on the original's panel. The command list is given line by line
  * (`command_line` fills the name and command of visible row 0..command_rows-1). Returns 0 when the font is not loaded. */
+/* One command list column (player 1's left, the dummy's right): its lines, the cursor's line, the easing offset in pixels, and the
+ * character (the original's special card colours for two of them). */
+typedef struct {
+    unsigned active,lines,cursor,character;
+    int offset;
+} t3_practice_command_column_t;
 typedef struct {
     const t3_practice_menu_t* menu;
     const char* player_name[2];   /* the combo players' characters (COMBO PLAYER n-NAME) */
-    unsigned command_rows;   /* cards shown (5), from the cursor's move */
-    int (*command_line)(void* context,unsigned row,const char** name,const char** command);
+    t3_practice_command_column_t column[2];
+    /* Fills the name and command of line `index` of column `column`. */
+    int (*command_line)(void* context,unsigned column,unsigned index,const char** name,const char** command);
     void* context;
 } t3_practice_menu_view_t;
 int t3_practice_menu_draw(const t3_practice_menu_view_t* view);

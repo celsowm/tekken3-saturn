@@ -53,7 +53,13 @@ int main(void){
     m.command_count[0]=12;
     go_to(&m,T3_PM_ROW_COMMAND_LIST);t3_practice_menu_step(&m,T3_PM_OK);assert(m.command_open && m.command_cursor==0);
     t3_practice_menu_step(&m,T3_PM_UP);assert(m.command_cursor==11);
-    t3_practice_menu_step(&m,T3_PM_DOWN);assert(m.command_cursor==0);
+    assert(m.command_offset==-42);                                                           /* -64 eased by a third of it, plus a pixel */
+    for(int i=0;i<12;++i)t3_practice_menu_step(&m,0);assert(m.command_offset==0);              /* and out in a dozen frames */
+    t3_practice_menu_step(&m,T3_PM_DOWN);assert(m.command_cursor==0 && m.command_offset==42);
+    for(int i=0;i<12;++i)t3_practice_menu_step(&m,0);
+    m.command_two=1;m.command_count[1]=7;m.pressed2=T3_PM_DOWN;                               /* the dummy's list (CONTROLLER) moves on pad 2 */
+    t3_practice_menu_step(&m,0);m.pressed2=0;assert(m.command_cursor2==1 && m.command_cursor==0);
+    m.command_two=0;
     t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.command_cursor==15%12);
     t3_practice_menu_step(&m,T3_PM_START);assert(m.open && !m.command_open);                  /* START closes the list, not the menu */
     m.command_count[0]=0;t3_practice_menu_step(&m,T3_PM_OK);assert(!m.command_open);          /* nothing to show */
