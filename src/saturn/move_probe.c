@@ -1660,6 +1660,12 @@ static void guide_step_now(t3_practice_state_t* st,uint16_t pad_word,uint16_t pr
 void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
     t3_practice_state_t* st=&g_practice_state;
     if(!st->set.on || !g_active)return;
+    if(st->replaying) {   /* a replay plays: the fight stands still; only the replay's own end is watched */
+        const int mode=g_owned_match.replay.mode;
+        st->replaying=(uint8_t)(mode>=1 && mode<=4);
+        if(mode==T3_REPLAY_DONE)t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);
+        return;
+    }
     {   /* a new input after 30 idle frames starts an empty ring (FUN_800B7968) */
         uint8_t stance=0,idle_move=0;
         t3_move_probe_practice_stance(0u,&stance,&idle_move);
@@ -1672,6 +1678,22 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
     t3_practice_data_step(&st->data,facts);
     t3_practice_markers_step(&st->markers,facts[0].attack,facts[1].hit_clean);
     if(st->set.freeze)for(unsigned i=0;i<2u;++i)st->can_act[i]=(uint8_t)t3_move_probe_practice_can_act(i);
+    {   /* REPLAY SETTINGS (FUN_800B8D50): a combo's or Select's replay of the last frames, inside the running fight */
+        const t3_psx_fighter_t* me=&g_owned_match.fighter[0];const t3_psx_fighter_t* dummy=&g_owned_match.fighter[1];
+        const int mode=g_owned_match.replay.mode;
+        st->replaying=(uint8_t)(mode>=1 && mode<=4);
+        if(mode==T3_REPLAY_DONE)t3_psx_replay_reset(&g_owned_match.replay,g_owned_match.replay.epoch);   /* the replay ends: recording again */
+        const t3_practice_player_t* d=&st->data.p[1];
+        t3_practice_replay_in_t in={.setting=st->set.replay,.paused=st->set.paused,.replaying=st->replaying,
+            .select_pressed=(pressed_word&0x100u)!=0,.combo=d->combo,.last=st->last_combo,.ended=d->ended,
+            .acting=(uint8_t)(me->vm.move.active_first!=0 || (me->vm.pending_valid && me->vm.pending_move.active_first!=0) ||
+                (dummy->vm.slot!=dummy->vm.move.stance_slot && (dummy->ground.was_hit_this_move || dummy->ground.in_reaction))),
+            .move_length=me->vm.move.length};
+        uint8_t dropped;
+        const unsigned frames=t3_practice_replay_step(&st->replay,&in,&dropped);
+        st->last_combo=d->combo;
+        if(frames && st->set.replay!=T3_REPLAY_OFF)g_owned_match.practice_replay_back=(int16_t)(frames-2u);
+    }
 }
 #else
 t3_input_t t3_move_probe_practice_p2(t3_input_t p2) {return p2;}

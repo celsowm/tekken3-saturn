@@ -34,6 +34,7 @@ void t3_move_probe_practice_counter(uint8_t dummy_counter);
 #include "practice_data.h"
 #include "practice_keys.h"
 #include "practice_guide.h"
+#include "practice_replay.h"
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
 void t3_move_probe_practice_facts(t3_practice_facts_t out[2]);
 int t3_move_probe_practice_can_act(unsigned fighter);
@@ -46,6 +47,7 @@ typedef struct {
     uint8_t on,sub,dummy,counter,human2,cpu_difficulty,cpu_level,freeze;   /* T3_PM_SUB_*, T3_DUMMY_* */
     uint8_t combo_player,combo_type,paused;                                 /* COMBO TRAINING; the menu is open */
     uint8_t recorder;                                                       /* FREE: Select replays, Down+Select records (S+0x87) */
+    uint8_t replay;                                                         /* REPLAY SETTINGS (S+0x81) */
 } t3_practice_settings_t;
 typedef struct {
     t3_practice_settings_t set;
@@ -53,6 +55,8 @@ typedef struct {
     t3_practice_markers_t markers;
     t3_practice_keys_t keys;
     t3_practice_guide_t guide;
+    t3_practice_replay_t replay;       /* REPLAY SETTINGS' counters (S+0x10, S+0x12) */
+    uint8_t last_combo,replaying;      /* the dummy's last combo count (D_LAST); a replay is playing */
     uint8_t can_act[2];
     uint8_t menu_was_open,guide_key;   /* the pause's last state; the combo/page the guide was loaded for */
 } t3_practice_state_t;

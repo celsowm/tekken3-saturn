@@ -753,7 +753,8 @@ static t3_practice_settings_t practice_settings(const sat_pad_state_t* pad1) {
     return (t3_practice_settings_t){.on=g_practice,.sub=g_pmenu.sub,.dummy=g_pmenu.dummy,.counter=g_pmenu.counter_attacks,
         .human2=(uint8_t)(pad1 && pad1->connected),.cpu_difficulty=g_pmenu.cpu_difficulty,.cpu_level=g_pmenu.cpu_level,
         .freeze=(uint8_t)(g_pmenu.freeze_signal && !g_pmenu.open),
-        .combo_player=g_pmenu.combo_player,.combo_type=g_pmenu.combo_type,.paused=g_pmenu.open,.recorder=g_pmenu.recorder};
+        .combo_player=g_pmenu.combo_player,.combo_type=g_pmenu.combo_type,.paused=g_pmenu.open,.recorder=g_pmenu.recorder,
+        .replay=g_pmenu.replay_setting};
 }
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
@@ -1414,6 +1415,7 @@ static void draw_hud(void) {
                     value=g_pmenu.combo_count[g_pmenu.combo_player&1u]?number:"NONE";
                     break;
                 }
+                case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(g_pmenu.replay_setting);break;
                 case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=g_pmenu.freeze_signal?"ON":"OFF";break;
                 case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=g_pmenu.key_display?"ON":"OFF";break;
                 case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
@@ -2236,7 +2238,7 @@ int main(void) {
             uint32_t frame;
             static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
                 {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
-                {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},
+                {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{345,SAT_PAD_DOWN,0},{348,SAT_PAD_RIGHT,0},{351,SAT_PAD_RIGHT,0},{354,SAT_PAD_RIGHT,0},{357,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},{600,SAT_PAD_Z,0},
                 {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
                 {1400,SAT_PAD_START,0},{1410,SAT_PAD_UP,0},{1430,SAT_PAD_RIGHT,0},{1445,SAT_PAD_RIGHT,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};

@@ -198,6 +198,7 @@ typedef struct {
     uint16_t previous_pose_frame;uint8_t started;
 } t3_psx_fighter_t;
 typedef struct t3_psx_match {
+    int16_t practice_replay_back; /* practice's REPLAY: frames to play back from the next step, 0 for none */
     const t3_psx_match_config_t* config;
 #if T3_PSX_FIGHTERS>2
     uint8_t opponent[T3_PSX_FIGHTERS]; /* the fighter each one faces (FUN_800B5EC0 in Tekken Force) */

@@ -129,6 +129,9 @@ def main():
     guide_out = args.out.with_name('guide.txt').open('w')
     guide_prev = None
     guide_rows = 0
+    replay_out = args.out.with_name('replay.txt').open('w')
+    replay_prev = None
+    replay_rows = 0
     with args.out.open('w') as out, keys.open('w') as key_out:
         for ranges, records in frames(header, body):
             addr, practice = ranges['practice']
@@ -159,6 +162,18 @@ def main():
                     guide_out.write(' '.join(str(v) for v in inputs + guide_prev[0] + [script_prev] + blk + [script_next]) + '\n')
                     guide_rows += 1
             guide_prev = (blk, s, True, records)
+            # REPLAY SETTINGS' counters (FUN_800B8D50): REPLAY_FRAMES / COMBO_FRAMES and the dummy's dropped combo
+            if replay_prev is not None and fight_now and u8(s, PAUSED) == 0 and u8(replay_prev, PAUSED) == 0:
+                me_i, dummy_i = s8(s, 0x84), s8(s, 0x85)
+                if me_i in (0, 1) and dummy_i in (0, 1):
+                    d_next = 0x14 + 0x20 * dummy_i
+                    d_prev = d_next
+                    replay_out.write(' '.join(str(v) for v in [
+                        u16(replay_prev, 0x10), u16(replay_prev, 0x12), s8(s, 0x81), u8(s, d_next + 0x14), u8(replay_prev, d_prev + 0x18),
+                        u8(s, d_next + 0x16), u8(s, 0xAA + me_i), 1 if u16(s, 2) & 0x100 else 0,
+                        u16(s, 0x10), u16(s, 0x12), u8(s, d_next + 0x19)]) + '\n')
+                    replay_rows += 1
+            replay_prev = s
             # the key ring (FUN_800B7B08): the combo player's ring before and after, with the frame's pad word
             cp = s8(s, 0x7B)
             round_addr, round_bytes = ranges['round']
@@ -186,7 +201,7 @@ def main():
                 out.write(' '.join(str(v) for v in row) + '\n')
                 kept += 1
             prev = (nxt, s)
-    print(f'{kept} frames -> {args.out}, {key_rows} key frames -> {keys}, {guide_rows} guide frames')
+    print(f'{kept} frames -> {args.out}, {key_rows} key frames -> {keys}, {guide_rows} guide frames, {replay_rows} replay-counter frames')
     return 0 if kept else 1
 
 

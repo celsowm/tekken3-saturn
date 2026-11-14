@@ -31,6 +31,8 @@ typedef struct {
 void t3_psx_replay_reset(t3_psx_replay_t* state,uint32_t epoch);
 int t3_psx_replay_mark_ko(t3_psx_replay_t* state,unsigned opponent_pose);
 int t3_psx_replay_start(t3_psx_replay_t* state);
+/* ReplayStart with `back` frames (practice's replay: replay_state.gd start(fight, back)); 0 is t3_psx_replay_start. */
+int t3_psx_replay_start_back(t3_psx_replay_t* state,int back);
 /* -1 invalid, 0 live, 1 playback. ENDING -> DONE clears blends in caller. */
 int t3_psx_replay_update(t3_psx_replay_t* state);
 /* Read only the current epoch, never stale slots from an earlier round. */

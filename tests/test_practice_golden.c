@@ -5,6 +5,7 @@
 #include "practice_data.h"
 #include "practice_keys.h"
 #include "practice_guide.h"
+#include "practice_replay.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,25 @@ static void store(const t3_practice_player_t* p,long v[16]) {
 int main(int argc,char** argv) {
     FILE* f=fopen(argc>1?argv[1]:"build/practice-golden/cases.txt","r");
     if(!f){puts("no practice golden cases: skipped");return 77;}
+    unsigned replay_frames_n=0,replay_bad=0;
+    {   /* REPLAY SETTINGS' counters: REPLAY_FRAMES and COMBO_FRAMES after a frame, and the dummy's dropped combo. */
+        FILE* rf=fopen(argc>6?argv[6]:"build/practice-golden/replay.txt","r");
+        long w[11];
+        while(rf && fscanf(rf,"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld",&w[0],&w[1],&w[2],&w[3],&w[4],&w[5],&w[6],&w[7],&w[8],&w[9],&w[10])==11) {
+            t3_practice_replay_t r={(uint16_t)w[0],(uint16_t)w[1]};
+            t3_practice_replay_in_t in={.setting=(uint8_t)w[2],.combo=(uint8_t)w[3],.last=(uint8_t)w[4],.ended=(uint8_t)w[5],
+                .acting=(uint8_t)w[6],.select_pressed=(uint8_t)w[7],.move_length=(uint16_t)w[9]};   /* the length is not in the records */
+            uint8_t dropped=0;
+            const unsigned started=t3_practice_replay_step(&r,&in,&dropped);
+            ++replay_frames_n;
+            if(started==0 && (r.replay_frames!=(uint16_t)w[8] || r.combo_frames!=(uint16_t)w[9] || dropped!=(uint8_t)w[10])) {
+                if(replay_bad<10)fprintf(stderr,"replay frame %u: counters %u/%u dropped %u, original %ld/%ld %ld\n",replay_frames_n,r.replay_frames,r.combo_frames,dropped,w[8],w[9],w[10]);
+                ++replay_bad;
+            }
+        }
+        if(rf)fclose(rf);
+        printf("replay counters: %u frames, %u mismatches\n",replay_frames_n,replay_bad);
+    }
     unsigned guide_frames=0,guide_bad=0;
     {   /* The guide and recorder: S's guide block before a frame, the inputs and facts, and the block after. */
         FILE* gf=fopen(argc>4?argv[4]:"build/practice-golden/guide.txt","r");
@@ -150,5 +170,5 @@ int main(int argc,char** argv) {
     }
     fclose(f);
     printf("%u frames, %u clean hits, %u frames inside a combo, %u mismatches\n",lines,seen_hit,seen_combo,bad);
-    return lines && !bad && !key_bad && !marker_bad && !guide_bad?0:1;
+    return lines && !bad && !key_bad && !marker_bad && !guide_bad && !replay_bad?0:1;
 }

@@ -2,6 +2,7 @@
  * Required Notice: Copyright (c) 2026 n0madic
  * Adapted from Tekken3Remake remake/core/game/practice_mode.gd; see practice_menu.h and NOTICE.md. */
 #include "practice_menu.h"
+#include "practice_replay.h"
 
 void t3_practice_menu_reset(t3_practice_menu_t* m) {
     *m=(t3_practice_menu_t){0};
@@ -21,13 +22,18 @@ const char* t3_practice_cpu_level_name(unsigned level) {
     return level<10u?NAMES[level]:"";
 }
 
+const char* t3_practice_replay_name(unsigned setting) {
+    static const char* const NAMES[T3_REPLAY_SETTINGS]={"OFF","+4 COMBO","+5 COMBO","+6 COMBO","MANUAL"};
+    return setting<T3_REPLAY_SETTINGS?NAMES[setting]:"";
+}
+
 unsigned t3_practice_menu_rows(const t3_practice_menu_t* m,uint8_t rows[T3_PM_MAX_ROWS]) {
     unsigned n=0;
     rows[n++]=T3_PM_ROW_MODE;
     if(m->sub==T3_PM_SUB_VS_CPU){rows[n++]=T3_PM_ROW_CPU_DIFFICULTY;rows[n++]=T3_PM_ROW_CPU_LEVEL;}
     else if(m->sub==T3_PM_SUB_COMBO){rows[n++]=T3_PM_ROW_COMBO_PLAYER;rows[n++]=T3_PM_ROW_COMBO_TYPE;}
     else {rows[n++]=T3_PM_ROW_DUMMY;rows[n++]=T3_PM_ROW_COUNTER;}
-    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;
+    rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;rows[n++]=T3_PM_ROW_REPLAY;
     if(m->sub!=T3_PM_SUB_COMBO)rows[n++]=T3_PM_ROW_KEY_DISPLAY;   /* combo training keeps the display on */
     rows[n++]=T3_PM_ROW_SELECT;rows[n++]=T3_PM_ROW_EXIT;
     return n;
@@ -53,7 +59,7 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
             /* Moving to another sub-mode resets it: FREE turns ATTACK DATA on; VS CPU clears COUNTER ATTACKS. */
             m->sub=cycle(m->sub,T3_PM_SUBS,step);
             if(m->sub==T3_PM_SUB_FREE)m->attack_data=1;
-            else {m->counter_attacks=0;m->dummy=T3_DUMMY_STAND;}
+            else {m->counter_attacks=0;m->dummy=T3_DUMMY_STAND;m->replay_setting=0;}
             if(m->sub==T3_PM_SUB_COMBO){m->key_display=1;m->combo_type=0;}
         }
         break;
@@ -61,6 +67,9 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     case T3_PM_ROW_COUNTER:if(step)m->counter_attacks^=1u;break;
     case T3_PM_ROW_ATTACK_DATA:if(step)m->attack_data^=1u;break;
     case T3_PM_ROW_FREEZE_SIGNAL:if(step)m->freeze_signal^=1u;break;
+    case T3_PM_ROW_REPLAY:   /* OFF, +4, +5, +6 COMBO, MANUAL (not in combo training) */
+        if(step)m->replay_setting=cycle(m->replay_setting,m->sub==T3_PM_SUB_COMBO?T3_REPLAY_SETTINGS-1u:T3_REPLAY_SETTINGS,step);
+        break;
     case T3_PM_ROW_KEY_DISPLAY:if(step)m->key_display^=1u;break;
     case T3_PM_ROW_CPU_DIFFICULTY:if(step)m->cpu_difficulty=cycle(m->cpu_difficulty,3,step);break;
     case T3_PM_ROW_COMBO_PLAYER:   /* the other player's character, and the first of its combos */

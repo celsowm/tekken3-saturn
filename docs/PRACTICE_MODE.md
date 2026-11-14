@@ -77,8 +77,18 @@ Select ends the recording; `practice_guide.c` is the same state machine as COMBO
 scripted pad: `PLAY(SEL) REC(DW+SEL)`, `START REC = ANY KEY`, a recorded walk and punch (TOTAL DMG 13), and the prompt back.
 The replay's own frames were not isolated in the stills.
 
+## REPLAY SETTINGS
+
+`practice_replay.c` is `_replay_control`: OFF, after a combo of 4, 5 or 6 hits (plus 30 frames), or MANUAL (Select), counted
+in REPLAY_FRAMES (S+0x10, at most 300) and COMBO_FRAMES (S+0x12); a replay is at least 90 frames. The counters and the
+dummy's dropped combo match the original trace on 1363 frames (the trace has the setting OFF throughout, so the start rules
+are covered by unit tests only). Playback reuses the KO replay's ring: `t3_psx_replay_start_back` ports
+`start(fight, back)`, `t3_psx_match.practice_replay_back` starts it at the next step, and the fight stands still while the
+poses play back and `REPLAY` blinks; when it ends the ring records again. On Mednafen, Select with MANUAL played back
+earlier positions with the blinking `REPLAY` text and the fight resumed. Sounds, effects and the replay camera are not
+replayed separately from the KO replay's own handling.
+
 ## Not ported
 
-COMMAND LIST (move-list text), REPLAY SETTINGS (the instant replay after a combo; the C replay is tied to the KO replay's
-round states), the key display's and hit markers' sprites, and the original-font layout of the menu and readouts (debug
+COMMAND LIST (move-list text), the key display's and hit markers' sprites, and the original-font layout of the menu and readouts (debug
 font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped build); the bars stand in.

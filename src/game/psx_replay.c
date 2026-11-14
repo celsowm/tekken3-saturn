@@ -19,6 +19,18 @@ int t3_psx_replay_mark_ko(t3_psx_replay_t* s,unsigned frame) {
     if(!valid(s) || frame>32767)return 0;
     s->mark=mod600((s->record-(int)frame-30)*2);return 1;
 }
+int t3_psx_replay_start_back(t3_psx_replay_t* s,int back) {
+    if(!valid(s))return 0;
+    if(s->recorded<back)back=s->recorded-2;
+    if(back==0)return t3_psx_replay_start(s);
+    if(back>0x12A)back=0x12A;
+    if(back>0)s->mark=mod600((s->record-back+300)%300*2);
+    int age=s->record-(s->mark>>1);
+    if(age<0)age+=0x4B00;
+    if(age%300<150 && s->recorded>152)s->mark=mod600((s->record-150)*2);
+    s->mode=T3_REPLAY_STARTING;s->play=s->mark;
+    return 1;
+}
 int t3_psx_replay_start(t3_psx_replay_t* s) {
     if(!valid(s))return 0;
     if(s->mark<0){s->mode=T3_REPLAY_DONE;s->mark=mod600(s->record*2-320);return 1;}

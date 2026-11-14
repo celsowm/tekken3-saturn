@@ -1867,6 +1867,11 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
         if(n->config->replay_storage)n->config->replay_storage->epoch=n->replay.epoch;
         n->round_gap=0;++n->ticks;return 1;
     }
+    if(n->practice_replay_back>0 && n->replay.mode==T3_REPLAY_RECORDING) {
+        /* Practice: the last frames play back inside the running fight (replay_state.gd start(fight, back)). */
+        if(t3_psx_replay_start_back(&n->replay,n->practice_replay_back))n->flow.blend_hold=20;
+        n->practice_replay_back=0;
+    } else if(n->practice_replay_back>0)n->practice_replay_back=0;
     if(n->flow.replay_request) {
         T3_MATCH_PHASE(3);
         if(!t3_psx_replay_start(&n->replay))return 0;
