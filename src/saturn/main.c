@@ -1432,6 +1432,14 @@ static void draw_hud(void) {
                 SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,level,120,120+12*(int)k));
             }
         }
+        if(g_pmenu.freeze_signal && !g_pmenu.open) {
+            /* FREEZE SIGNAL (FUN_800B6CF4): a bar under each name, green while that fighter can act, red while it cannot.
+             * The original tints the fighter's back light; with fighter lighting off (the shipped build) this stands in. */
+            for(unsigned who=0;who<2u;++who) {
+                const uint16_t colour=t3_move_probe_practice_state()->can_act[who]?SAT_RGB555(2,30,4):SAT_RGB555(31,3,3);
+                SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,who?256:8,44,56,4,1u,1u,colour,colour));
+            }
+        }
         if(g_pmenu.key_display) {
             /* The key display (FUN_800B7C84): the last inputs, newest on the right, as text until its sprites exist. */
             for(unsigned age=0;age<7u;++age) {
