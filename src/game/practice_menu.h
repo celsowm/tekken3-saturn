@@ -19,6 +19,7 @@ enum { T3_PM_MAX_ROWS=8 };
 typedef struct {
     uint8_t open,cursor,sub;
     uint8_t dummy,counter_attacks,attack_data,key_display,freeze_signal;   /* S+0x7D, 0x9E, 0x9D, 0xA0, 0x83 */
+    uint8_t recorder;                                         /* S+0x87 in FREE: set by the chord held as the menu closes */
     uint8_t combo_player,combo_type;                          /* S+0x7B, 0x7C (a combo of the player's character) */
     uint8_t combo_count[2];                                   /* set by the caller: the combos of each player's character */
     uint8_t cpu_difficulty,cpu_level;                         /* S+0x7E (0 EASY..2 HARD), 0x7F (0 STAGE 1..9 FINAL) */

@@ -45,6 +45,7 @@ t3_input_t t3_move_probe_practice_dummy(unsigned setting);
 typedef struct {
     uint8_t on,sub,dummy,counter,human2,cpu_difficulty,cpu_level,freeze;   /* T3_PM_SUB_*, T3_DUMMY_* */
     uint8_t combo_player,combo_type,paused;                                 /* COMBO TRAINING; the menu is open */
+    uint8_t recorder;                                                       /* FREE: Select replays, Down+Select records (S+0x87) */
 } t3_practice_settings_t;
 typedef struct {
     t3_practice_settings_t set;

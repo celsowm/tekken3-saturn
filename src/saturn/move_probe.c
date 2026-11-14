@@ -1573,9 +1573,9 @@ void t3_move_probe_practice_apply(const t3_practice_settings_t* settings) {
     st->set=*settings;
     st->menu_was_open=settings->paused;
     if(settings->paused && !was_open)t3_practice_guide_stop(&st->guide);   /* the pause stops the guide */
-    if(settings->sub==T3_PM_SUB_COMBO) {
+    if(settings->sub==T3_PM_SUB_COMBO || (settings->sub==T3_PM_SUB_FREE && settings->recorder)) {
         /* leaving the pause (or choosing another combo) restarts the guide: ring emptied, replay rewound */
-        const uint8_t key=(uint8_t)(1u|((settings->combo_player&1u)<<1)|((unsigned)settings->combo_type<<2));
+        const uint8_t key=(uint8_t)(1u|((settings->combo_player&1u)<<1)|((unsigned)settings->combo_type<<2)|((unsigned)settings->sub<<6));
         if((was_open && !settings->paused) || st->guide_key!=key) {
             st->guide_key=key;
             t3_practice_guide_stop(&st->guide);
@@ -1618,7 +1618,8 @@ static t3_input_t word_to_input(uint16_t word) {
 }
 static int guide_drives(unsigned fighter) {
     const t3_practice_state_t* st=&g_practice_state;
-    return st->set.on && st->set.sub==T3_PM_SUB_COMBO && st->guide.scripted && (st->set.combo_player&1u)==fighter;
+    return st->set.on && st->guide.scripted && (st->set.combo_player&1u)==fighter &&
+           (st->set.sub==T3_PM_SUB_COMBO || (st->set.sub==T3_PM_SUB_FREE && st->set.recorder));
 }
 t3_input_t t3_move_probe_practice_p2(t3_input_t p2) {
     const t3_practice_settings_t* set=&g_practice_state.set;
@@ -1642,7 +1643,7 @@ static void guide_step_now(t3_practice_state_t* st,uint16_t pad_word,uint16_t pr
     t3_practice_combo_t combo;
     const unsigned bank=t3_psx_match_bank(g_owned_match.config,cp)->bank_type;
     const int have=blob && t3_practice_combo_get(blob,size,bank,st->set.combo_type,&combo);
-    t3_practice_guide_in_t in={.sub=st->set.sub,.guide_on=(uint8_t)(st->set.sub==T3_PM_SUB_COMBO),.combo_type=(int8_t)st->set.combo_type,
+    t3_practice_guide_in_t in={.sub=st->set.sub,.guide_on=(uint8_t)(st->set.sub==T3_PM_SUB_COMBO || st->set.recorder),.combo_type=(int8_t)st->set.combo_type,
         .combo_known=(uint8_t)(blob && t3_practice_combo_count(blob,size,bank)!=0),.combo=have?&combo:NULL,
         .select_pressed=(pressed_word&0x100u)!=0,.select_held=(pad_word&0x100u)!=0,.held_down=(pad_word&0x4000u)!=0,
         .held_horizontal=(pad_word&0xA000u)!=0,.mapped_record_key=((pressed_word&0xF0FFu)!=0),.pad_word=pad_word,
@@ -1664,8 +1665,8 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
         t3_move_probe_practice_stance(0u,&stance,&idle_move);
         if(t3_practice_keys_idle(&st->keys,(pad_word&0xF0F0u)!=0,stance,idle_move))t3_practice_keys_reset(&st->keys);
     }
-    if(st->set.sub!=T3_PM_SUB_COMBO)t3_practice_keys_log(&st->keys,pad_word,g_owned_match.fighter[0].side_flag!=0);
-    else guide_step_now(st,pad_word,pressed_word);
+    if(st->set.sub==T3_PM_SUB_COMBO || (st->set.sub==T3_PM_SUB_FREE && st->set.recorder))guide_step_now(st,pad_word,pressed_word);
+    else t3_practice_keys_log(&st->keys,pad_word,g_owned_match.fighter[0].side_flag!=0);
     t3_practice_facts_t facts[2];
     t3_move_probe_practice_facts(facts);
     t3_practice_data_step(&st->data,facts);

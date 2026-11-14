@@ -69,8 +69,16 @@ In the emulator the test disc's scripted pad went FREE, VS CPU, COMBO TRAINING, 
 The test disc has no arena wall, so a scripted walk of several hundred frames pushes both fighters past the renderer's
 ±30000 range and ends in `INVALID ARG` (`t3_psx_skin_placement`); the scripted walks are short for that reason.
 
+## The FREE page's input recorder
+
+As in the original, the recorder (S+0x87) is switched on by a chord held as the menu closes (the original's
+L2+R2+L1+R1+circle; here L+R+Z). Select (the Saturn pad's Z) replays the recorded input, Down+Select records a new one, and
+Select ends the recording; `practice_guide.c` is the same state machine as COMBO TRAINING's. Recorded on Mednafen from a
+scripted pad: `PLAY(SEL) REC(DW+SEL)`, `START REC = ANY KEY`, a recorded walk and punch (TOTAL DMG 13), and the prompt back.
+The replay's own frames were not isolated in the stills.
+
 ## Not ported
 
-COMMAND LIST (move-list text), REPLAY SETTINGS (a replay recorder driven from practice), the FREE page's Select recorder
-trigger (a button chord in the original), the key display's and hit markers' sprites, and the original-font layout of the
-menu and readouts (debug font for now).
+COMMAND LIST (move-list text), REPLAY SETTINGS (the instant replay after a combo; the C replay is tied to the KO replay's
+round states), the key display's and hit markers' sprites, and the original-font layout of the menu and readouts (debug
+font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped build); the bars stand in.

@@ -753,7 +753,7 @@ static t3_practice_settings_t practice_settings(const sat_pad_state_t* pad1) {
     return (t3_practice_settings_t){.on=g_practice,.sub=g_pmenu.sub,.dummy=g_pmenu.dummy,.counter=g_pmenu.counter_attacks,
         .human2=(uint8_t)(pad1 && pad1->connected),.cpu_difficulty=g_pmenu.cpu_difficulty,.cpu_level=g_pmenu.cpu_level,
         .freeze=(uint8_t)(g_pmenu.freeze_signal && !g_pmenu.open),
-        .combo_player=g_pmenu.combo_player,.combo_type=g_pmenu.combo_type,.paused=g_pmenu.open};
+        .combo_player=g_pmenu.combo_player,.combo_type=g_pmenu.combo_type,.paused=g_pmenu.open,.recorder=g_pmenu.recorder};
 }
 
 static void choose_cpu(const sat_pad_state_t* pad1) {
@@ -1448,14 +1448,15 @@ static void draw_hud(void) {
             /* The guide's prompts (FUN_800B6898, modes.md): Select plays the combo guide. */
             const t3_practice_guide_t* guide=&t3_move_probe_practice_state()->guide;
             const char* prompt=NULL;
-            if(g_pmenu.sub==T3_PM_SUB_COMBO) {
-                if(!g_pmenu.combo_count[g_pmenu.combo_player&1u])prompt="NO COMBOS";
+            if(g_pmenu.sub==T3_PM_SUB_COMBO || (g_pmenu.sub==T3_PM_SUB_FREE && g_pmenu.recorder)) {
+                if(g_pmenu.sub==T3_PM_SUB_COMBO && !g_pmenu.combo_count[g_pmenu.combo_player&1u])prompt="NO COMBOS";
                 else switch(guide->state) {
-                    case T3_GUIDE_READY:prompt="PLAY = SELECT";break;
+                    case T3_GUIDE_READY:prompt=g_pmenu.sub==T3_PM_SUB_COMBO?"PLAY = SELECT":"PLAY(SEL) REC(DW+SEL)";break;
                     case T3_GUIDE_RECORD_WAIT:prompt="START REC = ANY KEY";break;
                     case T3_GUIDE_RECORDING:prompt="REC (STOP = SEL)";break;
                     case T3_GUIDE_PLAY:prompt="PLAY";break;
                     case T3_GUIDE_MODE:prompt="GUIDE MODE";break;
+                    case T3_GUIDE_REPLAY:prompt="PLAY";break;
                     default:break;
                 }
             }
@@ -2236,12 +2237,15 @@ int main(void) {
             static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
                 {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
                 {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},
-                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},
+                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
                 {1400,SAT_PAD_START,0},{1410,SAT_PAD_UP,0},{1430,SAT_PAD_RIGHT,0},{1445,SAT_PAD_RIGHT,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
-            if((frame>400u && frame<460u) || (frame>820u && frame<880u)) {   /* walk up a little and punch (this test disc has no arena wall) */
+            if(frame>=790u && frame<792u)pad0.held|=SAT_PAD_L|SAT_PAD_R|SAT_PAD_Z;   /* the recorder chord as the menu closes */
+            if(frame>=850u && frame<852u)pad0.held|=SAT_PAD_DOWN;                      /* Down + Select records */
+            if(frame>=870u && frame<905u)pad0.held|=SAT_PAD_RIGHT;                     /* the recorded walk */
+            if((frame>400u && frame<460u)) {   /* walk up a little and punch (this test disc has no arena wall) */
                 pad0.held|=SAT_PAD_RIGHT;
                 if(frame%24u==0u){pad0.pressed|=SAT_PAD_X;pad0.held|=SAT_PAD_X;}
             }
@@ -2259,7 +2263,12 @@ int main(void) {
             if(pad0.pressed&SAT_PAD_START)keys|=T3_PM_START;
             g_pmenu.combo_count[0]=(uint8_t)t3_move_probe_practice_combo_count(0u);
             g_pmenu.combo_count[1]=(uint8_t)t3_move_probe_practice_combo_count(1u);
+            const unsigned was_open=g_pmenu.open;
             const unsigned way=t3_practice_menu_step(&g_pmenu,keys);
+            /* FREE's input recorder (S+0x87): on when the menu closes with this chord held (the original's L2+R2+L1+R1+circle). */
+            if(was_open && !g_pmenu.open)
+                g_pmenu.recorder=(uint8_t)(g_pmenu.sub==T3_PM_SUB_FREE &&
+                    (pad0.held&(SAT_PAD_L|SAT_PAD_R|SAT_PAD_Z))==(SAT_PAD_L|SAT_PAD_R|SAT_PAD_Z));
             {   /* VS CPU makes the dummy a CPU fighter at the page's difficulty and level (AiReset) */
                 const t3_practice_settings_t settings=practice_settings(&pad1);
                 t3_move_probe_practice_apply(&settings);
