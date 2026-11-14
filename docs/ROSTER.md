@@ -67,6 +67,28 @@ uses bank 9.
 - **Practice.** PRACTICE leads to the select, then a fight where P2 stands still
   (or is a second human on pad 2); the match starts again by itself, and START
   leaves for the select. The flag travels in bit 1 of the boot argument's last byte.
+  Rules from Tekken3Remake `practice_mode.gd`: hits do no damage (`fight.practice`),
+  both fighters hold 200 health (FUN_800519B4) and the round timer stands still.
+  The attack data (`src/game/practice_data.c`, a port of `_player_data`,
+  `_count_combo`, `_combo_markers`, `_damage`, `_throw_flag` and the react chain)
+  shows TOTAL DMG, the last hit and its share, and the combo count per side in the
+  debug font. START opens a pause menu (the fight stands still; `practice_menu.c`) with
+  a MODE row (FREE or VS CPU), then TRAINING DUMMY (STAND, CROUCH, STAND GUARD,
+  CROUCH GUARD, GUARD ALL, AUTO GUARD, UKEMI MAE/OKU, CONTROLLER = pad 2;
+  `practice_dummy.c`, a port of FUN_800B87C8) and COUNTER ATTACKS on FREE, or CPU
+  DIFFICULTY and CPU LEVEL on VS CPU (the dummy becomes a CPU fighter), then ATTACK
+  DATA, FREEZE SIGNAL (green or red back light, with fighter lighting), KEY DISPLAY (the last inputs from the key ring, `practice_keys.c`, as text),
+  PLAYER SELECT and EXIT. The round caption reads PRACTICE MODE and no winner message
+  shows. Not yet ported: the COMBO TRAINING page, REPLAY SETTINGS,
+  COMMAND LIST, the hit markers' sprites at the hit point, the key display's arrow and button sprites, and the
+  original-font layout of the menu and readout (debug font now).
+  Attack data is checked against the original code: `scripts/export_practice_trace.py` turns Tekken3Remake's
+  `flow_trace.py practice` recording into cases and `tests/test_practice_golden.c` replays them (1564 frames,
+  16 clean hits, 140 frames inside a combo, 0 mismatches; skipped without the trace, which stays out of git).
+  The key ring (1000 frames) and the hit markers' bookkeeping (1564 frames) are replayed the same way, 0 mismatches; the idle reset's trigger and the markers' drawing (text levels, no projected point) are not checked. The throw flag comes
+  from the original's own stored value, since the records do not hold the move row.
+  Run end to end in Mednafen on a test disc (a scripted pad opens the menu, changes the dummy and punches); the
+  report and the Slave-CPU plumbing are in [PRACTICE_MODE.md](PRACTICE_MODE.md).
 - **Survival and Time Attack.** Both are runs over the same select. Survival
   raises the CPU level with the wins (middle of the ranges in `modes.md`, level 0
   on every tenth win) and ends at the first loss; Time Attack is ten wins on the

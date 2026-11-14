@@ -23,7 +23,9 @@ typedef struct {
     volatile uint32_t* tables; /* two words per face: corners A B, C D */
     uint32_t faces;
     uint16_t grda[T3_ROSTER_FACES];
-    uint16_t shade[T3_LIGHT_TONES][LEVELS];
+    uint16_t shade[2][T3_LIGHT_TONES][LEVELS]; /* [live] is read by the relight; the other is rebuilt, then swapped in */
+    const uint16_t* tones;
+    uint8_t back[3],back_on,live;
     uint8_t level[MAX_NORMALS];
 } light_actor_t;
 
@@ -45,8 +47,9 @@ static uint16_t channel(int32_t tone,int32_t colour) {
     return (uint16_t)(g<0?0:g>31?31:g);
 }
 
-static void build_shade(light_actor_t* a,const uint16_t* tones) {
-    const int32_t back=g_rig[0]>>4;
+static void build_shade(light_actor_t* a,unsigned which,const uint16_t* tones) {
+    int32_t back[3]={g_rig[0]>>4,g_rig[0]>>4,g_rig[0]>>4};
+    if(a->back_on)for(unsigned c=0;c<3u;++c)back[c]=a->back[c];   /* practice's freeze signal (FUN_8003AA6C) */
     for(unsigned t=0;t<T3_LIGHT_TONES;++t)
         for(unsigned l=0;l<LIGHT_LEVELS;++l)
             for(unsigned f=0;f<FILL_LEVELS;++f) {
@@ -55,11 +58,11 @@ static void build_shade(light_actor_t* a,const uint16_t* tones) {
                     const int32_t base=(g_rig[1]>>(8u*c))&255,light=(g_rig[2]>>(8u*c))&255;
                     const int32_t fill=g_fill_on?light>>1:0;
                     /* base * (back + light*l/15 + fill*f/7) / 256, over 105 = 15*7. */
-                    const int32_t sum=back*105+light*(int32_t)l*7+fill*(int32_t)f*15;
+                    const int32_t sum=back[c]*105+light*(int32_t)l*7+fill*(int32_t)f*15;
                     const int32_t colour=base*sum/(256*105);
                     word|=(uint16_t)(channel((tones[t]>>(5u*c))&31,colour)<<(5u*c));
                 }
-                a->shade[t][l*FILL_LEVELS+f]=word;
+                a->shade[which][t][l*FILL_LEVELS+f]=word;
             }
 }
 
@@ -77,7 +80,8 @@ const uint16_t* t3_fighter_light_load(unsigned actor) {
         a->grda[f]=(uint16_t)((offset>>3)+f);
         tables[2u*f]=tables[2u*f+1u]=0x42104210u; /* unchanged texels until the first relight */
     }
-    build_shade(a,pack->light_tones);
+    a->tones=pack->light_tones;a->back_on=0;a->live=0;
+    build_shade(a,0u,pack->light_tones);
     a->faces=pack->faces;
     a->tables=tables;
     return a->grda;
@@ -112,7 +116,7 @@ void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_
     volatile uint32_t* out=a->tables;
     for(uint32_t f=0;f<a->faces;++f,out+=2) {
         const uint16_t word=words[f];
-        const uint16_t* shade=a->shade[T3_LIGHT_FACE_TONE(word)];
+        const uint16_t* shade=a->shade[a->live][T3_LIGHT_FACE_TONE(word)];
         const uint32_t first=shade[a->level[T3_LIGHT_FACE_NORMAL(word)]];
         if(word&T3_LIGHT_FACE_FLAT) {
             const uint32_t both=first<<16|first;
@@ -123,4 +127,19 @@ void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_
             corners+=3;
         }
     }
+}
+
+/* Practice's FREEZE SIGNAL: lights an actor with this back colour (R, G, B bytes as the original's) instead of the
+ * stage's, or with the stage's again when `on` is 0. The other table is rebuilt and swapped in, so a relight on the
+ * other CPU never reads a half-built one; nothing runs unless the colour changes. */
+void t3_fighter_light_back(unsigned actor,int on,const uint8_t rgb[3]) {
+    light_actor_t* a=&g_light[actor&1u];
+    if(!a->tables || !a->tones)return;
+    if(!on){if(!a->back_on)return;}
+    else if(a->back_on && a->back[0]==rgb[0] && a->back[1]==rgb[1] && a->back[2]==rgb[2])return;
+    a->back_on=(uint8_t)(on!=0);
+    if(on){a->back[0]=rgb[0];a->back[1]=rgb[1];a->back[2]=rgb[2];}
+    const unsigned other=a->live^1u;
+    build_shade(a,other,a->tones);
+    a->live=(uint8_t)other;
 }

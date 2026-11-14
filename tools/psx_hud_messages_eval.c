@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 int main(void) {
-    t3_psx_hud_messages_t f;
+    t3_psx_hud_messages_t f={0};
     char name[25];
     unsigned counter;
     while(scanf("%d %d %d %d %d %d %d %d %d %u %24s",&f.state,&f.frame,

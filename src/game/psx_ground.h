@@ -55,6 +55,7 @@ typedef struct {
     /* The rules that name a character; the match keeps these current. */
     uint8_t character,opp_character;
     uint8_t in_reaction; /* the move started from a clean hit */
+    uint8_t practice;    /* mode 5 owns human_guard (practice_dummy.c); a move start leaves it alone */
 } t3_psx_ground_state_t;
 
 int t3_psx_atan2(const t3_psx_ground_tables_t* tables,int32_t dz,int32_t dx,uint16_t* out);

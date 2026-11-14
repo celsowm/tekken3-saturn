@@ -122,7 +122,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;s->forced_in=0;
         frame.health_q16=f->health_q16;frame.max_health_q16=f->health_max;
         /* Once the round is over a move's exchange events no longer change health. */
-        frame.suppress_health_change=(uint8_t)(c->enable_rounds==2 && match->flow.no_damage);
+        frame.suppress_health_change=(uint8_t)((c->enable_rounds==2 && match->flow.no_damage) || c->practice);
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
         for(unsigned k=0;k<ATTACKER_COUNT;++k) {
@@ -164,6 +164,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         }
         if(!t3_psx_hit_apply_preview(&frame,&s->hit))return 0;
         s->ground.last_damage=abs_damage(s->hit.slot_damage);
+        if(c->practice && c->practice_counter[i&1u] && !f->ground.in_reaction && s->hit.hit_clean)s->hit.counter=1;
 #if T3_PSX_FIGHTERS>2
         /* HitApply in mode 8 (combat.gd _force_score): an enemy's damage taken from the player or a forced hit, and twice
          * the extra damage, scored ten points each. */

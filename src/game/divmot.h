@@ -70,6 +70,8 @@ int t3_divmot_move(const t3_divmot_t* bank, unsigned index,
                    t3_move_record_t* out);
 int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
                      t3_branch_record_t* out);
+/* A row of the optional common (EXE) branch table. */
+int t3_divmot_common_branch(const t3_divmot_t* bank, unsigned index, t3_branch_record_t* out);
 /* Slot lookup: 1 found, 0 absent, -1 invalid input. 0x40000000 namespace
  * resolves to common bank when supplied (bank_type 99). */
 int t3_divmot_slot(const t3_divmot_t* bank, const t3_divmot_t* common,

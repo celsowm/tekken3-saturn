@@ -272,7 +272,7 @@ int T3_SIM_IMPL(t3_psx_ground_start)(t3_psx_ground_state_t* state,const t3_psx_g
     n.opponent_start=opp->root;n.attack_override=0;
     n.damage=n.damage_override?n.damage_override:((m->damage_class>>14)==1u?0:(int16_t)(m->damage_class&0x3FFFu));
     n.state=m->state_word;n.state_class=(uint8_t)((n.state>>11)&31u);
-    n.human_guard=n.is_cpu?0u:1u;
+    if(!n.practice)n.human_guard=n.is_cpu?0u:1u;
     if((n.state&0x100u) && !n.human_guard)n.state&=~0x18u;
     n.guard=(uint16_t)(n.state&0x18u);n.attack_segment_count=segments;
     if(!facts.got_hit){n.was_hit_this_move=0u;n.juggle_count=0;}

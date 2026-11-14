@@ -208,6 +208,8 @@ static void ai_clock(t3_psx_ai_game_t* ai,unsigned fighter,int after) {
 static uint8_t g_cpu_mask=2u,g_cpu_level=4u;
 static uint16_t g_cpu_difficulty=1u;
 #endif
+static uint8_t g_practice_clock;
+static t3_practice_state_t g_practice_state;
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
 static t3_psx_match_t g_owned_match T3_HOT_WRAM;
 #if defined(T3_PSX_CAMERA) && defined(T3_LOCAL_EFFECT_TABLE_BYTES) && T3_LOCAL_EFFECT_TABLE_BYTES > 0
@@ -309,6 +311,7 @@ sat_result_t t3_move_probe_simulation_sync(int full) {
         {&g_ai,sizeof(g_ai)},
 #endif
         {&g_round,sizeof(g_round)},
+        {&g_practice_state,sizeof(g_practice_state)},
         {g_segments,sizeof(g_segments)},
         {g_move_event_status,sizeof(g_move_event_status)},
         {g_move_extra_kind,sizeof(g_move_extra_kind)},
@@ -335,6 +338,7 @@ sat_result_t t3_move_probe_simulation_sync(int full) {
             {&g_second,sizeof(g_second)},
 #endif
             {&g_owned_config,sizeof(g_owned_config)},
+            {&g_practice_state,sizeof(g_practice_state)},
             {&g_active,sizeof(g_active)},{&g_start_slot,sizeof(g_start_slot)},
 #if T3_LOCAL_POSE_CACHE_ENTRIES == 0 && !defined(T3_REFERENCE_TRACE_HIGH)
             {&g_sample_cache,sizeof(g_sample_cache)},
@@ -494,6 +498,9 @@ void t3_move_probe_reset(unsigned round) {
     unsigned i;
     if (!g_active) return;
     g_round=(uint8_t)round;
+    t3_practice_data_reset(&g_practice_state.data);
+    g_practice_state.markers=(t3_practice_markers_t){{0},{0},0};
+    t3_practice_keys_reset(&g_practice_state.keys);
     /* A new match can load other fighters' part tables into the same buffers;
      * the once-per-table topology check must see them (psx_pose.h). */
     t3_psx_pose_topology_reset();
@@ -605,7 +612,7 @@ void t3_move_probe_reset(unsigned round) {
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0
     g_owned_config.rsqrt=(t3_psx_rsqrt_t){t3_local_rsqrt_blob,T3_LOCAL_RSQRT_BYTES};
 #endif
-    g_owned_config.scale_percent=T3_KMD_SCALE_PERCENT;g_owned_config.max_health_q16=140*65536;
+    g_owned_config.scale_percent=T3_KMD_SCALE_PERCENT;g_owned_config.max_health_q16=(g_practice_clock?200:140)*65536; /* practice: FUN_800519B4 */
     /* Measured USA Paul mirror round placement; render conversion is separate. */
     g_owned_config.spawn[0]=(t3_psx_spawn_t){{-1000,0,-4},{-1000,-1027,-4},16384u,16384u};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){{1000,0,4},{1000,-1027,4},49151u,49151u};
@@ -1305,6 +1312,7 @@ int32_t t3_move_probe_backdrop_turn(void) {
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     if(!g_active || !view)return SAT_ERR_INVALID_ARG;
+    g_owned_match.flow.timer_stopped=g_practice_clock;   /* practice: no round timer, on every step path */
 #if defined(T3_ENABLE_PSX_COMBAT)
     t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1u+T3_FRAME_COUNTER_BIAS};
     const t3_input_t pads[2]={p0,p1};
@@ -1454,6 +1462,98 @@ void t3_move_probe_hud_bars(t3_psx_hud_bar_t out[2]) {
     out[0]=g_owned_match.hud_bars[0];out[1]=g_owned_match.hud_bars[1];
 }
 #endif
+/* Practice (practice.ovl, modes.md#practice): hits do no damage, the fighters hold 200 health (FUN_800519B4)
+ * and the round timer stands still. */
+void t3_move_probe_set_practice(uint8_t on) {
+    g_practice_clock=on;
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+    g_owned_config.practice=on;
+    g_owned_config.max_health_q16=(on?200:140)*65536;
+#endif
+}
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+#include "practice_signal.h"
+/* FREEZE SIGNAL (FUN_800B3520): whether fighter `i` could take a branch of its move now. */
+int t3_move_probe_practice_can_act(unsigned i) {
+    if(!g_active)return 0;
+    const t3_psx_fighter_t* f=&g_owned_match.fighter[i&1u];
+    t3_branch_context_t facts;
+    t3_psx_match_branch_facts(&g_owned_match,i&1u,&facts);
+    const t3_divmot_t* bank=t3_psx_match_bank(g_owned_match.config,i&1u);
+    return t3_practice_can_act(bank,g_owned_match.config->common,&f->vm.move,(unsigned)f->vm.clock.pose_frame,
+                               f->vm.clock.frame_step>0,bank->bank_type,&facts);
+}
+/* FUN_800B7968's two facts for fighter `i`: standing in its stance slot, and no move waiting. */
+void t3_move_probe_practice_stance(unsigned i,uint8_t* in_stance,uint8_t* idle_move) {
+    const t3_psx_fighter_t* f=&g_owned_match.fighter[i&1u];
+    *in_stance=(uint8_t)(f->vm.slot==f->vm.move.stance_slot);
+    *idle_move=(uint8_t)!f->vm.pending_valid;
+}
+/* The record fields practice's attack data reads (practice_data.h), for fighters 0 and 1. */
+void t3_move_probe_practice_facts(t3_practice_facts_t out[2]) {
+    static uint16_t previous_slot[2];static uint32_t previous_flags[2];static int16_t react_chain[2];
+    for(unsigned i=0;i<2u;++i) {
+        const t3_psx_fighter_t* f=&g_owned_match.fighter[i];
+        t3_practice_facts_t* o=&out[i];
+        *o=(t3_practice_facts_t){0};
+        const int hit=f->got_hit!=0;
+        o->got_hit=f->got_hit;o->hit_clean=(uint8_t)(hit && f->hit.hit_clean);
+        o->counter_hit=(uint8_t)(hit && f->hit.counter);o->close_hit=(uint8_t)(hit && f->hit.close);
+        o->last_extra_damage=hit?f->hit.extra_damage:0;
+        o->was_hit_this_move=f->ground.was_hit_this_move;o->in_reaction=f->ground.in_reaction;
+        o->throw_state=f->ground.throw_state;o->whiffed=f->whiffed;
+        if(hit && f->hit.best_slot>=0) {
+            o->damage=f->hit.slots[f->hit.best_slot].damage;o->base_damage=f->hit.slots[f->hit.best_slot].base_damage;
+        }
+        o->move_flags=f->vm.move.flags;o->pose_flags=previous_flags[i];
+        o->attack=f->vm.move.attack_word;o->cur_slot=f->vm.slot;o->bank_type=f->ground.character;
+        o->move_changed=(uint8_t)(f->vm.slot!=previous_slot[i]);
+        react_chain[i]=t3_practice_react_chain(react_chain[i],o);o->react_chain=react_chain[i];
+        previous_slot[i]=f->vm.slot;previous_flags[i]=f->vm.move.flags;
+    }
+}
+#endif
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+#include "practice_dummy.h"
+/* The training dummy's scripted input (practice_dummy.c) for fighter 1 against fighter 0's move. */
+t3_input_t t3_move_probe_practice_dummy(unsigned setting) {
+    t3_input_t out={0,0};
+    if(!g_active)return out;
+    t3_psx_fighter_t* me=&g_owned_match.fighter[0];t3_psx_fighter_t* d=&g_owned_match.fighter[1];
+    me->ground.practice=d->ground.practice=1;
+    me->ground.human_guard=1;me->ground.is_cpu=0;
+    t3_practice_dummy_facts_t f={0};
+    f.attack=me->vm.move.attack_word;f.pose_frame=(uint16_t)me->vm.clock.pose_frame;f.active_last=me->vm.move.active_last;
+    f.lying=(d->vm.move.state_word&0x204u)!=0;
+    f.in_reaction=d->ground.in_reaction;f.has_air_window=d->vm.move.air_start!=0;f.move_pending=d->vm.pending_valid;
+    f.frame_odd=(uint8_t)(g_owned_match.frame_counter&1u);
+    f.doctor_b=t3_psx_match_bank(g_owned_match.config,1)->bank_type==18u;
+    {   /* transition 0x1C among the move's branch rows (FUN_800B8B94) */
+        const t3_divmot_t* bank=t3_psx_match_bank(g_owned_match.config,1);
+        t3_branch_record_t row;
+        for(unsigned i=d->vm.move.branch_index;i<bank->branch_count && t3_divmot_branch(bank,i,&row) && row.command!=0xC000u;++i)
+            if(row.flags==0x1Cu){f.has_tech_roll=1;break;}
+    }
+    const t3_practice_dummy_out_t r=t3_practice_dummy_input(&f,setting);
+    d->ground.human_guard=r.human_guard;d->ground.is_cpu=0;
+    if(r.word&0x1000u)out.held|=T3_IN_LEFT;
+    if(r.word&0x4000u)out.held|=T3_IN_RIGHT;
+    if(r.word&0x8000u)out.held|=T3_IN_BACK;
+    if(r.word&0x10u)out.held|=T3_IN_RP;
+    if(r.word&0x20u)out.held|=T3_IN_RK;   /* ○ */
+    if(r.word&0x40u)out.held|=T3_IN_LK;   /* ✕ */
+    if(r.word&0x80u)out.held|=T3_IN_LP;   /* □ */
+    out.pressed=(uint16_t)(out.held&(T3_IN_LP|T3_IN_RP|T3_IN_LK|T3_IN_RK));
+    return out;
+}
+#endif
+void t3_move_probe_practice_counter(uint8_t dummy_counter) {
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+    g_owned_config.practice_counter[0]=0;g_owned_config.practice_counter[1]=dummy_counter;
+#else
+    (void)dummy_counter;
+#endif
+}
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
 #if defined(T3_CPU_AI)
     g_cpu_mask=mask&3u;g_cpu_difficulty=difficulty;g_cpu_level=level;
@@ -1461,6 +1561,49 @@ void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level) {
     (void)mask;(void)difficulty;(void)level;
 #endif
 }
+
+#include "practice_menu.h"
+/* Practice's settings (applied by the CPU that runs the ticks) and its per-tick work. */
+void t3_move_probe_practice_apply(const t3_practice_settings_t* settings) {
+    g_practice_state.set=*settings;
+    t3_move_probe_set_practice(settings->on);
+    t3_move_probe_practice_counter((uint8_t)(settings->on && settings->sub==T3_PM_SUB_FREE && settings->counter));
+    if(settings->on)
+        t3_move_probe_set_cpu(settings->sub==T3_PM_SUB_VS_CPU?2u:0u,settings->sub==T3_PM_SUB_VS_CPU?settings->cpu_difficulty:1u,
+                              settings->sub==T3_PM_SUB_VS_CPU?settings->cpu_level:4u);
+}
+const t3_practice_state_t* t3_move_probe_practice_state(void) {
+    return &g_practice_state;
+}
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+t3_input_t t3_move_probe_practice_p2(t3_input_t p2) {
+    const t3_practice_settings_t* set=&g_practice_state.set;
+    if(set->on && g_active && set->sub==T3_PM_SUB_FREE && (set->dummy!=T3_DUMMY_CONTROLLER || !set->human2))
+    {
+        const t3_input_t scripted=t3_move_probe_practice_dummy(set->dummy);
+        return scripted;
+    }
+    return p2;
+}
+void t3_move_probe_practice_tick(uint16_t pad_word) {
+    t3_practice_state_t* st=&g_practice_state;
+    if(!st->set.on || !g_active)return;
+    {   /* a new input after 30 idle frames starts an empty ring (FUN_800B7968) */
+        uint8_t stance=0,idle_move=0;
+        t3_move_probe_practice_stance(0u,&stance,&idle_move);
+        if(t3_practice_keys_idle(&st->keys,(pad_word&0xF0F0u)!=0,stance,idle_move))t3_practice_keys_reset(&st->keys);
+    }
+    t3_practice_keys_log(&st->keys,pad_word,g_owned_match.fighter[0].side_flag!=0);
+    t3_practice_facts_t facts[2];
+    t3_move_probe_practice_facts(facts);
+    t3_practice_data_step(&st->data,facts);
+    t3_practice_markers_step(&st->markers,facts[0].attack,facts[1].hit_clean);
+    if(st->set.freeze)for(unsigned i=0;i<2u;++i)st->can_act[i]=(uint8_t)t3_move_probe_practice_can_act(i);
+}
+#else
+t3_input_t t3_move_probe_practice_p2(t3_input_t p2) {return p2;}
+void t3_move_probe_practice_tick(uint16_t pad_word) {(void)pad_word;}
+#endif
 void t3_move_probe_set_start_buttons(uint16_t first,uint16_t second) {
     g_start_physical[0]=first;g_start_physical[1]=second;
 }

@@ -6,6 +6,11 @@
  */
 #include <stdint.h>
 
+#include "practice_data.h"
+#include "practice_menu.h"
+#include "practice_keys.h"
+#include "practice_signal.h"
+#include "fighter_light.h"
 #include "fight.h"
 #include "sim_profile.h"
 #include "tick_clock.h"
@@ -181,6 +186,8 @@ enum { SIMULATION_TASK=0x101u,SIMULATION_TIMEOUT=60000u,DEFERRED_TICKS=4u };
 typedef struct {
     sat_pad_state_t pads[2];
     uint32_t first,count,epoch;
+    t3_practice_settings_t practice;   /* practice's menu settings (the Slave applies them) */
+    uint16_t practice_pad;             /* the player's physical pad word for the key ring */
 } simulation_job_t;
 static simulation_job_t g_simulation_job T3_HOT_WRAM;
 /* Simulation and fused actor preparation run sequentially on this stack.
@@ -712,6 +719,10 @@ static uint8_t g_demo;
 static unsigned g_demo_ticks;
 /* Practice: P2 is a dummy (or a second human), the match starts again by itself, START leaves. */
 static uint8_t g_practice;
+static t3_practice_menu_t g_pmenu;
+#if defined(T3_PRACTICE_SELFTEST)
+static uint32_t g_selftest_frame;
+#endif
 /* Run modes (modes.md): 0 arcade or VS, 1 survival, 2 time attack. The wins and the seconds fought
  * so far travel in the boot argument; the player picks every opponent. */
 /* Survival and time attack runs (run_rules.c): wins and seconds fought travel in the boot argument. */
@@ -721,12 +732,37 @@ static uint32_t g_run_mark;
 
 
 
+/* The player's physical pad word as the original logs it (practice's key ring). */
+static uint16_t practice_pad_word(const sat_pad_state_t* pad) {
+    uint16_t word=0;
+    if(pad->held&SAT_PAD_UP)word|=0x1000u;
+    if(pad->held&SAT_PAD_RIGHT)word|=0x2000u;
+    if(pad->held&SAT_PAD_DOWN)word|=0x4000u;
+    if(pad->held&SAT_PAD_LEFT)word|=0x8000u;
+    if(pad->held&SAT_PAD_X)word|=0x80u;
+    if(pad->held&SAT_PAD_Y)word|=0x10u;
+    if(pad->held&SAT_PAD_A)word|=0x40u;
+    if(pad->held&SAT_PAD_B)word|=0x20u;
+    return word;
+}
+/* The menu's settings as the CPU that runs the ticks needs them. */
+static t3_practice_settings_t practice_settings(const sat_pad_state_t* pad1) {
+    return (t3_practice_settings_t){.on=g_practice,.sub=g_pmenu.sub,.dummy=g_pmenu.dummy,.counter=g_pmenu.counter_attacks,
+        .human2=(uint8_t)(pad1 && pad1->connected),.cpu_difficulty=g_pmenu.cpu_difficulty,.cpu_level=g_pmenu.cpu_level,
+        .freeze=(uint8_t)(g_pmenu.freeze_signal && !g_pmenu.open)};
+}
+
 static void choose_cpu(const sat_pad_state_t* pad1) {
 #if !defined(T3_DEMO_CPU_MASK)
 #define T3_DEMO_CPU_MASK 3u
 #endif
     if(g_demo) {t3_move_probe_set_cpu(T3_DEMO_CPU_MASK,1u,5u);return;}
-    if(g_practice) {t3_move_probe_set_cpu(0u,1u,4u);return;}
+    t3_move_probe_set_practice(g_practice);
+    if(g_practice) {
+        const t3_practice_settings_t settings=practice_settings(pad1);
+        t3_move_probe_practice_apply(&settings);
+        return;
+    }
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
@@ -1002,12 +1038,15 @@ static void enter_fight_phase(void) {
 #if defined(T3_BOOT_FIGHTER_0)
     /* Test builds name a pairing and skip the menus. */
     g_picks[0]=T3_BOOT_FIGHTER_0;g_picks[1]=T3_BOOT_FIGHTER_1;
+#if defined(T3_BOOT_PRACTICE)
+    g_practice=1;t3_practice_menu_reset(&g_pmenu);t3_move_probe_set_practice(1u);
+#endif
 #else
     uint8_t arg[SAT_EXEC_ARG_MAX];
     uint32_t arg_bytes=0;
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
-        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;
+        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;t3_practice_menu_reset(&g_pmenu);t3_move_probe_set_practice(g_practice);
         g_run_mode=(arg[4]>>2)&3u;g_music_off=(arg[4]>>4)&1u;g_menu_flags=arg[4]&0xE0u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
         __builtin_memcpy(g_seed,arg+ARG_SEED,sizeof g_seed);
         g_ladder=arg[ARG_LADDER];
@@ -1101,9 +1140,11 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
         g_slave_simulation_epoch=job->epoch;
     }
     SLAVE_FRT_START(ticks_started);
+    if(job->practice.on)t3_move_probe_practice_apply(&job->practice);
     for(uint32_t i=0;i<job->count;++i) {
         t3_input_t p1=controller(&job->pads[0],view->fighters[0].facing);
         t3_input_t p2=controller(&job->pads[1],view->fighters[1].facing);
+        if(job->practice.on)p2=t3_move_probe_practice_p2(p2);
         if(job->first+i) {p1.pressed=0;p2.pressed=0;}
 #if defined(T3_REPLAY_INPUT_TAPE)
         t3_input_tape_step(view->total_ticks,&p1,&p2);
@@ -1115,6 +1156,7 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
         if(st!=SAT_OK)return st;
         T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
         t3_move_probe_tick(view);
+        if(job->practice.on)t3_move_probe_practice_tick(job->practice_pad);
         t3_combat_events_tick(view->total_ticks);
         T3_SIM_END(bridge_started);
         t3_sim_tick_end();
@@ -1128,7 +1170,8 @@ sat_result_t t3_simulation_task_body(const void* input,uint32_t bytes,void* outp
 
 static sat_result_t simulation_submit(const sat_pad_state_t pads[2],uint32_t first,
         uint32_t count,sat_parallel_handle_t* handle) {
-    g_simulation_job=(simulation_job_t){{pads[0],pads[1]},first,count,g_simulation_epoch};
+    g_simulation_job=(simulation_job_t){{pads[0],pads[1]},first,count,g_simulation_epoch,practice_settings(&pads[1]),
+                                        practice_pad_word(&pads[0])};
     return sat_parallel_submit(SIMULATION_TASK,&g_simulation_job,sizeof(g_simulation_job),
         &g_game,sizeof(g_game),handle);
 }
@@ -1331,6 +1374,73 @@ static void draw_hud(void) {
      * from x 151/202 at y 70, 14 apart. FUN_8004EB9C: names at 14 and
      * 354-width, y 66, on plates from four pixels outside the name, rows
      * y+9..y+19. */
+    /* Practice has no round timer; its attack data (modes.md) shows in the debug font instead. */
+    if(g_practice) {
+        /* modes.md Practice HUD: TOTAL DMG for each side (columns 23 and 1), the last hit's DMG and share, and the
+         * combo counter, in the debug font until the original's fonts cover digits. */
+        for(unsigned side=0;side<2u;++side) {
+            const t3_practice_player_t* pd=&t3_move_probe_practice_state()->data.p[side^1u];   /* the hits the other side landed */
+            const int x=side?232:8;
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TOTAL DMG:",(uint32_t)pd->total,x,60));
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"DMG:",(uint32_t)pd->hit_damage,x,72));
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PCT:",(uint32_t)pd->hit_share,x,84));
+            SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"COMBO ",(uint32_t)pd->combo,x,96));
+        }
+        if(g_pmenu.open) {
+            /* The pause menu: debug-font rows until the original's layout (FUN_800B5978) is drawn. */
+            static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU"};
+            static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
+            uint8_t rows[T3_PM_MAX_ROWS];
+            const unsigned count=t3_practice_menu_rows(&g_pmenu,rows);
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"PRACTICE",120,100));
+            for(unsigned r=0;r<count;++r) {
+                const char* label="";const char* value="";
+                switch(rows[r]) {
+                case T3_PM_ROW_MODE:label="MODE";value=SUBS[g_pmenu.sub];break;
+                case T3_PM_ROW_DUMMY:label="TRAINING DUMMY";value=t3_practice_dummy_name(g_pmenu.dummy);break;
+                case T3_PM_ROW_COUNTER:label="COUNTER ATTACKS";value=g_pmenu.counter_attacks?"ON":"OFF";break;
+                case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[g_pmenu.cpu_difficulty%3u];break;
+                case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(g_pmenu.cpu_level);break;
+                case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=g_pmenu.attack_data?"ON":"OFF";break;
+                case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=g_pmenu.freeze_signal?"ON":"OFF";break;
+                case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=g_pmenu.key_display?"ON":"OFF";break;
+                case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
+                case T3_PM_ROW_EXIT:label="EXIT";break;
+                default:break;
+                }
+                char line[24]="  ";
+                unsigned n=2;
+                for(const char* c=label;*c && n<22u;++c)line[n++]=*c;
+                line[n]=0;
+                if(r==g_pmenu.cursor)line[0]='>';
+                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,line,60,116+12*(int)r));
+                if(value[0])SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,value,190,116+12*(int)r));
+            }
+        }
+#if defined(T3_PRACTICE_SELFTEST)
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SF ",g_selftest_frame,252,100));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TK ",g_game.total_ticks,252,110));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"RD ",(uint32_t)g_game.round,252,120));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MN ",(uint32_t)(g_pmenu.open|(g_pmenu.dummy<<4)|(g_pmenu.freeze_signal<<8)),252,130));
+#endif
+        if(g_pmenu.attack_data) {
+            /* The hit markers (FUN_800B75AC) as text: the level of each live marker, by what blocks the attack. */
+            for(unsigned k=0;k<T3_PRACTICE_MARKERS;++k) {
+                if(t3_move_probe_practice_state()->markers.frames[k]<=0)continue;
+                const unsigned a=(unsigned)t3_move_probe_practice_state()->markers.attack[k];
+                const char* level=(a&0x18u)==0x18u?"MID":(a&0x10u)?"HIGH":(a&0x08u)?"LOW":"UNBLOCKABLE";
+                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,level,120,120+12*(int)k));
+            }
+        }
+        if(g_pmenu.key_display) {
+            /* The key display (FUN_800B7C84): the last inputs, newest on the right, as text until its sprites exist. */
+            for(unsigned age=0;age<7u;++age) {
+                char text[8];
+                t3_practice_keys_text(&t3_move_probe_practice_state()->keys,age,text);
+                if(text[0])SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8+40*(int)(6u-age),208));
+            }
+        }
+    } else
     SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,t3_original_hud_x(169),1));
     for(unsigned mark=0;mark<2;++mark) {
         SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
@@ -1411,7 +1521,7 @@ static void draw_hud(void) {
     const t3_psx_hud_messages_t facts={.state=round_state,.frame=intro_frame,
         .played=round_number,.max_rounds=max_rounds,.result=round_result,
         .replay_request=replay_request,.human_mask=human_mask,.winner=game->winner,
-        .frame_counter=(uint32_t)frame_counter,.replay_mode=replay_entry,
+        .frame_counter=(uint32_t)frame_counter,.replay_mode=replay_entry,.practice=g_practice,
 #if defined(T3_FIGHTER_PACKS)
         .winner_name=t3_fighter_pack(game->winner==0?0u:1u)->name};
 #else
@@ -2083,6 +2193,46 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
         T3_PERF_ADD(input,input_started);
+#if defined(T3_PRACTICE_SELFTEST)
+        {   /* A scripted pad 1 for the emulator check (no key injection): open the menu, change rows, close, fight. */
+            uint32_t frame;
+            static const struct {uint32_t at;uint16_t pressed,held;} STEPS[]={
+                {240,SAT_PAD_START,0},{260,SAT_PAD_DOWN,0},{270,SAT_PAD_RIGHT,0},{290,SAT_PAD_DOWN,0},{300,SAT_PAD_RIGHT,0},
+                {320,SAT_PAD_DOWN,0},{330,SAT_PAD_DOWN,0},{340,SAT_PAD_RIGHT,0},{360,SAT_PAD_START,0},
+                {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0}};
+            frame=++g_selftest_frame;
+            for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
+            if((frame>400u && frame<700u) || (frame>820u && frame<1300u)) {   /* walk up and punch */
+                pad0.held|=SAT_PAD_RIGHT;
+                if(frame%24u==0u){pad0.pressed|=SAT_PAD_X;pad0.held|=SAT_PAD_X;}
+            }
+        }
+#endif
+#if defined(T3_FIGHTER_PACKS) && (!defined(T3_BOOT_FIGHTER_0) || defined(T3_BOOT_PRACTICE))
+        if(g_practice) {
+            /* START opens practice's pause menu (modes.md) instead of restarting; the fight stands still while it is open. */
+            unsigned keys=0;
+            if(pad0.pressed&SAT_PAD_UP)keys|=T3_PM_UP;
+            if(pad0.pressed&SAT_PAD_DOWN)keys|=T3_PM_DOWN;
+            if(pad0.pressed&SAT_PAD_LEFT)keys|=T3_PM_LEFT;
+            if(pad0.pressed&SAT_PAD_RIGHT)keys|=T3_PM_RIGHT;
+            if(pad0.pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))keys|=T3_PM_OK;
+            if(pad0.pressed&SAT_PAD_START)keys|=T3_PM_START;
+            const unsigned way=t3_practice_menu_step(&g_pmenu,keys);
+            {   /* VS CPU makes the dummy a CPU fighter at the page's difficulty and level (AiReset) */
+                const t3_practice_settings_t settings=practice_settings(&pad1);
+                t3_move_probe_practice_apply(&settings);
+            }
+#if !defined(T3_BOOT_FIGHTER_0)
+            if(way==T3_PM_CHARACTER_SELECT)restart_program(PHASE_SELECT);
+            if(way==T3_PM_LEAVE)restart_program(PHASE_MENU);
+#else
+            (void)way;
+#endif
+            if(g_pmenu.open) {pad0.pressed=0;pad0.held=0;pad1.pressed=0;pad1.held=0;}
+            pad0.pressed&=(uint16_t)~SAT_PAD_START;
+        }
+#endif
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
         if(g_demo && (pad0.pressed || pad1.pressed || g_game.match_done || ++g_demo_ticks>5400u))
             restart_program(PHASE_TITLE);
@@ -2166,6 +2316,7 @@ int main(void) {
         prev_frame = now;
         hz = sat_video_refresh_hz();
         ticks = t3_tick_clock_advance(&g_tick_clock,elapsed,hz,T3_HZ);
+        if(g_practice && g_pmenu.open)ticks=0;
 #if defined(T3_RENDER_BENCH_TICK)
         if(g_game.total_ticks>=T3_RENDER_BENCH_TICK)ticks=0;
         else if(ticks>T3_RENDER_BENCH_TICK-g_game.total_ticks)
@@ -2191,6 +2342,10 @@ int main(void) {
             t3_input_t p2 = pad1.connected ?
                 controller(&pad1, g_game.fighters[1].facing) :
                 (t3_move_probe_owned() ? (t3_input_t){0} : t3_cpu_input(&g_game, 1));
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+            /* Practice: the dummy is scripted unless TRAINING DUMMY says CONTROLLER (the second pad). */
+            if(g_practice && t3_move_probe_owned())p2 = t3_move_probe_practice_p2(p2);
+#endif
             if (i > 0u) {
                 p1.pressed = 0; /* a press belongs to only one sim frame */
                 if (pad1.connected) p2.pressed = 0;
@@ -2204,6 +2359,7 @@ int main(void) {
             } else t3_match_step(&g_game,p1,p2);
             T3_SIM_START(bridge_started,T3_SIM_BRIDGE);
             t3_move_probe_tick(&g_game);
+            if(g_practice)t3_move_probe_practice_tick(practice_pad_word(&pad0));
             t3_combat_events_tick(g_game.total_ticks);
             T3_SIM_END(bridge_started);
             SAT_PANIC_IF_ERROR(t3_characters_tick(&g_game));
@@ -2212,6 +2368,15 @@ int main(void) {
 #endif
         SAT_PANIC_IF_ERROR(t3_cold_data_verify_slice());
         T3_PERF_ADD(simulation,simulation_started);
+#if defined(T3_ENABLE_PSX_OWNED_MATCH) && defined(T3_FIGHTER_LIGHTING)
+        if(g_practice) {   /* FREEZE SIGNAL: green while a fighter can act, red while it cannot (FUN_800B6CF4) */
+            for(unsigned who=0;who<2u;++who) {
+                uint8_t rgb[3];
+                t3_practice_signal_colour(t3_move_probe_practice_state()->can_act[who],rgb);
+                t3_fighter_light_back(who,g_pmenu.freeze_signal && !g_pmenu.open,rgb);
+            }
+        }
+#endif
 #if defined(T3_NATIVE_WAIT_PROBE)
         g_t3_native_sim_ticks=(uint16_t)(sat_time_frc()-native_sim_started);
 #endif
@@ -2227,7 +2392,8 @@ int main(void) {
 #if defined(T3_SLAVE_SIMULATION) && defined(T3_FUSED_ACTOR_PREPARATION)
         g_prepare_handle=0;g_stage_on_worker=0;
         if(deferred) {
-            g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch};
+            g_prepare_job=(simulation_job_t){{pad0,pad1},leading,deferred,g_simulation_epoch,practice_settings(&pad1),
+                                             practice_pad_word(&pad0)};
             t3_characters_set_worker_start(start_prepare_simulation);
         }
 #if defined(T3_MASTER_SKIN_PERCENT_SLOW)

@@ -83,5 +83,13 @@ int main(void) {
     assert(t3_psx_match_apply_hits(&game));
     assert(game.fighter[0].health_q16==140*65536 && !game.fighter[0].got_hit);
     assert(game.fighter[1].contact && game.fighter[1].hit_done && !game.reversal_cancelled);
+    /* Practice: the hit lands and is counted, but health stays; COUNTER ATTACKS makes a clean hit a counter hit. */
+    setup(&bank,&c,&game);
+    c.practice=1;c.practice_counter[1]=1;
+    assert(t3_psx_match_apply_hits(&game));
+    assert(game.fighter[1].health_q16==140*65536 && game.fighter[1].got_hit && game.fighter[1].ground.last_damage==13);
+    assert(!game.fighter[1].hit.hit_clean || game.fighter[1].hit.counter);
+    c.practice_counter[1]=0;setup(&bank,&c,&game);c.practice=1;
+    assert(t3_psx_match_apply_hits(&game) && game.fighter[1].health_q16==140*65536);
     return 0;
 }

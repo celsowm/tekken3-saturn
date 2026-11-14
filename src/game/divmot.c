@@ -146,6 +146,12 @@ int t3_divmot_branch(const t3_divmot_t* bank, unsigned index,
     return 1;
 }
 
+int t3_divmot_common_branch(const t3_divmot_t* bank, unsigned index, t3_branch_record_t* out) {
+    if (!bank || !bank->common_branches || !out || index >= bank->common_branch_count) return 0;
+    decode_branch(bank->common_branches+index*12u,out);
+    return 1;
+}
+
 int t3_divmot_slot_resolve(const t3_divmot_t* bank,
                             const t3_divmot_t* common,
                             unsigned slot, t3_move_record_t* out,

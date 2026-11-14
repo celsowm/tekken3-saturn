@@ -7,6 +7,7 @@
 typedef struct {
     int32_t state,frame,played,max_rounds,result,replay_request,human_mask,winner;
     int32_t replay_mode;
+    uint8_t practice; /* mode 5: PRACTICE MODE replaces the round title, no winner message */
     uint32_t frame_counter;
     const char* winner_name;
 } t3_psx_hud_messages_t;

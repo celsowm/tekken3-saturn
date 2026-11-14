@@ -92,6 +92,8 @@ typedef struct {
     const uint8_t* throw_victim_slots;size_t throw_victim_slots_size;
     const uint8_t* reversal_lists;size_t reversal_lists_size;
     uint8_t chip_enabled,collapse_on_ko;
+    uint8_t practice; /* mode 5: fight->practice, hits do no damage (HitApply) */
+    uint8_t practice_counter[2]; /* practice's COUNTER ATTACKS per defender: a clean hit outside a reaction counts as a counter hit */
     uint8_t enable_rounds; /* 0 none, 1 bounded slice, 2 original frame API. */
     /* Production round-one placement/intro. Zero preserves the neutral
      * mid-fight initializer used by existing oracle seeds. */

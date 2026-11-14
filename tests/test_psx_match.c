@@ -256,6 +256,11 @@ int main(void) {
     assert(game.fighter[0].vm.pending_valid && game.fighter[0].vm.pending_slot==21);
     assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.fighter[0].vm.slot==21 && game.flow.timer==2399);
+    /* Practice stops the round timer (RoundFlow timer_stopped) and the fight runs on. */
+    game.flow.timer_stopped=1;
+    for(unsigned i=0;i<30;++i)assert(t3_psx_match_step_original(&game,forward,forward,&video));
+    assert(game.flow.state==T3_ROUND_FIGHT && game.flow.timer==2399);
+    game.flow.timer_stopped=0;
     test_throw_situation();
     test_attack_pending();
     c.start_intro=0;c.start_seed=0;

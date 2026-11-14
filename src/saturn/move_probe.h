@@ -27,6 +27,36 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
  * and level; they apply at the next reset. Builds without the private AI
  * tables have no CPU opponent (mask 0). */
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level);
+/* Practice: the round timer stands still (RoundFlow's timer_stopped). */
+void t3_move_probe_set_practice(uint8_t on);
+/* COUNTER ATTACKS: a clean hit on the dummy outside a reaction counts as a counter hit. */
+void t3_move_probe_practice_counter(uint8_t dummy_counter);
+#include "practice_data.h"
+#include "practice_keys.h"
+#if defined(T3_ENABLE_PSX_OWNED_MATCH)
+void t3_move_probe_practice_facts(t3_practice_facts_t out[2]);
+int t3_move_probe_practice_can_act(unsigned fighter);
+void t3_move_probe_practice_stance(unsigned fighter,uint8_t* in_stance,uint8_t* idle_move);
+t3_input_t t3_move_probe_practice_dummy(unsigned setting);
+#endif
+/* Practice's per-tick state. The Slave CPU runs the simulation, so the settings go in with each job and the results
+ * (attack data, hit markers, key ring, freeze signal) come back through the cache sync of the owned state. */
+typedef struct {
+    uint8_t on,sub,dummy,counter,human2,cpu_difficulty,cpu_level,freeze;   /* T3_PM_SUB_*, T3_DUMMY_* */
+} t3_practice_settings_t;
+typedef struct {
+    t3_practice_settings_t set;
+    t3_practice_data_t data;
+    t3_practice_markers_t markers;
+    t3_practice_keys_t keys;
+    uint8_t can_act[2];
+} t3_practice_state_t;
+void t3_move_probe_practice_apply(const t3_practice_settings_t* settings);
+/* Fighter 1's pad (the scripted dummy unless the settings give it to a human). */
+t3_input_t t3_move_probe_practice_p2(t3_input_t p2);
+/* After each owned step: the key ring from `pad_word` (physical bits), the attack data, markers and freeze signal. */
+void t3_move_probe_practice_tick(uint16_t pad_word);
+const t3_practice_state_t* t3_move_probe_practice_state(void);
 /* Original physical face/shoulder bits sampled at first-round placement. */
 void t3_move_probe_set_start_buttons(uint16_t first,uint16_t second);
 uint8_t t3_move_probe_cpu_mask(void);

@@ -25,7 +25,8 @@ unsigned t3_psx_hud_messages(const t3_psx_hud_messages_t* f,t3_psx_hud_message_t
         return 0;
     }
     if(f->state==T3_ROUND_INTRO && f->frame!=0) {
-        if(f->max_rounds<=f->played)message(&out[count++],"FINAL ROUND",8,2,63,112);
+        if(f->practice)message(&out[count++],"PRACTICE MODE",8,2,41,112);
+        else if(f->max_rounds<=f->played)message(&out[count++],"FINAL ROUND",8,2,63,112);
         else if(f->frame>=(f->played==1?61:1)) {
             message(&out[count],"ROUND 0",8,2,107,112);
             out[count++].text[6]="0123456789ABCDEF"[(unsigned)f->played&15u];
@@ -37,7 +38,7 @@ unsigned t3_psx_hud_messages(const t3_psx_hud_messages_t* f,t3_psx_hud_message_t
         else if(f->result&4)message(out,"DOUBLE K.O.",1,2,63,228);
         else message(out,"K.O.",1,2,140,228);
         count=1;
-    } else if(f->state==T3_ROUND_WIN_WAIT || f->state==T3_ROUND_END) {
+    } else if((f->state==T3_ROUND_WIN_WAIT || f->state==T3_ROUND_END) && !f->practice) {
         if(f->winner<0)message(out,"DRAW",6,2,140,368);
         else if(f->human_mask==3) {
             unsigned length=0;
