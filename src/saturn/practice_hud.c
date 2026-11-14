@@ -4,6 +4,9 @@
 #include "practice_hud.h"
 #include "practice_font.h"
 #include "practice_menu.h"
+#include "psx_viewport.h"
+#include "saturn/color.h"
+#include "saturn/vdp1.h"
 
 /* A decimal number into `out`: at least `width` digits (zero or space padded), with a sign. */
 static void number(char* out,int value,unsigned width,int zero) {
@@ -84,5 +87,78 @@ int t3_practice_hud_draw(const t3_practice_hud_t* hud) {
         }
     } else if(hud->replay_setting==T3_REPLAY_MANUAL && hud->sub==T3_PM_SUB_FREE){prompt="REPLAY = SELECT";colour=1;}
     if(prompt)t3_practice_font_text(0,colour,prompt,(int)(1u*adv),(int)(21u*line));
+    return 1;
+}
+
+/* ---- the pause menu and the command list (FUN_800B57AC pages, FUN_800B6DA0 backdrop; modes.md "Pause menu drawing") ---- */
+static void panel(int x,int y,int w,int h,unsigned rgb555) {
+    const int sx=t3_psx_viewport_x(x),sy=t3_psx_viewport_y(y);
+    (void)sat_draw_rect_screen((int16_t)sx,(int16_t)sy,(uint16_t)(t3_psx_viewport_x(x+w)-sx),(uint16_t)(t3_psx_viewport_y(y+h)-sy),
+                               (uint16_t)(0x8000u|rgb555));
+}
+
+/* The dark blue panel (0, 16, 48) in its light grey frame, as the backdrop's 240 x 316 page at (64, 40). */
+static void backdrop(void) {
+    panel(63,38,242,320,SAT_RGB555(28,28,28));
+    panel(64,40,240,316,SAT_RGB555(0,2,6));
+}
+
+/* A value right-aligned to column 25 from the menu's left edge. */
+static void value_text(unsigned colour,const char* text,int y) {
+    unsigned length=0;
+    while(text[length])++length;
+    t3_practice_font_text(0,colour,text,72+(int)(length<25u?25u-length:0u)*9,y);
+}
+
+int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
+    if(!t3_practice_font_ready())return 0;
+    const t3_practice_menu_t* m=view->menu;
+    backdrop();
+    if(m->command_open) {
+        t3_practice_font_text(1,10,"COMMAND LIST",72,56);
+        for(unsigned row=0;row<view->command_rows;++row) {
+            const char *name,*command;
+            if(!view->command_line(view->context,row,&name,&command))break;
+            const unsigned colour=row==view->command_cursor_row?10u:11u;
+            const int y=110+(int)row*22;
+            t3_practice_font_text(0,colour,name,72,y);
+            t3_practice_font_text(0,colour,command,72+81,y);
+        }
+        return 1;
+    }
+    static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
+    static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
+    uint8_t rows[T3_PM_MAX_ROWS];
+    const unsigned count=t3_practice_menu_rows(m,rows);
+    t3_practice_font_text(1,10,"PRACTICE MODE",72,56);
+    for(unsigned r=0;r<count;++r) {
+        const char* label="";const char* value="";
+        char number[3]={0,0,0};
+        switch(rows[r]) {
+        case T3_PM_ROW_MODE:label="MODE";value=SUBS[m->sub];break;
+        case T3_PM_ROW_DUMMY:label="TRAINING DUMMY";value=t3_practice_dummy_name(m->dummy);break;
+        case T3_PM_ROW_COUNTER:label="COUNTER ATTACKS";value=m->counter_attacks?"ON":"OFF";break;
+        case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[m->cpu_difficulty%3u];break;
+        case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(m->cpu_level);break;
+        case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=m->attack_data?"ON":"OFF";break;
+        case T3_PM_ROW_COMBO_PLAYER:label="COMBO PLAYER";value=m->combo_player?"2":"1";break;
+        case T3_PM_ROW_COMBO_TYPE:
+            label="COMBO TYPE";
+            number[0]=(char)('1'+m->combo_type%9u);
+            value=m->combo_count[m->combo_player&1u]?number:"NONE";
+            break;
+        case T3_PM_ROW_COMMAND_LIST:label="COMMAND LIST";break;
+        case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(m->replay_setting);break;
+        case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=m->freeze_signal?"ON":"OFF";break;
+        case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=m->key_display?"ON":"OFF";break;
+        case T3_PM_ROW_SELECT:label="PLAYER SELECT";break;
+        case T3_PM_ROW_EXIT:label="EXIT";break;
+        default:break;
+        }
+        const unsigned colour=r==m->cursor?10u:11u;
+        const int y=110+(int)r*22;
+        t3_practice_font_text(0,colour,label,72,y);
+        if(value[0])value_text(colour,value,y);
+    }
     return 1;
 }

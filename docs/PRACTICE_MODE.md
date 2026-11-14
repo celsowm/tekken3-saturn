@@ -116,7 +116,16 @@ into the attacker's `strike` segments, projected through the fight camera), and 
 its HIGH label appeared on the dummy at the hit. The segment's end stands in for HitTest's slot point, which the C match does
 not keep; for attacks whose joint is 0x18 or more the original uses the defender's zone joint instead, which is not done.
 
+## The menu's original font
+
+`t3_practice_menu_draw` (`practice_hud.c`) draws the pause menu and the command list in the original font on the original's
+panel (dark blue (0, 16, 48), light grey frame, 240 x 316 at (64, 40); title font 1 at (72, 56), rows font 0 from y 110, 22 apart,
+the cursor's row colour 10 and the others 11, values right-aligned to column 25). On Mednafen the menu showed with its rows and
+the highlighted cursor row. Without PFONT.BIN the debug-font rows remain. The row set is the port's own (a MODE row instead of
+the original's separate MODE SELECT page and OK/CANCEL row), and the command list is a scrolling text list of 11 rows rather than
+FUN_800789E4's screen with button sprites.
+
 ## Not ported
 
-The original glyph and button-icon rendering of the command list, and the original-font layout of the menu and readouts
-(debug font for now). FREEZE SIGNAL's back-light tint needs fighter lighting (off in the shipped build); the bars stand in.
+The command list's button-icon glyphs and FUN_800789E4's own screen layout, the original's MODE SELECT page, and FREEZE SIGNAL's
+back-light tint (needs fighter lighting, off in the shipped build; the bars stand in).

@@ -944,6 +944,14 @@ uint32_t g_t3_vdp1_peak[2];
  * the previous one left in VRAM, CRAM and Sound RAM. */
 
 static uint8_t g_picks[2]={0,1};
+#if defined(T3_PRACTICE_FONT)
+typedef struct {const uint8_t* blob;uint32_t size;unsigned who,lines,first;} command_view_t;
+static int command_view_line(void* context,unsigned row,const char** name,const char** command) {
+    const command_view_t* cv=context;
+    const unsigned index=cv->first+row;
+    return index<cv->lines && t3_practice_command_line(cv->blob,cv->size,g_picks[cv->who],index,name,command);
+}
+#endif
 
 static void restart_program(uint8_t phase) {
     sat_cdfs_volume_t* volume;
@@ -1409,7 +1417,7 @@ static void draw_hud(void) {
             original_text=t3_practice_hud_draw(&hud);
         }
 #endif
-        for(unsigned side=0;side<2u && g_pmenu.attack_data && !g_pmenu.command_open && !original_text;++side) {
+        for(unsigned side=0;side<2u && g_pmenu.attack_data && !g_pmenu.open && !original_text;++side) {
             const t3_practice_player_t* pd=&t3_move_probe_practice_state()->data.p[side^1u];   /* the hits the other side landed */
             const int x=side?232:8;
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TOTAL DMG:",(uint32_t)pd->total,x,60));
@@ -1417,7 +1425,22 @@ static void draw_hud(void) {
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PCT:",(uint32_t)pd->hit_share,x,84));
             SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"COMBO ",(uint32_t)pd->combo,x,96));
         }
+        int menu_in_original_font=0;
+#if defined(T3_PRACTICE_FONT)
         if(g_pmenu.open) {
+            command_view_t cv={0};
+            uint32_t size;
+            cv.blob=command_blob(&size);cv.size=size;
+            cv.who=g_pmenu.sub==T3_PM_SUB_COMBO?(g_pmenu.combo_player&1u):0u;
+            cv.lines=g_pmenu.command_count[cv.who];
+            cv.first=g_pmenu.command_cursor>=5u?g_pmenu.command_cursor-5u:0u;
+            if(cv.first+11u>cv.lines)cv.first=cv.lines>11u?cv.lines-11u:0u;
+            const t3_practice_menu_view_t view={.menu=&g_pmenu,.command_rows=cv.blob?11u:0u,
+                .command_cursor_row=g_pmenu.command_cursor-cv.first,.command_line=command_view_line,.context=&cv};
+            menu_in_original_font=t3_practice_menu_draw(&view);
+        }
+#endif
+        if(g_pmenu.open && !menu_in_original_font) {
             /* The pause menu: debug-font rows until the original's layout (FUN_800B5978) is drawn. */
             static const char* const SUBS[T3_PM_SUBS]={"FREE","VS CPU","COMBO TRAINING"};
             static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
@@ -1488,6 +1511,9 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"SF ",g_selftest_frame,252,100));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"TK ",g_game.total_ticks,252,110));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"RD ",(uint32_t)g_game.round,252,120));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PX ",(uint32_t)t3_move_probe_owned_value(0u,1u),252,140));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"LX ",(uint32_t)t3_move_probe_owned_value(1u,1u),252,150));
+        SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"PZ ",(uint32_t)t3_move_probe_owned_value(0u,3u),252,160));
         SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"MN ",(uint32_t)(g_pmenu.open|(g_pmenu.dummy<<4)|(g_pmenu.freeze_signal<<8)),252,130));
 #endif
         if(g_pmenu.attack_data) {
@@ -2332,6 +2358,9 @@ int main(void) {
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0}};
             frame=++g_selftest_frame;
             for(unsigned k=0;k<sizeof STEPS/sizeof STEPS[0];++k)if(frame==STEPS[k].at)pad0.pressed|=STEPS[k].pressed;
+#if defined(T3_WALK_SELFTEST)
+            if(frame>200u)pad0.held|=SAT_PAD_RIGHT;   /* walk forward for good: do the fighters stay in the arena? */
+#endif
             if(frame>=790u && frame<792u)pad0.held|=SAT_PAD_L|SAT_PAD_R|SAT_PAD_Z;   /* the recorder chord as the menu closes */
             if(frame>=850u && frame<852u)pad0.held|=SAT_PAD_DOWN;                      /* Down + Select records */
             if(frame>=870u && frame<905u)pad0.held|=SAT_PAD_RIGHT;                     /* the recorded walk */

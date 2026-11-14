@@ -171,8 +171,16 @@ int t3_psx_body_separate_force(t3_psx_body_actor_t actors[2],uint32_t pair_dista
     actors[0]=n[0];actors[1]=n[1];return 1;
 }
 #endif
+/* The original's normal stages are unbounded for practical purposes (|x|, |z| <= 300,000, stages.md "Arena limits"). The
+ * Saturn renderer cannot place a fighter beyond 30,000 (t3_psx_skin_placement) and ends the frame with an error there, so the
+ * console build walls the arena in at 24,000, far outside the 9,000-unit floor; the host builds keep the original limit. */
+#if defined(__sh__)
+#define T3_ARENA_LIMIT 24000
+#else
+#define T3_ARENA_LIMIT 300000
+#endif
 static int32_t excess(int32_t v) {
-    int64_t over=mag(v)-300000;
+    int64_t over=mag(v)-T3_ARENA_LIMIT;
     return over>0?(int32_t)(v>0?-over:over):0;
 }
 static int32_t clamp(int32_t v,int32_t ramp) {return mag(v)>ramp?(v<1?-ramp:ramp):v;}

@@ -735,6 +735,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_saturn PRIVATE src/saturn/practice_icons.c "${_t3_hud_gen}/PKEYS.BIN")
             list(APPEND _t3_stage_disc_files "${_t3_hud_gen}/PKEYS.BIN")
             target_compile_definitions(tekken3_saturn PRIVATE T3_PRACTICE_ICONS=1)
+            # Practice's text in the original font (PFONT.BIN): the HUD, prompts and menu pages.
+            add_custom_command(OUTPUT "${_t3_hud_gen}/PFONT.BIN"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_practice_font.py"
+                    --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_hud_gen}/PFONT.BIN"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_practice_font.py" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                    "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py" "${T3_LOCAL_HUD_EXE}"
+                VERBATIM)
+            target_sources(tekken3_saturn PRIVATE src/saturn/practice_font.c src/saturn/practice_hud.c "${_t3_hud_gen}/PFONT.BIN")
+            list(APPEND _t3_stage_disc_files "${_t3_hud_gen}/PFONT.BIN")
+            target_compile_definitions(tekken3_saturn PRIVATE T3_PRACTICE_FONT=1)
         endif()
         target_compile_definitions(tekken3_saturn PRIVATE T3_ORIGINAL_HUD=1)
         if(T3_ORIGINAL_HUD_BARS)
@@ -1760,6 +1770,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         option(T3_PRACTICE_SELFTEST "Test builds: a scripted pad 1 drives practice's menu and a few punches" OFF)
         if(T3_PRACTICE_SELFTEST)
             set_property(SOURCE src/saturn/main.c APPEND PROPERTY COMPILE_DEFINITIONS T3_PRACTICE_SELFTEST=1)
+        endif()
+        option(T3_WALK_SELFTEST "Test builds: pad 1 walks forward for good (do the fighters stay in the arena?)" OFF)
+        if(T3_WALK_SELFTEST)
+            set_property(SOURCE src/saturn/main.c APPEND PROPERTY COMPILE_DEFINITIONS T3_WALK_SELFTEST=1)
         endif()
         option(T3_MENU_SELFTEST "Test builds: a scripted pad 1 drives the menu to PRACTICE" OFF)
         if(T3_MENU_SELFTEST)
