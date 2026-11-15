@@ -280,7 +280,11 @@ def run(args):
     for symbol,filename in dump_requests:
         # Fighter packs have no KO fallback: the voices come from the combat events.
         if symbol=='_g_t3_sfx_ko_voices' and symbol not in syms:continue
-        if symbol not in syms:raise ValueError('missing dump symbol: '+symbol)
+        if symbol not in syms:
+            if getattr(args,'allow_missing_dumps',False):
+                print('skipping missing dump symbol: '+symbol)
+                continue
+            raise ValueError('missing dump symbol: '+symbol)
         location,length=syms[symbol]
         if not length:raise ValueError('dump symbol has no size: '+symbol)
         command.extend(['--dump-mem',f'{location:#x}:{length}:{out / filename}'])
@@ -424,6 +428,8 @@ def parser():
     p.add_argument('--trace-capacity',type=int,default=262144)
     p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
     p.add_argument('--dump-symbol',action='append',default=[],help='dump a variable using this ELF; write a byte-order/address manifest')
+    p.add_argument('--allow-missing-dumps',action='store_true',
+                   help='skip dump symbols this ELF lacks (a profile-only run of a build without the diagnostics)')
     p.add_argument('--dump-vdp2-vram',action='append',default=[],help='VDP2 word offset:word count in the Ymir JSON')
     p.add_argument('--dump-range',action='append',default=[],help='ADDRESS:BYTES of guest memory, written to range-N.bin')
     return p
