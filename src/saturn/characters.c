@@ -330,8 +330,9 @@ static struct {
 
 sat_result_t t3_characters_tint(unsigned actor,unsigned state) {
     if(actor>1u || !g_tint[actor].count || g_tint[actor].state==state)return SAT_OK;
-    /* 0 none, 1 green (the fighter can act), 2 red: a sixth of the way to the colour, per channel; bit 15 stays */
-    static const uint8_t TARGET[3][3]={{0,0,0},{2,30,4},{31,3,3}};
+    /* 0 none, 1 green (the fighter can act), 2 red: the original's back light multiplies the colours (the PS1 shows both
+     * fighters strongly green); here each channel is scaled in eighths, bit 15 stays */
+    static const uint8_t SCALE[3][3]={{8,8,8},{2,11,2},{11,2,2}};
     uint16_t tinted[256];
     for(unsigned p=0;p<g_tint[actor].count;++p) {
         const uint16_t* source=g_tint[actor].colours+p*256u;
@@ -340,8 +341,9 @@ sat_result_t t3_characters_tint(unsigned actor,unsigned state) {
             if(!state || !(v&0x7FFFu)){tinted[c]=v;continue;}
             uint16_t out=(uint16_t)(v&0x8000u);
             for(unsigned ch=0;ch<3u;++ch) {
-                const unsigned value=(v>>(5u*ch))&31u;
-                out|=(uint16_t)(((value*5u+TARGET[state][ch])/6u)<<(5u*ch));
+                unsigned value=(((v>>(5u*ch))&31u)*SCALE[state][ch])/8u;
+                if(value>31u)value=31u;
+                out|=(uint16_t)(value<<(5u*ch));
             }
             tinted[c]=out;
         }

@@ -16,6 +16,6 @@ sat_result_t t3_practice_icons_arrow(unsigned pad,unsigned colour,int x,int y);
 sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y);
 /* A hit marker (kind 0 high, 1 mid, 2 low, 3 unblockable) centred on the original screen point (x, y). */
 sat_result_t t3_practice_icons_marker(unsigned kind,int x,int y);
-/* The tech-roll line's arrow (up, or down) in menu colour 10 or 11 at the original point (x, y). */
+/* The tech-roll line's arrow (up, or down) in menu colour 10, 11 or 7 at the original point (x, y). */
 sat_result_t t3_practice_icons_tech_arrow(unsigned down,unsigned colour,int x,int y);
 #endif

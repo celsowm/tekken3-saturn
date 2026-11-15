@@ -7,16 +7,21 @@ adaptation with attribution in `NOTICE.md`). Files: `src/game/practice_data.c` (
 
 ## What it does
 
-- No damage (`HitApply` suppressed), 200 health (`FUN_800519B4`), no round timer, the caption PRACTICE MODE, no winner
-  message. After a KO-less round the fight simply goes on.
-- START opens a pause menu; the fight stands still while it is open. Rows: MODE (FREE, VS CPU), TRAINING DUMMY (STAND,
-  CROUCH, STAND GUARD, CROUCH GUARD, GUARD ALL, AUTO GUARD, UKEMI MAE, UKEMI OKU, CONTROLLER) and COUNTER ATTACKS on
-  FREE, CPU DIFFICULTY and CPU LEVEL on VS CPU, then ATTACK DATA, FREEZE SIGNAL, KEY DISPLAY, PLAYER SELECT, EXIT.
-- COMBO TRAINING: a third MODE (COMBO PLAYER, COMBO TYPE); Select plays the guide.
-- Attack data per side: TOTAL DMG, DMG of the last hit, its share (PCT), COMBO; a hit marker per clean hit (text level:
-  HIGH, MID, LOW, UNBLOCKABLE); the key display (last inputs as text, e.g. `R+1`).
-- FREEZE SIGNAL: `t3_practice_can_act` (a port of `FUN_800B3520`) and a per-actor back colour in `fighter_light.c`
-  (green when the fighter can act, red when it cannot). It needs `T3_FIGHTER_LIGHTING`.
+The Saturn game is the USA release, so practice follows the USA overlay (`SLUS_004.02`'s practice.ovl, BNS record 6) and not Japan
+Rev.1's (the remake's docs/research/code/usa-version.md lists the differences). It was compared with the original USA game running in
+PCSX-Redux (`scripts/pcsx_redux_practice_capture.lua` with `scripts/capture_ps1_menus.py --lua ... --names ...`).
+
+- No damage (`HitApply` suppressed), 200 health (`FUN_800519B4`), no round timer, the caption PRACTICE MODE, no winner message.
+- START opens a pause menu; the fight stands still while it is open. The first pause shows MODE SELECT: 1P FREESTYLE, VS CPU,
+  COMBO TRAINING, PLAYER SELECT, RESET. A page starts with OK/CANCEL and COMMAND LIST and ends with RETURN TO MODE SELECT. The USA
+  pages: 1P FREESTYLE has TRAINING DUMMY (STAND, CROUCH, STAND GUARD, CROUCH GUARD, GUARD ALL, AUTO GUARD, UKEMI MAE, UKEMI OKU,
+  CONTROLLER; the two rolls print QUICK ROLL with an arrow), COUNTER ATTACKS, ATTACK DATA, HIT ANALYSIS and COMBO REPLAY; VS.CPU has
+  CPU DIFFICULTY and CPU LEVEL in place of the first two; COMBO TRAINING has COMBO PLAYER and COMBO TYPE. There is no KEY DISPLAY
+  row in the USA tables (`0 7 13 2 1 3 4 14` and so on).
+- Attack data per side: TOTAL DMG, DMG of the last hit, its share (PCT), COMBO; a hit marker per clean hit (text level: HIGH, MID,
+  LOW, UNBLOCKABLE); the key display (the last inputs as pictures) shows only with the guide, that is in COMBO TRAINING.
+- HIT ANALYSIS (Japan's FREEZE SIGNAL): `t3_practice_can_act` (a port of `FUN_800B3520`) and a per-actor colour: both fighters
+  turn green while they can act and red while they cannot (see "FREEZE SIGNAL's tint").
 
 ## The Slave CPU
 
@@ -119,14 +124,14 @@ not keep; for attacks whose joint is 0x18 or more the original uses the defender
 ## The menu's structure and font
 
 `practice_menu.c` follows the original's pages (FUN_800B49C4, FUN_800B4C8C, FUN_800B4E4C): the first pause opens MODE SELECT
-(FREE, VS CPU, COMBO TRAINING, PLAYER SELECT, RESET; moving the cursor onto a sub-mode resets it as in the original, a face
+(1P FREESTYLE, VS CPU, COMBO TRAINING, PLAYER SELECT, RESET; moving the cursor onto a sub-mode resets it as in the original, a face
 button chooses). A page starts with OK/CANCEL (it reads CANCEL until a value changes, then OK; a face button resumes the fight)
 and COMMAND LIST, then the sub-mode's items, and ends with RETURN TO MODE SELECT. Each page has its own cursor, a face button on
 a value row sends the cursor back to the first row, and left and right change the value. The menu comes back on the page it left.
 `t3_practice_menu_draw` (`practice_hud.c`) draws them in the original font on the original panels (dark blue (0, 16, 48) in a
 light grey frame; MODE SELECT 172 x 192 at (8, 40), a page 240 x 316 at (64, 40); title font 1 at (72, 56); rows font 0 from y
 110, the cursor row colour 10 and the others 11; values right-aligned to column 25; the dummy's setting on the line under its
-label; COMBO PLAYER n- with the character's name at x 207; RETURN TO MODE SELECT at y 328). The tech-roll settings print TECH ROLL with the original's down (UKEMI MAE) or up (UKEMI OKU) arrow picture
+label; COMBO PLAYER n- with the character's name at x 207; RETURN TO MODE SELECT at y 328). The roll settings print QUICK ROLL (the USA word; Japan's is TECH ROLL) with the original's down (UKEMI MAE) or up (UKEMI OKU) arrow picture
 (PKEYS.BIN pieces 74-77, menu colours 10 and 11; seen on Mednafen). Start closes the menu (as it did before the port's pages
 existed). Without PFONT.BIN the debug-font rows remain.
 
@@ -143,7 +148,7 @@ the original's window (y 116 to 436: a card's text and pictures show once they f
 on CONTROLLER and pad 2 connected a second column (x 184) shows the dummy's list, moved by pad 2. Character 6's lines 6 to 13
 and 14 on get the original's green and gold cards with a flat header card at the start of each group, and character 15 shows one
 card mid screen (`card_colours`, `command_column`); the colours and the second column were not seen on Mednafen (the test disc
-plays Paul against Law). The title is the USA list's own: STR_TITLE (0x80027C4C) is the atlas word 0x01, "When Facing Right", drawn at (x0 + 60, 97) in the font's capitals. On Mednafen the list of the player's
+plays Paul against Law). The title is the USA list's own: STR_TITLE (0x80027C4C) is the atlas word 0x01, "When Facing Right", drawn at (x0 + 0x27, 0x61) in the font's capitals. On Mednafen the list of the player's
 character scrolled with its names and pictures.
 
 ## The replay's camera
@@ -163,7 +168,7 @@ combos, the command list) and on the menu-built disc (title, PRACTICE MODE, play
 HUD, key pictures and combos). The shipped disc (`build/saturn`, `music.cue`) was rebuilt with the practice command lists and
 combos and passes `play_mednafen.py`'s feature check.
 
-## FREEZE SIGNAL's tint
+## FREEZE SIGNAL's tint (HIT ANALYSIS in the USA game)
 
 The original tints each fighter's back light (FUN_8003AA6C) green while it can act and red while it cannot. Fighter lighting would
 cost frame rate (docs/FIGHTER_FIDELITY.md: 21.96 img/s against 24.8) and cannot fit VDP1 VRAM beside the practice fonts, so the
@@ -187,6 +192,16 @@ command list's title is the USA executable's own string.
 
 The shipped disc (`build/saturn`, `music.cue`) was driven into practice mode on the headless Ymir probe with a pad script
 (`scripts/ymir_practice_flow.py`; no window, no keyboard): the opening movie, the title, UP twice to PRACTICE MODE, the select, the
-practice fight with its attack data, START for MODE SELECT, the FREE page, TECH ROLL with its arrow, FREEZE SIGNAL on and the fighters
+practice fight with its attack data, START for MODE SELECT, the 1P FREESTYLE page, QUICK ROLL with its arrow, HIT ANALYSIS on and the fighters
 tinted green and red, the key pictures, and the command list (WHEN FACING RIGHT, cards with pictures, the easing) and back.
 Key injection into Mednafen is not used: it takes the keyboard.
+
+## Checked against the USA game on a PS1 emulator
+
+PCSX-Redux ran the USA disc with a Lua pad script (no keyboard) into practice mode and saved stills: MODE SELECT, the 1P FREESTYLE
+page, the QUICK ROLL line and HIT ANALYSIS on. They showed that the USA page has no KEY DISPLAY row, calls Japan's FREE "1P
+FREESTYLE", FREEZE SIGNAL "HIT ANALYSIS" and REPLAY SETTINGS "COMBO REPLAY", and that HIT ANALYSIS turns both fighters strongly green.
+The port was changed to match. The rows of the 1P FREESTYLE page, measured as fractions of the displayed picture, agree with the PS1
+still to within 0.002 (OK 0.219 against 0.219, COMMAND LIST 0.268/0.268, TRAINING DUMMY 0.333/0.333, COUNTER ATTACKS 0.433/0.431, ATTACK
+DATA 0.478/0.480, HIT ANALYSIS 0.526/0.529, COMBO REPLAY 0.580/0.578, RETURN TO MODE SELECT 0.752/0.757; the PS1 still's 480 lines
+are mapped to the Saturn's 224 as (y - 20) / 448).

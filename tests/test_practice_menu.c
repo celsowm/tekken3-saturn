@@ -35,8 +35,8 @@ int main(void){
     /* A face button chooses FREE: its page opens on OK/CANCEL, the CANCEL reading gone. */
     t3_practice_menu_step(&m,T3_PM_OK);assert(!m.mode_select && m.sub==T3_PM_SUB_FREE && !m.changed);
     uint8_t rows[T3_PM_MAX_ROWS];unsigned n=t3_practice_menu_rows(&m,rows);
-    assert(n==9 && rows[0]==T3_PM_ROW_OK_CANCEL && rows[1]==T3_PM_ROW_COMMAND_LIST && rows[2]==T3_PM_ROW_DUMMY &&
-           rows[3]==T3_PM_ROW_COUNTER && rows[8]==T3_PM_ROW_RETURN);
+    assert(n==8 && rows[0]==T3_PM_ROW_OK_CANCEL && rows[1]==T3_PM_ROW_COMMAND_LIST && rows[2]==T3_PM_ROW_DUMMY &&
+           rows[3]==T3_PM_ROW_COUNTER && rows[4]==T3_PM_ROW_ATTACK_DATA && rows[7]==T3_PM_ROW_RETURN);   /* the USA tables: no KEY DISPLAY */
     t3_practice_menu_step(&m,T3_PM_UP);assert(t3_practice_menu_cursor(&m)==n-1u);                 /* wraps to the last row */
     t3_practice_menu_step(&m,T3_PM_DOWN);assert(t3_practice_menu_cursor(&m)==0);
     go_to(&m,T3_PM_ROW_DUMMY);
@@ -63,7 +63,6 @@ int main(void){
     t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.command_cursor==15%12);
     t3_practice_menu_step(&m,T3_PM_START);assert(m.open && !m.command_open);                  /* START closes the list, not the menu */
     m.command_count[0]=0;t3_practice_menu_step(&m,T3_PM_OK);assert(!m.command_open);          /* nothing to show */
-    go_to(&m,T3_PM_ROW_KEY_DISPLAY);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.key_display==0);
     /* OK/CANCEL resumes the fight; the menu comes back on the page it left, with CANCEL again. */
     go_to(&m,T3_PM_ROW_OK_CANCEL);t3_practice_menu_step(&m,T3_PM_OK);assert(!m.open);
     t3_practice_menu_step(&m,T3_PM_START);assert(m.open && !m.mode_select && m.changed && m.sub==T3_PM_SUB_FREE);
@@ -72,7 +71,7 @@ int main(void){
     t3_practice_menu_step(&m,T3_PM_DOWN);assert(m.sub==T3_PM_SUB_VS_CPU && m.counter_attacks==0 && m.replay_setting==0);
     t3_practice_menu_step(&m,T3_PM_OK);
     n=t3_practice_menu_rows(&m,rows);
-    assert(n==9 && rows[2]==T3_PM_ROW_CPU_DIFFICULTY && rows[3]==T3_PM_ROW_CPU_LEVEL && rows[7]==T3_PM_ROW_KEY_DISPLAY);
+    assert(n==8 && rows[2]==T3_PM_ROW_CPU_DIFFICULTY && rows[3]==T3_PM_ROW_CPU_LEVEL && rows[7]==T3_PM_ROW_RETURN);
     go_to(&m,T3_PM_ROW_CPU_DIFFICULTY);t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.cpu_difficulty==2);
     t3_practice_menu_step(&m,T3_PM_RIGHT);assert(m.cpu_difficulty==0);
     go_to(&m,T3_PM_ROW_CPU_LEVEL);

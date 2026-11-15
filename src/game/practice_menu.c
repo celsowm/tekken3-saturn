@@ -29,15 +29,14 @@ const char* t3_practice_replay_name(unsigned setting) {
 }
 
 unsigned t3_practice_menu_rows(const t3_practice_menu_t* m,uint8_t rows[T3_PM_MAX_ROWS]) {
-    /* The item tables at 0x800B0A10, 0x800B0A1C and 0x800B0A28. */
+    /* The USA item tables (8 bytes a page): FREE 0 7 13 2 1 3 4 14, VS CPU 0 7 9 10 1 3 4 14, COMBO TRAINING 0 7 15 16 1 3 4 14. */
     unsigned n=0;
     rows[n++]=T3_PM_ROW_OK_CANCEL;rows[n++]=T3_PM_ROW_COMMAND_LIST;
     if(m->sub==T3_PM_SUB_VS_CPU){rows[n++]=T3_PM_ROW_CPU_DIFFICULTY;rows[n++]=T3_PM_ROW_CPU_LEVEL;}
     else if(m->sub==T3_PM_SUB_COMBO){rows[n++]=T3_PM_ROW_COMBO_PLAYER;rows[n++]=T3_PM_ROW_COMBO_TYPE;}
     else {rows[n++]=T3_PM_ROW_DUMMY;rows[n++]=T3_PM_ROW_COUNTER;}
     rows[n++]=T3_PM_ROW_ATTACK_DATA;rows[n++]=T3_PM_ROW_FREEZE_SIGNAL;rows[n++]=T3_PM_ROW_REPLAY;
-    if(m->sub!=T3_PM_SUB_COMBO)rows[n++]=T3_PM_ROW_KEY_DISPLAY;   /* combo training keeps the display on */
-    rows[n++]=T3_PM_ROW_RETURN;
+    rows[n++]=T3_PM_ROW_RETURN;   /* the USA tables have no KEY DISPLAY row (their key display shows with the guide) */
     return n;
 }
 
@@ -133,7 +132,6 @@ unsigned t3_practice_menu_step(t3_practice_menu_t* m,unsigned pressed) {
     case T3_PM_ROW_REPLAY:   /* OFF, +4, +5, +6 COMBO, MANUAL (not in combo training) */
         if(step)m->replay_setting=cycle(m->replay_setting,m->sub==T3_PM_SUB_COMBO?T3_REPLAY_SETTINGS-1u:T3_REPLAY_SETTINGS,step),m->changed=0;
         break;
-    case T3_PM_ROW_KEY_DISPLAY:if(step)m->key_display^=1u,m->changed=0;break;
     case T3_PM_ROW_CPU_DIFFICULTY:if(step)m->cpu_difficulty=cycle(m->cpu_difficulty,3,step),m->changed=0;break;
     case T3_PM_ROW_COMBO_PLAYER:   /* the other player's character, and the first of its combos */
         if(step){m->combo_player^=1u;m->combo_type=0;m->changed=0;}

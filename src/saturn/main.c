@@ -1445,9 +1445,9 @@ static void draw_hud(void) {
             /* Without PFONT.BIN: the page in the debug font, one line per item. */
             uint8_t rows[T3_PM_MAX_ROWS];
             const unsigned count=g_pmenu.mode_select?0u:t3_practice_menu_rows(&g_pmenu,rows);
-            static const char* const SELECT[T3_PM_SELECT_ROWS]={"FREE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
+            static const char* const SELECT[T3_PM_SELECT_ROWS]={"1P FREESTYLE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
             static const char* const ITEMS[]={"OK","COMMAND LIST","TRAINING DUMMY","COUNTER ATTACKS","CPU DIFFICULTY","CPU LEVEL",
-                "ATTACK DATA","FREEZE SIGNAL","REPLAY SETTINGS","KEY DISPLAY","COMBO PLAYER","COMBO TYPE","RETURN TO MODE SELECT"};
+                "ATTACK DATA","HIT ANALYSIS","COMBO REPLAY","COMBO PLAYER","COMBO TYPE","RETURN TO MODE SELECT"};
             const unsigned lines=g_pmenu.mode_select?(unsigned)T3_PM_SELECT_ROWS:count;
             for(unsigned r=0;r<lines;++r) {
                 char line[40]="  ";
@@ -1506,7 +1506,7 @@ static void draw_hud(void) {
             }
             if(prompt && !original_text)SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,prompt,100,24));
         }
-        if(g_pmenu.key_display && !g_pmenu.command_open) {
+        if(g_pmenu.sub==T3_PM_SUB_COMBO && !g_pmenu.command_open) {   /* the USA key display: only with the guide, outside FREE */
             /* The key display (FUN_800B7C84): the new directions and buttons, oldest first from x 12, 23 apart, along y 400. */
 #if defined(T3_PRACTICE_ICONS)
             if(t3_practice_icons_ready()) {
@@ -2298,10 +2298,10 @@ int main(void) {
                 /* the dummy back to STAND, then the recorder chord as the menu closes */
                 {720,SAT_PAD_START,0},{730,SAT_PAD_UP,0},{740,SAT_PAD_UP,0},{750,SAT_PAD_UP,0},{755,SAT_PAD_UP,0},{760,SAT_PAD_LEFT,0},{765,SAT_PAD_LEFT,0},{770,SAT_PAD_LEFT,0},{775,SAT_PAD_LEFT,0},{780,SAT_PAD_LEFT,0},{785,SAT_PAD_LEFT,0},{790,SAT_PAD_START,0},{850,SAT_PAD_Z,0},{880,SAT_PAD_X,0},{890,SAT_PAD_X,0},{920,SAT_PAD_Z,0},{960,SAT_PAD_Z,0},
                 /* RETURN TO MODE SELECT, VS CPU (HARD, a later stage) */
-                {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},{1050,SAT_PAD_DOWN,0},{1060,SAT_PAD_DOWN,0},
+                {1000,SAT_PAD_START,0},{1010,SAT_PAD_DOWN,0},{1020,SAT_PAD_DOWN,0},{1030,SAT_PAD_DOWN,0},{1040,SAT_PAD_DOWN,0},{1050,SAT_PAD_DOWN,0},
                 {1070,SAT_PAD_A,0},{1080,SAT_PAD_DOWN,0},{1090,SAT_PAD_A,0},{1100,SAT_PAD_DOWN,0},{1110,SAT_PAD_DOWN,0},{1120,SAT_PAD_RIGHT,0},{1130,SAT_PAD_DOWN,0},{1140,SAT_PAD_RIGHT,0},{1170,SAT_PAD_START,0},
                 /* COMBO TRAINING */
-                {1400,SAT_PAD_START,0},{1405,SAT_PAD_DOWN,0},{1410,SAT_PAD_DOWN,0},{1415,SAT_PAD_DOWN,0},{1420,SAT_PAD_DOWN,0},{1425,SAT_PAD_DOWN,0},
+                {1400,SAT_PAD_START,0},{1405,SAT_PAD_DOWN,0},{1410,SAT_PAD_DOWN,0},{1415,SAT_PAD_DOWN,0},{1420,SAT_PAD_DOWN,0},
                 {1430,SAT_PAD_A,0},{1440,SAT_PAD_DOWN,0},{1450,SAT_PAD_A,0},{1470,SAT_PAD_START,0},
                 {1520,SAT_PAD_Z,0},{1700,SAT_PAD_Z,0},
                 /* FREE, the dummy on CONTROLLER, the command list (both columns when pad 2 is connected) */

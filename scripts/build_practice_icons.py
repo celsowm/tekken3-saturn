@@ -116,6 +116,18 @@ def encode(name, rows):
     return struct.pack('<4H', width, padded, height, len(texels)) + struct.pack('<16H', *lut) + bytes(texels)
 
 
+def indexed(vram, u0, v0, width, height, pal):
+    """A picture keeping the original's palette indices (0 transparent), so pictures that differ only in their palette have the same
+    texels and can share one VDP1 texture."""
+    padded = (width + 7) & ~7
+    texels = bytearray()
+    for y in range(height):
+        indices = [texel(vram, u0 + x, v0 + y) for x in range(width)] + [0] * (padded - width)
+        texels += bytes((indices[i] << 4) | indices[i + 1] for i in range(0, padded, 2))
+    lut = [0] + [(value & 0x7FFF) | 0x8000 for value in pal[1:]]
+    return struct.pack('<4H', width, padded, height, len(texels)) + struct.pack('<16H', *lut) + bytes(texels)
+
+
 def arrow(vram, index, colour):
     base, flags = ARROWS[index]
     rows = region(vram, base & 0xFF, base >> 8, ARROW_W, ARROW_H, palette(vram, ARROW_CLUTS[colour]))
@@ -179,11 +191,11 @@ def main():
     pieces += [marker(vram, 0x7FB7, 0xD0, 0xC0, 48, 48)]                              # 68: the burst
     pieces += [marker(vram, 0x7FB6, 0xA0, 0xC0 + 0x10 * k, 48, 16) for k in range(3)]  # 69-71: HIGH, MID, LOW
     pieces += [marker(vram, 0x7FF6, 0x90, 0xC0, 12, 48), marker(vram, 0x7FF7, 0xD0, 0xC0, 48, 48)]   # 72, 73: !, red burst
-    # 74-77: the tech-roll line's up and down arrows (FUN_800B7704: 10 x 16 at u 0x78 / 0x82, v 0xE0) in menu colours 10 and 11
-    for colour in (10, 11):
+    # 74-79: the quick-roll line's up and down arrows (FUN_800B7704: 10 x 16 at u 0x78 / 0x82, v 0xE0) in menu colours 10 and 11 and the prompt's 7
+    for colour in (10, 11, 7):
         x, y = hud.text_clut_xy(colour, 0)
         pal = palette(vram, (y << 6) | (x // 16))
-        pieces += [encode(f'tech {colour}/{u:x}', region(vram, u, 0xE0, 10, 16, pal)) for u in (0x78, 0x82)]
+        pieces += [indexed(vram, u, 0xE0, 10, 16, pal) for u in (0x78, 0x82)]
     blob = b'T3PKEY1\0' + struct.pack('<H', len(pieces)) + b''.join(pieces)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(blob)

@@ -72,13 +72,13 @@ int t3_practice_hud_draw(const t3_practice_hud_t* hud) {
         if(d->clean)t3_practice_font_text(0,5,"CLEAN HIT",(int)(1u*adv),(int)(6u*line));
     }
     /* The prompts, line 21 (modes.md "Practice HUD"). */
-    const char* prompt=0;unsigned colour=1;
+    const char* prompt=0;unsigned colour=1,arrow=0;
     if(hud->sub==T3_PM_SUB_COMBO || (hud->sub==T3_PM_SUB_FREE && hud->recorder)) {
         if(hud->sub==T3_PM_SUB_COMBO && !hud->combo_known){prompt=0;}
         else switch(st->guide.state) {
             case T3_GUIDE_READY:
                 if(hud->sub==T3_PM_SUB_COMBO){prompt="PLAY = SELECT";colour=1;}
-                else {prompt="PLAY(SEL) REC(DW+SEL)";colour=7;}
+                else {prompt="PLAY(SEL) REC( +SEL)";colour=7;arrow=1;}   /* the USA's QUICK ROLL table: a down arrow in the gap */
                 break;
             case T3_GUIDE_RECORD_WAIT:prompt="START REC = ANY KEY";colour=1;break;
             case T3_GUIDE_RECORDING:prompt="REC (STOP = SEL)";colour=2;break;
@@ -88,6 +88,7 @@ int t3_practice_hud_draw(const t3_practice_hud_t* hud) {
         }
     } else if(hud->replay_setting==T3_REPLAY_MANUAL && hud->sub==T3_PM_SUB_FREE){prompt="REPLAY = SELECT";colour=1;}
     if(prompt)t3_practice_font_text(0,colour,prompt,(int)(1u*adv),(int)(21u*line));
+    if(prompt && arrow)(void)t3_practice_icons_tech_arrow(1u,colour,(int)(1u*adv)+14*(int)adv,0x17B);   /* the 'd' of PLAY(SEL) REC(d+SEL) */
     return 1;
 }
 
@@ -223,8 +224,8 @@ static int command_screen(const t3_practice_menu_view_t* view) {
         panel(x0+1,92,182,23,SAT_RGB555(2,4,12));
         panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
         panel(x0+2,435,180,2,SAT_RGB555(28,28,28));
-        /* the USA list's title is the atlas word 0x01 (STR_TITLE at 0x80027C4C: "\xFFp\x01"), "When Facing Right", at (x0 + 0x3C, 0x61) */
-        t3_practice_font_text_sized(0,1,"WHEN FACING RIGHT",x0+60,97,6,16);
+        /* the USA list's title is the atlas word 0x01 (STR_TITLE at 0x80027C4C: "\xFFp\x01"), "When Facing Right", at (x0 + 0x27, 0x61) */
+        t3_practice_font_text_sized(0,1,"WHEN FACING RIGHT",x0+39,97,6,16);
     }
     t3_practice_font_text(0,1,"PUSH BUTTON TO EXIT",6,440);
     return 1;
@@ -237,7 +238,7 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
     backdrop(m->mode_select);
     if(m->mode_select) {
         /* FUN_800B5834 */
-        static const char* const LABELS[T3_PM_SELECT_ROWS]={"FREE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
+        static const char* const LABELS[T3_PM_SELECT_ROWS]={"1P FREESTYLE","VS CPU","COMBO TRAINING","PLAYER SELECT","RESET"};
         t3_practice_font_text(1,10,"MODE SELECT",16,56);
         for(unsigned r=0;r<T3_PM_SELECT_ROWS;++r)
             t3_practice_font_text(0,r==m->select_cursor?10u:11u,LABELS[r],16,110+(int)r*22);
@@ -246,7 +247,7 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
     /* FUN_800B5978, FUN_800B5ED4, FUN_800B6368: the page; row `r` of the item list keeps the colour of the cursor. */
     static const char* const DIFFICULTY[3]={"EASY","MEDIUM","HARD"};
     static const char* const OFF_ON[2]={"OFF","ON"};
-    static const char* const TITLES[T3_PM_SUBS]={"FREE","VS.CPU","COMBO TRAINING"};
+    static const char* const TITLES[T3_PM_SUBS]={"1P FREESTYLE","VS.CPU","COMBO TRAINING"};   /* the USA wording */
     uint8_t rows[T3_PM_MAX_ROWS];
     const unsigned count=t3_practice_menu_rows(m,rows);
     const unsigned cursor=m->cursors[m->sub%T3_PM_SUBS];
@@ -265,9 +266,8 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
         case T3_PM_ROW_CPU_DIFFICULTY:label="CPU DIFFICULTY";value=DIFFICULTY[m->cpu_difficulty%3u];break;
         case T3_PM_ROW_CPU_LEVEL:label="CPU LEVEL";value=t3_practice_cpu_level_name(m->cpu_level);break;
         case T3_PM_ROW_ATTACK_DATA:label="ATTACK DATA";value=OFF_ON[m->attack_data&1u];break;
-        case T3_PM_ROW_FREEZE_SIGNAL:label="FREEZE SIGNAL";value=OFF_ON[m->freeze_signal&1u];break;
-        case T3_PM_ROW_REPLAY:label="REPLAY SETTINGS";value=t3_practice_replay_name(m->replay_setting);break;
-        case T3_PM_ROW_KEY_DISPLAY:label="KEY DISPLAY";value=OFF_ON[m->key_display&1u];break;
+        case T3_PM_ROW_FREEZE_SIGNAL:label="HIT ANALYSIS";value=OFF_ON[m->freeze_signal&1u];break;
+        case T3_PM_ROW_REPLAY:label="COMBO REPLAY";value=t3_practice_replay_name(m->replay_setting);break;
         case T3_PM_ROW_COMBO_PLAYER: {
             /* `COMBO PLAYER n-` and the character's name at x 207 */
             const unsigned who=m->combo_player&1u;
@@ -291,9 +291,9 @@ int t3_practice_menu_draw(const t3_practice_menu_view_t* view) {
             t3_practice_font_text(0,colour,label,72,y);
             y+=22;
             if(m->dummy==T3_DUMMY_UKEMI_MAE || m->dummy==T3_DUMMY_UKEMI_OKU) {
-                /* FUN_800B7704: TECH ROLL and an arrow (down for the front roll, up for the back) at x 198 */
-                t3_practice_font_text(0,colour,"TECH ROLL",72+126,y);
-                (void)t3_practice_icons_tech_arrow(m->dummy==T3_DUMMY_UKEMI_MAE,colour,(72+126+90),y);
+                /* FUN_800B7704, the USA's QUICK ROLL: the words and an arrow (down for the front roll, up for the back) at x 198 */
+                t3_practice_font_text(0,colour,"QUICK ROLL",72+126,y);
+                (void)t3_practice_icons_tech_arrow(m->dummy==T3_DUMMY_UKEMI_MAE,colour,(72+126+11*9),y);
             } else value_text(colour,value,y);
         } else {
             t3_practice_font_text(0,colour,label,72,y);

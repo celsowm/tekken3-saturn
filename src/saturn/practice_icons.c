@@ -7,9 +7,10 @@
 #include "saturn/cdfs.h"
 #include "saturn/vdp1.h"
 
-enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,TECH,PICTURES=TECH+4 };
+enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,TECH,PICTURES=TECH+6 };
 static sat_vdp1_texture_t g_tex[PICTURES];
 static uint8_t g_ready;
+static uint16_t g_lut[PICTURES][16],g_lut_id[PICTURES],g_piece_lut[PICTURES];
 
 static unsigned le16(const uint8_t* p) {return (unsigned)(p[0]|(p[1]<<8));}
 
@@ -19,23 +20,44 @@ sat_result_t t3_practice_icons_init(void* scratch,unsigned bytes) {
     sat_cdfs_file_t file;
     SAT_TRY(t3_disc_volume(&volume));
     SAT_TRY(sat_cdfs_lookup(volume,"PKEYS.BIN",&file));
-    if(file.size<10u || file.size>bytes)return SAT_ERR_CAPACITY;
-    uint32_t read=0;
-    SAT_TRY(sat_cdfs_read_at(volume,&file,0,scratch,file.size,&read));
-    if(read!=file.size)return SAT_ERR_IO;
-    const uint8_t* data=scratch;
+    if(file.size<10u)return SAT_ERR_VERSION;
+    /* Read piece by piece: the whole file (33 KB) is more than the scratch holds. */
+    uint8_t head[40];
+    uint32_t read=0,at=10;
+    SAT_TRY(sat_cdfs_read_at(volume,&file,0,head,10u,&read));
+    if(read!=10u)return SAT_ERR_IO;
     static const uint8_t magic[8]={'T','3','P','K','E','Y','1',0};
-    for(unsigned j=0;j<8;++j)if(data[j]!=magic[j])return SAT_ERR_VERSION;
-    if(le16(data+8)!=PICTURES)return SAT_ERR_VERSION;
-    uint32_t at=10;
+    for(unsigned j=0;j<8;++j)if(head[j]!=magic[j])return SAT_ERR_VERSION;
+    if(le16(head+8)!=PICTURES)return SAT_ERR_VERSION;
+    unsigned luts=0;
     for(unsigned i=0;i<PICTURES;++i) {
         if(at+40u>file.size)return SAT_ERR_VERSION;
-        const unsigned padded=le16(data+at+2),height=le16(data+at+4),count=le16(data+at+6);
-        if(!padded || padded&7u || count!=padded*height/2u || at+40u+count>file.size)return SAT_ERR_VERSION;
-        uint16_t lut[16],id;
-        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(data+at+8u+2u*j);
-        SAT_TRY(sat_vdp1_upload_lut(lut,&id));
-        SAT_TRY(sat_tex_upload_lut4_pixels(&g_tex[i],data+at+40u,(uint16_t)padded,(uint16_t)height,id));
+        SAT_TRY(sat_cdfs_read_at(volume,&file,at,head,40u,&read));
+        if(read!=40u)return SAT_ERR_IO;
+        const unsigned padded=le16(head+2),height=le16(head+4),count=le16(head+6);
+        if(!padded || padded&7u || count!=padded*height/2u || at+40u+count>file.size || count>bytes)return SAT_ERR_VERSION;
+        uint16_t lut[16],id=0;
+        for(unsigned j=0;j<16;++j)lut[j]=(uint16_t)le16(head+8u+2u*j);
+        /* Pictures that share their 16 colours share one VDP1 table (the LUT area is small; the arrows repeat their colours). */
+        unsigned shared=0;
+        for(unsigned k=0;k<luts && !shared;++k) {
+            unsigned same=1;
+            for(unsigned j=0;j<16u;++j)if(g_lut[k][j]!=lut[j])same=0;
+            if(same){id=g_lut_id[k];shared=1;}
+        }
+        if(!shared) {
+            SAT_TRY(sat_vdp1_upload_lut(lut,&id));
+            for(unsigned j=0;j<16u;++j)g_lut[luts][j]=lut[j];
+            g_lut_id[luts++]=id;
+        }
+        g_piece_lut[i]=id;
+        /* The quick-roll arrows keep the original palette indices: the three colours of one direction share one texture. */
+        if(i>=TECH+2u)g_tex[i]=g_tex[TECH+(i-TECH)%2u];
+        else {
+            SAT_TRY(sat_cdfs_read_at(volume,&file,at+40u,scratch,count,&read));
+            if(read!=count)return SAT_ERR_IO;
+            SAT_TRY(sat_tex_upload_lut4_pixels(&g_tex[i],scratch,(uint16_t)padded,(uint16_t)height,id));
+        }
         at+=40u+count;
     }
     if(at!=file.size)return SAT_ERR_VERSION;
@@ -49,7 +71,7 @@ int t3_practice_icons_ready(void) {return g_ready;}
 static sat_result_t draw(unsigned piece,int x0,int y0,int w0,int h0) {
     const int x=t3_psx_viewport_x(x0),y=t3_psx_viewport_y(y0),w=t3_psx_viewport_x(x0+w0)-x,h=t3_psx_viewport_y(y0+h0)-y;
     if(!g_ready || w<=0 || h<=0)return SAT_OK;
-    return sat_draw_sprite_scaled_screen(&g_tex[piece],(int16_t)(x+w/2),(int16_t)(y+h/2),(uint16_t)w,(uint16_t)h,0);
+    return sat_draw_sprite_scaled_screen(&g_tex[piece],(int16_t)(x+w/2),(int16_t)(y+h/2),(uint16_t)w,(uint16_t)h,piece>=TECH?g_piece_lut[piece]:0u);
 }
 
 sat_result_t t3_practice_icons_arrow(unsigned pad,unsigned colour,int x,int y) {
@@ -83,5 +105,5 @@ sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y) 
 
 sat_result_t t3_practice_icons_tech_arrow(unsigned down,unsigned colour,int x,int y) {
     /* FUN_800B7704: the 'u' and 'd' marks of the tech-roll line, 10 x 16 pictures in the row's colour (10 or 11). */
-    return draw(TECH+(colour==10u?0u:2u)+(down?1u:0u),x,y,10,16);
+    return draw(TECH+(colour==10u?0u:colour==11u?2u:4u)+(down?1u:0u),x,y,10,16);
 }
