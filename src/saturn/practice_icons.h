@@ -18,4 +18,6 @@ sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y);
 sat_result_t t3_practice_icons_marker(unsigned kind,int x,int y);
 /* The tech-roll line's arrow (up, or down) in menu colour 10, 11 or 7 at the original point (x, y). */
 sat_result_t t3_practice_icons_tech_arrow(unsigned down,unsigned colour,int x,int y);
+/* Mixed-case text in the move-text atlas's own 6 x 12 glyphs at original (x, y), a 6-pixel advance. */
+sat_result_t t3_practice_icons_glyphs(const char* text,int x,int y);
 #endif

@@ -7,10 +7,11 @@
 #include "saturn/cdfs.h"
 #include "saturn/vdp1.h"
 
-enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,TECH,PICTURES=TECH+6 };
+enum { ARROWS=36,BUTTONS=32,BURST=ARROWS+BUTTONS,LABELS,BANG=LABELS+3,RED_BURST,TECH,GLYPH=TECH+6,GLYPHS=94,PICTURES=GLYPH+GLYPHS };
 static sat_vdp1_texture_t g_tex[PICTURES];
 static uint8_t g_ready;
-static uint16_t g_lut[PICTURES][16],g_lut_id[PICTURES],g_piece_lut[PICTURES];
+enum { MAX_LUTS=96 };
+static uint16_t g_lut[MAX_LUTS][16],g_lut_id[MAX_LUTS],g_piece_lut[PICTURES];
 
 static unsigned le16(const uint8_t* p) {return (unsigned)(p[0]|(p[1]<<8));}
 
@@ -47,12 +48,13 @@ sat_result_t t3_practice_icons_init(void* scratch,unsigned bytes) {
         }
         if(!shared) {
             SAT_TRY(sat_vdp1_upload_lut(lut,&id));
+            if(luts>=MAX_LUTS)return SAT_ERR_CAPACITY;
             for(unsigned j=0;j<16u;++j)g_lut[luts][j]=lut[j];
             g_lut_id[luts++]=id;
         }
         g_piece_lut[i]=id;
         /* The quick-roll arrows keep the original palette indices: the three colours of one direction share one texture. */
-        if(i>=TECH+2u)g_tex[i]=g_tex[TECH+(i-TECH)%2u];
+        if(i>=TECH+2u && i<GLYPH)g_tex[i]=g_tex[TECH+(i-TECH)%2u];
         else {
             SAT_TRY(sat_cdfs_read_at(volume,&file,at+40u,scratch,count,&read));
             if(read!=count)return SAT_ERR_IO;
@@ -106,4 +108,14 @@ sat_result_t t3_practice_icons_button(unsigned pad,unsigned colour,int x,int y) 
 sat_result_t t3_practice_icons_tech_arrow(unsigned down,unsigned colour,int x,int y) {
     /* FUN_800B7704: the 'u' and 'd' marks of the tech-roll line, 10 x 16 pictures in the row's colour (10 or 11). */
     return draw(TECH+(colour==10u?0u:colour==11u?2u:4u)+(down?1u:0u),x,y,10,16);
+}
+
+sat_result_t t3_practice_icons_glyphs(const char* text,int x,int y) {
+    /* The move-text atlas's ASCII glyphs, 6 x 12 at a 6-pixel advance (FUN_800789E4's names and commands, mixed case). */
+    for(;*text;++text,x+=6) {
+        const unsigned code=(unsigned char)*text;
+        if(code<0x21u || code>=0x21u+GLYPHS)continue;
+        SAT_TRY(draw(GLYPH+code-0x21u,x,y,10,12));   /* the 5-column picture sits in an 8-texel pad: drawn 1:1 it spans 10 original pixels */
+    }
+    return SAT_OK;
 }

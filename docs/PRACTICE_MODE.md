@@ -205,3 +205,15 @@ The port was changed to match. The rows of the 1P FREESTYLE page, measured as fr
 still to within 0.002 (OK 0.219 against 0.219, COMMAND LIST 0.268/0.268, TRAINING DUMMY 0.333/0.333, COUNTER ATTACKS 0.433/0.431, ATTACK
 DATA 0.478/0.480, HIT ANALYSIS 0.526/0.529, COMBO REPLAY 0.580/0.578, RETURN TO MODE SELECT 0.752/0.757; the PS1 still's 480 lines
 are mapped to the Saturn's 224 as (y - 20) / 448).
+
+The command list was measured the same way (PS1 still `list`, Saturn field 8520, the first card at the top): the six card frame lines
+sit at 0.211, 0.356, 0.499, 0.642, 0.785 and 0.927 of the picture on the PS1 (as (y - 20) / 448) against 0.212, 0.353, 0.496, 0.638,
+0.781 and 0.926 here (within 0.004, one Saturn pixel), and the cards span x 0.005 to 0.492 of the width against 0.006 to 0.494. The text
+there is mixed case (the PS1 list uses the move-text atlas's 6 x 12 glyphs), so the port bakes those glyphs (PKEYS.BIN pieces 80 to 173,
+area-averaged to 5 x 6 for the Saturn's 224 lines, from the character ARC's atlas) and draws "When Facing Right", the names and the
+commands with them; "PUSH BUTTON TO EXIT" has the original's colours 6, 5, 6, 5 (BUTTON and EXIT yellow). The 1P FREESTYLE page's
+columns were not measured; the page's x positions are the original routine's (verified by `verify_practice_sim.py`).
+
+The shipped disc was run on the headless Ymir probe (a Saturn emulator) with a pad script; it was also booted into its opening movie on
+Mednafen. Driving it on a Mednafen window needs key presses into the window, which is not done here (it takes the keyboard): play it with
+`scripts/play_mednafen.py` to see the same flow by hand.

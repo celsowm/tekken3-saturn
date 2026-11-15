@@ -120,8 +120,6 @@ static void value_text(unsigned colour,const char* text,int y) {
 /* ---- the command list screen (FUN_800789E4): cards 64 pixels apart in a 182-pixel column, the cursor's move on top ---- */
 static unsigned lerp5(unsigned a,unsigned b,unsigned step,unsigned steps) {return a+(b>a?(b-a)*step/steps:0u)-(a>b?(a-b)*step/steps:0u);}
 
-/* The font has capitals only: the list's mixed case is drawn in capitals. */
-static char capital(char c) {return (char)(c>='a' && c<='z'?c-'a'+'A':c);}
 
 /* A command: ASCII at 6 pixels a cell, the arrows (0x80-0x90) and buttons (0x91-0xA0) as 20-pixel pictures. */
 static void command_text(const char* command,int x,int y) {
@@ -131,11 +129,11 @@ static void command_text(const char* command,int x,int y) {
     for(const uint8_t* c=(const uint8_t*)command;;++c) {
         if(n && (*c==0 || *c>=0x80 || n>=sizeof run-1u)) {
             run[n]=0;
-            t3_practice_font_text_sized(0,1,run,x,y,6,16);
+            (void)t3_practice_icons_glyphs(run,x,y);
             x+=(int)n*6;n=0;
         }
         if(!*c)break;
-        if(*c<0x80){run[n++]=capital((char)*c);continue;}
+        if(*c<0x80){run[n++]=(char)*c;continue;}
         if(*c<=0x90) {
             const unsigned index=*c-0x80u;
             (void)t3_practice_icons_arrow(index==16u?0u:DIRECTION[index&7u],index&8u?1u:0u,x,y-12);
@@ -198,16 +196,16 @@ static void command_column(const t3_practice_menu_view_t* view,unsigned column,i
         if(in_window(name_y,16)) {
             char first[29];
             unsigned i;
-            for(i=0;name[i] && i<28u;++i)first[i]=capital(name[i]);
+            for(i=0;name[i] && i<28u;++i)first[i]=name[i];
             first[i]=0;
-            t3_practice_font_text_sized(0,1,first,x0+6,name_y,6,16);
+            (void)t3_practice_icons_glyphs(first,x0+6,name_y);
         }
         if(length>=29u && in_window(y+12,16)) {   /* a long name wraps at 28 cells */
             char rest[40];
             unsigned i;
-            for(i=0;name[28+i] && i<39u;++i)rest[i]=capital(name[28+i]);
+            for(i=0;name[28+i] && i<39u;++i)rest[i]=name[28+i];
             rest[i]=0;
-            t3_practice_font_text_sized(0,1,rest,x0+6,y+12,6,16);
+            (void)t3_practice_icons_glyphs(rest,x0+6,y+12);
         }
         if(in_window(y+27,32))command_text(command,x0+6,y+39);
         if(++index>=(int)col->lines)index=0;
@@ -225,9 +223,11 @@ static int command_screen(const t3_practice_menu_view_t* view) {
         panel(x0+2,114,180,2,SAT_RGB555(28,28,28));
         panel(x0+2,435,180,2,SAT_RGB555(28,28,28));
         /* the USA list's title is the atlas word 0x01 (STR_TITLE at 0x80027C4C: "\xFFp\x01"), "When Facing Right", at (x0 + 0x27, 0x61) */
-        t3_practice_font_text_sized(0,1,"WHEN FACING RIGHT",x0+39,97,6,16);
+        (void)t3_practice_icons_glyphs("When Facing Right",x0+39,97);
     }
-    t3_practice_font_text(0,1,"PUSH BUTTON TO EXIT",6,440);
+    /* "%cPUSH %cBUTTON %cTO %cEXIT" in colours 6, 5, 6, 5 (practice_command_list) */
+    t3_practice_font_text(0,6,"PUSH",6,440);t3_practice_font_text(0,5,"BUTTON",6+5*9,440);
+    t3_practice_font_text(0,6,"TO",6+12*9,440);t3_practice_font_text(0,5,"EXIT",6+15*9,440);
     return 1;
 }
 

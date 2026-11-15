@@ -24,6 +24,7 @@ from pathlib import Path
 import extract_psx_hud as hud
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'third_party/Tekken3Remake/tools/research'))
+import move_text  # noqa: E402
 import overlay_images  # noqa: E402
 
 PAGE_X = 6 * 64                       # texture page 6 (x 384, y 0)
@@ -128,6 +129,11 @@ def indexed(vram, u0, v0, width, height, pal):
     return struct.pack('<4H', width, padded, height, len(texels)) + struct.pack('<16H', *lut) + bytes(texels)
 
 
+def blank(width, height):
+    padded = (width + 7) & ~7
+    return struct.pack('<4H', width, padded, height, padded * height // 2) + struct.pack('<16H', *([0] * 16)) + bytes(padded * height // 2)
+
+
 def arrow(vram, index, colour):
     base, flags = ARROWS[index]
     rows = region(vram, base & 0xFF, base >> 8, ARROW_W, ARROW_H, palette(vram, ARROW_CLUTS[colour]))
@@ -178,6 +184,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--exe', type=Path, required=True, help='the USA SLUS_004.02')
     parser.add_argument('--title', type=Path, required=True, help="the USA title.ovl record (BNS id 10, raw/010.bin)")
+    parser.add_argument('--arc', type=Path, required=True, help='a USA character ARC (raw/073.bin): member 0 holds the shared move-text atlas')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--preview', type=Path, help='also write a PNG contact sheet of the pictures')
     args = parser.parse_args()
@@ -196,6 +203,30 @@ def main():
         x, y = hud.text_clut_xy(colour, 0)
         pal = palette(vram, (y << 6) | (x // 16))
         pieces += [indexed(vram, u, 0xE0, 10, 16, pal) for u in (0x78, 0x82)]
+    # 80-173: the move-text atlas's ASCII glyphs 0x21-0x7E (move_text.py: glyph c = code - 0x20 at u = 6 * (c & 15), v = 12 * (c >> 6), bit plane
+    # (c >> 4) & 3), 6 x 12 on the PS1's 480 lines. The Saturn shows them 5 x 6, so each is area-averaged down to 5 x 6 (nearest-neighbour
+    # sampling loses the strokes) in three levels of white; the draw stretches it back over the 6-pixel cell.
+    atlas = move_text.Atlas(move_text.arc_members(args.arc.read_bytes())[0])
+    levels = (0, 0x8000 | 26 << 10 | 19 << 5 | 15, 0x8000 | 30 << 10 | 26 << 5 | 24, 0x7FFF)
+    for code in range(0x21, 0x7F):
+        c = code - 0x20
+        bits = atlas.cell(6 * (c & 15), 12 * (c >> 6), (c >> 4) & 3)
+        rows = []
+        for y in range(6):
+            row = []
+            for x in range(5):
+                x0, x1 = x * 6 / 5, (x + 1) * 6 / 5
+                total = covered = 0.0
+                for sy in (2 * y, 2 * y + 1):
+                    for sx in range(6):
+                        overlap = max(0.0, min(sx + 1, x1) - max(sx, x0))
+                        total += overlap
+                        if bits[sy * 6 + sx]:
+                            covered += overlap
+                coverage = covered / total
+                row.append(0 if coverage < 0.2 else levels[1] if coverage < 0.5 else levels[2] if coverage < 0.8 else levels[3])
+            rows.append(row)
+        pieces.append(encode(f'glyph {code:02x}', rows) if any(any(row) for row in rows) else blank(5, 6))
     blob = b'T3PKEY1\0' + struct.pack('<H', len(pieces)) + b''.join(pieces)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(blob)
