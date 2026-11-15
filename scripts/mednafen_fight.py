@@ -26,6 +26,31 @@ SYMBOLS = ['_g_tick_clock', '_g_t3_diagnostics', '_g_t3_ai_ticks', '_g_t3_ai_cal
 WORD = re.compile(r'^(\S+) \S+ \d+: \[(.*)\]$')
 
 
+def mark_rates(diagnostics):
+    """The VDP1 counters and the rates between tick marks from g_t3_diagnostics' words, and the
+    reached marks as (images, fields). Shared with ymir_fight.py."""
+    # t3_diagnostics_t words 14-16: late_swaps, draw_waits (the CPU waited for VDP1), draw_timeouts;
+    # version 25 adds the VDP1 texture VRAM left free, version 26 then the images and fields at
+    # eight tick marks (diagnostics.h, T3_TICK_MARK_STEP ticks apart).
+    version = diagnostics[1]
+    marks = MARKS if version >= 26 else 0
+    vdp1 = dict(late_swaps=diagnostics[14], draw_waits=diagnostics[15], draw_timeouts=diagnostics[16],
+                vdp1_vram_free=diagnostics[-1 - 2 * marks] if version >= 25 else None)
+    # Images per second between consecutive reached marks: the same stretch of the deterministic
+    # fight in every build, without the loading time a whole-lifetime rate includes.
+    segments = []
+    reached = []
+    if marks:
+        at_images, at_fields = diagnostics[-2 * marks:-marks], diagnostics[-marks:]
+        reached = [(i, f) for i, f in zip(at_images, at_fields) if i]
+        segments = [round((i1 - i0) * 60 / (f1 - f0), 2) for (i0, f0), (i1, f1) in zip(reached, reached[1:])]
+        span = reached[-1][1] - reached[0][1] if len(reached) > 1 else 0
+        vdp1.update(segment_images_per_second=segments,
+                    marked_images_per_second=round((reached[-1][0] - reached[0][0]) * 60 / span, 2) if span else None,
+                    worst_segment=min(segments) if segments else None)
+    return vdp1, reached
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build', type=Path, default=ROOT / 'build/roster')
@@ -57,25 +82,7 @@ def main():
     calls = words['_g_t3_ai_calls'][0]
     diagnostics = words['_g_t3_diagnostics']
     images = diagnostics[2]  # frame_serial
-    # t3_diagnostics_t words 14-16: late_swaps, draw_waits (the CPU waited for VDP1), draw_timeouts;
-    # version 25 adds the VDP1 texture VRAM left free, version 26 then the images and fields at
-    # eight tick marks (diagnostics.h, T3_TICK_MARK_STEP ticks apart).
-    version = diagnostics[1]
-    marks = MARKS if version >= 26 else 0
-    vdp1 = dict(late_swaps=diagnostics[14], draw_waits=diagnostics[15], draw_timeouts=diagnostics[16],
-                vdp1_vram_free=diagnostics[-1 - 2 * marks] if version >= 25 else None)
-    # Images per second between consecutive reached marks: the same stretch of the deterministic
-    # fight in every build, without the loading time a whole-lifetime rate includes.
-    segments = []
-    reached = []
-    if marks:
-        at_images, at_fields = diagnostics[-2 * marks:-marks], diagnostics[-marks:]
-        reached = [(i, f) for i, f in zip(at_images, at_fields) if i]
-        segments = [round((i1 - i0) * 60 / (f1 - f0), 2) for (i0, f0), (i1, f1) in zip(reached, reached[1:])]
-        span = reached[-1][1] - reached[0][1] if len(reached) > 1 else 0
-        vdp1.update(segment_images_per_second=segments,
-                    marked_images_per_second=round((reached[-1][0] - reached[0][0]) * 60 / span, 2) if span else None,
-                    worst_segment=min(segments) if segments else None)
+    vdp1, reached = mark_rates(diagnostics)
     report = dict(seconds=args.seconds, images=images, **vdp1,
                   marks=reached,
                   images_per_second=round(images * 60 / observed, 2) if observed else None,

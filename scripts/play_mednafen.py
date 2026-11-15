@@ -32,7 +32,12 @@ def missing_features(disc):
     iso_root = next((r for r in roots if r.is_dir()), None)
     if iso_root is None:
         return None
-    return [f'{name}: {what}' for name, what in REQUIRED.items() if not (iso_root / name).exists()]
+    missing = [f'{name}: {what}' for name, what in REQUIRED.items() if not (iso_root / name).exists()]
+    # A measurement build carries the movies but its intro program does not play them.
+    cache = disc.parent.parent / 'CMakeCache.txt'
+    if cache.is_file() and 'T3_TEST_SKIP_INTRO:BOOL=ON' in cache.read_text(errors='replace'):
+        missing.append('the opening movies are skipped (-DT3_TEST_SKIP_INTRO=OFF)')
+    return missing
 
 
 def main():

@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import saturn_workload
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -282,7 +283,7 @@ def run(args):
         if symbol=='_g_t3_sfx_ko_voices' and symbol not in syms:continue
         if symbol not in syms:
             if getattr(args,'allow_missing_dumps',False):
-                print('skipping missing dump symbol: '+symbol)
+                print('skipping missing dump symbol: '+symbol,file=sys.stderr)   # stdout is the JSON report
                 continue
             raise ValueError('missing dump symbol: '+symbol)
         location,length=syms[symbol]

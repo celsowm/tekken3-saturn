@@ -35,6 +35,10 @@ static void ending_name(unsigned character, char name[10]) {
     __builtin_memcpy(name, text, sizeof text);
 }
 
+#ifndef T3_TEST_SKIP_INTRO
+#define T3_TEST_SKIP_INTRO 0
+#endif
+
 int main(void) {
     static const char* const kMovies[] = {"LSINTRO.MOV", "INTRO.MOV"};
     sat_video_config_t video = {SCREEN_W, SCREEN_H, SAT_VIDEO_AUTO, 0};
@@ -57,7 +61,8 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_exec(volume, "MENU.BIN", arg, BOOT_ARG_BYTES));
         for (;;) {}
     }
-    for (unsigned i = 0; i < sizeof kMovies / sizeof kMovies[0]; ++i) {
+    /* T3_TEST_SKIP_INTRO (measurement builds): the disc keeps both movies, the cold boot goes to the title. */
+    for (unsigned i = 0; !T3_TEST_SKIP_INTRO && i < sizeof kMovies / sizeof kMovies[0]; ++i) {
         sat_cdfs_file_t file;
         uint8_t skipped = 0;
         if (sat_cdfs_lookup(volume, kMovies[i], &file) != SAT_OK) continue;
