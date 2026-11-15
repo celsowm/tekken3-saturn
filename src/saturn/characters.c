@@ -629,6 +629,16 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #endif
 #if defined(T3_FIGHTER_LIGHTING)
         a->instance.face_gouraud=t3_fighter_light_load(i);
+#elif defined(T3_FIGHTER_GOURAUD_PROBE)
+        /* Timing probe only: every face drawn with its own neutral Gouraud table. */
+        {
+            uint32_t offset;
+            if((st=sat_vdp1_vram_reserve(T3_FACE_COUNT*8u,&offset))!=SAT_OK)return st;
+            volatile uint32_t* table=(volatile uint32_t*)sat_vdp1_vram_address(offset,T3_FACE_COUNT*8u);
+            if(!table)return SAT_ERR_INVALID_ARG;
+            for(unsigned f=0;f<T3_FACE_COUNT*2u;++f)table[f]=0x42104210u;
+            a->instance.face_gouraud_first=(uint16_t)(offset>>3);
+        }
 #endif
 #if defined(T3_FIGHTER_HAND_VARIANTS)
         (void)t3_fighter_hands_load(i,(sat_skin_asset_t*)(uintptr_t)&a->asset->skin);

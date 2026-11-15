@@ -298,7 +298,7 @@ def logic_bank(raw_path, scratch):
     return found[0].read_bytes()
 
 
-def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, hand_variants=False):
+def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, hand_variants=False, lighting_rows=True):
     r = records(fighter)
     arc = (raw / f"{r['arc']:03}.bin").read_bytes()
     model = parse_kmd((raw / f"{r['kmd']:03}.bin").read_bytes())
@@ -340,7 +340,7 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     place('projected_faces', b''.join(struct.pack('>4H', *f) for f in faces), 2)
     place('face_ot', bytes(v for row in report['face_ot_metadata'] for v in row), 1)
     # Lighting needs LUT4 textures: VDP1 Gouraud does not shade INDEX8 texels.
-    lighting = report['texture_report'].get('lighting')
+    lighting = report['texture_report'].get('lighting') if lighting_rows else None
     normal_count = 0
     for name in ('light_normals', 'light_faces', 'light_corners', 'light_tones'):
         fields[name] = 0
@@ -447,6 +447,8 @@ def main():
                         help='0: 8x8 INDEX8 face patches; N: native-density LUT4 patches of at most N texels a side')
     parser.add_argument('--hand-variants', action='store_true',
                         help='store the hand and jaw vertex variants (T3_FIGHTER_HAND_VARIANTS)')
+    parser.add_argument('--no-lighting', action='store_true',
+                        help='leave the light normals out of LUT4 packs (builds without T3_FIGHTER_LIGHTING)')
     parser.add_argument('--force-enemies', action='store_true',
                         help="build only Tekken Force's four enemy packs (F21-F24.BIN, force.json); no roster header")
     args = parser.parse_args()
@@ -462,7 +464,7 @@ def main():
                 continue
             with tempfile.TemporaryDirectory() as scratch:
                 image, bank, row = build(fighter, args.raw, exe, system_vram, args.libsaturn_source, Path(scratch),
-                                         args.texture_cap, args.hand_variants)
+                                         args.texture_cap, args.hand_variants, not args.no_lighting)
             (args.out / row['file']).write_bytes(image)
             (banks / f"{fighter.id:02}.t3logic").write_bytes(bank)
             rows.append(row)

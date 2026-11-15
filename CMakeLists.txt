@@ -211,6 +211,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         if(T3_FIGHTER_HAND_VARIANTS)
             set(_t3_pack_hands "--hand-variants")
         endif()
+        # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md). Off
+        # until an A/B shows no frame-rate loss; it needs the native LUT4 textures. The
+        # packs carry the normals only with it: they stay in High Work RAM for the match.
+        option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" OFF)
+        if(NOT T3_FIGHTER_LIGHTING)
+            string(APPEND _t3_pack_hands " --no-lighting")
+            string(STRIP "${_t3_pack_hands}" _t3_pack_hands)
+            separate_arguments(_t3_pack_hands)
+        endif()
         file(CONFIGURE OUTPUT "${_t3_pack_gen}/texture_cap.txt" CONTENT "${T3_FIGHTER_TEXTURE_CAP} ${_t3_pack_hands}\n")
         add_custom_command(OUTPUT ${_t3_pack_files} "${_t3_pack_gen}/t3_roster.h"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/build_fighter_packs.py"
@@ -1730,9 +1739,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_sources(tekken3_saturn PRIVATE src/saturn/fighter_shadow.c)
             target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_MESH_SHADOWS=1)
         endif()
-        # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md). Off
-        # until an A/B shows no frame-rate loss; it needs the native LUT4 textures.
-        option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" OFF)
+        option(T3_FIGHTER_GOURAUD_PROBE "Timing probe: draw every fighter face with one neutral Gouraud table" OFF)
+        if(T3_FIGHTER_GOURAUD_PROBE)
+            target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_GOURAUD_PROBE=1)
+        endif()
         if(T3_FIGHTER_LIGHTING)
             if(T3_FIGHTER_TEXTURE_CAP EQUAL 0 OR NOT T3_ORIGINAL_FIGHTER_PROJECTION)
                 message(FATAL_ERROR "T3_FIGHTER_LIGHTING requires T3_FIGHTER_TEXTURE_CAP > 0 and T3_ORIGINAL_FIGHTER_PROJECTION")
