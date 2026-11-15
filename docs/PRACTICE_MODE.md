@@ -211,9 +211,11 @@ sit at 0.211, 0.356, 0.499, 0.642, 0.785 and 0.927 of the picture on the PS1 (as
 0.781 and 0.926 here (within 0.004, one Saturn pixel), and the cards span x 0.005 to 0.492 of the width against 0.006 to 0.494. The text
 there is mixed case (the PS1 list uses the move-text atlas's 6 x 12 glyphs), so the port bakes those glyphs (PKEYS.BIN pieces 80 to 173,
 area-averaged to 5 x 6 for the Saturn's 224 lines, from the character ARC's atlas) and draws "When Facing Right", the names and the
-commands with them; "PUSH BUTTON TO EXIT" has the original's colours 6, 5, 6, 5 (BUTTON and EXIT yellow). The 1P FREESTYLE page's
-columns were not measured; the page's x positions are the original routine's (verified by `verify_practice_sim.py`).
+commands with them; "PUSH BUTTON TO EXIT" has the original's colours 6, 5, 6, 5 (BUTTON and EXIT yellow). The 1P FREESTYLE page's columns were measured too (PS1 still `page`, Saturn field 7735, fractions of the picture width): the labels start at
+0.198 on the PS1 and 0.200 here, OK ends at 0.239/0.237, COMMAND LIST at 0.484/0.484, TRAINING DUMMY at 0.533/0.531, the right-aligned values
+end at 0.802/0.800 (the STAND value starts at 0.688 on both), RETURN TO MODE SELECT ends at 0.704/0.703 and the panel frame spans
+0.179 to 0.815 against 0.178 to 0.816: all within 0.002, under a Saturn pixel.
 
 The shipped disc was run on the headless Ymir probe (a Saturn emulator) with a pad script; it was also booted into its opening movie on
-Mednafen. Driving it on a Mednafen window needs key presses into the window, which is not done here (it takes the keyboard): play it with
-`scripts/play_mednafen.py` to see the same flow by hand.
+Mednafen. Driving it on a Mednafen window needs key presses into the window, which was refused (it takes the user's keyboard; the user asked for Ymir or
+a Mednafen that does not): `scripts/play_mednafen.py` plays the same flow by hand.
