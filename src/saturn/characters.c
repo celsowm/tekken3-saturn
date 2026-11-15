@@ -160,6 +160,9 @@ typedef struct {
     sat_vec3_t* world_vertices;
     sat_scene3d_instance_t instance;
     sat_scene3d_instance_binding_t binding;
+    /* `indices` as byte offsets into the projected vertices (index times the
+     * vertex size) once the mesh reads the asset's own indices, or NULL. */
+    const uint16_t* corner_offsets;
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
     sat_mesh_t original_mesh;
     sat_scene3d_instance_binding_t original_binding;
@@ -616,6 +619,14 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
                 T3_TEXTURE_COUNT)) != SAT_OK) return st;
         a->binding.programs = &a->material_programs;
         a->instance.validated_binding = &a->binding;
+#if defined(T3_ASSET_TOPOLOGY) && defined(T3_SKIN_TO_SCREEN)
+        /* The mesh reads the asset's indices from here on, so the actor's own
+         * copy is free: it holds each corner's offset for the screen-cull loop. */
+        _Static_assert(T3_VERTEX_COUNT*sizeof(sat_projected_vertex_t)<=65535u,"a corner offset must fit 16 bits");
+        for(unsigned k=0;k<asset->model.face_count*4u;++k)
+            a->indices[k]=(uint16_t)(asset->model.indices[k]*sizeof(sat_projected_vertex_t));
+        a->corner_offsets=a->indices;
+#endif
 #if defined(T3_FIGHTER_LIGHTING)
         a->instance.face_gouraud=t3_fighter_light_load(i);
 #endif
@@ -2147,6 +2158,8 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
 #endif
 #if defined(T3_SKIN_TO_SCREEN)
         g_actors[i].instance.pre_projected=1u;
+        g_actors[i].instance.projected_offsets=g_actors[i].instance.mesh==&g_actors[i].mesh?
+            g_actors[i].corner_offsets:NULL;
 #endif
     }
     g_geometry_item=(sat_scene3d_prepare_item_t){
