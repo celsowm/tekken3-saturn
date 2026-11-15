@@ -65,6 +65,14 @@ Gouraud drawing alone already breaks the rule, so a cheaper relight
 often) cannot make lighting ship by itself. It would need the Gouraud cost
 to be paid back somewhere else in the VDP1 frame first.
 
+**Probe with no CPU cost per face (2026-11-15).** `-DT3_FIGHTER_GOURAUD_PROBE=ON`
+shades every fighter face from contiguous neutral tables (LibSaturn's
+`face_gouraud_first`, the shaded draw mode precompiled in the program), so
+the SH-2 does nothing extra per face and the picture is unchanged. The fight
+still drops from 29.73 / 28.25 to 29.46 / 27.85: about 0.27 img/s is the
+VDP1 drawing shaded textured faces. The probe and `T3_FIGHTER_LIGHTING` stay
+OFF; fighter packs carry light normals only with `T3_FIGHTER_LIGHTING`.
+
 ## Phase 3: hand and jaw vertex variants
 
 The original swaps whole vertex blocks for the hands (rows 14 and 18 for

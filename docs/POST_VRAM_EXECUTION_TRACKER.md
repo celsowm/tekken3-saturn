@@ -1372,6 +1372,58 @@ The frozen pixels match at ticks 2000 and 3000.
 where each CPU's time goes on three-tick images (wait probe, both CPUs) and
 stop: no fidelity or cadence trade is taken to close the gap.
 
+### 2c. Hand-scheduled SH-2 routines (2026-11-15)
+
+After R2 the Ymir per-instruction profile (`saturn_probe.py --debug-profile`,
+`saturn_pc_profile.py`) showed the Master's time in a handful of inner loops
+that GCC compiles poorly: stack reloads, 64-bit carry chains, library shifts.
+Each was replaced in LibSaturn by one assembly routine with one job. The
+pattern is the same for all of them:
+
+- a header `*_sh2.hpp` holding a `Job` struct (the routine's whole
+  interface, layout fixed by `static_assert`), a C++ `reference()` that
+  defines the result and runs on the host, the top-level `__asm__` routine,
+  and `run()`, which picks the assembly on the SH-2 by default (a
+  `*_REFERENCE` macro selects the C++ form);
+- the caller keeps validation, setup and every rare case, so the routine has
+  no clamps or error paths beyond "stop here".
+
+Every step kept the frozen pixels at tick 2000 identical
+(`5d69df645f1fb035c9fb22bf2be70408357db222`) and the same AI pad hash
+(`0xb99cc280`). Mednafen, Kuma vs Jin attract fight, marked img/s and worst
+segment:
+
+| Step | LibSaturn | Marked | Worst |
+|---|---|---:|---:|
+| R2 (before any assembly) | | 29.73 | 28.25 |
+| `screen_cull_sh2.hpp`: the screen-culled append of an instance | 4b1a1f27 | 30.36 | 28.70 |
+| `projected_bounds_sh2.hpp`: an instance's screen bounds, paired order fill | c1f843ce | 30.51 | 28.75 |
+| `rigid_project_sh2.hpp`: runs of plainly inside rigid vertices, rows to screen | de847f32 | 30.92 | 29.00 |
+| `clip_joints_sh2.hpp`: joints times the camera rows on the 64-bit MAC | 58d450c3 | 31.76 | 30.10 |
+| `program_run_sh2.hpp`: command words of an ordered run of program faces | f9250592 | 32.17 | 30.60 |
+
+Notes:
+
+- `rigid_project` handles only vertices with `0 < w` and both clip
+  coordinates inside `w * mult`; the vertex that fails goes through the
+  existing `Projector` clamps, then the routine resumes. DVSR keeps `w`
+  between a vertex's X and Y divides, so the Y divide writes two registers.
+- `clip_joints` was about 1,000 cycles per joint compiled (64-bit sums and
+  range checks through libgcc-style code) and is about 365 by instruction
+  count; it gave the largest single step.
+- The Master's profile after these: `rigid_project` 19%, `screen_cull` 17%,
+  `faces_flush` (now mostly the routine above), the painter sort 7.5%, the
+  blended-vertex loop of `project_q15` 7%.
+
+**Measuring faster.** `-DT3_TEST_SKIP_INTRO=ON` makes the intro program go
+straight to the title (the disc keeps both movies; `play_mednafen.py`
+refuses such a build). The fight binary is unchanged, so numbers compare
+with earlier runs. `ymir_fight.py --fields 7000` then reports the same
+tick-mark rates in about 40 s; `mednafen_fight.py` needs `--seconds 170`
+instead of 280 (frozen check: `--seconds 140 --shot 130 135`). Ymir's rates
+are far higher (43.82 / 40.67 where Mednafen reads 31.76 / 30.10), so it is
+a first check of direction, and Mednafen stays the number of record.
+
 ## 3. Order and parallelism
 
 ```text
