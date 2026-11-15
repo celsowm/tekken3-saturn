@@ -216,6 +216,10 @@ commands with them; "PUSH BUTTON TO EXIT" has the original's colours 6, 5, 6, 5 
 end at 0.802/0.800 (the STAND value starts at 0.688 on both), RETURN TO MODE SELECT ends at 0.704/0.703 and the panel frame spans
 0.179 to 0.815 against 0.178 to 0.816: all within 0.002, under a Saturn pixel.
 
-The shipped disc was run on the headless Ymir probe (a Saturn emulator) with a pad script; it was also booted into its opening movie on
-Mednafen. Driving it on a Mednafen window needs key presses into the window, which was refused (it takes the user's keyboard; the user asked for Ymir or
-a Mednafen that does not): `scripts/play_mednafen.py` plays the same flow by hand.
+The shipped disc was run on the headless Ymir probe (a Saturn emulator) with a pad script, and on Mednafen: the shipped configuration
+(`build/saturn`, `music.cue`, with the opening movie, the VS screen, the endings, Tekken Force and the stage music) was built once with
+`-DT3_MENU_SELFTEST=ON -DT3_PRACTICE_SELFTEST=ON`, so the disc drove itself and no key was sent to the emulator (key injection takes the
+keyboard, and the user asked for Ymir or a Mednafen that does not). Mednafen's own movie recorder showed, from the real title: PRACTICE
+MODE, the select, the practice fight with its attack data and HIGH marker, the green and red tint, 1P FREESTYLE with QUICK ROLL and its
+arrow, the CONTROLLER dummy, and the command list in two columns (When Facing Right, mixed-case names, arrows and buttons, PUSH BUTTON TO
+EXIT with BUTTON and EXIT yellow). The flags were then turned off and the shipped disc rebuilt (`play_mednafen.py` finds nothing missing).
