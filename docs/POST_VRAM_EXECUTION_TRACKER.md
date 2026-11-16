@@ -1383,8 +1383,8 @@ pattern is the same for all of them:
 - a header `*_sh2.hpp` holding a `Job` struct (the routine's whole
   interface, layout fixed by `static_assert`), a C++ `reference()` that
   defines the result and runs on the host, the top-level `__asm__` routine,
-  and `run()`, which picks the assembly on the SH-2 by default (a
-  `*_REFERENCE` macro selects the C++ form);
+  and `run()`. On the SH-2 `run()` is the assembly and nothing else; the
+  C++ form exists because the host tests cannot execute SH-2 code;
 - the caller keeps validation, setup and every rare case, so the routine has
   no clamps or error paths beyond "stop here".
 
@@ -1401,6 +1401,7 @@ segment:
 | `rigid_project_sh2.hpp`: runs of plainly inside rigid vertices, rows to screen | de847f32 | 30.92 | 29.00 |
 | `clip_joints_sh2.hpp`: joints times the camera rows on the 64-bit MAC | 58d450c3 | 31.76 | 30.10 |
 | `program_run_sh2.hpp`: command words of an ordered run of program faces | f9250592 | 32.17 | 30.60 |
+| `paint_keys_sh2.hpp`: the painter's key range and bucket-count scans | c0513d70 | 32.41 | 30.80 |
 
 Notes:
 
