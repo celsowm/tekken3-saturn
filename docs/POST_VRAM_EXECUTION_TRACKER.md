@@ -1382,9 +1382,13 @@ pattern is the same for all of them:
 
 - a header `*_sh2.hpp` holding a `Job` struct (the routine's whole
   interface, layout fixed by `static_assert`), a C++ `reference()` that
-  defines the result and runs on the host, the top-level `__asm__` routine,
-  and `run()`. On the SH-2 `run()` is the assembly and nothing else; the
-  C++ form exists because the host tests cannot execute SH-2 code;
+  defines the result and runs on the host, and `run()`; beside it the
+  routine itself as plain assembly, `*_sh2.s`, with GAS macros and
+  comments (listed in `cmake/LibSaturnSources.cmake`, built by CMake and
+  the Makefile). On the SH-2 `run()` is the assembly and nothing else; the
+  C++ form exists because the host tests cannot execute SH-2 code. The
+  routines began as strings in `__asm__` blocks; moving them to `.s` files
+  left every routine's bytes identical (`scripts/elf_symbol_bytes.py`);
 - the caller keeps validation, setup and every rare case, so the routine has
   no clamps or error paths beyond "stop here".
 
@@ -1402,6 +1406,7 @@ segment:
 | `clip_joints_sh2.hpp`: joints times the camera rows on the 64-bit MAC | 58d450c3 | 31.76 | 30.10 |
 | `program_run_sh2.hpp`: command words of an ordered run of program faces | f9250592 | 32.17 | 30.60 |
 | `paint_keys_sh2.hpp`: the painter's key range and bucket-count scans | c0513d70 | 32.41 | 30.80 |
+| `program_run` also writes direct queues; the C++ emit loop removed | 2ae2d6fb | 32.48 | 30.90 |
 
 Notes:
 
