@@ -1708,11 +1708,9 @@ static int apply_original_fighter_ot(sat_scene_t* scene,const fused_actor_contex
     }
     /* The SDK sorts unsigned keys high to low. Convert non-fighter depths
      * into the same approximately scaled 0..1023 range as the PS1 OT. */
-    for(unsigned i=0;i<queue->count;++i) {
-        uint32_t key=queue->keys[i];if(key==0xffffffffu)continue;
-        uint32_t depth=(key&0xffffffu)/192u;if(depth>1023u)depth=1023u;
-        queue->keys[i]=(key&0xff000000u)|depth;
-    }
+    /* depth / 192 capped at 1023: 22369622 is ceil(2^32 / 192), exact for every 24-bit depth
+     * (22369622 * 192 - 2^32 = 128, and depth * 128 < 2^32). */
+    if(sat_scene3d_faces_quantise_depth(queue,22369622u,1023u)!=SAT_OK)return 0;
     for(unsigned actor=0;actor<2;++actor) {
         const actor_t* a=&g_actors[actor];if(!a->original_active)continue;
         const t3_psx_projected_vertex_t* raw=(const t3_psx_projected_vertex_t*)(const void*)a->world_vertices;

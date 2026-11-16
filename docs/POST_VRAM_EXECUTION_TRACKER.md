@@ -1407,6 +1407,26 @@ segment:
 | `program_run_sh2.hpp`: command words of an ordered run of program faces | f9250592 | 32.17 | 30.60 |
 | `paint_keys_sh2.hpp`: the painter's key range and bucket-count scans | c0513d70 | 32.41 | 30.80 |
 | `program_run` also writes direct queues; the C++ emit loop removed | 2ae2d6fb | 32.48 | 30.90 |
+| Q15 clip-row bound proof in 32 bits; cache purge address stepped, not rebuilt | 903d9078 | 33.06 | 31.40 |
+| `blend_project_sh2.s`: runs of plainly inside half-weight seam vertices | f8d0dcdd | 33.88 | 32.25 |
+| `sat_scene3d_faces_quantise_depth`: the game's depth / 192 pass as one SH-2 scan | (see log) | 34.08 | 32.40 |
+
+Where the 64-bit work was (2026-11-16). The library's 64-bit helpers
+(`__divdi3` and friends) run about 11 times a field, so they are not the
+cost; inline 64-bit arithmetic in loops was. Three such places are gone:
+`sat_skin_project_range` proved every clip row's bound with 64-bit sums and
+a 64-bit division per row (for Q15 skins it is `|c0|+|c1|+|c2|+|c3| < 2^31`,
+now tested in 32 bits); the seam vertices blended and projected through
+64-bit compares; and the game divided every painter key by 192 in C (a
+multiply by `ceil(2^32/192)`, exact for 24-bit depths).
+
+Tried and not kept: `T3_MASTER_SKIN_PERCENT` below 65. With the Master's
+work this much lighter, Ymir prefers 20 to 35 (44.98 -> 45.79 marked), but
+Mednafen reads 32.46 / 30.85 at 35 and 32.51 / 30.80 at 25 against
+32.51 / 31.00 at 65, so the share stays at 65. Also not kept: one
+`Projector` for Q15 and non-Q15 skins (same pixels, 32.41 / 30.85 against
+32.51 / 31.00 from code layout alone; the game never runs the non-Q15
+branch).
 
 Notes:
 
@@ -1417,9 +1437,9 @@ Notes:
 - `clip_joints` was about 1,000 cycles per joint compiled (64-bit sums and
   range checks through libgcc-style code) and is about 365 by instruction
   count; it gave the largest single step.
-- The Master's profile after these: `rigid_project` 19%, `screen_cull` 17%,
-  `faces_flush` (now mostly the routine above), the painter sort 7.5%, the
-  blended-vertex loop of `project_q15` 7%.
+- The Master's profile after all of these: `rigid_project` 21% (158 cycles
+  a vertex, 28 of them divider register accesses), `screen_cull` 19%,
+  `program_run` 7.5%, `blend_project` 5%, then nothing above 4%.
 
 **Measuring faster.** `-DT3_TEST_SKIP_INTRO=ON` makes the intro program go
 straight to the title (the disc keeps both movies; `play_mednafen.py`
