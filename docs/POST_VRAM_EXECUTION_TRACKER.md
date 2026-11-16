@@ -1409,7 +1409,7 @@ segment:
 | `program_run` also writes direct queues; the C++ emit loop removed | 2ae2d6fb | 32.48 | 30.90 |
 | Q15 clip-row bound proof in 32 bits; cache purge address stepped, not rebuilt | 903d9078 | 33.06 | 31.40 |
 | `blend_project_sh2.s`: runs of plainly inside half-weight seam vertices | f8d0dcdd | 33.88 | 32.25 |
-| `sat_scene3d_faces_quantise_depth`: the game's depth / 192 pass as one SH-2 scan | (see log) | 34.08 | 32.40 |
+| `sat_scene3d_faces_quantise_depth`: the game's depth / 192 pass as one SH-2 scan | 2e28b097 | 34.08 | 32.40 |
 
 Where the 64-bit work was (2026-11-16). The library's 64-bit helpers
 (`__divdi3` and friends) run about 11 times a field, so they are not the
