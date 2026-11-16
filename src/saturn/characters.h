@@ -82,6 +82,12 @@ void t3_characters_prepare_worker(void);
  * (0 to 100; T3_MASTER_SKIN_PERCENT until changed). The vertices are the same
  * whichever CPU skins them. */
 void t3_characters_set_master_skin_percent(unsigned percent);
+#if defined(T3_FIGHTER_LIGHTING)
+/* Relights one fighter's Gouraud tables, the two in turn, from the rotations
+ * the last t3_characters_render read. Master only. The main loop calls it
+ * where the Master would otherwise wait for the Slave. */
+void t3_characters_relight(void);
+#endif
 /* FRT durations are owned by the actor CPU and published after the fused
  * worker join. Dispatch includes both actors and must not be added to them. */
 typedef struct {

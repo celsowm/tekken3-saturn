@@ -1410,6 +1410,25 @@ segment:
 | Q15 clip-row bound proof in 32 bits; cache purge address stepped, not rebuilt | 903d9078 | 33.06 | 31.40 |
 | `blend_project_sh2.s`: runs of plainly inside half-weight seam vertices | f8d0dcdd | 33.88 | 32.25 |
 | `sat_scene3d_faces_quantise_depth`: the game's depth / 192 pass as one SH-2 scan | 2e28b097 | 34.08 | 32.40 |
+| `rigid_project`: each divide gets 39 cycles of other work, so no quotient read waits | 5c694339 | 34.27 | 32.55 |
+
+Which CPU limits now (2026-11-16, wait probe, Mednafen 170 s, probe build
+34.20 / 32.50). The probe now also records one-tick images
+(`g_t3_by_ticks[2]`, `g_t3_duration_sum`). Mean FRT/128 per image (a field is
+3,728):
+
+| Image | Count | Pre | Prepare | Flush | HUD + join | Join | Post | Whole image |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 tick | 896 | 144 | 3,086 | 1,170 | 393 | 199 | 337 | 5,164 |
+| 2 ticks | 1,887 | 186 | 3,316 | 1,191 | 1,497 | 1,316 | 84 | 6,310 |
+| 3+ ticks | 199 | 441 | 5,319 | 1,302 | 3,509 | 3,325 | 114 | 11,755 |
+
+The loop runs free: an image's length is the sum of its phases, not a whole
+number of fields. A one-tick image is bound by the Master (it waits 199 at the
+join); a two-tick image by the Slave (the Master waits 1,316), whose tick still
+costs 2,163. So a Master saving shortens one-tick images, a Slave tick saving
+shortens the others twice or three times over, and the Master has about 1,300
+of idle time before the join on every two-tick image.
 
 Where the 64-bit work was (2026-11-16). The library's 64-bit helpers
 (`__divdi3` and friends) run about 11 times a field, so they are not the

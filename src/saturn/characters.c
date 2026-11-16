@@ -227,7 +227,7 @@ static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUN
 #endif
 static uint8_t g_initialized;
 #if defined(T3_FIGHTER_LIGHTING)
-/* Each image relights one actor's tables, the two in turn. */
+/* A relight takes one actor's tables, the two in turn. */
 static uint8_t g_light_turn;
 #endif
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
@@ -628,7 +628,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         a->corner_offsets=a->indices;
 #endif
 #if defined(T3_FIGHTER_LIGHTING)
-        a->instance.face_gouraud=t3_fighter_light_load(i);
+        a->instance.face_gouraud_first=t3_fighter_light_load(i);
 #elif defined(T3_FIGHTER_GOURAUD_PROBE)
         /* Timing probe only: every face drawn with its own neutral Gouraud table. */
         {
@@ -1097,7 +1097,7 @@ typedef struct {
 #endif
 #endif
 #if defined(T3_FIGHTER_LIGHTING)
-    /* The actor whose tables this image relights from original_joints, or 2. */
+    /* Bit i: original_joints[i] holds this image's rotations, so actor i can be relit. */
     uint8_t relight;
 #endif
 #if defined(T3_FIGHTER_HAND_VARIANTS)
@@ -1920,12 +1920,6 @@ static void prepare_actor_range(void* opaque,uint32_t begin,uint32_t end) {
         }
 #endif
         sat_result_t st=deform_actor(context,actor,lead,actor->vertex_count);
-#if defined(T3_FIGHTER_LIGHTING)
-        {
-            const fused_actor_context_t* shared=sat_parallel_uncached_address(context);
-            if(shared->relight==i)t3_fighter_light_relight(i,shared->original_joints[i]);
-        }
-#endif
 #if !defined(T3_SKIN_TO_SCREEN)
         /* Screen projection: the Master submits actor 1's faces, so the
          * worker never reads the Master's share (see settle_lead). */
@@ -2026,6 +2020,16 @@ void t3_characters_set_master_skin_percent(unsigned percent) {
     /* No share at all keeps the build's choice (hand variants need none). */
     if(T3_MASTER_SKIN_PERCENT)g_master_skin_percent=percent>100u?100u:percent;
 }
+#if defined(T3_FIGHTER_LIGHTING)
+void t3_characters_relight(void) {
+    /* The turn moves on only after a relight, so skipped images starve neither fighter. */
+    const unsigned actor=g_light_turn&1u;
+    if(!(g_fused_actors.relight&(1u<<actor)))return;
+    t3_fighter_light_relight(actor,g_fused_actors.original_joints[actor]);
+    g_fused_actors.relight&=(uint8_t)~(1u<<actor);
+    ++g_light_turn;
+}
+#endif
 #if defined(T3_SKIN_TO_SCREEN)
 /* Both shares must be on screen; otherwise the whole actor goes to world, as
  * a refusal on one CPU does (skin_to_world_after). */
@@ -2123,8 +2127,7 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
         .shown={(uint8_t)t3_move_probe_fighter_shown(0),(uint8_t)t3_move_probe_fighter_shown(1)},
         .result={SAT_OK,SAT_OK},.worker_ready=0u};
 #if defined(T3_FIGHTER_LIGHTING)
-    g_fused_actors.relight=2u;
-    ++g_light_turn;
+    g_fused_actors.relight=0u;
 #endif
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION)
 #if defined(T3_PARTICLE_GATED_PROJECTION)
@@ -2149,7 +2152,7 @@ static sat_result_t prepare_fused_actors(sat_scene_t* scene) {
          * projection still runs only when its view is ready. */
         const int joints_ready=g_fused_actors.shown[i] && t3_move_probe_copy_world(i,
             g_fused_actors.original_joints[i],&g_fused_actors.original_mask[i]);
-        if(joints_ready && i==(g_light_turn&1u))g_fused_actors.relight=(uint8_t)i;
+        if(joints_ready)g_fused_actors.relight|=(uint8_t)(1u<<i);
         if(original_view_ready && joints_ready) {
 #else
         if(original_view_ready && g_fused_actors.shown[i] && t3_move_probe_copy_world(i,g_fused_actors.original_joints[i],

@@ -108,6 +108,14 @@ static sat_result_t open_pack_source(unsigned actor,unsigned id,const char* sour
         file->section[s][1]=w[DIRECTORY_WORD+2u*s+1u];
         if(file->section[s][0]>limit || file->section[s][1]>limit-file->section[s][0])return SAT_ERR_VERSION;
     }
+#if !defined(T3_FIGHTER_LIGHTING)
+    /* The light data ends the hot block: a program that does not light leaves it on the disc. */
+    if(w[LIGHT_WORD]) {
+        if(w[LIGHT_WORD+1u]>file->section[T3_PACK_HOT][1])return SAT_ERR_VERSION;
+        file->section[T3_PACK_HOT][1]=w[LIGHT_WORD+1u];
+        w[LIGHT_WORD]=0u;
+    }
+#endif
     const uint32_t hot=file->section[T3_PACK_HOT][1];
     if(w[3]>=256u || w[9]>T3_ROSTER_TEXTURES || w[7]>T3_ROSTER_VERTICES || w[8]>T3_ROSTER_FACES ||
        w[18]>T3_ROSTER_VOICES || w[24]>T3_ROSTER_PROJECTED_VERTICES ||

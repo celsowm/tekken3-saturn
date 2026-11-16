@@ -381,14 +381,15 @@ static uint32_t g_t3_native_sim_ticks, g_t3_native_prepare_ticks;
 static uint32_t g_t3_native_flush_ticks, g_t3_native_hud_ticks, g_t3_native_join_ticks;
 static uint32_t g_t3_native_pre_ticks, g_t3_native_post_ticks;
 /* Whole-run image statistics: duration buckets, and phase sums by the
- * image's tick count (2 or 3+). */
-static uint32_t g_t3_hist[4], g_t3_by_ticks[2][6], g_t3_by_ticks_n[2];
+ * image's tick count ([0] 2, [1] 3+, [2] 1), with each class's whole
+ * duration (vblank wait included). */
+static uint32_t g_t3_hist[4], g_t3_by_ticks[3][6], g_t3_by_ticks_n[3], g_t3_duration_sum[3];
 /* From the start of preparation to the Slave's dispatch, summed the same way. */
 static uint16_t g_t3_prepare_started_frc, g_t3_dispatch_ticks;
-static volatile uint32_t g_t3_dispatch_sum[2];
+static volatile uint32_t g_t3_dispatch_sum[3];
 /* The Master's own work (the image less its vblank and join waits), by
  * tick count: <6000, <6500, <7000, <7465, more. */
-static volatile uint32_t g_t3_own_hist[2][5];
+static volatile uint32_t g_t3_own_hist[3][5];
 static uint32_t g_t3_native_painter_ticks, g_t3_native_emit_ticks;
 static uint32_t g_t3_painter_sum, g_t3_emit_sum, g_t3_flush_samples;
 #endif
@@ -2622,6 +2623,18 @@ int main(void) {
             const uint16_t native_join_started=sat_time_frc();
 #endif
             if(g_stage_on_worker)stage_before_join();
+#if defined(T3_FIGHTER_LIGHTING)
+            /* Two or more ticks keep the Slave busy past this point: the Master relights
+             * a fighter instead of waiting. A run of one-tick images still relights every
+             * fourth image. */
+            {
+                static uint8_t light_skipped;
+                if(deferred>=2u || ++light_skipped>=4u) {
+                    t3_characters_relight();
+                    light_skipped=0u;
+                }
+            }
+#endif
             SAT_PANIC_IF_ERROR(simulation_join(simulation_handle,deferred));
             if(g_stage_on_worker) {
                 SAT_PANIC_IF_ERROR(stage_sync());
@@ -2724,8 +2737,8 @@ int main(void) {
             native_loop_started=ended;
             if(g_game.total_ticks>120u) {
                 ++g_t3_hist[duration<7000u?0:duration<7465u?1:duration<8500u?2:3];
-                const unsigned k=ticks>=3u?1u:0u;
-                if(ticks>=2u) {
+                const unsigned k=ticks>=3u?1u:ticks==2u?0u:2u;
+                if(ticks>=1u) {
                     const uint32_t phases[6]={g_t3_native_pre_ticks,g_t3_native_prepare_ticks,
                         g_t3_native_flush_ticks,g_t3_native_hud_ticks,g_t3_native_join_ticks,
                         g_t3_native_post_ticks};
@@ -2733,6 +2746,7 @@ int main(void) {
                     g_t3_dispatch_sum[k]+=g_t3_dispatch_ticks;
                     const uint32_t own=phases[1]+phases[2]+phases[3]-phases[4]+phases[5];
                     ++g_t3_own_hist[k][own<6000u?0:own<6500u?1:own<7000u?2:own<7465u?3:4];
+                    g_t3_duration_sum[k]+=duration;
                     ++g_t3_by_ticks_n[k];
                 }
             }

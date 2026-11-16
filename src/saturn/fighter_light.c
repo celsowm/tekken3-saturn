@@ -16,23 +16,23 @@
 #include "fighter_pack.h"
 #include "saturn/vdp1.h"
 
-enum { LIGHT_LEVELS=16u, FILL_LEVELS=8u, LEVELS=LIGHT_LEVELS*FILL_LEVELS, MAX_NORMALS=1024u,
-       FILL_OFF_STAGE=17u };
+enum { LIGHT_LEVELS=16u, FILL_LEVELS=8u, LEVELS=LIGHT_LEVELS*FILL_LEVELS, MAX_NORMALS=T3_ROSTER_LIGHT_NORMALS,
+       FILL_OFF_STAGE=17u, SHADE_BYTES=T3_LIGHT_TONES*LEVELS*2u };
 
 typedef struct {
-    volatile uint32_t* tables; /* two words per face: corners A B, C D */
+    volatile uint32_t* tables; /* two words per face: corners A B, C D; face f's table is CMDGRDA first + f */
     uint32_t faces;
-    uint16_t grda[T3_ROSTER_FACES];
-    uint16_t shade[2][T3_LIGHT_TONES][LEVELS]; /* [live] is read by the relight; the other is rebuilt, then swapped in */
+    /* [tone][level], in VDP1 VRAM after the tables: Work RAM has no room for it. */
+    volatile uint16_t (*shade)[LEVELS];
     const uint16_t* tones;
-    uint8_t back[3],back_on,live;
-    uint8_t level[MAX_NORMALS];
+    uint8_t back[3],back_on;
 } light_actor_t;
 
 static const int32_t k_rigs[T3_ROSTER_LIGHT_RIG_COUNT][6]=T3_ROSTER_LIGHT_RIGS;
 static const int32_t* g_rig=k_rigs[0];
 static unsigned g_fill_on=1u;
-static light_actor_t g_light[2];
+/* Low Work RAM: High Work RAM is the Master stack's and the hot data's. */
+static light_actor_t g_light[2] __attribute__((section(".wram_l")));
 
 void t3_fighter_light_stage(unsigned stage) {
     g_rig=k_rigs[stage<T3_ROSTER_LIGHT_RIG_COUNT?stage:0u];
@@ -47,7 +47,7 @@ static uint16_t channel(int32_t tone,int32_t colour) {
     return (uint16_t)(g<0?0:g>31?31:g);
 }
 
-static void build_shade(light_actor_t* a,unsigned which,const uint16_t* tones) {
+static void build_shade(light_actor_t* a,const uint16_t* tones) {
     int32_t back[3]={g_rig[0]>>4,g_rig[0]>>4,g_rig[0]>>4};
     if(a->back_on)for(unsigned c=0;c<3u;++c)back[c]=a->back[c];   /* practice's freeze signal (FUN_8003AA6C) */
     for(unsigned t=0;t<T3_LIGHT_TONES;++t)
@@ -62,29 +62,27 @@ static void build_shade(light_actor_t* a,unsigned which,const uint16_t* tones) {
                     const int32_t colour=base*sum/(256*105);
                     word|=(uint16_t)(channel((tones[t]>>(5u*c))&31,colour)<<(5u*c));
                 }
-                a->shade[which][t][l*FILL_LEVELS+f]=word;
+                a->shade[t][l*FILL_LEVELS+f]=word;
             }
 }
 
-const uint16_t* t3_fighter_light_load(unsigned actor) {
+uint16_t t3_fighter_light_load(unsigned actor) {
     light_actor_t* a=&g_light[actor&1u];
     const t3_fighter_pack_t* pack=t3_fighter_pack(actor);
     a->tables=NULL;
-    if(!pack->light_normal_count || pack->light_normal_count>MAX_NORMALS || pack->faces>T3_ROSTER_FACES)
-        return NULL;
+    if(!pack->light_normal_count || pack->light_normal_count>MAX_NORMALS)
+        return 0u;
     uint32_t offset;
-    if(sat_vdp1_vram_reserve(pack->faces*8u,&offset)!=SAT_OK)return NULL;
-    volatile uint32_t* tables=(volatile uint32_t*)sat_vdp1_vram_address(offset,pack->faces*8u);
-    if(!tables)return NULL;
-    for(uint32_t f=0;f<pack->faces;++f) {
-        a->grda[f]=(uint16_t)((offset>>3)+f);
-        tables[2u*f]=tables[2u*f+1u]=0x42104210u; /* unchanged texels until the first relight */
-    }
-    a->tones=pack->light_tones;a->back_on=0;a->live=0;
-    build_shade(a,0u,pack->light_tones);
+    if(sat_vdp1_vram_reserve(pack->faces*8u+SHADE_BYTES,&offset)!=SAT_OK)return 0u;
+    volatile uint32_t* tables=(volatile uint32_t*)sat_vdp1_vram_address(offset,pack->faces*8u+SHADE_BYTES);
+    if(!tables || !offset || ((offset>>3)+pack->faces)>0xFFFFu)return 0u;
+    a->shade=(volatile uint16_t (*)[LEVELS])(tables+2u*pack->faces);
+    for(uint32_t f=0;f<2u*pack->faces;++f)tables[f]=0x42104210u; /* unchanged texels until the first relight */
+    a->tones=pack->light_tones;a->back_on=0;
+    build_shade(a,pack->light_tones);
     a->faces=pack->faces;
     a->tables=tables;
-    return a->grda;
+    return (uint16_t)(offset>>3);
 }
 
 void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]) {
@@ -99,6 +97,8 @@ void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_
         for(unsigned k=0;k<3u;++k)
             row[j][k]=(m[0][k]*g_rig[3]+m[1][k]*g_rig[4]+m[2][k]*g_rig[5])>>12;
     }
+    /* Each normal's level, for this relight only. */
+    uint8_t level[MAX_NORMALS];
     const t3_light_normal_t* n=pack->light_normals;
     for(uint32_t i=0;i<pack->light_normal_count;++i,++n) {
         const unsigned j=n->joint<T3_PSX_DRAW_PARTS?n->joint:0u;
@@ -109,29 +109,29 @@ void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_
         uint32_t f=fill>0?((uint32_t)fill*(FILL_LEVELS-1u)+2048u)>>12:0u;
         if(l>=LIGHT_LEVELS)l=LIGHT_LEVELS-1u;
         if(f>=FILL_LEVELS)f=FILL_LEVELS-1u;
-        a->level[i]=(uint8_t)(l*FILL_LEVELS+f);
+        level[i]=(uint8_t)(l*FILL_LEVELS+f);
     }
     const uint16_t* words=pack->light_faces;
     const uint16_t* corners=pack->light_corners;
     volatile uint32_t* out=a->tables;
     for(uint32_t f=0;f<a->faces;++f,out+=2) {
         const uint16_t word=words[f];
-        const uint16_t* shade=a->shade[a->live][T3_LIGHT_FACE_TONE(word)];
-        const uint32_t first=shade[a->level[T3_LIGHT_FACE_NORMAL(word)]];
+        const volatile uint16_t* shade=a->shade[T3_LIGHT_FACE_TONE(word)];
+        const uint32_t first=shade[level[T3_LIGHT_FACE_NORMAL(word)]];
         if(word&T3_LIGHT_FACE_FLAT) {
             const uint32_t both=first<<16|first;
             out[0]=both;out[1]=both;
         } else {
-            out[0]=first<<16|shade[a->level[corners[0]]];
-            out[1]=(uint32_t)shade[a->level[corners[1]]]<<16|shade[a->level[corners[2]]];
+            out[0]=first<<16|shade[level[corners[0]]];
+            out[1]=(uint32_t)shade[level[corners[1]]]<<16|shade[level[corners[2]]];
             corners+=3;
         }
     }
 }
 
 /* Practice's FREEZE SIGNAL: lights an actor with this back colour (R, G, B bytes as the original's) instead of the
- * stage's, or with the stage's again when `on` is 0. The other table is rebuilt and swapped in, so a relight on the
- * other CPU never reads a half-built one; nothing runs unless the colour changes. */
+ * stage's, or with the stage's again when `on` is 0. The table is rebuilt in place: a relight running on the other
+ * CPU at that moment mixes the two colours for one image. Nothing runs unless the colour changes. */
 void t3_fighter_light_back(unsigned actor,int on,const uint8_t rgb[3]) {
     light_actor_t* a=&g_light[actor&1u];
     if(!a->tables || !a->tones)return;
@@ -139,7 +139,5 @@ void t3_fighter_light_back(unsigned actor,int on,const uint8_t rgb[3]) {
     else if(a->back_on && a->back[0]==rgb[0] && a->back[1]==rgb[1] && a->back[2]==rgb[2])return;
     a->back_on=(uint8_t)(on!=0);
     if(on){a->back[0]=rgb[0];a->back[1]=rgb[1];a->back[2]=rgb[2];}
-    const unsigned other=a->live^1u;
-    build_shade(a,other,a->tones);
-    a->live=(uint8_t)other;
+    build_shade(a,a->tones);
 }

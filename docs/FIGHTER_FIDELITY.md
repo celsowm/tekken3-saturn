@@ -73,6 +73,48 @@ still drops from 29.73 / 28.25 to 29.46 / 27.85: about 0.27 img/s is the
 VDP1 drawing shaded textured faces. The probe and `T3_FIGHTER_LIGHTING` stay
 OFF; fighter packs carry light normals only with `T3_FIGHTER_LIGHTING`.
 
+**Lighting on today's base (2026-11-16).** Same fight, Mednafen 170 s,
+measurement build without Tekken Force and the practice data (see memory
+below). Control 34.27 / 32.55.
+
+| Configuration | Marked | Worst |
+|---|---:|---:|
+| Native LUT4 textures (cap 32), no lighting | 34.14 | 32.45 |
+| + lighting, tables never relit (shaded drawing only) | 33.96 | 32.29 |
+| + relight in each actor's preparation, compiled screen cull | 28.69 | 26.89 |
+| + LibSaturn's assembly screen cull for shaded faces (18166793) | 29.25 | 27.20 |
+| + relight on the Master before the join, images of two or more ticks | 30.21 | 28.05 |
+
+What changed in the code (lighting stays OFF by default):
+
+- Tables are consecutive (`face_gouraud_first`), so lit faces take the
+  assembly screen cull and no per-face table index is kept.
+- `g_light` shrank from 21,760 bytes to 32: one shade table per actor, in
+  VDP1 VRAM after its Gouraud tables; the per-normal levels are a local of
+  the relight.
+- The pack's light data ends its hot block. A program built without
+  lighting (Tekken Force) reads the block only up to it
+  (`T3_ROSTER_STORE_BYTES` is the unlit size there).
+- `t3_characters_relight` runs on the Master where it would otherwise wait
+  for the Slave (`main.c`, before `simulation_join`), one fighter per call in
+  turn, on images of two or more ticks, and on every fourth image otherwise.
+
+Why it is still not the default:
+
+- **The relight is too long.** Shaded drawing costs 0.2 img/s; the rest is
+  the relight. The wait probe puts it near 1,900 FRT/128 (about 240,000
+  cycles) against the 1,200 the Master has idle on a two-tick image. Mednafen
+  charges each VDP1 VRAM access heavily, and one relight makes about 1,560
+  long writes (the tables) and 2,300 word reads (the shade table, now in
+  VRAM). To fit, it needs the shade table in Work RAM, an assembly routine,
+  and probably writes only for faces whose levels changed.
+- **Work RAM.** With cap 32 and lighting the fight program is 15.6 KB short
+  of its 16 KB Master stack reserve in High Work RAM and Low Work RAM is
+  340 bytes over; Tekken Force is 10.4 KB short. Cap 32 alone grows each
+  actor's store by 9,072 bytes (47,632 to 56,704) and the light data by
+  another 6,016. The default build has 17.0 KB (fight) and 13.0 KB (Force)
+  above the reserve, and 160 bytes in Low Work RAM.
+
 ## Phase 3: hand and jaw vertex variants
 
 The original swaps whole vertex blocks for the hands (rows 14 and 18 for

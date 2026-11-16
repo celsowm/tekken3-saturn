@@ -344,12 +344,6 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     normal_count = 0
     for name in ('light_normals', 'light_faces', 'light_corners', 'light_tones'):
         fields[name] = 0
-    if lighting:
-        normals, light_faces, corners, tones, normal_count = lighting_data(lighting)
-        place('light_normals', normals)
-        place('light_faces', light_faces, 2)
-        place('light_corners', corners, 2)
-        place('light_tones', tones, 2)
     hand_rows, hand_row_count = hand_variant_rows(report['hand_variants'], mesh, put) if hand_variants else (b'', 0)
     if hand_rows:
         place('hand_variants', hand_rows)
@@ -360,6 +354,16 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     if shadow:
         place('shadow', shadow, 2)
     align(hot, 4)
+    # The light data ends the block: a program that does not light (Tekken Force) reads the
+    # block only up to it and keeps the room (fighter_pack.c).
+    unlit_bytes = len(hot)
+    if lighting:
+        normals, light_faces, corners, tones, normal_count = lighting_data(lighting)
+        place('light_normals', normals)
+        place('light_faces', light_faces, 2)
+        place('light_corners', corners, 2)
+        place('light_tones', tones, 2)
+        align(hot, 4)
 
     sections = dict(hot=bytes(hot), archive=archive, bank=bank, camera=encoded,
                     flipbook=flipbook_file(arc)[0], voices=table, pcm=pcm,
@@ -387,7 +391,8 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
         bank_bytes=len(bank), bank_record=bank_record(fighter), branch_rows=branch_rows(bank),
         vertices=report['compiled_vertices'], projected_vertices=projected_vertices,
         faces=report['faces'], textures=report['textures'],
-        palettes=palettes, scale=model.scale_percent, hot_bytes=len(hot), archive_bytes=len(archive),
+        palettes=palettes, scale=model.scale_percent, hot_bytes=len(hot), unlit_bytes=unlit_bytes,
+        light_normals=normal_count, archive_bytes=len(archive),
         compact_bytes=compact_bytes(archive), camera_bytes=len(encoded), choices=choice_count,
         streams=stream_count, voices=voice_count, pcm_bytes=len(pcm),
         max_samples=max((struct.unpack_from('>I', table, i + 8)[0] for i in range(0, len(table), VOICE_ROW_BYTES)), default=0))
@@ -407,6 +412,7 @@ def header(rows, common_rows, homes, rigs, faces, shears):
                 (a['camera_bytes'] + 15 & ~15) + (b['camera_bytes'] + 15 & ~15) for a, b in pairs)
     # Each actor's store starts aligned, so the size is a multiple of 16.
     store = (max(row['hot_bytes'] + row['compact_bytes'] for row in rows) + 16 + 15) & ~15
+    unlit_store = (max(row['unlit_bytes'] + row['compact_bytes'] for row in rows) + 16 + 15) & ~15
     filters = filter_words(common_rows) + max(
         filter_words(a['branch_rows']) + (0 if a['bank_type'] == b['bank_type'] else filter_words(b['branch_rows']))
         for a, b in pairs)
@@ -420,7 +426,13 @@ def header(rows, common_rows, homes, rigs, faces, shears):
              f"#define T3_ROSTER_ARCHIVE_BYTES {most('archive_bytes')}u",
              f"#define T3_ROSTER_MAX_VOICE_SAMPLES {most('max_samples')}u",
              f'#define T3_ROSTER_ARENA_BYTES {arena}u',
+             '/* An actor\'s hot block and compact mesh; without the light data in a program that does not light. */',
+             '#if defined(T3_FIGHTER_LIGHTING)',
              f'#define T3_ROSTER_STORE_BYTES {store}u',
+             '#else',
+             f'#define T3_ROSTER_STORE_BYTES {unlit_store}u',
+             '#endif',
+             f"#define T3_ROSTER_LIGHT_NORMALS {max(most('light_normals'), 1)}u",
              f'#define T3_ROSTER_FILTER_WORDS {filters}u',
              '/* Home stage and music track, by character id. */',
              f"#define T3_ROSTER_STAGES {{{','.join(str(home[0]) for home in homes)}}}",
