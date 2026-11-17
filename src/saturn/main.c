@@ -580,6 +580,53 @@ static void __attribute__((optimize("Os"))) drop_shadows(void) {
 static int32_t g_stage_input[3];
 #if defined(T3_BALL_PROGRAM)
 static t3_ball_backdrop_t g_ball_backdrop;
+/* The pause menu's HOW TO page (volley.ovl FUN_800B4088, modes.md): the picture on a light frame with a black shadow, shown until a
+ * button is pressed. The original's picture is 216 x 204 of 384 x 480 coordinates at (76, 128) on a frame of 240 x 236 at (64, 112); the
+ * x' = x * 20 / 23 and y' = (y - 20) / 2 mapping of the HUD puts them here. The picture (shrunk to 192 x 102 by pack_ball_howto.py) is read on
+ * first use and kept in VDP1 VRAM; the scene's face array is in use, so it has its own buffer in High Work RAM. */
+static uint8_t g_how_to[512+192*102] __attribute__((aligned(4)));
+static uint8_t g_how_to_pending;
+static void how_to_page(void) {
+    static sat_vdp1_texture_t picture;
+    static unsigned ready;
+    static uint16_t saved[256];
+    enum { PALETTE=512, WIDTH=192, HEIGHT=102, BANK=7 };
+    /* The picture's palette shares colour RAM bank 7 with the stage's backdrop (the VDP2 picture palette): the bank is kept
+     * while the page shows and put back when it closes. */
+    volatile const uint16_t* cram=(volatile const uint16_t*)(0x25F00000u+BANK*512u);
+    if(!ready) {
+        sat_cdfs_volume_t* volume;
+        sat_cdfs_file_t file;
+        uint32_t read=0;
+        SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
+        SAT_PANIC_IF_ERROR(sat_cdfs_lookup(volume,"HOWTO.BIN",&file));
+        SAT_PANIC_IF_ERROR(sat_cdfs_read_at(volume,&file,0,g_how_to,PALETTE+WIDTH*HEIGHT,&read));
+        if(read!=PALETTE+WIDTH*HEIGHT)SAT_PANIC_IF_ERROR(SAT_ERR_IO);
+        SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8_pixels(&picture,g_how_to+PALETTE,WIDTH,HEIGHT,BANK));
+        ready=1;
+    }
+    for(unsigned i=0;i<256u;++i)saved[i]=cram[i];
+    SAT_PANIC_IF_ERROR(sat_palette_upload_indexed8((const uint16_t*)g_how_to,BANK));
+    for(unsigned age=0;;++age) {
+        sat_pad_state_t pad={0};
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad));
+        if(age>=3u&&(pad.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)))break;
+        SAT_PANIC_IF_ERROR(sat_begin_frame());
+        {
+            const int x=64*20/23-160,y=(112-20)/2-112,w=240*20/23,h=236/2,shadow_x=6*20/23,shadow_y=8/2;
+            const sat_quad2_t dark={{(int16_t)(x+shadow_x),(int16_t)(x+shadow_x+w),(int16_t)(x+shadow_x+w),(int16_t)(x+shadow_x)},
+                                    {(int16_t)(y+shadow_y),(int16_t)(y+shadow_y),(int16_t)(y+shadow_y+h),(int16_t)(y+shadow_y+h)}};
+            const sat_quad2_t light={{(int16_t)x,(int16_t)(x+w),(int16_t)(x+w),(int16_t)x},{(int16_t)y,(int16_t)y,(int16_t)(y+h),(int16_t)(y+h)}};
+            SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&dark,SAT_RGB555(0,0,0),SAT_SPRITE_FLAG_OPAQUE));
+            SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&light,SAT_RGB555(30,30,30),SAT_SPRITE_FLAG_OPAQUE));
+            SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&picture,76*20/23+216*20/46,(128-20)/2+204/4,216*20/23,204/2,BANK));
+        }
+        SAT_PANIC_IF_ERROR(sat_end_frame());
+    }
+    SAT_PANIC_IF_ERROR(sat_palette_upload_indexed8(saved,BANK));
+}
 /* Tekken Ball's part of an image: the court's backdrop placed from the camera, then the ball, its shadow and the court's lines
  * as scene faces (ball_render.c). */
 static void ball_image(void) {
@@ -2412,6 +2459,9 @@ int main(void) {
     uint16_t native_loop_started=sat_time_frc();
 #endif
     for (;;) {
+#if defined(T3_BALL_PROGRAM)
+        if(g_how_to_pending){g_how_to_pending=0;how_to_page();}
+#endif
         sat_pad_state_t pad0 = {0}, pad1 = {0};
         uint32_t now, elapsed, hz, ticks, work_started_ms;
 #if !defined(T3_SLAVE_SIMULATION)
@@ -2537,6 +2587,12 @@ int main(void) {
             ladder_step(&pad0,&pad1);
             pad0.pressed&=(uint16_t)~SAT_PAD_START;
             pad1.pressed&=(uint16_t)~SAT_PAD_START;
+        }
+#endif
+#if defined(T3_BALL_PROGRAM)
+        if((pad0.pressed&SAT_PAD_START)&&!g_game.match_done) {   /* START: the pause menu's HOW TO page (next iteration, outside a frame), then the fight goes on */
+            g_how_to_pending=1;
+            pad0.pressed&=~(uint32_t)SAT_PAD_START;
         }
 #endif
         const int practice_again=g_practice && g_game.match_done;

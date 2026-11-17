@@ -2328,8 +2328,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_ball_stage.py" "${CMAKE_SOURCE_DIR}/scripts/build_stage_packs.py"
                 "${CMAKE_SOURCE_DIR}/src/game/stage_format.h" "${T3_LOCAL_BALL_PICTURES}/tiles.png"
                 "${T3_LOCAL_BALL_PICTURES}/floor.png" "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        # The HOW TO page (the pause menu's page 4): the retail picture, private
+        add_custom_command(OUTPUT "${_t3_ball_gen}/HOWTO.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_ball_howto.py"
+                --picture "${T3_LOCAL_BALL_PICTURES}/how_to.png" --out "${_t3_ball_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_ball_howto.py" "${T3_LOCAL_BALL_PICTURES}/how_to.png" VERBATIM)
         set_source_files_properties(src/saturn/ball_render.c PROPERTIES COMPILE_OPTIONS "-Os")
-        list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/BALL.BIN" "${_t3_ball_gen}/STG19.BIN")
+        list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/BALL.BIN" "${_t3_ball_gen}/STG19.BIN" "${_t3_ball_gen}/HOWTO.BIN")
         if(TARGET tekken3_menu)
             target_sources(tekken3_menu PRIVATE src/game/ball_flow.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_BALL_PROGRAM=1)   # the menu offers TEKKEN BALL
