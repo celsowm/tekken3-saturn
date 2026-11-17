@@ -60,8 +60,8 @@ COLUMN_EDGES = (0, 69, 137, 206, 274, 343, 411)
 GRID_TOP, ROW_H = 20, 64
 BAR_AT, BAR_H, BAR_TAIL = (0, 36), 36, 110
 BARS = {0: ((104, 0, 128), 216), 1: ((216, 0, 8), 216), 3: ((0, 192, 160), 216), 4: ((0, 192, 192), 248), 5: ((248, 56, 96), 216)}
-# (background picture, caption bar): arcade and time attack, VS and demonstration, survival, practice, Tekken Ball.
-SCREENS = ((0, 0), (1, 1), (0, 3), (0, 4), (1, 5))
+# (background picture, caption bar): arcade and time attack, VS and demonstration, survival, practice, Tekken Ball (the red lightning picture, as the original shows).
+SCREENS = ((0, 0), (1, 1), (0, 3), (0, 4), (0, 5))
 VS_AT, CAPTION_AT = (162, 250), (28, 42)
 # USA addresses of tables whose Japan Rev.1 addresses are in modes.md and draw_sim.py.
 USA_RECORDS, USA_NAMES = 0x80097AB8, 0x80097D40

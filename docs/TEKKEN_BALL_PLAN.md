@@ -93,7 +93,7 @@ floor's far-limit step must stay 1 (INVALID_ARG otherwise); `SAT_RGB555` takes 5
   with its black shadow (positions by the HUD's x * 20 / 23, y / 2 mapping), and a button returns to the fight (`how_to_page` in `main.c`;
   the page runs at the top of the next loop iteration, outside a frame, and keeps colour RAM bank 7, which the stage's backdrop shares,
   to put it back). Not done: the pause menu around it (CANCEL, COMMAND, RESET), so START no longer restarts a running match. The VS
-  screen's caption reads TEKKEN BALL (the lightning background is still the purple one).
+  screen's caption reads TEKKEN BALL (the red lightning background, as the original's: the arcade picture, not the VS one).
 - Opponent rotation: the menu now picks the first game's opponent as Gon and later games with `ball_flow.c` (the first-game flag rides in
   the carried-rounds byte), but the met counts cannot survive the menu's restarts, so later picks are uniform over the unlocked pool
   rather than weighted by the counts. Gon's unlock, the records and the menu entry's unlock (step 10) have no Saturn save to live in (the

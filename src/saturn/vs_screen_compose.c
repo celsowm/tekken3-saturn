@@ -85,7 +85,7 @@ static sat_result_t caption(uint8_t* image,uint8_t* record,t3_vs_kind_t kind,uns
 }
 
 sat_result_t t3_vs_screen_compose(void* scratch,uint32_t capacity,const uint8_t picks[2],t3_vs_kind_t kind,unsigned number) {
-    static const uint8_t pictures[]={0,1,1,0,0,1};
+    static const uint8_t pictures[]={0,1,1,0,0,0};
     static const char* const files[]={"VSBG0.BIN","VSBG1.BIN","VSBG1.BIN","VSBG2.BIN","VSBG3.BIN","VSBG4.BIN"};
     const uint32_t record_bytes=(uint32_t)VS_PANEL_BYTES>(uint32_t)TEXT_BYTES?(uint32_t)VS_PANEL_BYTES:(uint32_t)TEXT_BYTES;
     if(capacity<(uint32_t)BACKGROUND_BYTES+record_bytes+STRIDE+4u)return SAT_ERR_CAPACITY;
