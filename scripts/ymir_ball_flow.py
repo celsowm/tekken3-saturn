@@ -32,7 +32,7 @@ def script(select=3300, ball_type=0, pause_at=0, pause_item=0, right=0):
         tap(2480 + 20 * k, 'DOWN')
     tap(2560, 'START')                       # BEGINNER (or the chosen type)
     for k in range(right):                   # move the select cursor first
-        tap(select - 200 + 20 * k, 'RIGHT')
+        tap(select - 150 + 30 * k, 'RIGHT')
     tap(select, 'START'); tap(select + 120, 'START')   # the single-player select
     for k in range(30):                      # in the fight: walk forward and punch now and then (X is also the menu's OK: none once paused)
         if not pause_at or 5200 + 150 * k < pause_at:
