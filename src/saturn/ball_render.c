@@ -71,13 +71,13 @@ sat_result_t t3_ball_render(sat_scene_t* scene,const t3_ball_view_t* view,const 
     {
         const int32_t zone=view->option==0?2304:view->option==1?1920:1536;
         const int32_t z0=-8000,z1=-8000+8*0x600;
-        /* the original's band fades in and out (additive Gouraud quads); the scene takes no translucent RGB face, so it is one
-         * opaque grey quad, the side lines white */
-        for(k=0;k<3u;++k) {
-            const int32_t x0=k==0?-100:k==1?-zone-30:zone-30,x1=k==0?100:k==1?-zone+30:zone+30;
+        /* the two side lines (white quads); the centre band fades in and out, which needs translucency, so main.c draws it in the
+         * HUD pass */
+        for(k=0;k<2u;++k) {
+            const int32_t x0=k==0?-zone-30:zone-30,x1=k==0?-zone+30:zone+30;
             const int32_t p[4][3]={{(x0-center_x)*UNIT,1,-(z0-center_z)*UNIT},{(x1-center_x)*UNIT,1,-(z0-center_z)*UNIT},
                                    {(x1-center_x)*UNIT,1,-(z1-center_z)*UNIT},{(x0-center_x)*UNIT,1,-(z1-center_z)*UNIT}};
-            if((st=submit(scene,p,k==0?rgb(0xC0,0xC0,0xC0):rgb(0xFF,0xFF,0xFF),0,SAT_INDEXED_SOLID_OPAQUE))!=SAT_OK)return st;
+            if((st=submit(scene,p,rgb(0xFF,0xFF,0xFF),0,SAT_INDEXED_SOLID_OPAQUE))!=SAT_OK)return st;
         }
     }
     angle[0]=b->spin[0];angle[1]=b->spin[1];angle[2]=b->spin[2];

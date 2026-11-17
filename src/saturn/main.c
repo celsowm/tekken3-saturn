@@ -1467,6 +1467,27 @@ static void draw_hud(void) {
             /* the texts over the ball: "!" for a set or an unblockable, the charge a hit added; they rise while they last */
             t3_psx_camera_matrix_t view_matrix;
             if(t3_move_probe_camera_matrix(&view_matrix)) {
+                if(bv->active) {
+                    /* the court's centre band (FUN_800B3DA4): 8 quads from z = -8000 by 0x600, x +-100, whose brightness rises from
+                     * 0 to 192 at the middle and falls back. VDP1's half transparency does not blend with the VDP2 floor, so each
+                     * quad is opaque, mixed from the sand's colour towards white by its level; drawn in the HUD pass, over the
+                     * fighters: a thin line */
+                    int px[9][2],py[9][2],ok=1;
+                    for(unsigned j=0;j<9u&&ok;++j)for(unsigned side=0;side<2u;++side) {
+                        const int32_t at[3]={side?100:-100,0,-8000+(int32_t)j*0x600};
+                        int32_t pt[3];
+                        t3_psx_camera_project(&view_matrix,at,pt);
+                        if(pt[2]<=0){ok=0;break;}
+                        px[j][side]=t3_psx_viewport_x(pt[0])-160;py[j][side]=t3_psx_viewport_y(pt[1])-112;
+                    }
+                    for(unsigned j=0;j<8u&&ok;++j) {
+                        const unsigned level=(unsigned)(192-(j<4u?3u-j:j-4u)*48u-24u);   /* the mean of the two ends' 0..192 ramp */
+                        const unsigned r=(214u*(255u-level)+255u*level)/255u,g=(204u*(255u-level)+255u*level)/255u,bl=(168u*(255u-level)+255u*level)/255u;
+                        const sat_quad2_t q={{(int16_t)px[j][0],(int16_t)px[j][1],(int16_t)px[j+1][1],(int16_t)px[j+1][0]},
+                                             {(int16_t)py[j][0],(int16_t)py[j][1],(int16_t)py[j+1][1],(int16_t)py[j+1][0]}};
+                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&q,SAT_RGB555(r>>3,g>>3,bl>>3),SAT_SPRITE_FLAG_OPAQUE));
+                    }
+                }
                 if(bv->ball.kind==2&&bv->active) {
                     /* a point's flash (kind 2, ball_sim._streaks): four streaks from the ball's centre to the top and bottom of
                      * the screen, 8 * k dots wide at the far end and jittered sideways; half-transparent white */
