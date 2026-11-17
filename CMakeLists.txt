@@ -2307,7 +2307,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_compile_definitions(tekken3_ball PRIVATE T3_BOOT_FIGHTER_0=${_t3_bb0} T3_BOOT_FIGHTER_1=${_t3_bb1}
                 T3_BOOT_BALL_TYPE=${_t3_bb2})
         endif()
-        option(T3_BALL_TEST_POINT "Test: BALL.BIN shows a point's flash (kind 2) for a second every five seconds" OFF)
+        option(T3_BALL_TEST_POINT "Test: BALL.BIN shows a point's flash (kind 2) and a set ball's pulse (kind 4) every five seconds" OFF)
         if(T3_BALL_TEST_POINT)
             target_compile_definitions(tekken3_ball PRIVATE T3_BALL_TEST_POINT=1)
             if(TARGET tekken3_fight_ball)
