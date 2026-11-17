@@ -29,6 +29,16 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
 void t3_move_probe_set_cpu(uint8_t mask,uint16_t difficulty,uint8_t level);
 /* Practice: the round timer stands still (RoundFlow's timer_stopped). */
 void t3_move_probe_set_practice(uint8_t on);
+/* Tekken Ball (docs/TEKKEN_BALL_PLAN.md): on for the next reset with the ball type (0 beach, 1 gum, 2 iron); the ball of the
+ * last submitted image, or 0 when the mode is off. */
+#include "ball_game.h"
+void t3_move_probe_set_ball(uint8_t on,uint8_t option);
+const t3_ball_view_t* t3_move_probe_ball(void);
+/* For the court's backdrop and the ball's drawing: the camera's view (position, yaw), the executable's sine table (data pointer
+ * to the 4,096 + 1,024 entries) and the ball's mesh. Zero when there is none. */
+int t3_move_probe_camera_view(t3_psx_camera_view_t* out);
+const t3_psx_trig_t* t3_move_probe_trig(void);
+int t3_move_probe_ball_mesh(t3_ball_mesh_t* out);
 /* COUNTER ATTACKS: a clean hit on the dummy outside a reaction counts as a counter hit. */
 void t3_move_probe_practice_counter(uint8_t dummy_counter);
 #include "practice_data.h"

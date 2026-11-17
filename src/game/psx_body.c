@@ -202,6 +202,30 @@ int t3_psx_arena_bounds(t3_psx_body_actor_t* actor,const t3_psx_body_actor_t* op
     *actor=n;return 1;
 }
 
+/* The limit of an axis, as _excess in fight_sim.py: the correction that brings v back inside [-limit, limit]. */
+static int32_t excess_to(int32_t v,int64_t limit) {
+    int64_t over=mag(v)-limit;
+    return over>0?(int32_t)(v>0?-over:over):0;
+}
+/* ArenaBounds in mode 7, Tekken Ball (fight_sim.py arena_bounds): the court |z| <= 0x100, |x| <= 0x1400, a fighter on
+ * the opponent's half (fighter 0 at x >= 0, fighter 1 at x <= 0) pushed back to x = 0 (`across` when it was more than
+ * 1000 units over: the caller sets state 0x5000), the root kept above y = -0x1200, each axis limited to the ramp. */
+int t3_psx_arena_bounds_ball(t3_psx_body_actor_t* actor,unsigned index,int* across) {
+    t3_psx_body_actor_t n;int32_t dx,dy=0,dz,x;
+    if(!actor || !across || index>1u || actor->ramp<0)return 0;
+    n=*actor;*across=0;
+    dz=excess_to(n.root.z,0x100);dx=excess_to(n.root.x,0x1400);x=n.root.x;
+    if((index==0 && x>=0) || (index==1 && x<1)) {
+        dx=wrap(-(int64_t)x);
+        if(mag(x)>1000)*across=1;
+    }
+    if(-0x1200-(int64_t)n.root.y>0)dy=wrap(-0x1200-(int64_t)n.root.y);
+    dx=clamp(dx,n.ramp);dy=clamp(dy,n.ramp);dz=clamp(dz,n.ramp);
+    n.anchor.x=wrap((int64_t)n.anchor.x+dx);n.anchor.y=wrap((int64_t)n.anchor.y+dy);n.anchor.z=wrap((int64_t)n.anchor.z+dz);
+    n.root.x=wrap((int64_t)n.root.x+dx);n.root.y=wrap((int64_t)n.root.y+dy);n.root.z=wrap((int64_t)n.root.z+dz);
+    *actor=n;return 1;
+}
+
 int t3_psx_body_shapes(t3_psx_body_actor_t* a,const t3_psx_joint_t parts[T3_PSX_DRAW_PARTS],
                         uint32_t mask,const uint8_t tables[48],const t3_move_record_t* m,
                         int16_t frame,uint8_t in_air,uint8_t was_hit) {

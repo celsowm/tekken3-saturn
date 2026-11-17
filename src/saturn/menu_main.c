@@ -16,6 +16,9 @@
 
 #include "arcade_ladder.h"
 #include "boot_arg.h"
+#if defined(T3_BALL_PROGRAM)
+#include "ball_flow.h"
+#endif
 #if defined(T3_FORCE_PROGRAM)
 #include "psx_force_handoff.h"
 #include "force_save.h"
@@ -257,17 +260,18 @@ static void vs_compose(const uint8_t picks[2],t3_vs_kind_t kind,unsigned number)
 #endif
 
 /* Under a faded-out screen: the VS screen goes up and stays up while 0.BIN is read. */
-static void start_fight(void) {
+static void start_program(const char* program) {
 #if defined(T3_VS_SCREEN)
     SAT_PANIC_IF_ERROR(sat_vdp2_layer_set_enabled(SAT_VDP2_NBG1,0));
     SAT_PANIC_IF_ERROR(t3_vs_screen_present());
     fade(0);
     SAT_PANIC_IF_ERROR(sat_wait_vblank());
-    SAT_PANIC_IF_ERROR(sat_exec_keep_display(g_volume,"0.BIN",g_arg,sizeof g_arg));
+    SAT_PANIC_IF_ERROR(sat_exec_keep_display(g_volume,program,g_arg,sizeof g_arg));
 #else
-    SAT_PANIC_IF_ERROR(sat_exec(g_volume,"0.BIN",g_arg,sizeof g_arg));
+    SAT_PANIC_IF_ERROR(sat_exec(g_volume,program,g_arg,sizeof g_arg));
 #endif
 }
+static void start_fight(void) {start_program("0.BIN");}
 
 /* ---- frame helpers ---- */
 
@@ -375,9 +379,10 @@ static void rect(int x,int y,int w,int h,unsigned code) {
 
 /* ---- title ---- */
 
-typedef enum {MODE_ARCADE,MODE_VS,MODE_TEAM,MODE_TIME,MODE_SURVIVAL,MODE_FORCE,MODE_PRACTICE,MODE_OPTION}
+typedef enum {MODE_ARCADE,MODE_VS,MODE_TEAM,MODE_TIME,MODE_SURVIVAL,MODE_BALL,MODE_FORCE,MODE_PRACTICE,MODE_OPTION}
     mode_t3;
-enum { MODES=8 };
+enum { MODES=9 };
+static uint8_t g_ball_option;   /* TEKKEN BALL's ball type: 0 beach ball (BEGINNER), 1 gum ball (EXPERT), 2 iron ball (GRAND MASTER) */
 #define START_BUTTONS (SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)
 
 static int mode_playable(unsigned mode,const pads_t* pads) {
@@ -385,6 +390,9 @@ static int mode_playable(unsigned mode,const pads_t* pads) {
            mode==MODE_SURVIVAL ||
 #if defined(T3_FORCE_PROGRAM)
            mode==MODE_FORCE ||
+#endif
+#if defined(T3_BALL_PROGRAM)
+           mode==MODE_BALL ||
 #endif
            (mode==MODE_VS && pads->pad[1].connected);
 }
@@ -559,7 +567,7 @@ static unsigned title_flow(void) {
 menu:;
     {
         /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
-        unsigned selected=0,idle=0,option=0,option_row=0,leaving=0;
+        unsigned selected=0,idle=0,option=0,option_row=0,leaving=0,ball_pick=0;
         backdrop_show(1);
         fade(0);
         for(;;) {
@@ -570,7 +578,7 @@ menu:;
                 leaving+=2u;
                 fade(-(int)(leaving*255u/FADE_FRAMES));
                 if(leaving>=FADE_FRAMES+2u) {frame_end();return selected;}
-            } else if(idle>480u && !option) {
+            } else if(idle>480u && !option && !ball_pick) {
                 frame_end();
                 return title_flow();
             }
@@ -583,6 +591,17 @@ menu:;
                 if(pads.pad[0].pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))
                     g_arg[4]^=option_row?ARG_MUSIC_OFF:ARG_DEBUG;
                 if(pads.pad[0].pressed&(SAT_PAD_B|SAT_PAD_START))option=0;
+                frame_end();
+                continue;
+            }
+            if(ball_pick) {
+                /* TEKKEN BALL: the ball type (volley.ovl's side selection: BEGINNER, EXPERT, GRAND MASTER) */
+                static const char* const names[3]={"BEGINNER","EXPERT","GRAND MASTER"};
+                text(2,"TEKKEN BALL",MENU_BG_W/2,330);
+                for(unsigned r=0;r<3u;++r)text(g_ball_option==r?0:1,names[r],MENU_BG_W/2,362+(int)r*24);
+                if(pads.pad[0].pressed&SAT_PAD_UP)g_ball_option=g_ball_option?(uint8_t)(g_ball_option-1u):2u;
+                if(pads.pad[0].pressed&SAT_PAD_DOWN)g_ball_option=g_ball_option>=2u?0u:(uint8_t)(g_ball_option+1u);
+                if(pads.pad[0].pressed&START_BUTTONS){sfx(SFX_CONFIRM);ball_pick=0;leaving=2u;}
                 frame_end();
                 continue;
             }
@@ -600,6 +619,7 @@ menu:;
             if((pads.pad[0].pressed&START_BUTTONS) && mode_playable(selected,&pads)) {
                 sfx(SFX_CONFIRM);
                 if(selected==MODE_OPTION)option=1;
+                else if(selected==MODE_BALL)ball_pick=1;
                 else leaving=2u;
             }
             frame_end();
@@ -1150,6 +1170,34 @@ int main(void) {
     if(g_arg[0]==PHASE_ENDING) {ending_flow();g_arg[0]=0;}
     if(g_arg[0]!=PHASE_SELECT)g_arg[ARG_LADDER]=0;   /* back at the title: the run is over */
     if(g_arg[0]!=PHASE_SELECT)mode=title_flow();
+#if defined(T3_BALL_PROGRAM)
+    if(g_arg[0]==PHASE_SELECT && (g_arg[4]&ARG_BALL)) {mode=MODE_BALL;g_ball_option=g_arg[ARG_STAGE]&3u;}   /* back from a Tekken Ball match */
+    if(mode==MODE_BALL) {
+        /* Tekken Ball: the single-player selection, the ball type chosen above, then BALL.BIN (the fight program with the
+         * court). The first game is against Gon (modes.md, Tekken Ball: FUN_800B528C). */
+        select_flow(&g_arg[ARG_PICK0],0,1);
+        {
+            /* FUN_800B528C: the first game is Gon; later games pick among the unlocked characters of the pool. The met counts
+             * (the original keeps them per context) do not survive the menu's restarts, so they start equal: a uniform pick. */
+            t3_ball_choice_t choice={0};
+            choice.unlocked=BALL_OPPONENT_POOL;choice.lcg=g_now*2654435761u+1u;choice.frame=g_now;
+            choice.first_done=(uint8_t)(g_arg[ARG_CARRY_PLAYED]!=0);   /* carried through the fight's restarts */
+            g_arg[ARG_PICK1]=(uint8_t)(t3_ball_opponent(&choice)>>2);
+            g_arg[ARG_CARRY_PLAYED]=1;
+        }
+        g_arg[0]=PHASE_FIGHT;
+        g_arg[ARG_STAGE]=g_ball_option;
+        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|ARG_BALL);
+        g_arg[5]=g_arg[6]=g_arg[7]=0;g_arg[ARG_LADDER]=0;
+#if defined(T3_VS_SCREEN)
+        SAT_PANIC_IF_ERROR(cache_portraits());
+        vs_compose(&g_arg[1],T3_VS_BALL,1u);   /* TEKKEN BALL: the pre-fight screen the fight program ends */
+#endif
+        backdrop_show(0);
+        fade(0);
+        start_program("BALL.BIN");
+    }
+#endif
 #if defined(T3_FORCE_PROGRAM)
     if(g_arg[0]!=PHASE_SELECT && mode==MODE_FORCE) {
         /* Force uses the single-player selection flow, then its own executable. */

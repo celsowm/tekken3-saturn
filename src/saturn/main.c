@@ -26,6 +26,11 @@
 #include "input_tape.h"
 #endif
 #include "characters.h"
+#if defined(T3_BALL_PROGRAM)
+#include "ball_render.h"
+#include "ball_backdrop.h"
+#include "psx_viewport.h"
+#endif
 #if defined(T3_VDP1_COVERAGE_PROBE)
 #include "coverage_probe.h"
 #endif
@@ -162,10 +167,15 @@ static void capture_boot_cache(void) {
 }
 #endif
 
+#if defined(T3_BALL_PROGRAM)
+#define T3_BALL_FACES BALL_RENDER_FACES   /* the ball, its shadow and the court's lines */
+#else
+#define T3_BALL_FACES 0u
+#endif
 #if defined(T3_VDP2_FLOOR) && defined(T3_FIGHTER_MESH_SHADOWS)
-#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u+2u*T3_SHADOW_MAX_FACES)
+#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u+2u*T3_SHADOW_MAX_FACES+T3_BALL_FACES)
 #elif defined(T3_VDP2_FLOOR)
-#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u)
+#define T3_STAGE_SCENE_CAPACITY (T3_FACE_COUNT*2u+16u+T3_BALL_FACES)
 #else
 #define T3_STAGE_SCENE_CAPACITY T3_SCENE_CAPACITY
 #endif
@@ -568,6 +578,24 @@ static void __attribute__((optimize("Os"))) drop_shadows(void) {
 /* The inputs are read before the Slave task can start ticking; the tables
  * are built after the actors, while the Slave runs those ticks. */
 static int32_t g_stage_input[3];
+#if defined(T3_BALL_PROGRAM)
+static t3_ball_backdrop_t g_ball_backdrop;
+/* Tekken Ball's part of an image: the court's backdrop placed from the camera, then the ball, its shadow and the court's lines
+ * as scene faces (ball_render.c). */
+static void ball_image(void) {
+    const t3_ball_view_t* view=t3_move_probe_ball();
+    t3_psx_camera_view_t camera;
+    t3_psx_camera_matrix_t matrix;
+    t3_ball_backdrop_out_t placed;
+    t3_ball_mesh_t mesh;
+    const t3_psx_trig_t* trig=t3_move_probe_trig();
+    if(!view||!trig||!t3_move_probe_camera_view(&camera)||!t3_move_probe_camera_matrix(&matrix))return;
+    if(t3_ball_backdrop_step(&g_ball_backdrop,&camera,&matrix,trig,view->round_state,0,&placed))
+        t3_stage_vdp2_set_strip(placed.scroll,placed.first_shift,placed.top);
+    if(t3_move_probe_ball_mesh(&mesh))
+        SAT_PANIC_IF_ERROR(t3_ball_render(&g_scene,view,&mesh,trig->data,(const int32_t[3]){camera.x,camera.y,camera.z},g_stage_input[0],g_stage_input[1],t3_stage_vdp2_shadow()));
+}
+#endif
 static void floor_tiles(void) {
 #if defined(T3_PSX_CAMERA)
     g_stage_input[2]=t3_move_probe_backdrop_turn();
@@ -578,6 +606,9 @@ static void floor_tiles(void) {
     g_stage_input[1]=t3_move_probe_world_center(2);
 #if defined(T3_PSX_CAMERA) && !defined(T3_NATIVE_COMMANDS) && !defined(T3_FIGHTER_MESH_SHADOWS)
     drop_shadows();
+#endif
+#if defined(T3_BALL_PROGRAM)
+    ball_image();
 #endif
 }
 /* Set when the Slave's task may build this image's tables after its ticks.
@@ -719,6 +750,13 @@ static void arcade_advance(int winner) {
  * flags and a carried score travel in the boot argument; the menu picks each opponent from them. */
 static uint8_t g_ladder,g_seed[4],g_carry[3];
 static uint8_t g_menu_flags;   /* boot argument flag bits only the menu reads (VS MODE) */
+#if defined(T3_BALL_PROGRAM)
+/* BALL.BIN: Tekken Ball (docs/TEKKEN_BALL_PLAN.md). The ball type rides in the boot argument's stage byte. */
+#define T3_READ_PRACTICE(flags) ((void)(flags))
+static uint8_t g_ball_type;
+#else
+#define T3_READ_PRACTICE(flags) do{g_practice=((flags)>>1)&1u;t3_practice_menu_reset(&g_pmenu);t3_move_probe_set_practice(g_practice);}while(0)
+#endif
 /* Fields left of CONTINUE? and of GAME OVER (zero while neither shows), and since the match ended. */
 static unsigned g_continue_left,g_game_over_left,g_ladder_wait,g_challenger_left;
 static uint32_t g_ladder_field;
@@ -727,7 +765,11 @@ static uint32_t g_ladder_field;
 static uint8_t g_demo;
 static unsigned g_demo_ticks;
 /* Practice: P2 is a dummy (or a second human), the match starts again by itself, START leaves. */
+#if defined(T3_BALL_PROGRAM)
+static const uint8_t g_practice=0;   /* BALL.BIN has no Practice: its code and data (about 42 KB) make room for the court, the ball and the HUD */
+#else
 static uint8_t g_practice;
+#endif
 static t3_practice_menu_t g_pmenu;
 /* COMMAND LIST's text (scripts/extract_command_lists.py's C source, when the build has it). */
 extern const uint8_t t3_practice_command_blob[] __attribute__((weak));
@@ -964,7 +1006,11 @@ static void restart_program(uint8_t phase) {
     SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
     /* The title and select are their own 704x448 program (menu_main.c). */
     /* PHASE_MENU is the title without the opening movie. */
+#if defined(T3_BALL_PROGRAM)
+    const char* program=phase==PHASE_FIGHT?"BALL.BIN":"MENU.BIN";   /* a Ball match again runs this program */
+#else
     const char* program=phase==PHASE_FIGHT?"0.BIN":"MENU.BIN";
+#endif
 #if defined(T3_INTRO)
     /* A cold boot shows the opening movie first; a disc without it goes straight to the title. */
     sat_cdfs_file_t intro;
@@ -1066,6 +1112,12 @@ static void enter_fight_phase(void) {
 #if defined(T3_BOOT_FIGHTER_0)
     /* Test builds name a pairing and skip the menus. */
     g_picks[0]=T3_BOOT_FIGHTER_0;g_picks[1]=T3_BOOT_FIGHTER_1;
+#if defined(T3_BALL_PROGRAM)
+#if !defined(T3_BOOT_BALL_TYPE)
+#define T3_BOOT_BALL_TYPE 0
+#endif
+    g_ball_type=T3_BOOT_BALL_TYPE;t3_move_probe_set_ball(1u,g_ball_type);
+#endif
 #if defined(T3_BOOT_PRACTICE)
     g_practice=1;t3_practice_menu_reset(&g_pmenu);t3_move_probe_set_practice(1u);
 #endif
@@ -1074,13 +1126,18 @@ static void enter_fight_phase(void) {
     uint32_t arg_bytes=0;
     const int restarted=sat_exec_arg(arg,sizeof arg,&arg_bytes)==SAT_OK && arg_bytes==BOOT_ARG_BYTES;
     if(restarted) {
-        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;g_practice=(arg[4]>>1)&1u;t3_practice_menu_reset(&g_pmenu);t3_move_probe_set_practice(g_practice);
+        g_picks[0]=arg[1];g_picks[1]=arg[2];g_arcade_stage=arg[3];g_show_profiler=arg[4]&1u;T3_READ_PRACTICE(arg[4]);
         g_run_mode=(arg[4]>>2)&3u;g_music_off=(arg[4]>>4)&1u;g_menu_flags=arg[4]&0xE0u;g_wins=arg[5];g_run_seconds=(uint16_t)((arg[6]<<8)|arg[7]);
         __builtin_memcpy(g_seed,arg+ARG_SEED,sizeof g_seed);
         g_ladder=arg[ARG_LADDER];
         __builtin_memcpy(g_carry,arg+ARG_CARRY_WINS,sizeof g_carry);
         t3_move_probe_set_carry(g_carry[0],g_carry[1],g_carry[2]);
     }
+#if defined(T3_BALL_PROGRAM)
+    g_ball_type=restarted?(uint8_t)(arg[ARG_STAGE]&3u):0u;
+    g_arcade_stage=g_ball_type;g_menu_flags|=ARG_BALL;
+    t3_move_probe_set_ball(1u,g_ball_type);
+#endif
     g_demo=restarted && arg[0]==PHASE_DEMO;
     if(!restarted || (arg[0]!=PHASE_FIGHT && !g_demo))restart_program(restarted?PHASE_SELECT:PHASE_TITLE);
 #endif
@@ -1120,7 +1177,12 @@ static sat_result_t start_fight_music(void) {
 static sat_result_t load_fight_stage(void) {
 #if defined(T3_FIGHTER_PACKS)
     static const uint8_t home_stage[]=T3_ROSTER_STAGES;
+#if defined(T3_BALL_PROGRAM)
+    (void)home_stage;
+    return t3_stage_vdp2_load(19u,0);   /* the court (stage 19, STG19.BIN) */
+#else
     return t3_stage_vdp2_load(home_stage[g_picks[t3_stage_side(g_demo)]],t3_stage_true_ogre(g_picks));
+#endif
 #else
     return t3_stage_vdp2_load(0u,0);
 #endif
@@ -1391,6 +1453,72 @@ static void draw_hud(void) {
         SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X1,BAR_Y,BAR_WIDTH,
             bars[1].drawn*BAR_FILL/152,bars[1].recent*BAR_FILL/152,0));
     }
+#if defined(T3_BALL_PROGRAM)
+    {
+        /* Tekken Ball's two power gauges (FUN_800B4E6C): 76 original dots at original x 10 and 278, y 434, here the health
+         * bar's art with the gauge's fill and trail (psx_viewport.h's mapping: x * 20 / 23, (y - 20) / 2) */
+        const t3_ball_view_t* bv=t3_move_probe_ball();
+        if(bv) {
+            enum { GAUGE_X0=9, GAUGE_X1=242, GAUGE_Y=206, GAUGE_WIDTH=66, GAUGE_FILL=62 };
+            for(unsigned g=0;g<2u;++g)
+                SAT_PANIC_IF_ERROR(t3_original_hud_bar(g?GAUGE_X1:GAUGE_X0,GAUGE_Y,GAUGE_WIDTH,
+                    bv->gauge[g].fill*GAUGE_FILL/BALL_GAUGE_WIDTH,bv->gauge[g].trail*GAUGE_FILL/BALL_GAUGE_WIDTH,g?0:1));
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN BALL",W/2,36));   /* the mode's caption (FUN_8004EFF8) */
+            /* the texts over the ball: "!" for a set or an unblockable, the charge a hit added; they rise while they last */
+            t3_psx_camera_matrix_t view_matrix;
+            if(t3_move_probe_camera_matrix(&view_matrix)) {
+                if(bv->ball.kind==2&&bv->active) {
+                    /* a point's flash (kind 2, ball_sim._streaks): four streaks from the ball's centre to the top and bottom of
+                     * the screen, 8 * k dots wide at the far end and jittered sideways; half-transparent white */
+                    static uint32_t jitter=0x2545F491u;
+                    int32_t centre[3];
+                    t3_psx_camera_project(&view_matrix,bv->ball.pos,centre);
+                    const int cx=t3_psx_viewport_x(centre[0])-160,cy=t3_psx_viewport_y(centre[1])-112;
+                    for(unsigned k=0;k<4u;++k) {
+                        jitter=jitter*1664525u+1013904223u;
+                        const int x0=t3_psx_viewport_x(centre[0]+(int)((jitter>>20)&0x7FFu)-0x400)-160;
+                        const int x1=x0+(int)(bv->ball.timer*8*20/23),y=(k&2u)?-112:111;
+                        const sat_quad2_t q={{(int16_t)cx,(int16_t)cx,(int16_t)x1,(int16_t)x0},{(int16_t)cy,(int16_t)cy,(int16_t)y,(int16_t)y}};
+                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&q,SAT_RGB555(31,31,31),SAT_SPRITE_FLAG_HALF_TRANSPARENT));
+                    }
+                }
+                if((bv->ball.kind==6||bv->ball.kind==7||bv->ball.kind==9)&&bv->active) {
+                    /* The charged ball's glow (effect type 15) is the hitter's character flipbook looped on the ball; that art is
+                     * not on the disc, so this is an approximation: a pulsing half-transparent halo in the owner's colour
+                     * (white for a charge of 100 or more), two stacked octagons (a square and a diamond each). */
+                    static uint8_t pulse;
+                    int32_t centre[3],edge[3],offset[3]={bv->ball.pos[0]+0x120,bv->ball.pos[1],bv->ball.pos[2]};
+                    t3_psx_camera_project(&view_matrix,bv->ball.pos,centre);
+                    t3_psx_camera_project(&view_matrix,offset,edge);
+                    const int cx=t3_psx_viewport_x(centre[0])-160,cy=t3_psx_viewport_y(centre[1])-112;
+                    int radius=t3_psx_viewport_x(edge[0])-t3_psx_viewport_x(centre[0]);
+                    const uint16_t colour=bv->ball.kind==9?SAT_RGB555(31,31,24):bv->ball.kind==6?SAT_RGB555(31,18,4):SAT_RGB555(6,22,31);
+                    if(radius<0)radius=-radius;
+                    ++pulse;
+                    for(unsigned layer=0;layer<2u;++layer) {
+                        const int r=radius+1+(int)layer*3+(int)((pulse>>1)&3u);
+                        const sat_quad2_t square={{(int16_t)(cx-r),(int16_t)(cx+r),(int16_t)(cx+r),(int16_t)(cx-r)},
+                                                  {(int16_t)(cy-r),(int16_t)(cy-r),(int16_t)(cy+r),(int16_t)(cy+r)}};
+                        const int d=r*7/5;   /* a square of half-side r and a diamond of half-diagonal 1.4 r make an octagon */
+                        const sat_quad2_t diamond={{(int16_t)cx,(int16_t)(cx+d),(int16_t)cx,(int16_t)(cx-d)},
+                                                   {(int16_t)(cy-d),(int16_t)cy,(int16_t)(cy+d),(int16_t)cy}};
+                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&square,colour,SAT_SPRITE_FLAG_HALF_TRANSPARENT));
+                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&diamond,colour,SAT_SPRITE_FLAG_HALF_TRANSPARENT));
+                    }
+                }
+                for(unsigned k=0;k<BALL_POPUPS;++k) {
+                    const t3_ball_popup_t* pp=&bv->popup[k];
+                    int32_t projected[3];
+                    if(!pp->used)continue;
+                    t3_psx_camera_project(&view_matrix,pp->pos,projected);
+                    const int px=t3_psx_viewport_x(projected[0]),py=t3_psx_viewport_y(projected[1])-8-(int)pp->age/2;
+                    if(pp->number<0)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"!",px,py));
+                    else SAT_PANIC_IF_ERROR(sat_hud_value(&g_hud,"",(uint32_t)pp->number,px-6,py));
+                }
+            }
+        }
+    }
+#endif
 #else
     health_bar(BAR_X0,1,game->fighters[0].health,&g_recent_damage[0]);
     health_bar(BAR_X1,0,game->fighters[1].health,&g_recent_damage[1]);

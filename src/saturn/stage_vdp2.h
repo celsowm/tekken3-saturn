@@ -11,6 +11,9 @@
 /* Reads stage `stage`'s head and panorama, writing only VDP2 bank A. A True Ogre
  * fight shows no panorama and a spotlight floor. */
 sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre);
+/* Tekken Ball's court (stage 19): the backdrop is a flat strip. The scroll, the number of dots from it to the screen's
+ * left edge and the strip's top edge on the original's screen come from t3_ball_backdrop_step; set them before each prepare. */
+void t3_stage_vdp2_set_strip(int32_t scroll,int32_t first_shift,int32_t top);
 /* Reads the floor into bank B and sets up the layers. */
 sat_result_t t3_stage_vdp2_init(void);
 /* The stage's drop shadow and backdrop colours (RGB555), once loaded. */

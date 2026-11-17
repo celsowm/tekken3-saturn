@@ -265,7 +265,7 @@ def names(record, out, tmp):
 
 # ---- text in the original fonts ----------------------------------------------------------------
 FONT_TABLE = 0x80021D64                  # USA: 4 x 16 bytes, glyph UV table first (extract_psx_hud.py)
-MODES = ('ARCADE', 'VS', 'TEAM BATTLE', 'TIME ATTACK', 'SURVIVAL', 'TEKKEN FORCE', 'PRACTICE', 'OPTION')
+MODES = ('ARCADE', 'VS', 'TEAM BATTLE', 'TIME ATTACK', 'SURVIVAL', 'TEKKEN BALL', 'TEKKEN FORCE', 'PRACTICE', 'OPTION')
 # CLUT rows of the system fonts (rows 480+, x 256..): picked against the PS1 capture.
 GOLD, RED, CYAN, WHITE, YELLOW = 5, 2, 3, 6, 39
 DIM = 0.6

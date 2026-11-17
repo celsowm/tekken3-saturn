@@ -19,6 +19,9 @@
  *
  * Any other access reads 0 and is counted in `misses`. */
 #include "psx_ai_game.h"
+#if defined(T3_PSX_BALL)
+#include "ball_ai.h"
+#endif
 #include "psx_ai.h"
 #include "psx_match.h"
 #include "move_index.h"
@@ -386,7 +389,11 @@ static int open_bus(t3_psx_ai_game_t* ai,t3_psx_match_t* match,t3_psx_ai_bus_t* 
                            ai->trace?0:ai->memo,T3_PSX_AI_MEMO/2u-1u,T3_PSX_AI_BANK_BUFFER,
                            ai->trace?0:ai->word,63u,
                            ai->trace?0:ai->pick[0],127u,ai->pick_index,ai->trace?0:ai->collect,
-                           {ai->trace?0:ai->image[0],ai->trace?0:ai->image[1],ai->trace||N_AI<3u?0:ai->image[N_AI-1u]},FIGHTERS,STRIDE,LOW};
+                           {ai->trace?0:ai->image[0],ai->trace?0:ai->image[1],ai->trace||N_AI<3u?0:ai->image[N_AI-1u]},FIGHTERS,STRIDE,LOW
+#if defined(T3_PSX_BALL)
+                           ,0
+#endif
+                           };
     return 1;
 }
 
@@ -426,6 +433,19 @@ int t3_psx_ai_game_input(t3_psx_ai_game_t* ai,t3_psx_match_t* match,unsigned i,t
     /* Without health the original pushes uninitialised stack words. */
     if(!match->fighter[i].health_q16) {ai->match=0;*out=ai->pad[i]=(t3_input_t){0};return 1;}
     if(ai->observe)ai->observe(ai,i,0);
+#if defined(T3_PSX_BALL)
+    int32_t ball_line[BALL_LINE_WORDS];
+    if(ai->ball_pos) {
+        /* FUN_800B4958, at the start of every AiUpdate in mode 7: the players and the ball on the line between the players */
+        t3_ball_tables_t tables;
+        const int32_t p0[2]={match->fighter[0].ground.root.x,match->fighter[0].ground.root.z},
+                      p1[2]={match->fighter[1].ground.root.x,match->fighter[1].ground.root.z};
+        __builtin_memset(&tables,0,sizeof tables);
+        tables.tables.ground=match->config->ground_tables;
+        t3_ball_ai_project(&tables,ai->ball_pos,p0,p1,ball_line);
+        bus.ball_line=ball_line;
+    }
+#endif
     t3_psx_ai_update(&bus,FIGHTERS+STRIDE*i,0,0,&held,&pressed);
     ai->held=held;ai->pressed=pressed;
     if(ai->observe)ai->observe(ai,i,1);

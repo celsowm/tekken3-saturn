@@ -209,6 +209,20 @@ static uint8_t g_cpu_mask=2u,g_cpu_level=4u;
 static uint16_t g_cpu_difficulty=1u;
 #endif
 static uint8_t g_practice_clock;
+/* Tekken Ball (docs/TEKKEN_BALL_PLAN.md): the ball, its data (scripts/extract_ball_data.py's C source, when the build
+ * has it) and the copy the renderer reads. The state is not part of the match, so the versus program is unchanged. */
+#include "ball_game.h"
+#include "psx_effect_fire.h"
+#if defined(T3_BALL_PROGRAM)
+/* Only BALL.BIN carries the ball: the fight program has no room for its code and state (docs/TEKKEN_BALL_PLAN.md). */
+extern const uint8_t t3_ball_data_blob[] __attribute__((weak));
+extern const uint32_t t3_ball_data_blob_size __attribute__((weak));
+static t3_ball_game_t g_ball;
+static t3_ball_view_t g_ball_view;
+static uint8_t g_ball_on,g_ball_option;
+#else
+enum { g_ball_on=0 };
+#endif
 /* COMBO TRAINING's combo tables: scripts/extract_practice_combos.py's C source, when the build has it. */
 extern const uint8_t t3_practice_combo_blob[] __attribute__((weak));
 extern const uint32_t t3_practice_combo_blob_size __attribute__((weak));
@@ -619,6 +633,12 @@ void t3_move_probe_reset(unsigned round) {
     /* Measured USA Paul mirror round placement; render conversion is separate. */
     g_owned_config.spawn[0]=(t3_psx_spawn_t){{-1000,0,-4},{-1000,-1027,-4},16384u,16384u};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){{1000,0,4},{1000,-1027,4},49151u,49151u};
+    if(g_ball_on) {
+        /* Tekken Ball's court (FUN_800B0C90): the players start at x = -/+0x1400 facing each other, on its z = 0 line */
+        g_owned_config.ball_court=1;
+        g_owned_config.spawn[0]=(t3_psx_spawn_t){{-0x1400,0,0},{-0x1400,-1027,0},16384u,16384u};
+        g_owned_config.spawn[1]=(t3_psx_spawn_t){{0x1400,0,0},{0x1400,-1027,0},49151u,49151u};
+    }
 #if defined(T3_PSX_CAMERA)
     g_camera_trig=(t3_psx_trig_t){t3_local_trig_blob,T3_LOCAL_TRIG_BYTES};
     g_camera_tables=t3_local_camera_tables;g_camera_tables.trig=&g_camera_trig;
@@ -671,6 +691,19 @@ void t3_move_probe_reset(unsigned round) {
     if(!reference_prepare_config()){g_active=0u;g_reference_error=1;return;}
 #endif
     if(!t3_psx_match_init(&g_owned_match,&g_owned_config)){g_active=0u;return;}
+#if defined(T3_BALL_PROGRAM)
+    if(g_ball_on) {
+        /* FUN_800B0C90: the ball type's constants and the ball at the start of every round */
+        if(!&t3_ball_data_blob_size || !t3_ball_game_init(&g_ball,t3_ball_data_blob,t3_ball_data_blob_size,g_ball_option,0u)) {
+            g_active=0u;return;
+        }
+        g_ball.world.first_round=(int32_t)round==0?1:0;
+        t3_ball_game_view(&g_ball,&g_ball_view);
+#if defined(T3_CPU_AI)
+        g_ai.ball_pos=g_ball.ball.pos;   /* the CPU plays the ball (ball_ai.c) */
+#endif
+    }
+#endif
 #if defined(T3_REFERENCE_REPLAY)
 #if !defined(T3_REFERENCE_START_INTRO) || !T3_REFERENCE_START_INTRO
     if(!reference_seed_state(T3_REFERENCE_STEP_X,T3_REFERENCE_STEP_Z,
@@ -1051,8 +1084,33 @@ void t3_move_probe_present(void) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     if(!g_active)return;
     for(unsigned i=0;i<2u;++i)publish_owned_pose(i);
+#if defined(T3_BALL_PROGRAM)
+    if(g_ball_on)t3_ball_game_view(&g_ball,&g_ball_view);   /* the image's ball, whatever the Slave has simulated since */
+#endif
 #endif
 }
+#if defined(T3_ENABLE_PSX_OWNED_MATCH) && defined(T3_BALL_PROGRAM)
+/* Tekken Ball: on for the next reset, with the ball type (0 beach, 1 gum, 2 iron). */
+void t3_move_probe_set_ball(uint8_t on,uint8_t option) {
+    g_ball_on=on;g_ball_option=option>2u?2u:option;
+}
+const t3_ball_view_t* t3_move_probe_ball(void) {return g_ball_on?&g_ball_view:0;}
+int t3_move_probe_camera_view(t3_psx_camera_view_t* out) {
+    if(!out || !g_active || !g_owned_match.camera.started)return 0;
+    *out=g_owned_match.camera.camera.view;
+    return 1;
+}
+const t3_psx_trig_t* t3_move_probe_trig(void) {return g_active?&g_owned_config.ground_tables.trig:0;}
+int t3_move_probe_ball_mesh(t3_ball_mesh_t* out) {
+    return g_ball_on && &t3_ball_data_blob_size && t3_ball_mesh(t3_ball_data_blob,t3_ball_data_blob_size,g_ball_option,out);
+}
+#else
+void t3_move_probe_set_ball(uint8_t on,uint8_t option) {(void)on;(void)option;}
+const t3_ball_view_t* t3_move_probe_ball(void) {return 0;}
+int t3_move_probe_camera_view(t3_psx_camera_view_t* out) {(void)out;return 0;}
+const t3_psx_trig_t* t3_move_probe_trig(void) {return 0;}
+int t3_move_probe_ball_mesh(t3_ball_mesh_t* out) {(void)out;return 0;}
+#endif
 
 uint8_t t3_move_probe_active(void) {return g_active;}
 uint16_t t3_move_probe_slot(unsigned i) {return i<2u && g_active?VM(i).slot:0;}
@@ -1144,6 +1202,11 @@ void t3_move_probe_reset(unsigned round) {(void)round;}
 void t3_move_probe_set_carry(uint8_t wins0,uint8_t wins1,uint8_t played) {(void)wins0;(void)wins1;(void)played;}
 void t3_move_probe_tick(const t3_match_t* match) {(void)match;}
 void t3_move_probe_present(void) {}
+void t3_move_probe_set_ball(uint8_t on,uint8_t option) {(void)on;(void)option;}
+const t3_ball_view_t* t3_move_probe_ball(void) {return 0;}
+int t3_move_probe_camera_view(t3_psx_camera_view_t* out) {(void)out;return 0;}
+const t3_psx_trig_t* t3_move_probe_trig(void) {return 0;}
+int t3_move_probe_ball_mesh(t3_ball_mesh_t* out) {(void)out;return 0;}
 uint8_t t3_move_probe_active(void) {return 0u;}
 uint16_t t3_move_probe_slot(unsigned i) {(void)i;return 0u;}
 uint16_t t3_move_probe_frame(unsigned i) {(void)i;return 0u;}
@@ -1354,6 +1417,23 @@ sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* vi
 #endif
         return SAT_ERR_INVALID_ARG;
     }
+#if defined(T3_BALL_PROGRAM)
+    if(g_ball_on) {
+        /* FUN_800B0E14: the ball after the fighters moved (the original runs it inside the frame, after MoveBranchAll) */
+        t3_ball_tables_t tables;
+        __builtin_memset(&tables,0,sizeof tables);
+        tables.tables.ground=g_owned_config.ground_tables;
+        if(!t3_ball_game_tick(&g_ball,&g_owned_match,&tables))return SAT_ERR_INVALID_ARG;
+#if defined(T3_OWNED_EFFECT_POOL)
+        /* a lethal charged hit sets the victim on fire (FUN_8006F248): ten flames, one marked one when the attacker is Gon */
+        for(int k=0;k<g_ball.events.count;++k) {
+            const t3_ball_event_t* e=&g_ball.events.e[k];
+            if(e->kind==BALL_EV_BURN&&g_owned_config.effect_tables&&(unsigned)e->a<2u)
+                t3_psx_effect_burn(&g_effect_pool,g_owned_config.effect_tables,(unsigned)e->a,g_owned_config.character[1u-(unsigned)e->a]==17u);
+        }
+#endif
+    }
+#endif
 #if defined(T3_REFERENCE_REPLAY)
     if(!reference_observe()){g_reference_error=5;return SAT_ERR_INVALID_ARG;}
 reference_complete:;

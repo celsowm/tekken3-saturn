@@ -1,0 +1,138 @@
+/* SPDX-License-Identifier: LicenseRef-PolyForm-Noncommercial-1.0.0
+ * Required Notice: Copyright (c) 2026 n0madic (PolyForm Noncommercial 1.0.0)
+ * https://polyformproject.org/licenses/noncommercial/1.0.0/
+ * Tekken Ball on the owned match (volley.ovl FUN_800B0E14, tools/research/ball_sim.py ball_frame). See ball_game.h. */
+#include "ball_game.h"
+#if defined(T3_PSX_BALL)
+#include "psx_contact.h"
+
+enum { HEAD_BYTES=6, OPTION_WORDS=12, HIT_POINTS=4, VERTICES=42, TRIANGLES=16, QUADS=32 };
+
+static uint16_t be16(const uint8_t* p){return (uint16_t)(p[0]<<8|p[1]);}
+static int16_t be16s(const uint8_t* p){return (int16_t)be16(p);}
+
+int t3_ball_mesh(const uint8_t* blob,size_t size,unsigned option,t3_ball_mesh_t* out) {
+    const size_t options=HEAD_BYTES,hit=options+3u*OPTION_WORDS*2u,verts=hit+HIT_POINTS*3u*2u,
+                 normals=verts+VERTICES*6u,tris=normals+VERTICES*6u,quads=tris+TRIANGLES*3u,
+                 colours=quads+QUADS*4u,end=colours+3u*16u*4u;
+    if(!blob||!out||size!=end||option>2u||blob[0]!='T'||blob[1]!='3'||blob[2]!='B'||blob[3]!='L')return 0;
+    out->vertices=blob+verts;out->normals=blob+normals;out->triangles=blob+tris;out->quads=blob+quads;
+    out->colours=blob+colours+option*64u;out->style=blob+options+option*OPTION_WORDS*2u;
+    return 1;
+}
+
+int t3_ball_game_init(t3_ball_game_t* g,const uint8_t* blob,size_t size,unsigned option,unsigned serve_side) {
+    t3_ball_mesh_t mesh;
+    unsigned t,i,j;
+    if(!g||!t3_ball_mesh(blob,size,option,&mesh)||be16(blob+4)!=BALL_DATA_VERSION)return 0;
+    __builtin_memset(g,0,sizeof *g);
+    for(t=0;t<3u;++t)for(i=0;i<OPTION_WORDS;++i)g->options[t][i]=be16(blob+HEAD_BYTES+(t*OPTION_WORDS+i)*2u);
+    for(j=0;j<HIT_POINTS;++j)for(i=0;i<3u;++i)
+        g->world.hit_offsets[j][i]=be16s(blob+HEAD_BYTES+3u*OPTION_WORDS*2u+(j*3u+i)*2u);
+    g->option=(uint8_t)option;g->world.option=(int32_t)option;g->world.serve_side=(int32_t)(serve_side&1u);
+    g->world.first_round=1;g->world.stand_in.source=-1;
+    g->world.lob_base=0;
+    t3_ball_fight_start(&g->ball,&g->world,g->options[option]);
+    g->active=1;g->mesh_ok=1;
+    g->f[0].index=0;g->f[1].index=1;g->f[0].player=0;g->f[1].player=1;
+    return 1;
+}
+
+/* The match's facts for fighter i, the way the original's record holds them (fighter.md). */
+static int facts(t3_ball_fighter_t* o,t3_psx_match_t* m,unsigned i) {
+    const t3_psx_fighter_t* f=&m->fighter[i];
+    t3_hurt_cylinder_t hurt[T3_PSX_HURT_ZONES];
+    unsigned k,s;
+    o->index=(int32_t)i;o->player=(int32_t)i;
+    o->x=f->ground.root.x;o->z=f->ground.root.z;
+    o->head=f->world[1].origin.y;                       /* +0x950: the second joint block's y */
+    o->health=f->health_q16;
+    o->kind=f->vm.bank?(int32_t)f->vm.bank->bank_type:0;
+    o->level=f->vm.move.attack_word;o->damage=f->ground.damage;o->guard=f->ground.guard;
+    o->slot=f->vm.slot;
+    o->airborne=f->ground.in_air!=0;
+    o->busy3=f->body.active!=0;o->busy4=f->ground.in_throw!=0;
+    o->projectile=0;
+    o->seg_count=(int32_t)f->strike.segment_count;
+    if(o->seg_count>2)o->seg_count=2;
+    for(k=0;k<4u;++k)for(s=0;s<6u;++s)o->segs[k][s]=0;
+    for(k=0;k<(unsigned)o->seg_count;++k) {
+        const t3_world_segment_t* g=&f->strike.segments[k];
+        o->segs[k][0]=g->start.x;o->segs[k][1]=g->start.y;o->segs[k][2]=g->start.z;
+        o->segs[k][3]=g->end.x;o->segs[k][4]=g->end.y;o->segs[k][5]=g->end.z;
+    }
+    __builtin_memset(hurt,0,sizeof hurt);
+    if(f->body.active&&!t3_psx_hurt_from_parts(f->world,f->parts_mask,t3_psx_hurt_profile(m->config->character[i]),hurt))return 0;
+    for(k=0;k<T3_PSX_HURT_ZONES;++k) {
+        o->cyl[k][0]=hurt[k].center.x;o->cyl[k][1]=hurt[k].center.y;o->cyl[k][2]=hurt[k].center.z;
+        o->cyl[k][3]=hurt[k].radius;o->cyl[k][4]=(int32_t)hurt[k].radius*(int32_t)hurt[k].radius;
+    }
+    return 1;
+}
+
+int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t* tables) {
+    unsigned i;
+    if(!g||!m||!tables||!g->active)return 0;
+    g->events.count=0;
+    for(i=0;i<2u;++i) {
+        const t3_psx_fighter_t* f=&m->fighter[i];
+        const int16_t slot=(int16_t)f->vm.slot,pose=(int16_t)f->vm.clock.pose_frame;
+        if(!facts(&g->f[i],m,i))return 0;
+        /* +0x85: this move already hit the ball; a new move releases it */
+        if(slot!=g->last_slot[i]||pose<g->last_pose[i])g->f[i].locked=0;
+        g->last_slot[i]=slot;g->last_pose[i]=pose;
+    }
+    g->world.lob_base=(int32_t)m->fighter_distance;
+    g->world.round_state=m->flow.state;
+    g->world.round_clock=(int32_t)m->fight_clock;
+    g->world.no_score=0;
+    g->world.no_winner_mark=0;
+    for(i=0;i<2u;++i){t3_ball_move_tuning(&g->f[i]);g->f[i].f87=0;}
+    if(g->world.touch_sound_wait>0)--g->world.touch_sound_wait;
+    /* the ball waits while the fight is frozen (a hit's freeze, a pause) or a replay plays it back */
+    if(!m->flow.freeze&&m->replay.mode!=T3_REPLAY_PLAYING) {
+        if(!t3_ball_update(&g->ball,&g->world,g->f,tables,0,&g->events))return 0;
+        if(!t3_ball_after_update(&g->ball,&g->world,tables,&g->events))return 0;
+    }
+    /* SoundPlayFighter(0, id, 0): the ball's sounds are effect requests (the player plays the ones whose original code was extracted) */
+    for(i=0;i<(unsigned)g->events.count;++i)
+        if(g->events.e[i].kind==BALL_EV_SOUND&&m->config->sound_sink)
+            m->config->sound_sink(m->config->sound_sink_user,T3_SOUND_EFFECT,0u,(uint16_t)g->events.e[i].a);
+    for(i=0;i<(unsigned)g->events.count;++i)   /* a hard landing shakes the camera (CameraShakeStart, scripts 0 and 1 as the fighters' landings) */
+        if(g->events.e[i].kind==BALL_EV_SHAKE&&(unsigned)g->events.e[i].a<2u)t3_psx_camera_shake_start(&m->camera.camera,g->events.e[i].a);
+    for(i=0;i<(unsigned)g->events.count;++i)   /* the original copies the hitter's whole record into the stand-in */
+        if(g->events.e[i].kind==BALL_EV_STAND_IN&&(unsigned)g->events.e[i].a<2u)g->stand_in=m->fighter[g->events.e[i].a];
+    for(i=0;i<BALL_POPUPS;++i)if(g->popup[i].used&&++g->popup[i].age>=BALL_POPUP_FRAMES)g->popup[i].used=0;
+    for(i=0;i<(unsigned)g->events.count;++i) {
+        const t3_ball_event_t* e=&g->events.e[i];
+        unsigned k,slot=0;
+        if(e->kind!=BALL_EV_POPUP)continue;
+        for(k=0;k<BALL_POPUPS;++k){if(!g->popup[k].used){slot=k;break;}if(g->popup[k].age>g->popup[slot].age)slot=k;}
+        g->popup[slot]=(t3_ball_popup_t){{e->c,e->d,e->e},(int16_t)e->a,0,(uint8_t)e->b,1};
+    }
+    for(i=0;i<2u;++i) {
+        t3_psx_fighter_t* f=&m->fighter[i];
+        int32_t health=g->f[i].health;
+        /* A charged ball that reached this player: the next HitApply takes it as a hit from the other fighter with the charge as damage
+         * (it decides guarding and the reaction); the point's damage (health) is the ball's own. */
+        if(g->f[i].f87) {m->ball_hit.pending=1;m->ball_hit.victim=(uint8_t)i;m->ball_hit.zone=(uint8_t)g->f[i].contact_cyl;m->ball_hit.charge=(int16_t)g->world.stand_in.damage;m->ball_hit.stand_in=&g->stand_in;}
+        /* a point as the ball left it, or a charged hit: the health never goes below 0 */
+        f->health_q16=health<0?0:health;
+        t3_ball_gauge_step(&g->gauge[i],g->ball.power[i],BALL_POWER_MAX);
+    }
+    /* the fight camera's third target (FUN_800B4948): the ball as this tick left it, seen by the next frame's camera */
+    for(i=0;i<3u;++i)m->camera.camera.ball[i]=g->ball.pos[i];
+    m->camera.camera.ball_on=1;
+    ++g->ticks;
+    return 1;
+}
+
+void t3_ball_game_view(const t3_ball_game_t* g,t3_ball_view_t* out) {
+    if(!g||!out)return;
+    out->ball=g->ball;out->gauge[0]=g->gauge[0];out->gauge[1]=g->gauge[1];
+    out->fighter_z[0]=g->f[0].z;out->fighter_z[1]=g->f[1].z;out->round_state=g->world.round_state;
+    for(unsigned k=0;k<BALL_POPUPS;++k)out->popup[k]=g->popup[k];
+    out->option=g->option;out->active=g->active;
+}
+
+#endif /* T3_PSX_BALL */

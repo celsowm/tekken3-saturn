@@ -4,9 +4,12 @@
  * C adaptation of the CPU opponent in pinned Tekken3Remake
  * tools/research/ai_sim.py and ai_update.py (AiUpdate 0x80059B78, Japan
  * Rev.1). Changes: guest memory goes through a caller's bus, the decision's
- * early exits are return values, and Tekken Ball (mode 7, volley overlay
- * projection) is left out. Record offsets: docs/research/code/ai.md. */
+ * early exits are return values, and Tekken Ball's hooks (mode 7, volley overlay,
+ * ball_ai.c) work from a line the caller projects. Record offsets: docs/research/code/ai.md. */
 #include "psx_ai.h"
+#if defined(T3_PSX_BALL)
+#include "ball_ai.h"
+#endif
 #include <stddef.h>
 
 #define END 0xC000u
@@ -1235,8 +1238,15 @@ static int fixed_input(ctx_t* c) {
 
 static void distance_bands(ctx_t* c) {
     const uint32_t f=c->f,o=c->o;
-    const int32_t d=S32(REC(0x1C));
+    int32_t d=S32(REC(0x1C));
     P32(BALL_CLOSER,0);
+#if defined(T3_PSX_BALL)
+    if(c->bus->ball_line) {
+        /* FUN_800B4B08: the distance to the ball when it is smaller than the distance to the opponent */
+        const int32_t b=t3_ball_ai_distance(c->bus->ball_line,S16(f+0x12));
+        if(b<d){P32(BALL_CLOSER,1);d=b;}
+    }
+#endif
     const int32_t prev=S32(REC(0x20));
     P32(REC(0x20),d);
     const int64_t e=(int64_t)d-S16(REC(0x32A))-0x80;
@@ -1707,7 +1717,13 @@ static int new_move(ctx_t* c) {
             if(marked>0) {execute_candidate(c);done=1;}
         }
     }
-    /* Tekken Ball's ball_behind (mode 7) is not ported. */
+    /* FUN_800B4B64: the ball behind the CPU on the line: back-dash (4 4) and end the decision */
+#if defined(T3_PSX_BALL)
+    if(!done && c->bus->ball_line && t3_ball_ai_behind(c->bus->ball_line,S16(REC(0)))) {
+        start_script(c,IDLE_SCRIPT);
+        done=1;
+    }
+#endif
     return done;
 }
 
@@ -2254,7 +2270,10 @@ static int32_t choose(ctx_t* c,int* direct) {
         threshold=0;
         P8(REC(0x91),0);
     }
-    /* Tekken Ball's ball_ahead (mode 7) is not ported. */
+    /* FUN_800B4BE4: the ball ahead of the CPU: the attack filter replaces the usual choice */
+#if defined(T3_PSX_BALL)
+    if(c->bus->ball_line && t3_ball_ai_ahead(c->bus->ball_line,(int)U16(REC(0))))return filter_attacks(c);
+#endif
     if(S16(REC(0x208)) && S16(REC(0x88))==0)return vs_grounded(c,wait);
     if(S16(REC(0x230))==0x4C02 && (int32_t)(lcg_next(c)&0xFFF)<S16(REC(0x274)))return vs_stance(c);
     if(S16(REC(0x46))>=0) {

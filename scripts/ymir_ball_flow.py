@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Drive a built disc into Tekken Ball on the headless Ymir probe and keep screenshots (no keyboard, no window, no recording).
+
+The shipped disc has no scripted pad, so this replays a pad script by program field (as ymir_practice_flow.py does): START
+through the opening movie and title, DOWN five times to TEKKEN BALL, START, START for the ball type, START on the single-player
+select, then the fight: a punch in the court and screenshots of the serve, the rally and the HUD. The fields depend on disc read
+speed. Screenshots only; the sheet is one PNG.
+
+    scripts/ymir_ball_flow.py --build build/saturn --out build/ball-ymir
+"""
+import argparse
+import subprocess
+from pathlib import Path
+
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+SHOTS = (2300, 2440, 2600, 3300, 3700, 4300, 5000, 5600, 6200, 6800, 7400, 8000)
+
+
+def script(select=3300, ball_type=0):
+    lines = ['0 NONE']
+
+    def tap(at, button, length=6):
+        lines.extend([f'{at} {button}', f'{at + length} NONE'])
+    for at in (1700, 1760, 2250):
+        tap(at, 'START')
+    for k in range(5):
+        tap(2330 + 20 * k, 'DOWN')
+    tap(2460, 'START')                       # TEKKEN BALL: the ball type
+    for k in range(ball_type):
+        tap(2480 + 20 * k, 'DOWN')
+    tap(2560, 'START')                       # BEGINNER (or the chosen type)
+    tap(select, 'START'); tap(select + 120, 'START')   # the single-player select
+    for k in range(30):                      # in the fight: walk forward and punch now and then
+        tap(5200 + 150 * k, 'X')
+    return '\n'.join(lines) + '\n'
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--build', type=Path, default=ROOT / 'build/saturn')
+    p.add_argument('--probe', type=Path, default=ROOT.parent / 'lib-saturn/harness/build-macos/probe')
+    p.add_argument('--bios', type=Path, default=ROOT / 'assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin')
+    p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--frames', type=int, default=8100)
+    p.add_argument('--shots', type=int, nargs='*', default=list(SHOTS))
+    p.add_argument('--select', type=int, default=3300)
+    p.add_argument('--ball-type', type=int, default=0)
+    p.add_argument('--keep', action='store_true', help='keep the full-size screenshots next to the sheet')
+    args = p.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+    pad = args.out / 'ball.pad'
+    pad.write_text(script(args.select, args.ball_type))
+    command = [str(args.probe), '--iso', str(args.build / 'disc/music.cue'), '--bin', str(args.build / 'tekken3_saturn.app.bin'),
+               '--bios', str(args.bios), '--frames', str(args.frames), '--out', str(args.out / 'run.json'), '--pad-script', str(pad)]
+    for field in args.shots:
+        command += ['--screenshot', f'{field}:{args.out / f"{field}.png"}']
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    images = [Image.open(args.out / f'{field}.png').convert('RGB').resize((320, 240)) for field in args.shots]
+    sheet = Image.new('RGB', (320 * 4, 240 * ((len(images) + 3) // 4)))
+    for n, image in enumerate(images):
+        sheet.paste(image, ((n % 4) * 320, (n // 4) * 240))
+    sheet.save(args.out / 'sheet.png')
+    if not args.keep:
+        for field in args.shots:
+            (args.out / f'{field}.png').unlink()
+    print(args.out / 'sheet.png')
+
+
+if __name__ == '__main__':
+    main()

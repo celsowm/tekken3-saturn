@@ -139,6 +139,11 @@ typedef struct {
     t3_psx_camera_view_t view;
     int16_t h,h_min,h_max;
     int32_t height_term;
+    /* Tekken Ball (mode 7): the ball's position (volley.ovl FUN_800B4948), a third target of the fight framing; ball_on is 0 in
+     * every other mode. Set by the ball after its tick (the original's camera sees the ball as the last frame left it). */
+#if defined(T3_PSX_BALL)
+    int32_t ball[3];uint8_t ball_on;
+#endif
     int16_t state,enabled,intro_timer,cinematic;
     int16_t wait,count,count_total,throw_player,hit_count,hit_total,skip_side;
     t3_psx_camera_source_t intro_base;
@@ -252,12 +257,18 @@ void t3_psx_camera_project(const t3_psx_camera_matrix_t* matrix,const int32_t po
 /* ApplyMatrixLV's x through the view's rotation alone: a world point's view-space x (FUN_800B4DF8 turns the
  * camera's position into 0x800B70F0 this way). */
 int32_t t3_psx_camera_view_x(const t3_psx_camera_matrix_t* matrix,const int32_t point[3]);
+/* ApplyMatrixLV (0x8008229C): a world point through the view's rotation alone, all three components. */
+void t3_psx_camera_view_point(const t3_psx_camera_matrix_t* matrix,const int32_t point[3],int32_t out[3]);
 /* FUN_8004B05C: translate the original view to a world-space model origin
  * before separately projecting its signed-16 local vertices. */
 void t3_psx_camera_translate_view(const t3_psx_camera_matrix_t* view,const int32_t origin[3],
                                   t3_psx_camera_matrix_t* out);
 /* Identical projection specialized for original KMD signed-16 coordinates. */
 void t3_psx_camera_project_s16(const t3_psx_camera_matrix_t* matrix,const int16_t point[3],int32_t out[3]);
+/* CameraFrameFighters (0x800650F8): one source framed on the two targets (and the ball, in mode 7). Exposed for the golden test of
+ * the ball's framing (tests/test_ball_camera.c). */
+void t3_psx_camera_frame_fighters(t3_psx_camera_t* camera,const t3_psx_camera_tables_t* tables,int32_t pitch,int32_t yaw,int restart,
+                                  int32_t distance,int source);
 void t3_psx_backdrop_setup(t3_psx_backdrop_turn_t* turn,const t3_psx_camera_view_t* view);
 int t3_psx_backdrop_step(t3_psx_backdrop_turn_t* turn,const t3_psx_camera_view_t* view,
                          const t3_psx_camera_tables_t* tables,int intro);

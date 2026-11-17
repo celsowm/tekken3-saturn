@@ -27,6 +27,10 @@ typedef struct t3_psx_ai_game {
     uint32_t game_mode,attract,force_layout;
     uint16_t difficulty;uint8_t cpu_level; /* 0x800AE6D0, 0x800AE6D9 */
     uint8_t cpu_mask;                   /* fighters the AI drives (isCpu) */
+#if defined(T3_PSX_BALL)
+    const int32_t* ball_pos;
+#endif
+                /* Tekken Ball: the ball's position (x, y, z), or NULL in every other mode */
 #if defined(T3_PSX_FIGHTERS) && T3_PSX_FIGHTERS>2
 #define T3_PSX_AI_FIGHTERS 3
 #else

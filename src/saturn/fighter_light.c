@@ -63,6 +63,11 @@ void t3_fighter_light_stage(unsigned stage) {
     g_fill_on=stage!=FILL_OFF_STAGE;
 }
 
+const int32_t* t3_fighter_light_rig(unsigned* fill_on) {
+    *fill_on=g_fill_on;
+    return g_rig;
+}
+
 /* A Gouraud channel: 16 plus the tone's change under `colour` (128 = none). */
 static uint16_t channel(int32_t tone,int32_t colour) {
     if(colour>255)colour=255;

@@ -25,7 +25,11 @@ static sat_vdp1_texture_t g_glyph[PIECES-GLYPH_FIRST]
     __attribute__((section(".wram_l")))
 #endif
     ;
-static uint16_t g_lut[16] __attribute__((section(".wram_l")));
+static uint16_t g_lut[16]
+#if !defined(T3_BALL_PROGRAM)   /* Tekken Ball's program has High Work RAM to spare and no Low Work RAM */
+    __attribute__((section(".wram_l")))
+#endif
+    ;
 /* FUN_8004D15C (print_text) keeps one glyph set and picks the colour with
  * %c; the Saturn mirrors that with one table per message colour. */
 static uint16_t g_text_lut[TEXT_PALETTES]
@@ -137,6 +141,11 @@ sat_result_t t3_original_hud_timer(unsigned seconds,int x,int y) {
     /* FUN_8004E410: 16x46 digits fifteen original pixels apart. */
     SAT_TRY(draw(DIGIT_FIRST+seconds/10,x,y,14,23,0));
     return draw(DIGIT_FIRST+seconds%10,x+13,y,14,23,0);
+}
+
+sat_result_t t3_original_hud_timer_infinite(int x,int y) {
+    SAT_TRY(draw(DIGIT_FIRST+10,x,y,14,23,0));
+    return draw(DIGIT_FIRST+11,x+13,y,14,23,0);
 }
 
 sat_result_t t3_original_hud_mark(unsigned player,unsigned won,int x,int y) {

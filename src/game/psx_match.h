@@ -94,6 +94,7 @@ typedef struct {
     uint8_t chip_enabled,collapse_on_ko;
     uint8_t practice; /* mode 5: fight->practice, hits do no damage (HitApply) */
     uint8_t practice_counter[2]; /* practice's COUNTER ATTACKS per defender: a clean hit outside a reaction counts as a counter hit */
+    uint8_t ball_court; /* mode 7, Tekken Ball: the court's bounds replace the arena's (psx_body.c t3_psx_arena_bounds_ball) */
     uint8_t enable_rounds; /* 0 none, 1 bounded slice, 2 original frame API. */
     /* Production round-one placement/intro. Zero preserves the neutral
      * mid-fight initializer used by existing oracle seeds. */
@@ -241,6 +242,12 @@ typedef struct t3_psx_match {
     /* Diagnostic: this tick's fighter draw consumed frame->fighter_view
      * (the host exports that view into the sparse reference fixture). */
     uint8_t frame_view_used;
+    /* Tekken Ball: a charged ball that reached a player (ball_game.c sets it after its tick). The next HitApply takes it as a hit
+     * from the other fighter on cylinder `zone` with `charge` as its damage (the original runs it with the ball's stand-in record
+     * as the attacker, the ball being the only source of damage). */
+#if defined(T3_PSX_BALL)
+    struct {uint8_t pending,victim,zone;int16_t charge;const t3_psx_fighter_t* stand_in;} ball_hit;   /* stand_in: the hitter's record as the ball was struck */
+#endif
     uint32_t pair_distance; /* PairwiseDistances' pair table (0x8009EA08) */
     uint32_t frame_counter; /* g_frameCounter of the frame being stepped */
     uint32_t fighter_distance; /* g_fighterDistance: fighter 0's after PairwiseDistances */

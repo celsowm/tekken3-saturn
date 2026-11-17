@@ -14,7 +14,8 @@ typedef enum {
     T3_VS_VERSUS,           /* VS: FIGHT n */
     T3_VS_DEMO,             /* the demonstration: STAGE 1 */
     T3_VS_SURVIVAL,         /* survival: FIGHT n */
-    T3_VS_PRACTICE          /* PRACTICE MODE */
+    T3_VS_PRACTICE,         /* PRACTICE MODE */
+    T3_VS_BALL              /* TEKKEN BALL */
 } t3_vs_kind_t;
 
 /* MENU.BIN. Reads and composes the screen in `scratch`, which must last until

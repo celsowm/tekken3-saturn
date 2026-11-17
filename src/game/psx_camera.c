@@ -258,6 +258,10 @@ typedef struct {
     int32_t sp,cp,sy,cy,mx,mz,cam_y;
     int32_t u[2],v[2],z[2],depth[3];
     int32_t e2,back,lateral,lift,scale;
+#if defined(T3_PSX_BALL)
+    int32_t ball_u,ball_z,ball_v,ball_y;   /* Tekken Ball: the ball projected like a target (ball_on) */
+    int ball_on;
+#endif
 } framing_t;
 
 static void orbit_centre(const cam_t* c,const tab_t* t,framing_t* fr) {
@@ -288,6 +292,17 @@ static void project_targets(const cam_t* c,framing_t* fr) {
         fr->v[k]=(int32_t)t12((int64_t)fr->sp*a1+(int64_t)fr->cp*ty);
         fr->depth[k]=a1;
     }
+#if defined(T3_PSX_BALL)
+    if(c->ball_on) {
+        /* The ball keeps its raw depth: the distance correction below does not move it. */
+        const int32_t tx=w32((int64_t)c->ball[0]-fr->mx),tz=w32((int64_t)c->ball[2]-fr->mz),ty=w32((int64_t)c->ball[1]-fr->cam_y);
+        const int32_t a1=(int32_t)t12((int64_t)fr->sy*tx+(int64_t)fr->cy*tz);
+        fr->ball_u=(int32_t)t12((int64_t)fr->cy*tx-(int64_t)fr->sy*tz);
+        fr->ball_z=(int32_t)t12((int64_t)fr->cp*a1-(int64_t)fr->sp*ty);
+        fr->ball_v=(int32_t)t12((int64_t)fr->sp*a1+(int64_t)fr->cp*ty);
+        fr->ball_y=c->ball[1];fr->ball_on=1;
+    }
+#endif
     m=cdiv(c,(int64_t)fr->depth[0]+fr->depth[1],2);
     up=w32(-0x1C2-(int64_t)fr->cam_y);
     e10=(int32_t)t12((int64_t)fr->cp*m-(int64_t)fr->sp*up);
@@ -304,6 +319,14 @@ static int32_t settle(int32_t s) {
 static void fit_horizontal(cam_t* c,framing_t* fr) {
     t3_psx_camera_source_state_t* st=&c->source_state[fr->src];
     int lo=0,hi=1;int32_t left_px,edge,zr,right_px,backoff,h=c->h;
+#if defined(T3_PSX_BALL)
+    if(fr->ball_on) {
+        /* A ball beyond the outer fighter on screen replaces it, with a further 150-unit margin. */
+        const int lo_k=fr->u[0]<fr->u[1]?0:1,hi_k=1-lo_k;
+        if(fr->ball_u<fr->u[lo_k]){fr->u[lo_k]=fr->ball_u-MARGIN;fr->z[lo_k]=fr->ball_z;}
+        else if(fr->u[hi_k]<fr->ball_u){fr->u[hi_k]=fr->ball_u+MARGIN;fr->z[hi_k]=fr->ball_z;}
+    }
+#endif
     if(fr->u[1]<=fr->u[0]) {
         left_px=cdiv(c,(int64_t)(fr->u[1]-MARGIN)*h,fr->z[1]);
         edge=fr->u[0]+MARGIN;fr->u[1]-=MARGIN;fr->u[0]=edge;zr=fr->z[0];lo=1;hi=0;
@@ -362,6 +385,11 @@ static int32_t fit_vertical(cam_t* c,framing_t* fr) {
         top_v=fr->v[0];top_z=fr->z[0];ty_world=c->target[0][1];
     }
     height=(int32_t)t12((int64_t)ty_world*fr->cp);
+#if defined(T3_PSX_BALL)
+    if(fr->ball_on && fr->ball_v<top_v) {   /* a ball higher than both fighters is the one to keep in frame */
+        top_v=fr->ball_v;top_z=fr->ball_z;height=(int32_t)t12(w32((int64_t)fr->ball_y*fr->cp));
+    }
+#endif
     if(fr->src==T3_PSX_CAMERA_SCRIPT && fr->pitch<0)top=0x80;
     script_lift(c,fr,height);
     fr->scale=(int32_t)t12((int64_t)fr->cp*(top-cdiv(c,(int64_t)h*0x1C2,fr->distance)));
@@ -423,6 +451,10 @@ static void frame_fighters(cam_t* c,const tab_t* t,int32_t pitch,int32_t yaw,int
     fit_horizontal(c,&fr);
     vertical=fit_vertical(c,&fr);
     place_source(c,t,&fr,vertical);
+}
+void t3_psx_camera_frame_fighters(t3_psx_camera_t* c,const t3_psx_camera_tables_t* t,int32_t pitch,int32_t yaw,int restart,
+                                  int32_t distance,int source) {
+    frame_fighters(c,t,pitch,yaw,restart,distance,source);
 }
 /* CameraFight (0x8006636C). */
 static void camera_fight(cam_t* c,const tab_t* t,const fig_t f[2],const t3_psx_camera_frame_t* fr,int restart) {
@@ -1536,6 +1568,10 @@ T3_PROJECT_HOT static inline void camera_project_transformed(const t3_psx_camera
 }
 void t3_psx_camera_project(const t3_psx_camera_matrix_t* m,const int32_t p[3],int32_t out[3]) {
     int32_t v[3];apply_lv(m->m,p,v);camera_project_transformed(m,v,out);
+}
+/* ApplyMatrixLV (0x8008229C): a world point through the view's rotation alone (no translation). */
+void t3_psx_camera_view_point(const t3_psx_camera_matrix_t* m,const int32_t p[3],int32_t out[3]) {
+    apply_lv(m->m,p,out);
 }
 /* apply_lv's first row in 32 bits: a rotation's entries are at most 4096, so each 15-bit-half product fits and the
  * high sum wraps exactly as w32 does (no 64-bit multiplies on the SH-2, once per frame). */

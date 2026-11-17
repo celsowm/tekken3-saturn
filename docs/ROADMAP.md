@@ -175,7 +175,7 @@ copyrighted assets and must not be distributed without permission.
       live suite (`throw`, `throw-damage`).
 - [ ] Reversals, multiple stances, knockdown/get-ups and posture/evades.
 - [ ] Motion decode, model variants, effects, audio, original camera/round flow.
-- [ ] CPU AI, Tekken Force/Ball, team, practice, replay, character selection and modes.
+- [ ] CPU AI, team, replay, character selection and modes. Practice and Tekken Force are in; Tekken Ball is under way (docs/TEKKEN_BALL_PLAN.md).
 - [ ] Real-game oracle harness and frame-by-frame regression parity across characters.
 
 ### Input extraction milestone

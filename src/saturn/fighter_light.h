@@ -8,6 +8,9 @@
 
 /* The stage's light rig, before the fighters load. */
 void t3_fighter_light_stage(unsigned stage);
+/* The chosen rig: ambient, base colour, light colour (low byte R), then the light row (4096 = unit); `fill_on` is whether the
+ * fill light from below shines. Tekken Ball lights its ball with it. */
+const int32_t* t3_fighter_light_rig(unsigned* fill_on);
 /* Reserves an actor's tables in VDP1 VRAM, neutral until its first relight.
  * 0 when its pack has no lighting data (8x8 INDEX8 textures, which VDP1
  * Gouraud cannot shade); otherwise the instance's face_gouraud_first: face

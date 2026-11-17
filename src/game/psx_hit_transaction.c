@@ -10,6 +10,14 @@
 #include "sim_profile.h"
 #include "psx_match.h"
 
+#if defined(T3_PSX_BALL)
+#define BALL_CHARGE(m) ((m)->ball_hit.charge)
+/* A charged ball's hit is made by the stand-in record: the hitter's, copied when the ball was struck (0x800AC808). */
+#define ATTACKER_PTR(m,idx,from_ball) ((from_ball)&&(m)->ball_hit.stand_in?(m)->ball_hit.stand_in:&(m)->fighter[idx])
+#else
+#define BALL_CHARGE(m) 0
+#define ATTACKER_PTR(m,idx,from_ball) (&(m)->fighter[idx])
+#endif
 typedef struct {
     t3_move_vm_t vm;
     t3_psx_ground_state_t ground;
@@ -122,19 +130,38 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
         s->vm=f->vm;s->ground=f->ground;s->got_hit=0;s->collapsed=0;s->freeze=0;s->forced_in=0;
         frame.health_q16=f->health_q16;frame.max_health_q16=f->health_max;
         /* Once the round is over a move's exchange events no longer change health. */
+        /* Tekken Ball: only the ball does damage (HitApply restores health unless the attacker is the ball's record) */
+#if defined(T3_PSX_BALL)
+        const int from_ball=c->ball_court && match->ball_hit.pending && match->ball_hit.victim==i;
+        frame.suppress_health_change=(uint8_t)((c->enable_rounds==2 && match->flow.no_damage) || c->practice || (c->ball_court && !from_ball));
+#else
+        const int from_ball=0;
         frame.suppress_health_change=(uint8_t)((c->enable_rounds==2 && match->flow.no_damage) || c->practice);
+#endif
         frame.defender_extra=(t3_psx_hit_extra_t){f->events.extra_kind,f->events.extra_damage,f->ground.damage,f->ground.throw_state};
         frame.opponent_extra=(t3_psx_hit_extra_t){attacker->events.extra_kind,attacker->events.extra_damage,attacker->ground.damage,attacker->ground.throw_state};
         for(unsigned k=0;k<ATTACKER_COUNT;++k) {
             const unsigned aa=ATTACKER_AT(match,i,k);
             const t3_psx_fighter_t* atk=&match->fighter[aa];
             const t3_psx_hit_test_gate_t* g=GATE_OF(match,i,aa);
+#if defined(T3_PSX_BALL)
+            t3_psx_hit_test_gate_t ball_gate;
+#endif
+#if defined(T3_PSX_BALL)
+            if(from_ball) {
+                /* the charged ball's hit: accepted on the cylinder the ball touched, with the attacker's freeze */
+                __builtin_memset(&ball_gate,0,sizeof ball_gate);
+                ball_gate.status=T3_HIT_GATE_ACCEPT;ball_gate.hit_slot=0;ball_gate.zone=(int8_t)match->ball_hit.zone;ball_gate.segment=0;
+                ball_gate.hit_freeze_in=atk->vm.move.hit_freeze;ball_gate.set_defender_got_hit=1;
+                g=&ball_gate;
+            }
+#endif
             if(g->status!=T3_HIT_GATE_ACCEPT || !GATE_APPLIES(match,i,aa) || (match->reversal_cancelled&(1u<<i)))continue;
             if(g->hit_slot<0 || g->hit_slot>1 || g->zone<0 || g->zone>=14)return 0;
             t3_psx_hit_facts_t* facts=&slot_facts[(unsigned)g->hit_slot];
             s->ground.fixed_facing=0;
             if(!t3_psx_ground_angles(&s->ground,&atk->ground,&c->ground_tables))return 0;
-            facts->attacker_damage=atk->ground.damage;facts->defender_damage=f->ground.damage;
+            facts->attacker_damage=from_ball?BALL_CHARGE(match):atk->ground.damage;facts->defender_damage=f->ground.damage;
             facts->defender_guard=f->ground.guard;facts->defender_rel_angle=s->ground.relative_angle;
             facts->defender_pose_frame=f->vm.clock.pose_frame;facts->defender_active_first=f->vm.move.active_first;
             facts->defender_state=(uint16_t)f->vm.move.state_word;
@@ -156,6 +183,7 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
             /* A forced hit strikes with the unblockable attack word whatever the move says. */
             slot_move[(unsigned)g->hit_slot]=atk->vm.move;
             if(atk->ground.attack_override)slot_move[(unsigned)g->hit_slot].attack_word=atk->ground.attack_override;
+            if(from_ball)slot_move[(unsigned)g->hit_slot].attack_word=0xFFFFu;   /* the stand-in's attack word (+0x64) */
             frame.slots[(unsigned)g->hit_slot]=(t3_psx_hit_slot_input_t){1,(uint8_t)aa,(uint8_t)g->zone,&slot_move[(unsigned)g->hit_slot],facts};
             s->forced_in=atk->ground.forced_hit;
             slot_attacker[(unsigned)g->hit_slot]=aa;
@@ -179,14 +207,14 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
 #endif
         s->ground.hit_clean=s->hit.hit_clean;
         if(s->got_hit) {
-            set_hit_dir(s,&match->fighter[slot_attacker[frame.slots[1].used?1u:0u]]);
+            set_hit_dir(s,ATTACKER_PTR(match,slot_attacker[frame.slots[1].used?1u:0u],from_ball));
             const unsigned atk=slot_attacker[(unsigned)s->hit.best_slot];
 #if T3_PSX_FIGHTERS>2
             const int no_reaction=c->start_force && ko_alt[atk];
 #else
             const int no_reaction=0;
 #endif
-            if(!no_reaction && !select_reaction(c,s,f,&match->fighter[atk],0))return 0;
+            if(!no_reaction && !select_reaction(c,s,f,ATTACKER_PTR(match,atk,from_ball),0))return 0;
         }
         s->attacker=(uint8_t)slot_attacker[s->got_hit?(unsigned)s->hit.best_slot:0u];
 #if T3_PSX_FIGHTERS>2
@@ -274,6 +302,9 @@ int T3_SIM_IMPL(t3_psx_match_apply_hits)(t3_psx_match_t* match) {
 #endif
     }
     match->reversal_cancelled=0;
+#if defined(T3_PSX_BALL)
+    match->ball_hit.pending=0;
+#endif
     return 1;
 }
 T3_SIM_WRAP(int,t3_psx_match_apply_hits,T3_SIM_HITS,

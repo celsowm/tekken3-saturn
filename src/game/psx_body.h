@@ -37,4 +37,7 @@ int t3_psx_body_separate_force(t3_psx_body_actor_t actors[2],uint32_t pair_dista
 #endif
 int t3_psx_arena_bounds(t3_psx_body_actor_t* actor,const t3_psx_body_actor_t* opponent,
                          const t3_psx_body_tables_t* tables);
+/* ArenaBounds of Tekken Ball's court (mode 7) for fighter `index`; `across` is set when it stood more than 1000 units on
+ * the opponent's half. */
+int t3_psx_arena_bounds_ball(t3_psx_body_actor_t* actor,unsigned index,int* across);
 #endif

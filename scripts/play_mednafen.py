@@ -21,7 +21,9 @@ REQUIRED = {'INTRO.MOV': 'the Tekken 3 opening movie (-DT3_LOCAL_INTRO_MOVIE)',
             'FORCE.BIN': 'the Tekken Force program (-DT3_LOCAL_FORCE_LEVELS)',
             'LEV1.BIN': 'the Tekken Force levels (-DT3_LOCAL_FORCE_LEVELS, scripts/build_force_levels.py)',
             'BOSSPAK.BIN': 'the Tekken Force bosses (scripts/build_force_boss_packs.py)',
-            'FSFX.BIN': 'the Tekken Force sounds (-DT3_FORCE_SFX=ON with -DT3_LOCAL_SFX)'}
+            'FSFX.BIN': 'the Tekken Force sounds (-DT3_FORCE_SFX=ON with -DT3_LOCAL_SFX)',
+            'BALL.BIN': 'the Tekken Ball program (-DT3_LOCAL_BALL_DATA and -DT3_LOCAL_BALL_PICTURES)',
+            'STG19.BIN': "Tekken Ball's court (scripts/build_ball_stage.py)"}
 
 
 def missing_features(disc):

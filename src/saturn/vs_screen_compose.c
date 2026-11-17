@@ -11,7 +11,7 @@
 enum {
     STRIDE=512, BG_HEADER=12, BG_PALETTE=512, IMAGE_BYTES=VS_W*VS_H, BACKGROUND_BYTES=BG_HEADER+BG_PALETTE+IMAGE_BYTES,
     TEXT_BYTES=2+VS_TEXT_W*VS_TEXT_H, CAPTIONS=VS_FIGHTERS, CAPTION_STAGE=CAPTIONS, CAPTION_FIGHT=CAPTIONS+1,
-    CAPTION_PRACTICE=CAPTIONS+2, DIGITS=CAPTIONS+3, CAPTION_SPACE=13,
+    CAPTION_PRACTICE=CAPTIONS+2, CAPTION_BALL=CAPTIONS+3, DIGITS=CAPTIONS+4, CAPTION_SPACE=13,
     /* The bitmap's dots are twice as wide as tall: 8x16 of them show the font square. */
     CREDIT_Y=432, CREDIT_GLYPH_W=8, CREDIT_GLYPH_H=16
 };
@@ -74,10 +74,10 @@ static void credit(uint8_t* image) {
 
 static sat_result_t caption(uint8_t* image,uint8_t* record,t3_vs_kind_t kind,unsigned number) {
     sat_result_t st=SAT_OK;
-    const unsigned label=kind==T3_VS_PRACTICE?CAPTION_PRACTICE:
+    const unsigned label=kind==T3_VS_BALL?CAPTION_BALL:kind==T3_VS_PRACTICE?CAPTION_PRACTICE:
         kind==T3_VS_ARCADE||kind==T3_VS_DEMO?CAPTION_STAGE:CAPTION_FIGHT;
     unsigned x=VS_CAPTION_X+paste_text(image,record,label,VS_CAPTION_X,VS_CAPTION_Y,&st)+CAPTION_SPACE;
-    if(kind==T3_VS_PRACTICE)return st;
+    if(kind==T3_VS_PRACTICE||kind==T3_VS_BALL)return st;
     if(number>99u)number=99u;
     if(number>9u)x+=paste_text(image,record,DIGITS+number/10u,x,VS_CAPTION_Y,&st)+1u;
     (void)paste_text(image,record,DIGITS+number%10u,x,VS_CAPTION_Y,&st);
@@ -85,8 +85,8 @@ static sat_result_t caption(uint8_t* image,uint8_t* record,t3_vs_kind_t kind,uns
 }
 
 sat_result_t t3_vs_screen_compose(void* scratch,uint32_t capacity,const uint8_t picks[2],t3_vs_kind_t kind,unsigned number) {
-    static const uint8_t pictures[]={0,1,1,0,0};
-    static const char* const files[]={"VSBG0.BIN","VSBG1.BIN","VSBG1.BIN","VSBG2.BIN","VSBG3.BIN"};
+    static const uint8_t pictures[]={0,1,1,0,0,1};
+    static const char* const files[]={"VSBG0.BIN","VSBG1.BIN","VSBG1.BIN","VSBG2.BIN","VSBG3.BIN","VSBG4.BIN"};
     const uint32_t record_bytes=(uint32_t)VS_PANEL_BYTES>(uint32_t)TEXT_BYTES?(uint32_t)VS_PANEL_BYTES:(uint32_t)TEXT_BYTES;
     if(capacity<(uint32_t)BACKGROUND_BYTES+record_bytes+STRIDE+4u)return SAT_ERR_CAPACITY;
     SAT_TRY(t3_disc_volume(&g_volume));

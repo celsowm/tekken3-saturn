@@ -53,6 +53,11 @@ typedef struct t3_psx_ai_bus {
      * bytes, image_size from image_base+image_stride*i; each image is 4-aligned
      * and image_base and image_stride are multiples of 4. */
     const uint8_t* image[3];uint32_t image_base,image_stride,image_size;
+    /* Tekken Ball (mode 7): the scene projected onto the line through the players (ball_ai.h, BALL_LINE_WORDS entries), set per call
+     * by the caller; NULL in every other mode. The distance bands, the back-dash and the attack filter use it. */
+#if defined(T3_PSX_BALL)
+    const int32_t* ball_line;
+#endif
 } t3_psx_ai_bus_t;
 /* What a candidate collection depends on: the walk's inputs, the frames over
  * which every window test it made has the same result, and the BranchCondition

@@ -16,7 +16,7 @@ Saturn from these parts:
                  additive tint are baked over the background, because about 40% of a
                  portrait is transparent and the tint lights what shows through.
   VSTEXT.BIN     VS_TEXTS records of u8 width, u8 height, then VS_TEXT_W*VS_TEXT_H codes,
-                 0 transparent: fighter names, then STAGE, FIGHT, PRACTICE MODE and digits.
+                 0 transparent: fighter names, then STAGE, FIGHT, PRACTICE MODE, TEKKEN BALL and digits.
   vs_layout.h    the positions, in bitmap dots.
 
 Codes: 0..94 background and text, 95 the credit line, 96..175 side 0, 176..255 side 1.
@@ -51,7 +51,7 @@ NAME_CODE, CAPTION_CODE, VS_CODE = (BACKGROUND_COLOURS + GLYPH_COLOURS * i for i
 # hud.md: a text's CLUT is its colour plus its font's offset (fonts 1, 2 and 3: 16, 32, 32).
 NAME_CLUT, CAPTION_CLUT, VS_CLUT = 8 + 32, 6 + 16, 0 + 32
 NAME_FONT, CAPTION_FONT, VS_FONT = 3, 1, 2
-CAPTIONS = ('STAGE', 'FIGHT', 'PRACTICE MODE')
+CAPTIONS = ('STAGE', 'FIGHT', 'PRACTICE MODE', 'TEKKEN BALL')
 DIGITS = '0123456789'
 FRAME_GREY = (232, 232, 232)
 TINT_FLOOR = (192, 192, 192)
@@ -59,9 +59,9 @@ TINT_FLOOR = (192, 192, 192)
 COLUMN_EDGES = (0, 69, 137, 206, 274, 343, 411)
 GRID_TOP, ROW_H = 20, 64
 BAR_AT, BAR_H, BAR_TAIL = (0, 36), 36, 110
-BARS = {0: ((104, 0, 128), 216), 1: ((216, 0, 8), 216), 3: ((0, 192, 160), 216), 4: ((0, 192, 192), 248)}
-# (background picture, caption bar): arcade and time attack, VS and demonstration, survival, practice.
-SCREENS = ((0, 0), (1, 1), (0, 3), (0, 4))
+BARS = {0: ((104, 0, 128), 216), 1: ((216, 0, 8), 216), 3: ((0, 192, 160), 216), 4: ((0, 192, 192), 248), 5: ((248, 56, 96), 216)}
+# (background picture, caption bar): arcade and time attack, VS and demonstration, survival, practice, Tekken Ball.
+SCREENS = ((0, 0), (1, 1), (0, 3), (0, 4), (1, 5))
 VS_AT, CAPTION_AT = (162, 250), (28, 42)
 # USA addresses of tables whose Japan Rev.1 addresses are in modes.md and draw_sim.py.
 USA_RECORDS, USA_NAMES = 0x80097AB8, 0x80097D40

@@ -95,6 +95,8 @@ static uint16_t g_load_words[8192] __attribute__((section(".wram_l"),aligned(4))
 static sat_camera3d_t g_previous_camera;
 static int32_t g_previous_center[2],g_previous_turn;
 static uint8_t g_valid,g_dirty;
+static uint8_t g_strip;                      /* Tekken Ball's court: a flat strip (below) */
+static int32_t g_strip_scroll,g_strip_shift,g_strip_top;
 static int same_camera(const sat_camera3d_t* camera) {
     if(camera->near_z!=g_previous_camera.near_z || camera->far_z!=g_previous_camera.far_z ||
        camera->eye.x!=g_previous_camera.eye.x || camera->eye.y!=g_previous_camera.eye.y ||
@@ -505,6 +507,7 @@ sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre) {
     if(head_word(T3_STAGE_WORD_MAGIC)!=T3_STAGE_MAGIC || head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_VERSION ||
        head_word(T3_STAGE_WORD_NUMBER)!=stage)return SAT_ERR_VERSION;
     g_cylinder.box_half=(int32_t)head_word(T3_STAGE_WORD_BOX_HALF);
+    g_strip=stage==19u;g_valid=0;     /* Tekken Ball's court: a flat strip, no walls */
     g_back=(uint16_t)head_word(T3_STAGE_WORD_BACK);
     g_shadow=(uint16_t)head_word(T3_STAGE_WORD_SHADOW);
     if(true_ogre) {
@@ -628,6 +631,25 @@ sat_result_t t3_stage_vdp2_init(void) {
 #endif
 }
 
+/* Tekken Ball's court (stage 19, docs/TEKKEN_BALL_PLAN.md): the backdrop is a flat strip the game scrolls, not a cylinder.
+ * The strip's rows 16..255 are the picture; the original's screen is 368 x 448 shown in 320 x 224 (psx_viewport.h: x * 20 / 23,
+ * (y - 20) / 2), so a screen line takes the strip's row of its original line and a screen dot 23/20 of a strip dot. */
+void t3_stage_vdp2_set_strip(int32_t scroll,int32_t first_shift,int32_t top) {
+    g_strip_scroll=scroll;g_strip_shift=first_shift;g_strip_top=top;
+}
+enum { STRIP_CUT_ROWS=256-T3_STAGE_ROWS,STRIP_ZOOM=75366 /* 23 / 20 in 16.16 */ };
+static void fill_strip_backdrop(void) {
+    const uint32_t base=((uint32_t)(g_strip_scroll+g_strip_shift))&(T3_STAGE_COLUMNS-1u);
+    for(unsigned y=0;y<HEIGHT;++y) {
+        int32_t row=(int32_t)(2u*y+20u)-g_strip_top-STRIP_CUT_ROWS;
+        if(row<0)row=0;
+        if(row>(int32_t)T3_STAGE_ROWS-1)row=(int32_t)T3_STAGE_ROWS-1;
+        g_backdrop[y].x=(int32_t)(base<<16);
+        g_backdrop[y].y=row<<16;
+        g_backdrop[y].zoom=STRIP_ZOOM;
+    }
+}
+
 sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x,int32_t center_z,int32_t turn) {
 #if defined(T3_STAGE_STACK_PROBE)
     t3_stage_stack_sample(0);
@@ -635,6 +657,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(!camera)return SAT_ERR_INVALID_ARG;
     ++g_t3_vdp2_floor_prepared;
 #if !defined(T3_STAGE_BENCH_EVERY_FRAME)
+    if(g_strip)turn=(int32_t)((uint32_t)g_strip_scroll*4099u^(uint32_t)g_strip_top*131u^(uint32_t)g_strip_shift);
     if(g_valid && center_x==g_previous_center[0] && center_z==g_previous_center[1] &&
        turn==g_previous_turn && same_camera(camera))return SAT_OK;
 #endif
@@ -643,6 +666,9 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
      * backdrop angle; the floor ends where its lines meet the walls. */
     const int32_t eye[3]={camera->eye.x,camera->eye.y,camera->eye.z};
     STAGE_SPLIT_START(pano_started);
+    if(g_strip) {
+        fill_strip_backdrop();
+    } else {
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     sat_mat4_t backdrop_view=camera->view_proj;
     for(unsigned i=4;i<8;++i)backdrop_view.m[i]=(int32_t)((int64_t)backdrop_view.m[i]*15/14);
@@ -652,6 +678,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(!t3_stage_backdrop_lines(&g_cylinder,camera->view_proj.m,eye,turn,1,g_backdrop,g_wall_depth))
         return SAT_ERR_UNSUPPORTED;
 #endif
+    }
     STAGE_SPLIT_ADD(0,pano_started);
     tables_t* tables=&g_tables[g_slot];
     /* Straight into the slot's Low WRAM words, one store per word pair. */
@@ -661,8 +688,8 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         int32_t column=g_backdrop[y].x;
 #if defined(T3_ORIGINAL_FIGHTER_PROJECTION) && !defined(T3_STAGE_NO_VIEWPORT_SHIFT)
         /* Stage rays previously assumed x=160; the mapped original GTE
-         * center is x=167. Sample the same ray seven pixels earlier. */
-        column=(column-(t3_psx_viewport_x(192)-WIDTH/2)*(int32_t)g_backdrop[y].zoom)
+         * center is x=167. Sample the same ray seven pixels earlier. (The court's strip is placed in screen dots already.) */
+        if(!g_strip)column=(column-(t3_psx_viewport_x(192)-WIDTH/2)*(int32_t)g_backdrop[y].zoom)
             &((T3_STAGE_COLUMNS<<16)-1);
 #endif
         line_words[0]=line_word(column,0x7FFu);
@@ -676,7 +703,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     sat_vdp2_floor_t floor={WIDTH,HEIGHT,0,(int32_t)((int64_t)64*65536*65536/(1800*96)),
         (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_W*SAT_FX16_ONE)),
         -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_H*SAT_FX16_ONE)),0,
-        g_wall_depth,1};
+        g_strip?0:g_wall_depth,1};
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     /* Generate a 228-line virtual view, then display lines 4..227. Its
      * center is 114-4=110 and the original 240-line half-height becomes

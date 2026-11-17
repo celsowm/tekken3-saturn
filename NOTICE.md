@@ -114,7 +114,7 @@ implementation of Tekken3Remake.
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
   `src/game/psx_round.c`, `src/game/psx_round_flow.c`, `src/game/psx_replay.c`,
-  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/practice_data.c`, `src/game/practice_dummy.c`, `src/game/practice_menu.c`, `src/game/practice_keys.c`, `src/game/practice_guide.c`, `src/game/practice_replay.c`, `src/game/practice_commands.c`, `src/saturn/practice_icons.c`, `src/saturn/practice_font.c`, `src/saturn/practice_hud.c`, `src/game/practice_signal.c`, `src/game/psx_force_level.c`, `src/game/force_progress.c`, `src/game/psx_force_target.c`, `src/game/psx_force_walls.c`, `src/game/psx_force_camera.c`, `src/game/psx_camera.c`,
+  `src/game/psx_blend.c`, `src/game/psx_head.c`, `src/game/practice_data.c`, `src/game/practice_dummy.c`, `src/game/practice_menu.c`, `src/game/practice_keys.c`, `src/game/practice_guide.c`, `src/game/practice_replay.c`, `src/game/practice_commands.c`, `src/saturn/practice_icons.c`, `src/saturn/practice_font.c`, `src/saturn/practice_hud.c`, `src/game/practice_signal.c`, `src/game/psx_force_level.c`, `src/game/force_progress.c`, `src/game/psx_force_target.c`, `src/game/ball_rules.c`, `src/game/ball_flow.c`, `src/game/ball_hud.c`, `src/game/ball_backdrop.c`, `src/game/ball_ai.c`, `src/game/ball_pose.c`, `src/game/ball_light.c`, `src/game/psx_force_walls.c`, `src/game/psx_force_camera.c`, `src/game/psx_camera.c`,
   `src/game/psx_match_camera.c`, `src/game/psx_motion.c`,
   `src/game/stage_backdrop.c`, `src/game/stage_rules.c`,
   `src/game/input_history.c`, `src/game/psx_reaction.c`,

@@ -835,6 +835,15 @@ static int T3_SIM_IMPL(bodies)(t3_psx_match_t* match) {
             pair[i].root.x=(int32_t)((uint32_t)pair[i].root.x+(uint32_t)dx);pair[i].root.z=(int32_t)((uint32_t)pair[i].root.z+(uint32_t)dz);
         } else
 #endif
+#if defined(T3_PSX_BALL)
+        if(c->ball_court) {
+            /* ArenaBounds in mode 7: a throw victim restarts the ramp; one far over the line is set to state 0x5000 */
+            int across=0;
+            if(match->fighter[i].ground.throw_state<0){pair[i].ramp=0;match->fighter[i].ramp_step=0;}
+            if(!t3_psx_arena_bounds_ball(&pair[i],i,&across))return 0;
+            if(across){match->fighter[i].ground.state=0x5000u;match->fighter[i].hit_done=0;}
+        } else
+#endif
         if(!t3_psx_arena_bounds(&pair[i],&pair[T3_PSX_OPP(match,i)],&tables))return 0;
 #if T3_PSX_FIGHTERS>2
         if(match->throw_link && match->fighter[i].ground.in_throw && match->fighter[T3_PSX_OPP(match,i)].ground.in_throw) {
