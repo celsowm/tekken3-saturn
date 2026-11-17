@@ -36,6 +36,9 @@ void t3_move_probe_set_ball(uint8_t on,uint8_t option);
 const t3_ball_view_t* t3_move_probe_ball(void);
 /* For the court's backdrop and the ball's drawing: the camera's view (position, yaw), the executable's sine table (data pointer
  * to the 4,096 + 1,024 entries) and the ball's mesh. Zero when there is none. */
+#if defined(T3_BALL_TEST_POINT)
+unsigned t3_move_probe_effect_count(void);
+#endif
 int t3_move_probe_camera_view(t3_psx_camera_view_t* out);
 const t3_psx_trig_t* t3_move_probe_trig(void);
 int t3_move_probe_ball_mesh(t3_ball_mesh_t* out);

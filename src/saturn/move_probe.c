@@ -1099,6 +1099,9 @@ void t3_move_probe_set_ball(uint8_t on,uint8_t option) {
     g_ball_on=on;g_ball_option=option>2u?2u:option;
 }
 const t3_ball_view_t* t3_move_probe_ball(void) {return g_ball_on?&g_ball_view:0;}
+#if defined(T3_BALL_TEST_POINT) && defined(T3_OWNED_EFFECT_POOL)
+unsigned t3_move_probe_effect_count(void) {return g_effect_pool.count;}
+#endif
 int t3_move_probe_camera_view(t3_psx_camera_view_t* out) {
     if(!out || !g_active || !g_owned_match.camera.started)return 0;
     *out=g_owned_match.camera.camera.view;

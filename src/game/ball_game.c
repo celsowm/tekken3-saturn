@@ -123,7 +123,10 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
     /* a point's flash (kind 2, k = 5) throws 16 sparks (effect type 1) around the ball (ball_sim.sparks: the position -0xFF + 9 random bits
      * per axis, pitch 0x400 and a yaw of 0 or 0x100); the original's random numbers are the AI's, these come from the tick count */
 #if defined(T3_BALL_TEST_POINT)
-    if(g->ticks%300u==0u){g->ball.kind=2;g->ball.timer=5;}   /* test only: a point's flash every five seconds */
+    if(g->ticks%300u==0u) {   /* test only: a point's flash and a burn of fighter 1 every five seconds */
+        g->ball.kind=2;g->ball.timer=5;
+        if(g->events.count<BALL_EV_MAX){t3_ball_event_t* x=&g->events.e[g->events.count++];x->kind=BALL_EV_BURN;x->a=0;x->b=x->c=x->d=x->e=0;}
+    }
 #endif
     if(g->ball.kind==2&&g->last_kind!=2&&g->ball.timer==5&&m->config->effects) {
         uint32_t seed=g->ticks*2654435761u+0x9E3779B9u;
