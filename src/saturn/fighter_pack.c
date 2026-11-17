@@ -7,9 +7,8 @@
 #define T3_FORCE_PACK_COUNT T3_ROSTER_COUNT
 #endif
 
-enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=6u, DIRECTORY_WORD=26u,
+enum { HEADER_WORDS=64u, CHUNK_BYTES=1048576u, MAGIC=0x54334650u, VERSION=7u, DIRECTORY_WORD=26u,
        LIGHT_WORD=DIRECTORY_WORD+2u*T3_PACK_SECTIONS };
-_Static_assert(sizeof(t3_light_normal_t)==8u,"pack lit normals");
 _Static_assert(sizeof(t3_hand_variant_row_t)==24u,"pack hand variant rows");
 _Static_assert(sizeof(t3_psx_projected_part_t)==22u*sizeof(uint32_t),"pack projected rows");
 _Static_assert(sizeof(t3_psx_part_t)==16u,"pack parts");
@@ -119,9 +118,11 @@ static sat_result_t open_pack_source(unsigned actor,unsigned id,const char* sour
     const uint32_t hot=file->section[T3_PACK_HOT][1];
     if(w[3]>=256u || w[9]>T3_ROSTER_TEXTURES || w[7]>T3_ROSTER_VERTICES || w[8]>T3_ROSTER_FACES ||
        w[18]>T3_ROSTER_VOICES || w[24]>T3_ROSTER_PROJECTED_VERTICES ||
-       hot+w[19]+16u>T3_ROSTER_STORE_BYTES)return SAT_ERR_CAPACITY;
+       w[19]<w[7]*T3_PACK_COMPACT_VERTEX_BYTES)return SAT_ERR_CAPACITY;
+    const uint32_t compact=w[19]-w[7]*T3_PACK_COMPACT_VERTEX_BYTES;
+    if(hot+compact+16u>T3_ROSTER_STORE_BYTES)return SAT_ERR_CAPACITY;
 #if defined(T3_FORCE_PROGRAM)
-    if(actor==2u && hot+w[19]+16u+T3_FORCE_PACK_SCRATCH_BYTES>T3_ROSTER_STORE_BYTES)
+    if(actor==2u && hot+compact+16u+T3_FORCE_PACK_SCRATCH_BYTES>T3_ROSTER_STORE_BYTES)
         return SAT_ERR_CAPACITY;
 #endif
     uint8_t* store=pack_store(actor);
@@ -129,7 +130,7 @@ static sat_result_t open_pack_source(unsigned actor,unsigned id,const char* sour
     *pack=(t3_fighter_pack_t){
         .id=id,.bank_type=w[3],.voice_set=w[4],.scale_percent=w[5],.name_width=w[6],
         .vertices=w[7],.faces=w[8],.textures=w[9],.palettes=w[10],
-        .voice_count=w[18],.compact_bytes=w[19],.bank_fnv1a=w[20],
+        .voice_count=w[18],.compact_bytes=compact,.bank_fnv1a=w[20],
         .name=t3_fighter_name(id),
         .parts=(const t3_psx_part_t*)(const void*)(store+w[11]),
         .radii=(const int16_t*)(const void*)(store+w[12]),
@@ -159,10 +160,11 @@ static sat_result_t open_pack_source(unsigned actor,unsigned id,const char* sour
     const uint32_t* light=w+LIGHT_WORD;
     pack->light_normal_count=light[0];
     if(light[0]) {
-        pack->light_normals=(const t3_light_normal_t*)(const void*)(store+light[1]);
-        pack->light_faces=(const uint16_t*)(const void*)(store+light[2]);
-        pack->light_corners=(const uint16_t*)(const void*)(store+light[3]);
+        pack->light_parts=(const t3_light_part_t*)(const void*)(store+light[1]);
+        pack->light_stream=store+light[2];
+        pack->light_shaded=(const uint16_t*)(const void*)(store+light[3]);
         pack->light_tones=(const uint16_t*)(const void*)(store+light[4]);
+        pack->light_state=store+light[9];
     }
     /* The hand rows hold hot offsets until relocated, as the projected rows. */
     t3_hand_variant_row_t* hands=(t3_hand_variant_row_t*)(void*)(store+light[6]);

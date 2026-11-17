@@ -1469,6 +1469,17 @@ instead of 280 (frozen check: `--seconds 140 --shot 130 135`). Ymir's rates
 are far higher (43.82 / 40.67 where Mednafen reads 31.76 / 30.10), so it is
 a first check of direction, and Mednafen stays the number of record.
 
+**Fighter lighting is the default (2026-11-16).** Gouraud lighting with the
+native LUT4 textures now ships: 33.37 / 31.75 against 34.30 / 32.55 unlit,
+a cost of 0.93 img/s that the owner accepted (it was 4.1). The relight is
+`fighter_light_sh2.s`, writes only what changed, and runs in slices on the
+Master while the Slave simulates. The hit-spark flipbooks are LUT4 (44 KB
+of VDP1 VRAM back in every build), which practice mode needed to start
+with lighting on. Details and the checks: `FIGHTER_FIDELITY.md`, "Lighting
+as the default". The unlit numbers remain the base for A/Bs of anything
+else: build the control with `-DT3_FIGHTER_LIGHTING=OFF
+-DT3_FIGHTER_TEXTURE_CAP=0`, or compare lit against lit.
+
 ## 3. Order and parallelism
 
 ```text

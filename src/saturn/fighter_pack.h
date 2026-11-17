@@ -29,19 +29,16 @@ enum {
     T3_PACK_FLIPBOOK,T3_PACK_VOICES,T3_PACK_PCM,T3_PACK_NAMES,T3_PACK_SECTIONS
 };
 
-/* One lit normal: a Q12 unit vector in its joint's basis (scripts/build_fighter_packs.py,
- * lighting_data). */
-typedef struct {
-    int16_t x,y,z;
-    uint16_t joint;
-} t3_light_normal_t;
-
-/* A face's lighting word: the normal of corner A, its tone class, and whether that one
- * normal lights the whole face; otherwise light_corners holds corners B, C and D. */
-#define T3_LIGHT_FACE_NORMAL(word) ((word)&0x3FFu)
-#define T3_LIGHT_FACE_TONE(word) (((word)>>10)&15u)
-#define T3_LIGHT_FACE_FLAT 0x8000u
+/* The light data (scripts/build_fighter_packs.py, lighting_data): per part its normals,
+ * each followed by the corner colours it gives ("entries", the normal under a tone class)
+ * and the faces each lights alone; then the faces of several entries.
+ * fighter_light_sh2.s reads it. */
 #define T3_LIGHT_TONES 16u
+typedef struct {
+    uint16_t normals,first; /* how many, and the first one's level in light_state */
+    uint16_t stream;        /* byte offset of the part's normals in light_stream */
+    uint16_t unused;
+} t3_light_part_t;
 
 /* A row with hand (or jaw) vertex variants (scripts/build_fighter_packs.py,
  * hand_variant_rows): the vertices of projected block `block` and the skin
@@ -73,10 +70,11 @@ typedef struct {
     const uint16_t (*projected_faces)[4];
     const uint8_t (*face_ot)[2];
     uint32_t light_normal_count; /* 0 without lighting data */
-    const t3_light_normal_t* light_normals;
-    const uint16_t* light_faces;
-    const uint16_t* light_corners;
-    const uint16_t* light_tones; /* T3_LIGHT_TONES mean texel colours, RGB555 */
+    const t3_light_part_t* light_parts; /* T3_PSX_DRAW_PARTS rows */
+    uint8_t* light_stream;         /* the relight keeps the shaded faces' corner colours in it */
+    const uint16_t* light_shaded;  /* two counts, then five words per face and four per face */
+    const uint16_t* light_tones;   /* T3_LIGHT_TONES mean texel colours, RGB555 */
+    uint8_t* light_state;          /* the relight's level per normal */
     const t3_hand_variant_row_t* hand_rows;
     uint32_t hand_row_count;
     const uint8_t* shadow; /* the TK3psSDW block (build_fighter_packs.py, shadow_mesh) */
@@ -100,6 +98,16 @@ sat_result_t t3_fighter_pack_read(unsigned actor,unsigned section,uint32_t at,vo
 uint8_t* t3_fighter_pack_arena(void);
 _Static_assert(T3_ROSTER_ARENA_BYTES>=T3_ROSTER_ARCHIVE_BYTES+T3_ROSTER_TEXTURES*16u+16u,
     "the arena must also hold a decoding mesh");
+/* What sat_character_asset_compact drops besides the textures: the bind vertices, which the
+ * mesh has copied. Tekken Force keeps them: an enemy that enters again copies them again.
+ * T3_ROSTER_STORE_BYTES counts on it. */
+#if defined(T3_FORCE_PROGRAM)
+#define T3_PACK_COMPACT_DROP 0u
+#define T3_PACK_COMPACT_VERTEX_BYTES 0u
+#else
+#define T3_PACK_COMPACT_DROP SAT_CHARACTER_COMPACT_VERTICES
+#define T3_PACK_COMPACT_VERTEX_BYTES 12u
+#endif
 /* Where sat_character_asset_compact keeps an actor's asset for the match. */
 void* t3_fighter_pack_asset_storage(unsigned actor,uint32_t* capacity);
 /* Loads and checks each bank (one when shared) and both camera streams. */

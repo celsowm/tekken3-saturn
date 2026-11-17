@@ -19,7 +19,7 @@
 enum { SETS=3, MAX_FRAMES=30, FRAME_BYTES=512, HEADER_BYTES=16+32, SYSTEM_SET=2 };
 /* Set 0 and 1 are the two fighters' character flipbooks, set 2 the system burst
  * (the records' set 3); all three share CRAM bank 5, 16 entries each after the
- * transparent entry 0 (indexed8 texels are 1 + 16 * set + colour). Banks 6 and 7 hold the stage's
+ * transparent entry 0 (PS1 colour i of a set is entry 1 + 16 * set + i). Banks 6 and 7 hold the stage's
  * floor and panorama palettes (stage_vdp2.c); the fighters' banks are claimed in the
  * SDK's registry, so a clash with them fails the upload at boot. */
 #if !defined(T3_FIGHTER_PACKS)
@@ -27,12 +27,15 @@ static const char* const g_file[SETS]={"FLIPC0.BIN","FLIPC1.BIN","FLIPBOOK.BIN"}
 #endif
 /* The last ten frames of a record fade (modulation byte 0x80 - ((frame - frames + 10) * 0x9999 >> 12),
  * 119 down to 33 of 128). VDP1 colour-bank sprites cannot be shaded, so three banks approximate the
- * eleven modulation levels. The sprite picks the nearest bank; same texels, no extra VRAM. */
+ * eleven modulation levels. The sprite picks the nearest bank; same texels, no extra VRAM.
+ * A frame is LUT4 (512 bytes of VDP1 VRAM, not INDEXED8's 1024): each set has a table of
+ * colour-bank codes per fade bank, which carries the VDP2 addition as a bank selector does. */
 enum { FADE_BANKS=3 };
 static const uint8_t g_fade_bank[FADE_BANKS]={5,4,3};
 static const uint8_t g_fade_scale[FADE_BANKS]={128,85,47}; /* of 128 */
 static uint16_t g_palette[256];
 static sat_vdp1_texture_t g_frame_texture[SETS][MAX_FRAMES];
+static uint16_t g_lut[SETS][FADE_BANKS];
 static uint8_t g_frames[SETS];
 static uint8_t g_ready;
 volatile uint32_t g_t3_flipbook_drawn;
@@ -72,15 +75,22 @@ static sat_result_t load_set(unsigned set,void* scratch,uint32_t scratch_bytes) 
     const unsigned frames=le16(b+8);
     if(!magic_ok(b) || !frames || frames>MAX_FRAMES || le16(b+10)!=32 || le16(b+12)!=32 || le16(b+14)!=16 ||
        size!=HEADER_BYTES+frames*FRAME_BYTES)return SAT_ERR_VERSION;
-    /* Texel 0 of an indexed8 sprite is transparent, so PS1 colour i is entry i+1;
-     * black adds nothing to the image below, so the PS1's zero and STP-black
-     * colours stay transparent (entry 0) and leave the VDP1 pixels under the quad alone. */
-    uint8_t map[16];
+    /* Texel 0 of a sprite is transparent. Black adds nothing to the image below, so the PS1's zero
+     * and STP-black colours become texel 0 and leave the VDP1 pixels under the quad alone; the
+     * others take texels 1 to 15 in order (every set has a black: at most 15 remain). */
+    uint8_t map[16],codes[16]={0};
+    unsigned texels=1;
     for(unsigned i=0;i<16;++i) {
         const uint16_t v=le16(b+16+2*i);
-        map[i]=(v&0x7fffu)?(uint8_t)(1u+16u*set+i):0u;
-        if(v&0x7fffu)g_palette[1u+16u*set+i]=(uint16_t)(0x8000u|(v&0x7fffu));
+        map[i]=0u;
+        if(!(v&0x7fffu))continue;
+        if(texels>15u)return SAT_ERR_VERSION;
+        codes[texels]=(uint8_t)(1u+16u*set+i);
+        map[i]=(uint8_t)texels++;
+        g_palette[1u+16u*set+i]=(uint16_t)(0x8000u|(v&0x7fffu));
     }
+    for(unsigned bank=0;bank<FADE_BANKS;++bank)
+        SAT_TRY(sat_vdp1_upload_color_calc_lut(codes,g_fade_bank[bank],SAT_VDP2_SPRITE_ADD,&g_lut[set][bank]));
     if(set+1u==SETS) {
         for(unsigned bank=0;bank<FADE_BANKS;++bank) {
             uint16_t faded[256]={0};
@@ -93,13 +103,11 @@ static sat_result_t load_set(unsigned set,void* scratch,uint32_t scratch_bytes) 
             SAT_TRY(sat_palette_upload_indexed8(faded,g_fade_bank[bank]));
         }
     }
-    uint8_t pixels[FRAME_BYTES*2];
+    uint8_t pixels[FRAME_BYTES];
     for(unsigned f=0;f<frames;++f) {
         const uint8_t* src=b+HEADER_BYTES+f*FRAME_BYTES;
-        for(unsigned i=0;i<FRAME_BYTES;++i) {
-            pixels[2*i]=map[src[i]>>4];pixels[2*i+1]=map[src[i]&15u];
-        }
-        SAT_TRY(sat_tex_upload_indexed8_pixels(&g_frame_texture[set][f],pixels,32,32,g_fade_bank[0]));
+        for(unsigned i=0;i<FRAME_BYTES;++i)pixels[i]=(uint8_t)((map[src[i]>>4]<<4)|map[src[i]&15u]);
+        SAT_TRY(sat_tex_upload_lut4_pixels(&g_frame_texture[set][f],pixels,32,32,g_lut[set][0]));
     }
     g_frames[set]=(uint8_t)frames;
     return SAT_OK;
@@ -145,7 +153,7 @@ sat_result_t t3_flipbook_burst_draw(void) {
         cmd.texture=&g_frame_texture[set][r->frame-1u];
         /* The nearest of 128, 85 and 47 for the original modulation at each fade step. */
         const int fade=(int)r->frame-(int)r->frames+10;
-        cmd.palette_override=g_fade_bank[fade>6?2:fade>2?1:0];
+        cmd.palette_override=g_lut[set][fade>6?2:fade>2?1:0];
         SAT_TRY(sat_draw_sprite_distorted_color_calc(&cmd,SAT_VDP2_SPRITE_ADD));
         ++g_t3_flipbook_drawn;
         g_t3_flipbook_last[0]=x0;g_t3_flipbook_last[1]=y0;g_t3_flipbook_last[2]=x1;g_t3_flipbook_last[3]=y1;

@@ -19,12 +19,14 @@ in every run).
 | Native LUT4 + lighting, Gouraud tables never relit | 23.97 | 20.80 | 52,064 B |
 | Native LUT4 + lighting | 21.96 | 18.69 | 52,064 B |
 
-None of the candidates meets the rule, so none ships. All three are
-available for later work:
+None of the candidates met the rule when this table was measured. Lighting
+with the native textures has since become the default (2026-11-16, see
+"Lighting as the default" below): it still costs 0.93 img/s, and the owner
+accepted a cost under 1 img/s for it. That is the one exception to the rule.
 
-- `T3_FIGHTER_TEXTURE_CAP` (default 0)
+- `T3_FIGHTER_TEXTURE_CAP` (default 32; 0 gives the 8x8 patches)
 - `SAT_SPRITE_FLAG_HIGH_SPEED_SHRINK` on the LUT4 materials
-- `T3_FIGHTER_LIGHTING` (default OFF)
+- `T3_FIGHTER_LIGHTING` (default ON)
 - `T3_FIGHTER_HAND_VARIANTS` (default OFF, Phase 3)
 
 ## Phase 1: native LUT4 textures
@@ -85,7 +87,7 @@ below). Control 34.27 / 32.55.
 | + LibSaturn's assembly screen cull for shaded faces (18166793) | 29.25 | 27.20 |
 | + relight on the Master before the join, images of two or more ticks | 30.21 | 28.05 |
 
-What changed in the code (lighting stays OFF by default):
+What changed in the code at that step (lighting was still OFF by default):
 
 - Tables are consecutive (`face_gouraud_first`), so lit faces take the
   assembly screen cull and no per-face table index is kept.
@@ -99,7 +101,59 @@ What changed in the code (lighting stays OFF by default):
   for the Slave (`main.c`, before `simulation_join`), one fighter per call in
   turn, on images of two or more ticks, and on every fourth image otherwise.
 
-Why it is still not the default:
+### Lighting as the default (2026-11-16)
+
+Same fight, Mednafen 170 s, pad hash `0xb99cc280` in every run.
+
+| Configuration | Marked | Worst | VDP1 VRAM free |
+|---|---:|---:|---:|
+| Unlit, 8x8 patches (`-DT3_FIGHTER_LIGHTING=OFF -DT3_FIGHTER_TEXTURE_CAP=0`) | 34.30 | 32.55 | 185,984 B |
+| Lit, relight never run (shaded drawing and the Master's polling only) | 33.72 | 32.09 | |
+| **Lit, native textures (default)** | 33.37 | 31.75 | 84,032 B |
+
+The cost fell from 4.1 img/s to 0.93 (worst segment 0.80). About 0.6 is
+drawing shaded native textures; the relight is the other 0.35.
+
+The relight:
+
+- **Only what changed.** Each part's light and fill directions are two rows
+  of signed bytes; a normal's level is its dot product with them (16 light
+  levels, 8 fill levels). A normal whose level is the same as last time
+  costs its dot products and nothing else. A changed normal writes the
+  colour of its corners, and the tables of the faces it alone lights. Faces
+  shaded across several normals are written only when a corner changed.
+  A part whose rows did not move is not walked at all.
+- **Assembly.** `fighter_light_sh2.s`: the normals of a part
+  (`t3_fighter_light_part_sh2`) and the shaded faces of four and of three
+  corners. `fighter_light.c` only states each job.
+- **In slices, while the Master would wait.** `main.c` runs slices of one
+  fighter's relight for as long as the Slave is still simulating
+  (`sat_parallel_done`), and one small slice when it is not. Fighters take
+  turns; a fighter whose light did not move is skipped.
+
+Memory, which is what blocked it before:
+
+- **Work RAM.** The compact mesh drops what the fight never reads after
+  upload: the LUT4 colour tables always, the bind vertices in the fight
+  program (`sat_character_asset_compact`, LibSaturn 275f617e). The light
+  data is bytes, normals with the same direction are merged, and the
+  per-normal state lives in the pack's hot block. The Work RAM copy of the
+  palette for the freeze signal is gone: a lit fighter shows the signal
+  through its back light (`t3_fighter_light_back`).
+- **VDP1 VRAM.** Practice mode did not start: its icons and font need
+  54 KB and 42 KB was left, so `t3_flipbook_burst_init` failed behind the VS
+  screen. The hit-spark flipbooks took 89,088 bytes as INDEXED8. They are
+  now LUT4 through tables of colour-bank codes
+  (`sat_vdp1_upload_color_calc_lut`, LibSaturn bd4d3c07), which keep the VDP2
+  addition: 44,544 bytes, same picture, in every build. The unlit build
+  measures the same with them (34.30 / 32.55, frozen pixels identical).
+
+Checks on the default build: practice mode in Ymir (icons, font, command
+list, green freeze signal), Tekken Force (unlit program, same rate as its
+control), the frozen-pixel gate on the unlit build
+(`5d69df645f1fb035c9fb22bf2be70408357db222`).
+
+### Before that: why it was not the default
 
 - **The relight is too long.** Shaded drawing costs 0.2 img/s; the rest is
   the relight. The wait probe puts it near 1,900 FRT/128 (about 240,000

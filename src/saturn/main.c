@@ -2624,15 +2624,13 @@ int main(void) {
 #endif
             if(g_stage_on_worker)stage_before_join();
 #if defined(T3_FIGHTER_LIGHTING)
-            /* Two or more ticks keep the Slave busy past this point: the Master relights
-             * a fighter instead of waiting. A run of one-tick images still relights every
-             * fourth image. */
+            /* The Master relights the fighters in slices for as long as the Slave still
+             * simulates, or one small slice so that the light never stalls. */
             {
-                static uint8_t light_skipped;
-                if(deferred>=2u || ++light_skipped>=4u) {
-                    t3_characters_relight();
-                    light_skipped=0u;
-                }
+                unsigned slices=0u;
+                while(sat_parallel_service()==SAT_OK && !sat_parallel_done(simulation_handle) &&
+                      t3_characters_relight(0))++slices;
+                if(!slices)(void)t3_characters_relight(1);
             }
 #endif
             SAT_PANIC_IF_ERROR(simulation_join(simulation_handle,deferred));
@@ -2648,6 +2646,10 @@ int main(void) {
              * pose tick identifies the older image and bounds its tick lag. */
             t3_move_probe_present();
         }
+#if defined(T3_FIGHTER_LIGHTING)
+        /* An image without a tick (a frozen scene) still moves the light on. */
+        else (void)t3_characters_relight(1);
+#endif
         g_t3_slave_sim_pose_lag=g_game.total_ticks-g_t3_slave_sim_pose_tick;
 #if defined(T3_ADX_MUSIC)
         adx_service_due();   /* the Slave finished before the Master waited for it */

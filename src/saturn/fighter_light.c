@@ -17,22 +17,46 @@
 #include "saturn/vdp1.h"
 
 enum { LIGHT_LEVELS=16u, FILL_LEVELS=8u, LEVELS=LIGHT_LEVELS*FILL_LEVELS, MAX_NORMALS=T3_ROSTER_LIGHT_NORMALS,
-       FILL_OFF_STAGE=17u, SHADE_BYTES=T3_LIGHT_TONES*LEVELS*2u };
+       FILL_OFF_STAGE=17u, SHADE_BYTES=T3_LIGHT_TONES*LEVELS*2u,
+       /* A slice of a relight: parts up to this many normals, or this many shaded faces; a small slice. */
+       SLICE_NORMALS=64u, SLICE_FACES=96u, SMALL_NORMALS=24u, SMALL_FACES=32u };
 
 typedef struct {
-    volatile uint32_t* tables; /* two words per face: corners A B, C D; face f's table is CMDGRDA first + f */
-    uint32_t faces;
-    /* [tone][level], in VDP1 VRAM after the tables: Work RAM has no room for it. */
+    /* In VDP1 VRAM: [tone][level] Gouraud words, then two words per face (corners A B, C D); face f's
+     * table is CMDGRDA first + f. Work RAM has no room for the shade table. */
     volatile uint16_t (*shade)[LEVELS];
     const uint16_t* tones;
+    uint32_t walk,changed;      /* a bit per part: this relight walks it; its last walk changed a level */
+    uint16_t face;              /* the shaded faces done */
+    uint8_t part;               /* the parts done; T3_PSX_DRAW_PARTS + 1 once the relight is complete */
     uint8_t back[3],back_on;
+    uint8_t all;                /* the next relight writes every table: the shade table changed */
 } light_actor_t;
+
+/* A part's normals for fighter_light_sh2.s, which holds the field order. */
+typedef struct {
+    uint8_t* stream;
+    uint32_t normals;
+    const int16_t* rows;            /* the light row, then the fill row */
+    uint8_t* level;                 /* per normal: level * 2, bit 0 set when its last walk changed it */
+    volatile uint8_t* shade;        /* the stream's table offsets start here */
+    uint32_t all;                   /* 1: every normal counts as changed */
+} light_part_job_t;
+_Static_assert(sizeof(light_part_job_t)==24u && T3_LIGHT_TONES==16u && LEVELS==128u,"fighter_light_sh2.s holds these");
+/* Lights a part's normals and writes the corner colours and tables of those whose level changed; how many did. */
+uint32_t t3_fighter_light_part_sh2(const light_part_job_t* job);
+/* Write the tables of the shaded faces (of four corners, of three) that have a corner the part walks changed. */
+void t3_fighter_light_shaded4_sh2(const uint16_t* faces,uint32_t count,const uint8_t* stream,volatile uint8_t* shade);
+void t3_fighter_light_shaded3_sh2(const uint16_t* faces,uint32_t count,const uint8_t* stream,volatile uint8_t* shade);
 
 static const int32_t k_rigs[T3_ROSTER_LIGHT_RIG_COUNT][6]=T3_ROSTER_LIGHT_RIGS;
 static const int32_t* g_rig=k_rigs[0];
 static unsigned g_fill_on=1u;
 /* Low Work RAM: High Work RAM is the Master stack's and the hot data's. */
 static light_actor_t g_light[2] __attribute__((section(".wram_l")));
+/* Per part the light row and the fill row its last walk used, in 1/121 and 1/113: a normal's dot
+ * product with them (its bytes are 1/127) is its level in 1/1024, its fill level in 1/2048. */
+static int8_t g_rows[2][T3_PSX_DRAW_PARTS][6];
 
 void t3_fighter_light_stage(unsigned stage) {
     g_rig=k_rigs[stage<T3_ROSTER_LIGHT_RIG_COUNT?stage:0u];
@@ -69,75 +93,94 @@ static void build_shade(light_actor_t* a,const uint16_t* tones) {
 uint16_t t3_fighter_light_load(unsigned actor) {
     light_actor_t* a=&g_light[actor&1u];
     const t3_fighter_pack_t* pack=t3_fighter_pack(actor);
-    a->tables=NULL;
+    a->shade=NULL;
     if(!pack->light_normal_count || pack->light_normal_count>MAX_NORMALS)
         return 0u;
+    const uint32_t bytes=SHADE_BYTES+pack->faces*8u;
     uint32_t offset;
-    if(sat_vdp1_vram_reserve(pack->faces*8u+SHADE_BYTES,&offset)!=SAT_OK)return 0u;
-    volatile uint32_t* tables=(volatile uint32_t*)sat_vdp1_vram_address(offset,pack->faces*8u+SHADE_BYTES);
-    if(!tables || !offset || ((offset>>3)+pack->faces)>0xFFFFu)return 0u;
-    a->shade=(volatile uint16_t (*)[LEVELS])(tables+2u*pack->faces);
+    if(sat_vdp1_vram_reserve(bytes,&offset)!=SAT_OK)return 0u;
+    volatile uint16_t (*shade)[LEVELS]=(volatile uint16_t (*)[LEVELS])sat_vdp1_vram_address(offset,bytes);
+    const uint32_t first=(offset+SHADE_BYTES)>>3;
+    if(!shade || (offset&7u) || first+pack->faces>0xFFFFu)return 0u;
+    volatile uint32_t* tables=(volatile uint32_t*)(void*)shade[T3_LIGHT_TONES];
     for(uint32_t f=0;f<2u*pack->faces;++f)tables[f]=0x42104210u; /* unchanged texels until the first relight */
     a->tones=pack->light_tones;a->back_on=0;
+    a->shade=shade;
     build_shade(a,pack->light_tones);
-    a->faces=pack->faces;
-    a->tables=tables;
-    return (uint16_t)(offset>>3);
+    a->all=1u;a->changed=0u;a->part=T3_PSX_DRAW_PARTS+1u;
+    return (uint16_t)first;
 }
 
-void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]) {
+int t3_fighter_light_begin(unsigned actor,const t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]) {
     light_actor_t* a=&g_light[actor&1u];
-    if(!a->tables)return;
-    const t3_fighter_pack_t* pack=t3_fighter_pack(actor);
-    /* Per part the light row in the part's own basis: R^T L. The fill light's
-     * row (0, 1, 0) is the rotation's second row. */
-    int32_t row[T3_PSX_DRAW_PARTS][3];
+    if(!a->shade)return 0;
+    /* Per part the light row in the part's own basis: R^T L. The fill light's row (0, 1, 0) is the
+     * rotation's second row. A part is walked when a row moved, or to clear what its last walk marked. */
+    int8_t (*rows)[6]=g_rows[actor&1u];
+    uint32_t walk=a->changed;
     for(unsigned j=0;j<T3_PSX_DRAW_PARTS;++j) {
         const int16_t (*m)[3]=joints[j].rotation.m;
-        for(unsigned k=0;k<3u;++k)
-            row[j][k]=(m[0][k]*g_rig[3]+m[1][k]*g_rig[4]+m[2][k]*g_rig[5])>>12;
-    }
-    /* Each normal's level, for this relight only. */
-    uint8_t level[MAX_NORMALS];
-    const t3_light_normal_t* n=pack->light_normals;
-    for(uint32_t i=0;i<pack->light_normal_count;++i,++n) {
-        const unsigned j=n->joint<T3_PSX_DRAW_PARTS?n->joint:0u;
-        const int16_t* down=joints[j].rotation.m[1];
-        const int32_t lit=(n->x*row[j][0]+n->y*row[j][1]+n->z*row[j][2])>>12;
-        const int32_t fill=(n->x*down[0]+n->y*down[1]+n->z*down[2])>>12;
-        uint32_t l=lit>0?((uint32_t)lit*(LIGHT_LEVELS-1u)+2048u)>>12:0u;
-        uint32_t f=fill>0?((uint32_t)fill*(FILL_LEVELS-1u)+2048u)>>12:0u;
-        if(l>=LIGHT_LEVELS)l=LIGHT_LEVELS-1u;
-        if(f>=FILL_LEVELS)f=FILL_LEVELS-1u;
-        level[i]=(uint8_t)(l*FILL_LEVELS+f);
-    }
-    const uint16_t* words=pack->light_faces;
-    const uint16_t* corners=pack->light_corners;
-    volatile uint32_t* out=a->tables;
-    for(uint32_t f=0;f<a->faces;++f,out+=2) {
-        const uint16_t word=words[f];
-        const volatile uint16_t* shade=a->shade[T3_LIGHT_FACE_TONE(word)];
-        const uint32_t first=shade[level[T3_LIGHT_FACE_NORMAL(word)]];
-        if(word&T3_LIGHT_FACE_FLAT) {
-            const uint32_t both=first<<16|first;
-            out[0]=both;out[1]=both;
-        } else {
-            out[0]=first<<16|shade[level[corners[0]]];
-            out[1]=(uint32_t)shade[level[corners[1]]]<<16|shade[level[corners[2]]];
-            corners+=3;
+        for(unsigned k=0;k<3u;++k) {
+            const int32_t lit=(m[0][k]*g_rig[3]+m[1][k]*g_rig[4]+m[2][k]*g_rig[5])>>12;
+            const int8_t now[2]={(int8_t)((lit*1935+32768)>>16),(int8_t)((m[1][k]*1806+32768)>>16)};
+            for(unsigned r=0;r<2u;++r)
+                if(rows[j][3u*r+k]!=now[r]){rows[j][3u*r+k]=now[r];walk|=1u<<j;}
         }
     }
+    if(a->all)walk=(1u<<T3_PSX_DRAW_PARTS)-1u;
+    a->walk=walk;a->part=0u;a->face=0u;
+    return walk!=0u;
+}
+
+int t3_fighter_light_step(unsigned actor,int small) {
+    light_actor_t* a=&g_light[actor&1u];
+    if(!a->shade || a->part>T3_PSX_DRAW_PARTS)return 0;
+    const t3_fighter_pack_t* pack=t3_fighter_pack(actor);
+    if(a->part<T3_PSX_DRAW_PARTS) {
+        const uint32_t slice=small?SMALL_NORMALS:SLICE_NORMALS;
+        for(uint32_t normals=0;a->part<T3_PSX_DRAW_PARTS && normals<slice;++a->part) {
+            const unsigned j=a->part;
+            const t3_light_part_t* part=&pack->light_parts[j];
+            if(!(a->walk&(1u<<j)) || !part->normals)continue;
+            int16_t rows[6];
+            for(unsigned k=0;k<6u;++k)rows[k]=g_rows[actor&1u][j][k];
+            const light_part_job_t job={.stream=pack->light_stream+part->stream,.normals=part->normals,.rows=rows,
+                .level=pack->light_state+part->first,.shade=(volatile uint8_t*)a->shade,.all=a->all};
+            if(t3_fighter_light_part_sh2(&job))a->changed|=1u<<j;
+            else a->changed&=~(1u<<j);
+            normals+=part->normals;
+        }
+        if(a->part<T3_PSX_DRAW_PARTS)return 1;
+        a->all=0u;
+        if(!a->walk || !(pack->light_shaded[0]+pack->light_shaded[1])){a->part=T3_PSX_DRAW_PARTS+1u;return 0;}
+        return 1;
+    }
+    /* The faces of four corners, then those of three. */
+    const uint16_t* shaded=pack->light_shaded;
+    const uint32_t four=shaded[0],faces=four+shaded[1];
+    uint32_t count=(a->face<four?four:faces)-a->face;
+    if(count>(small?SMALL_FACES:SLICE_FACES))count=small?SMALL_FACES:SLICE_FACES;
+    if(a->face<four)
+        t3_fighter_light_shaded4_sh2(shaded+2u+5u*a->face,count,pack->light_stream,(volatile uint8_t*)a->shade);
+    else
+        t3_fighter_light_shaded3_sh2(shaded+2u+5u*four+4u*(a->face-four),count,pack->light_stream,
+                                     (volatile uint8_t*)a->shade);
+    a->face=(uint16_t)(a->face+count);
+    if(a->face<faces)return 1;
+    a->part=T3_PSX_DRAW_PARTS+1u;
+    return 0;
 }
 
 /* Practice's FREEZE SIGNAL: lights an actor with this back colour (R, G, B bytes as the original's) instead of the
- * stage's, or with the stage's again when `on` is 0. The table is rebuilt in place: a relight running on the other
- * CPU at that moment mixes the two colours for one image. Nothing runs unless the colour changes. */
+ * stage's, or with the stage's again when `on` is 0. The table is rebuilt in place: a relight under way mixes the two
+ * colours until the next one. Nothing runs unless the colour changes. */
 void t3_fighter_light_back(unsigned actor,int on,const uint8_t rgb[3]) {
     light_actor_t* a=&g_light[actor&1u];
-    if(!a->tables || !a->tones)return;
+    if(!a->shade || !a->tones)return;
     if(!on){if(!a->back_on)return;}
     else if(a->back_on && a->back[0]==rgb[0] && a->back[1]==rgb[1] && a->back[2]==rgb[2])return;
     a->back_on=(uint8_t)(on!=0);
     if(on){a->back[0]=rgb[0];a->back[1]=rgb[1];a->back[2]=rgb[2];}
     build_shade(a,a->tones);
+    a->all=1u;
 }

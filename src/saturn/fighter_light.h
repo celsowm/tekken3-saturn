@@ -13,9 +13,11 @@ void t3_fighter_light_stage(unsigned stage);
  * Gouraud cannot shade); otherwise the instance's face_gouraud_first: face
  * f's table is that CMDGRDA plus f. */
 uint16_t t3_fighter_light_load(unsigned actor);
-/* Relights an actor's tables from its PS1 part rotations. Either CPU, one
- * actor each; it reads only the pack, the stage table and `joints`. */
-void t3_fighter_light_relight(unsigned actor,const t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]);
+/* Starts an actor's relight from its PS1 part rotations; 0 when no part's light moved. */
+int t3_fighter_light_begin(unsigned actor,const t3_psx_joint_t joints[T3_PSX_DRAW_PARTS]);
+/* One slice of the relight begun: some parts' normals, or some shaded faces. It
+ * writes only the tables whose colours changed. 0 once the relight is complete. */
+int t3_fighter_light_step(unsigned actor,int small);
 /* Practice's freeze signal: the actor's back colour (R, G, B bytes), or the stage's when `on` is 0. */
 void t3_fighter_light_back(unsigned actor,int on,const uint8_t rgb[3]);
 #endif

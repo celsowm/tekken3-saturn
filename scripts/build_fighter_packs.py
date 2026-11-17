@@ -29,14 +29,14 @@ from psx_character_textures import load_character_vram
 
 SCRIPTS = Path(__file__).resolve().parent
 MAGIC = 0x54334650
-VERSION = 6
+VERSION = 7
 # Tone classes of the lighting data: Gouraud offsets are additive, so each face's offset scales
 # with its class's mean texel colour (see lighting_data).
 TONE_CLASSES = 16
 HEADER_BYTES = 256
 SECTIONS = ('hot', 'archive', 'bank', 'camera', 'flipbook', 'voices', 'pcm', 'names')
 VOICE_ROW_BYTES = 16
-SKA_FIELD_PALETTES, SKA_FIELD_TEXTURES, SKA_FIELD_TEXTURE_OFFSET = 9, 8, 19
+SKA_FIELD_PALETTES, SKA_FIELD_TEXTURES, SKA_FIELD_TEXTURE_OFFSET, SKA_FIELD_VERTICES = 9, 8, 19, 6
 SKA_TEXTURE_BYTES = 16
 POST_ARRAYS = 6
 
@@ -120,28 +120,79 @@ def tone_classes(tones, k=TONE_CLASSES):
     return labels, centres
 
 
-def lighting_data(lighting):
-    """The faces' lit normals for the runtime relight (fighter_light.c).
+LIGHT_PARTS, LIGHT_SHADE_BYTES, LIGHT_KEPT, LIGHT_FACES, LIGHT_WORDS = 22, 4096, 0x80, 0x7F, 255
 
-    normals: (x, y, z, joint) int16 each, Q12 unit vectors in the joint's basis.
-    faces: one word per face: bits 0-9 the normal of corner A, bits 10-13 the tone class, bit 15
-    set when one normal lights the whole face; otherwise `corners` holds the normals of its
-    corners B, C, D, three words per such face in face order.
-    tones: per class the mean texel colour, RGB555."""
-    normals, faces = lighting['normals'], lighting['faces']
-    if len(normals) > 1024:
-        raise ValueError('more than 1024 lit normals')
+
+def lighting_data(lighting):
+    """The faces' lit normals for the runtime relight (fighter_light_sh2.s), shaped so that
+    its work follows what changed: a normal's level, then the corners it colours, then the
+    faces those corners light.
+
+    parts: per part (LIGHT_PARTS rows of four words) the count of its normals, the index of
+    its first, and the byte offset of its normals in the stream.
+    stream: per normal x y z as signed bytes (127 = 1.0) in the part's basis and the count of
+    words that follow it: its entries. An entry is a corner colour, the normal under one tone
+    class: a word tone << 8 | LIGHT_KEPT | faces, a word the relight keeps the colour in when
+    LIGHT_KEPT is set (a shaded face reads it), and for each face that the entry alone lights
+    the byte offset of its Gouraud table from the shade table (LIGHT_SHADE_BYTES + face * 8).
+    shaded: the other faces: the count of those with four corners and of those with three
+    (corner D is C again), then in that order per face its table offset and the stream
+    offsets of the kept words of its corners.
+    tones: per class the mean texel colour, RGB555.
+    Also the count of normals: the relight keeps a level byte for each."""
     labels, centres = tone_classes(lighting['tones'])
-    words, corners = [], []
-    for face, label in zip(faces, labels):
-        flat = len(set(face)) == 1
-        words.append(face[0] | label << 10 | (0x8000 if flat else 0))
-        if not flat:
-            corners += face[1:]
-    return (b''.join(struct.pack('>hhhH', x, y, z, joint) for joint, x, y, z in normals),
-            struct.pack(f'>{len(words)}H', *words), struct.pack(f'>{len(corners)}H', *corners),
+    # Signed bytes, a part beyond the drawn ones lit as part 0; equal normals merge.
+    packed, remap = {}, []
+    for joint, x, y, z in lighting['normals']:
+        key = (joint if joint < LIGHT_PARTS else 0,
+               *(max(-127, min(127, round(v * 127 / 4096))) for v in (x, y, z)))
+        remap.append(packed.setdefault(key, len(packed)))
+    flat, shaded = {key: {} for key in packed}, []
+    key_of = list(packed)
+    for index, (face, label) in enumerate(zip(lighting['faces'], labels)):
+        corners = [(key_of[remap[n]], label) for n in face]
+        for key, tone in corners:
+            flat[key].setdefault(tone, [])
+        if len(set(corners)) == 1:
+            flat[corners[0][0]][label].append(LIGHT_SHADE_BYTES + index * 8)
+        else:
+            shaded.append((LIGHT_SHADE_BYTES + index * 8, corners))
+    read = {corner for _, corners in shaded for corner in corners}
+    parts, stream, slot, count = [], bytearray(), {}, 0
+    for part in range(LIGHT_PARTS):
+        first, at = count, len(stream)
+        for key in (key for key in packed if key[0] == part):
+            # Entries of at most LIGHT_FACES faces; the kept word goes with the pair's first.
+            entries = []
+            for tone, faces in sorted(flat[key].items()):
+                for i in range(0, max(len(faces), 1), LIGHT_FACES):
+                    entries.append((tone, (key, tone) in read and not i, faces[i:i + LIGHT_FACES]))
+            # A normal carries at most LIGHT_WORDS words: a copy of it takes the rest.
+            while entries:
+                words, taken = [], 0
+                for tone, kept, faces in entries:
+                    size = 1 + kept + len(faces)
+                    if len(words) + size > LIGHT_WORDS:
+                        break
+                    if kept:
+                        slot[key, tone] = len(stream) + 4 + 2 * (len(words) + 1)
+                    words += [tone << 8 | (LIGHT_KEPT if kept else 0) | len(faces)] + [0] * kept + faces
+                    taken += 1
+                stream += struct.pack(f'>3bB{len(words)}H', *key[1:], len(words), *words)
+                count += 1
+                entries = entries[taken:]
+        parts += [count - first, first, at, 0]
+    if len(stream) >= 1 << 15:
+        raise ValueError('the light stream passes 32 KiB')
+    three = [corners[2] == corners[3] for _, corners in shaded]
+    rows = [three.count(False), three.count(True)]
+    for corners_kept in (4, 3):
+        for (offset, corners), short in zip(shaded, three):
+            if short == (corners_kept == 3):
+                rows += [offset, *(slot[corner] for corner in corners[:corners_kept])]
+    return (struct.pack(f'>{len(parts)}H', *parts), bytes(stream), struct.pack(f'>{len(rows)}H', *rows),
             struct.pack(f'>{len(centres)}H', *(round(r) | round(g) << 5 | round(b) << 10 for r, g, b in centres)),
-            len(normals))
+            count)
 
 
 def hand_variant_rows(variants, mesh, put):
@@ -280,12 +331,15 @@ def compact_bytes(archive):
     """sat_character_asset_compact's result for this archive, for sizing storage."""
     head = struct.unpack_from('>24I', archive)
     at, count = head[SKA_FIELD_TEXTURE_OFFSET], head[SKA_FIELD_TEXTURES]
-    first, last = len(archive), 0
+    first, last, lut4 = len(archive), 0, False
     for i in range(count):
         payload, _, _, flags, _, pixels = struct.unpack_from('>IHHHHI', archive, at + SKA_TEXTURE_BYTES * i)
         size = pixels // 2 if flags & 0x8000 else pixels
+        lut4 = lut4 or bool(flags & 0x8000)
         first, last = min(first, payload), max(last, payload + size)
-    return ((first + 3) & ~3) - count * SKA_TEXTURE_BYTES + len(archive) - ((last + 3) & ~3)
+    # LUT4 colour tables (512 bytes a block) follow the texture table and go with it.
+    luts = head[SKA_FIELD_PALETTES] * 512 if lut4 else 0
+    return ((first + 3) & ~3) - count * SKA_TEXTURE_BYTES - luts + len(archive) - ((last + 3) & ~3)
 
 
 def logic_bank(raw_path, scratch):
@@ -342,7 +396,7 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     # Lighting needs LUT4 textures: VDP1 Gouraud does not shade INDEX8 texels.
     lighting = report['texture_report'].get('lighting') if lighting_rows else None
     normal_count = 0
-    for name in ('light_normals', 'light_faces', 'light_corners', 'light_tones'):
+    for name in ('light_parts', 'light_stream', 'light_shaded', 'light_tones', 'light_state'):
         fields[name] = 0
     hand_rows, hand_row_count = hand_variant_rows(report['hand_variants'], mesh, put) if hand_variants else (b'', 0)
     if hand_rows:
@@ -358,11 +412,13 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     # block only up to it and keeps the room (fighter_pack.c).
     unlit_bytes = len(hot)
     if lighting:
-        normals, light_faces, corners, tones, normal_count = lighting_data(lighting)
-        place('light_normals', normals)
-        place('light_faces', light_faces, 2)
-        place('light_corners', corners, 2)
+        parts, stream, shaded, tones, normal_count = lighting_data(lighting)
+        place('light_parts', parts, 2)
+        place('light_stream', stream, 2)
+        place('light_shaded', shaded, 2)
         place('light_tones', tones, 2)
+        # Zero on the disc; the relight keeps each normal's level here for the match.
+        place('light_state', bytes(normal_count), 2)
         align(hot, 4)
 
     sections = dict(hot=bytes(hot), archive=archive, bank=bank, camera=encoded,
@@ -375,14 +431,16 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
         directory += [len(image), len(sections[name])]
         image += sections[name]
     palettes = struct.unpack_from('>I', archive, 4 * SKA_FIELD_PALETTES)[0]
+    if struct.unpack_from('>I', archive, 4 * SKA_FIELD_VERTICES)[0] != report['compiled_vertices']:
+        raise ValueError(f'{fighter.name}: the archive and the report disagree on the vertices')
     words = [MAGIC, VERSION, fighter.id, bank[1], fighter.voice_set, model.scale_percent, fighter.name_width,
              report['compiled_vertices'], report['faces'], report['textures'], palettes,
              fields['parts'], fields['radii'], fields['choices'], choice_count, fields['streams'], stream_count,
              fields['double_sided'], voice_count, compact_bytes(archive),
              fnv1a(bank), fields['projected'], len(mesh), fields['projected_faces'], projected_vertices,
-             fields['face_ot'], *directory, normal_count, fields['light_normals'], fields['light_faces'],
-             fields['light_corners'], fields['light_tones'], hand_row_count, fields['hand_variants'],
-             shadow_faces, fields['shadow']]
+             fields['face_ot'], *directory, normal_count, fields['light_parts'], fields['light_stream'],
+             fields['light_shaded'], fields['light_tones'], hand_row_count, fields['hand_variants'],
+             shadow_faces, fields['shadow'], fields['light_state']]
     if len(words) * 4 > HEADER_BYTES:
         raise ValueError('pack header overflow')
     struct.pack_into(f'>{len(words)}I', image, 0, *words)
@@ -411,8 +469,10 @@ def header(rows, common_rows, homes, rigs, faces, shears):
     arena = max((a['bank_bytes'] + 15 & ~15) + (0 if a['bank_type'] == b['bank_type'] else (b['bank_bytes'] + 15 & ~15)) +
                 (a['camera_bytes'] + 15 & ~15) + (b['camera_bytes'] + 15 & ~15) for a, b in pairs)
     # Each actor's store starts aligned, so the size is a multiple of 16.
-    store = (max(row['hot_bytes'] + row['compact_bytes'] for row in rows) + 16 + 15) & ~15
-    unlit_store = (max(row['unlit_bytes'] + row['compact_bytes'] for row in rows) + 16 + 15) & ~15
+    # The fight drops the bind vertices from the compact mesh (12 bytes each, T3_PACK_COMPACT_DROP);
+    # Tekken Force, which does not light, keeps them.
+    def store(hot, vertex_bytes):
+        return (max(row[hot] + row['compact_bytes'] - vertex_bytes * row['vertices'] for row in rows) + 16 + 15) & ~15
     filters = filter_words(common_rows) + max(
         filter_words(a['branch_rows']) + (0 if a['bank_type'] == b['bank_type'] else filter_words(b['branch_rows']))
         for a, b in pairs)
@@ -428,11 +488,14 @@ def header(rows, common_rows, homes, rigs, faces, shears):
              f'#define T3_ROSTER_ARENA_BYTES {arena}u',
              '/* An actor\'s hot block and compact mesh; without the light data in a program that does not light. */',
              '#if defined(T3_FIGHTER_LIGHTING)',
-             f'#define T3_ROSTER_STORE_BYTES {store}u',
+             f"#define T3_ROSTER_STORE_BYTES {store('hot_bytes', 12)}u",
+             '#elif !defined(T3_FORCE_PROGRAM)',
+             f"#define T3_ROSTER_STORE_BYTES {store('unlit_bytes', 12)}u",
              '#else',
-             f'#define T3_ROSTER_STORE_BYTES {unlit_store}u',
+             f"#define T3_ROSTER_STORE_BYTES {store('unlit_bytes', 0)}u",
              '#endif',
              f"#define T3_ROSTER_LIGHT_NORMALS {max(most('light_normals'), 1)}u",
+
              f'#define T3_ROSTER_FILTER_WORDS {filters}u',
              '/* Home stage and music track, by character id. */',
              f"#define T3_ROSTER_STAGES {{{','.join(str(home[0]) for home in homes)}}}",

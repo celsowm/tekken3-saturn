@@ -228,7 +228,7 @@ static sat_vdp1_texture_t g_texture_descriptors[RESOURCE_COPIES][T3_TEXTURE_COUN
 static uint8_t g_initialized;
 #if defined(T3_FIGHTER_LIGHTING)
 /* A relight takes one actor's tables, the two in turn. */
-static uint8_t g_light_turn;
+static uint8_t g_light_turn,g_light_busy;
 #endif
 static uint8_t g_skin_preview_applied[ACTOR_COUNT];
 #if defined(T3_FORCE_PROGRAM)
@@ -325,12 +325,18 @@ static sat_result_t select_clip(actor_t* actor, uint8_t next) {
 }
 
 /* ---- practice's freeze signal: the fighter's colours tinted green or red (FUN_8003AA6C's back light) ---- */
+/* A lit fighter's textures are LUT4: its back light carries the signal (t3_fighter_light_back), no CRAM bank does. */
+#if defined(T3_FIGHTER_LIGHTING)
+sat_result_t t3_characters_tint(unsigned actor,unsigned state) {(void)actor;(void)state;return SAT_OK;}
+#else
 enum { TINT_BANKS=2 };
 static struct {
     uint16_t colours[TINT_BANKS*256u];
     uint16_t base;uint8_t count,state;
 } g_tint[2];
+#endif
 
+#if !defined(T3_FIGHTER_LIGHTING)
 sat_result_t t3_characters_tint(unsigned actor,unsigned state) {
     if(actor>1u || !g_tint[actor].count || g_tint[actor].state==state)return SAT_OK;
     /* 0 none, 1 green (the fighter can act), 2 red: the original's back light multiplies the colours (the PS1 shows both
@@ -355,6 +361,7 @@ sat_result_t t3_characters_tint(unsigned actor,unsigned state) {
     g_tint[actor].state=(uint8_t)state;
     return SAT_OK;
 }
+#endif
 
 sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* context) {
     unsigned i;
@@ -506,10 +513,12 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
             (st = sat_model_upload_textures(&model,a->textures,a->texture_count)) != SAT_OK)
             return st;
         /* Practice's freeze signal tints the fighter through its CRAM banks (t3_characters_tint): keep the colours. */
+#if !defined(T3_FIGHTER_LIGHTING)
         if(i<2u && model.palette_count && model.palette_count<=TINT_BANKS) {
             g_tint[i].base=model.palette_base;g_tint[i].count=(uint8_t)model.palette_count;g_tint[i].state=0;
             __builtin_memcpy(g_tint[i].colours,model.palettes_rgb555,model.palette_count*256u*sizeof(uint16_t));
         }
+#endif
         if(share_resources && i) {
             /* Preserve the original second bank's CRAM side effect. Only
              * immutable VDP1 pixels/descriptors/programs are shared. */
@@ -579,7 +588,7 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #endif
             uint32_t capacity,kept;
             void* const storage=t3_fighter_pack_asset_storage(asset_index,&capacity);
-            if((st=sat_character_asset_compact(owned,storage,capacity,&kept))!=SAT_OK)return st;
+            if((st=sat_character_asset_compact(owned,storage,capacity,T3_PACK_COMPACT_DROP,&kept))!=SAT_OK)return st;
         }
 #endif
 #if defined(T3_ASSET_TOPOLOGY)
@@ -2021,13 +2030,27 @@ void t3_characters_set_master_skin_percent(unsigned percent) {
     if(T3_MASTER_SKIN_PERCENT)g_master_skin_percent=percent>100u?100u:percent;
 }
 #if defined(T3_FIGHTER_LIGHTING)
-void t3_characters_relight(void) {
-    /* The turn moves on only after a relight, so skipped images starve neither fighter. */
-    const unsigned actor=g_light_turn&1u;
-    if(!(g_fused_actors.relight&(1u<<actor)))return;
-    t3_fighter_light_relight(actor,g_fused_actors.original_joints[actor]);
-    g_fused_actors.relight&=(uint8_t)~(1u<<actor);
-    ++g_light_turn;
+int t3_characters_relight(int small) {
+    /* A relight under way goes on; otherwise the turn's fighter starts one, or the other
+     * when this image has no rotations for it or none of its light moved. */
+    for(unsigned tries=0;tries<2u;++tries) {
+        const unsigned actor=g_light_turn&1u;
+        if(!g_light_busy) {
+            if(!(g_fused_actors.relight&(1u<<actor))){++g_light_turn;continue;}
+            g_fused_actors.relight&=(uint8_t)~(1u<<actor);
+            g_light_busy=(uint8_t)t3_fighter_light_begin(actor,g_fused_actors.original_joints[actor]);
+            if(!g_light_busy) {
+                ++g_light_turn;
+                if(small)return 1;
+                continue;
+            }
+            /* Reading the rotations is a small slice's work. */
+            if(small)return 1;
+        }
+        if(!t3_fighter_light_step(actor,small)){g_light_busy=0u;++g_light_turn;}
+        return 1;
+    }
+    return 0;
 }
 #endif
 #if defined(T3_SKIN_TO_SCREEN)

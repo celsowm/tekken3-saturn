@@ -202,7 +202,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endforeach()
         # 0 keeps the 8x8 INDEX8 face patches; N bakes native-density LUT4 patches of at most N
         # texels a side with each face's original 16-colour table (docs/FIGHTER_FIDELITY.md).
-        set(T3_FIGHTER_TEXTURE_CAP "0" CACHE STRING "Fighter face textures: 0 = 8x8 patches, N = native LUT4 up to N")
+        set(T3_FIGHTER_TEXTURE_CAP "32" CACHE STRING "Fighter face textures: 0 = 8x8 patches, N = native LUT4 up to N")
         # Rewritten only when the value changes, so a new cap rebuilds the packs.
         # Hand and jaw vertex variants from the original hand channels (docs/FIGHTER_FIDELITY.md).
         # Off: the A/B costs 0.09 img/s. The packs store the variants and the channels compile only with it.
@@ -211,10 +211,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         if(T3_FIGHTER_HAND_VARIANTS)
             set(_t3_pack_hands "--hand-variants")
         endif()
-        # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md). Off
-        # until an A/B shows no frame-rate loss; it needs the native LUT4 textures. The
-        # packs carry the normals only with it: they stay in High Work RAM for the match.
-        option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" OFF)
+        # The original's per-normal light as VDP1 Gouraud (docs/FIGHTER_FIDELITY.md): on, with
+        # the native LUT4 textures it needs, for about 0.8 img/s. The packs carry the light
+        # data only with it: it stays in High Work RAM for the match.
+        option(T3_FIGHTER_LIGHTING "Light fighter faces from the PS1 part rotations" ON)
         if(NOT T3_FIGHTER_LIGHTING)
             string(APPEND _t3_pack_hands " --no-lighting")
             string(STRIP "${_t3_pack_hands}" _t3_pack_hands)
@@ -1747,7 +1747,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             if(T3_FIGHTER_TEXTURE_CAP EQUAL 0 OR NOT T3_ORIGINAL_FIGHTER_PROJECTION)
                 message(FATAL_ERROR "T3_FIGHTER_LIGHTING requires T3_FIGHTER_TEXTURE_CAP > 0 and T3_ORIGINAL_FIGHTER_PROJECTION")
             endif()
-            target_sources(tekken3_saturn PRIVATE src/saturn/fighter_light.c)
+            target_sources(tekken3_saturn PRIVATE src/saturn/fighter_light.c src/saturn/fighter_light_sh2.s)
             target_compile_definitions(tekken3_saturn PRIVATE T3_FIGHTER_LIGHTING=1)
         endif()
         set(T3_LOCAL_PRACTICE_COMMANDS "" CACHE FILEPATH "Private command lists as C (scripts/extract_command_lists.py)")

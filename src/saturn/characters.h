@@ -83,10 +83,12 @@ void t3_characters_prepare_worker(void);
  * whichever CPU skins them. */
 void t3_characters_set_master_skin_percent(unsigned percent);
 #if defined(T3_FIGHTER_LIGHTING)
-/* Relights one fighter's Gouraud tables, the two in turn, from the rotations
- * the last t3_characters_render read. Master only. The main loop calls it
- * where the Master would otherwise wait for the Slave. */
-void t3_characters_relight(void);
+/* One slice of a fighter's relight, the two fighters in turn, each from the
+ * rotations that t3_characters_render read when its relight began; `small`
+ * asks for a slice of about a third of the work. 0 when nothing is left to
+ * relight this image. Master only: the main loop calls it where the Master
+ * would otherwise wait for the Slave. */
+int t3_characters_relight(int small);
 #endif
 /* FRT durations are owned by the actor CPU and published after the fused
  * worker join. Dispatch includes both actors and must not be added to them. */
