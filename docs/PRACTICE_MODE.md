@@ -91,6 +91,11 @@ RECORD_WAIT, RECORDING, REPLAY and REPLAY_END; `practice_recorder_original_trace
 third_party/Tekken3Remake/work/traces/flow_practice_record.bin --out build/practice-record-golden/cases.txt`; the trace is game
 data and stays out of git).
 
+On the shipped lit disc (Ymir, `scripts/ymir_practice_flow.py --flow recorder`): the FREE page closed with L+R+Z held, the prompt
+`PLAY(SEL) REC(DW+SEL)`, Down+Z gave `START REC = ANY KEY`, X started the recording (`REC (STOP = SEL)`), a walk and two punches
+were logged (TOTAL DMG 5, then 11, HIGH marker), Z ended it and the prompt came back, and Z replayed it (the same walk and
+punches, TOTAL DMG 17 with a HIGH marker).
+
 ## REPLAY SETTINGS
 
 `practice_replay.c` is `_replay_control`: OFF, after a combo of 4, 5 or 6 hits (plus 30 frames), or MANUAL (Select), counted

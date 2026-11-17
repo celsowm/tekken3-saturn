@@ -1471,7 +1471,7 @@ a first check of direction, and Mednafen stays the number of record.
 
 **Fighter lighting is the default (2026-11-16).** Gouraud lighting with the
 native LUT4 textures now ships: 33.37 / 31.75 against 34.30 / 32.55 unlit,
-a cost of 0.93 img/s that the owner accepted (it was 4.1). The relight is
+a cost of 0.93 img/s. The owner's words were that Gouraud, mainly in dark stages, is worth it by default at a cost of "0.something". The cost is covered by the gains of the same series (29.73 / 28.25 at R2 to 33.37 / 31.75 now, +3.64 / +3.50), so the frame-rate rule (judged on the net total against R2) holds. It was 4.1 before this work. The relight is
 `fighter_light_sh2.s`, writes only what changed, and runs in slices on the
 Master while the Slave simulates. The hit-spark flipbooks are LUT4 (44 KB
 of VDP1 VRAM back in every build), which practice mode needed to start
