@@ -74,6 +74,7 @@ static uint8_t g_io[BG_HEADER+MENU_BG_W*512+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
+static void ball_spin_draw(unsigned type);
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
 static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
@@ -599,6 +600,7 @@ menu:;
                 static const char* const names[3]={"BEGINNER","EXPERT","GRAND MASTER"};
                 text(2,"TEKKEN BALL",MENU_BG_W/2,330);
                 for(unsigned r=0;r<3u;++r)text(g_ball_option==r?0:1,names[r],MENU_BG_W/2,362+(int)r*24);
+                ball_spin_draw(g_ball_option);
                 if(pads.pad[0].pressed&SAT_PAD_UP)g_ball_option=g_ball_option?(uint8_t)(g_ball_option-1u):2u;
                 if(pads.pad[0].pressed&SAT_PAD_DOWN)g_ball_option=g_ball_option>=2u?0u:(uint8_t)(g_ball_option+1u);
                 if(pads.pad[0].pressed&START_BUTTONS){sfx(SFX_CONFIRM);ball_pick=0;leaving=2u;}
@@ -750,6 +752,28 @@ static sat_result_t cache_portraits(void) {
         SAT_TRY(read_file(name,0,g_port_cache[id],PORT_FILE));
     }
     return SAT_OK;
+}
+
+/* The spinning ball of the type page (the original's select screen turns the ball between the two fighters): BALLSPIN.BIN holds, per
+ * type, a palette and SPIN_FRAMES frames (scripts/pack_ball_spin.py). They go into the first portrait's VRAM and palette slot, which
+ * the select screen after this page loads afresh; each frame is its own texture, drawn three times as wide as the texel and 100 / 70 as
+ * tall. A disc without the file shows no ball. */
+enum { SPIN_FRAMES=8, SPIN_W=40, SPIN_H=70, SPIN_PALETTE=92, SPIN_BYTES=SPIN_FRAMES*SPIN_W*SPIN_H,
+       SPIN_BLOCK=SPIN_PALETTE*2+SPIN_BYTES, SPIN_X=MENU_BG_W+250, SPIN_Y=385 };
+static void ball_spin_draw(unsigned type) {
+    static int loaded=-1;
+    if(type>2u)return;
+    if(loaded!=(int)type) {
+        if(read_file("BALLSPIN.BIN",type*SPIN_BLOCK,g_io,SPIN_BLOCK)!=SAT_OK)return;
+        uint8_t* pixels=g_io+SPIN_PALETTE*2;
+        for(unsigned i=0;i<SPIN_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+SLOT_A-1u);
+        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SPIN_PALETTE,(uint16_t)(SPR_BANK*256u+SLOT_A))!=SAT_OK)return;
+        if(sat_vdp1_vram_write((uint32_t)g_port_tex[0].srca*8u,pixels,SPIN_BYTES)!=SAT_OK)return;
+        loaded=(int)type;
+    }
+    const sat_vdp1_texture_t frame={(uint16_t)(g_port_tex[0].srca+((g_now/6u)%SPIN_FRAMES)*(SPIN_W*SPIN_H/8u)),SPIN_W,SPIN_H,SPR_BANK,1,
+                                    SAT_VDP1_TEXTURE_INDEXED8};
+    (void)sat_draw_sprite_scaled_screen(&frame,SPIN_X,SPIN_Y,SPIN_W*3,100,0);
 }
 
 static sat_result_t load_portrait(unsigned side,unsigned id) {
