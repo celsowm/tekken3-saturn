@@ -25,7 +25,7 @@ typedef struct {
     t3_ball_events_t events;       /* the events of the last tick (cleared at its start) */
     uint16_t options[3][12];       /* the three ball types' rows (0x800B6460) */
     int16_t last_slot[2],last_pose[2]; /* the running move, to release the per-move lock when it changes */
-    uint8_t active,option,mesh_ok;
+    uint8_t active,option,mesh_ok,last_kind;
     uint32_t ticks;
     t3_ball_popup_t popup[BALL_POPUPS];   /* the texts over the ball (volley.ovl FUN_800B445C: 8 slots there) */
     t3_psx_fighter_t stand_in;            /* the stand-in attacker (0x800AC808): the hitter's record when the ball was struck */

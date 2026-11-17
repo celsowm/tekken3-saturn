@@ -120,6 +120,24 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
         f->health_q16=health<0?0:health;
         t3_ball_gauge_step(&g->gauge[i],g->ball.power[i],BALL_POWER_MAX);
     }
+    /* a point's flash (kind 2, k = 5) throws 16 sparks (effect type 1) around the ball (ball_sim.sparks: the position -0xFF + 9 random bits
+     * per axis, pitch 0x400 and a yaw of 0 or 0x100); the original's random numbers are the AI's, these come from the tick count */
+#if defined(T3_BALL_TEST_POINT)
+    if(g->ticks%300u==0u){g->ball.kind=2;g->ball.timer=5;}   /* test only: a point's flash every five seconds */
+#endif
+    if(g->ball.kind==2&&g->last_kind!=2&&g->ball.timer==5&&m->config->effects) {
+        uint32_t seed=g->ticks*2654435761u+0x9E3779B9u;
+        for(i=0;i<16u;++i) {
+            t3_psx_spark_t* o=t3_psx_effect_alloc(m->config->effects,1);
+            if(!o)break;
+            seed=seed*1664525u+1013904223u;
+            o->x=g->ball.pos[0]-0xFF+(int32_t)(seed>>23);
+            o->y=g->ball.pos[1]-0xFF+(int32_t)((seed>>14)&0x1FFu);
+            o->z=g->ball.pos[2]-0xFF+(int32_t)((seed>>5)&0x1FFu);
+            o->pitch=0x400;o->yaw=(int16_t)((seed>>3)&0x100u);
+        }
+    }
+    g->last_kind=(uint8_t)g->ball.kind;
     /* the fight camera's third target (FUN_800B4948): the ball as this tick left it, seen by the next frame's camera */
     for(i=0;i<3u;++i)m->camera.camera.ball[i]=g->ball.pos[i];
     m->camera.camera.ball_on=1;
