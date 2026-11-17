@@ -110,7 +110,7 @@ through the converter's layout; checked: the unlocked-characters mask `0x3FF` si
 
 What differs from the Saturn port (frames side by side, `build/ball-ps1c/sheet.png` against `build/ball-ymir21/sheet.png`):
 
-- **Timer (not done):** the PS1 shows the infinity glyphs for the whole fight. The flag `0x800958D4` is the round-time option's sixth value (modes.md: `FUN_800DAF2C`; the resident code only reads it), i.e. the match's `timer_stopped`. Tried: `timer_stopped` set for Tekken Ball plus HUD digits 10 and 11 (already in HUD.BIN, `t3_original_hud_timer_infinite`, kept). The probe's run (deterministic, identical twice) then ends with Paul lying knocked down from field ~8,200 to 14,100 and no round end, where the countdown run reaches YOU LOSE. The cause is not found (`result()` does not read the flag), so the port keeps the countdown.
+- **Timer (done):** the PS1 shows the infinity glyphs for the whole fight. The flag `0x800958D4` is the round-time option's sixth value (modes.md: `FUN_800DAF2C`; the resident code only reads it), i.e. the match's `timer_stopped`. `move_probe.c` sets it for Tekken Ball and `main.c` draws HUD digits 10 and 11 (already in HUD.BIN) in `BALL.BIN`. In the probe's long run Paul lies knocked down for thousands of fields: not a bug, the pad script sends no input after field 9,700, his health bar still shows 40% and an infinite round has no time-out to end it (checked on a full-size HUD crop at field 12,500).
 - **VS screen:** the caption bar reads TEKKEN BALL (no number) over a red lightning background; the port shows FIGHT 1 over the purple one.
   (So the caption entry in "Not done" is a real difference, not a guess.)
 - **Select:** the original's select screen is titled TEKKEN BALL SELECT, shows a rotating 3D ball between the two fighter slots, and the ball
@@ -132,8 +132,8 @@ as the original's NormalClip does (the face's mean normal against the camera's x
 the original's gores.
 
 Gouraud precision: a VDP1 table moves a corner at most -16..+15 steps of 8 around the polygon colour (the corners' mean). Measured on
-the real vertex normals with the default rig at the worst case (face colour 255): about 20% of the corners clamp, the worst corner
-asks for 45 steps. With the real, darker face colours the deltas are smaller; the highlights are the ones that clip.
+the real vertex normals, the default rig and the types' real face colours (300 random spins each): 0.0% of the corners clamp for the
+beach and gum balls, 0.3% for the iron ball (worst 19 steps). Only a white face (colour 255) would clip at about 20%.
 
 **Frame rate** (the same pad script, `--debug-profile`, draw_ends over fields 4,800-6,900, the Ball program): 1,118 before the light,
 1,160 after it (the faces turned away are no longer drawn).

@@ -1378,7 +1378,7 @@ int32_t t3_move_probe_backdrop_turn(void) {
 sat_result_t t3_move_probe_owned_step(t3_input_t p0,t3_input_t p1,t3_match_t* view) {
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     if(!g_active || !view)return SAT_ERR_INVALID_ARG;
-    g_owned_match.flow.timer_stopped=g_practice_clock;   /* practice: no round timer, on every step path */
+    g_owned_match.flow.timer_stopped=g_practice_clock||g_ball_on;   /* practice: no round timer, on every step path; Tekken Ball: infinite time (0x800958D4) */
 #if defined(T3_ENABLE_PSX_COMBAT)
     t3_psx_match_frame_t frame={.frame_counter=g_owned_match.ticks+1u+T3_FRAME_COUNTER_BIAS};
     const t3_input_t pads[2]={p0,p1};

@@ -1657,7 +1657,11 @@ static void draw_hud(void) {
             }
         }
     } else
+#if defined(T3_BALL_PROGRAM)
+    SAT_PANIC_IF_ERROR(t3_original_hud_timer_infinite(t3_original_hud_x(169),1));   /* Tekken Ball plays without a time limit */
+#else
     SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,t3_original_hud_x(169),1));
+#endif
     if(!g_practice) {
         for(unsigned mark=0;mark<2;++mark) {
             SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
