@@ -154,9 +154,6 @@ volatile uint32_t g_t3_particle_swap_prepared,g_t3_particle_swap_published;
 volatile uint32_t g_t3_particle_swap_frame,g_t3_particle_swap_serial;
 volatile uint32_t g_t3_particle_swap_clut,g_t3_particle_swap_pattern;
 #if defined(T3_PARTICLE_MULTI_PROBE)
-#if defined(T3_BALL_TEST_POINT) && defined(T3_PARTICLE_ORDERED_MASK_PROBE)
-unsigned t3_stage_particle_tile_count(void) {return g_probe_tiles[g_probe_slot^1u].count+100u*g_probe_tiles[g_probe_slot].count;}
-#endif
 sat_result_t t3_stage_particle_multi_begin(uint32_t frame) {
     unsigned slot=g_probe_slot;
     if(g_probe_pending[slot])return SAT_ERR_BUSY;

@@ -1604,12 +1604,12 @@ static void draw_hud(void) {
                 SAT_PANIC_IF_ERROR(t3_original_hud_bar(g?GAUGE_X1:GAUGE_X0,GAUGE_Y,GAUGE_WIDTH,
                     bv->gauge[g].fill*GAUGE_FILL/BALL_GAUGE_WIDTH,bv->gauge[g].trail*GAUGE_FILL/BALL_GAUGE_WIDTH,g?0:1));
 #if defined(T3_BALL_TEST_POINT)
-            {   /* test only: effects in the pool, particles the prepare calls visible, tiles of the particle overlay (two slots) */
-                char text[20]="FX 00 V00 T0000";
-                const unsigned n=t3_move_probe_effect_count(),v=(unsigned)g_t3_prepared_particles.visible,t=t3_stage_particle_tile_count();
+            {   /* test only: effects in the pool and the particles the prepare calls visible */
+                char text[20]="FX 00 V00";
+                const unsigned n=t3_move_probe_effect_count(),v=(unsigned)g_t3_prepared_particles.visible;
                 text[3]=(char)('0'+n/10u%10u);text[4]=(char)('0'+n%10u);text[7]=(char)('0'+v/10u%10u);text[8]=(char)('0'+v%10u);
-                text[11]=(char)('0'+t/1000u%10u);text[12]=(char)('0'+t/100u%10u);text[13]=(char)('0'+t/10u%10u);text[14]=(char)('0'+t%10u);
-             SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8,60));}
+                SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8,60));
+            }
 #endif
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN BALL",W/2,36));   /* the mode's caption (FUN_8004EFF8) */
             /* the texts over the ball: "!" for a set or an unblockable, the charge a hit added; they rise while they last */

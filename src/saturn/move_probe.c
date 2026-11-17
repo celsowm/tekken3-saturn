@@ -771,6 +771,21 @@ static void publish_owned_pose(unsigned i) {
     for(unsigned axis=0;axis<3;++axis)g_root_pose[i][axis]=f->pose[axis];
     for(unsigned part=0;part<T3_PSX_DRAW_PARTS;++part)
         g_world_pose[i][part]=f->world[ACTOR_PARTS(i)[part].slot];
+    /* The costume attachments (parts 18 to 21: Gon's tail) have no pose of their own yet (psx_pose.c: no attachment dynamics): they ride
+     * their parent rigidly, so the original projection, which refuses a part outside the mask, and the lighting take them. */
+    for(unsigned part=18u;part<T3_PSX_DRAW_PARTS;++part) {
+        const t3_psx_part_t* p=&ACTOR_PARTS(i)[part];
+        if(p->parent<0 || !(g_fk_parts[i]&(1u<<(unsigned)p->parent)) || (g_fk_parts[i]&(1u<<part)))continue;
+        const t3_psx_joint_t* parent=&g_world_pose[i][p->parent];
+        const int32_t delta[3]={p->offset.x,p->offset.y,p->offset.z};
+        t3_psx_joint_t* joint=&g_world_pose[i][part];
+        __builtin_memset(joint,0,sizeof *joint);
+        joint->rotation=parent->rotation;
+        joint->origin.x=parent->origin.x+t3_psx_dot12(parent->rotation.m[0],delta);
+        joint->origin.y=parent->origin.y+t3_psx_dot12(parent->rotation.m[1],delta);
+        joint->origin.z=parent->origin.z+t3_psx_dot12(parent->rotation.m[2],delta);
+        g_fk_parts[i]|=1u<<part;
+    }
     g_hurt_ready[i]=(uint8_t)t3_psx_hurt_from_parts(f->world,f->parts_mask,0,zones);
     g_hurt_head_y[i]=g_hurt_ready[i]?zones[0].center.y:0;
 }
