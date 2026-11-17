@@ -2359,10 +2359,6 @@ int main(void) {
                 const t3_practice_settings_t settings=practice_settings(&pad1);
                 t3_move_probe_practice_apply(&settings);
             }
-            /* FREEZE SIGNAL (FUN_800B6CF4, FUN_8003AA6C): the fighters' colours tinted green while they can act, red while they cannot */
-            for(unsigned who=0;who<2u;++who)
-                SAT_PANIC_IF_ERROR(t3_characters_tint(who,g_pmenu.freeze_signal && !g_pmenu.open?
-                    (t3_move_probe_practice_state()->can_act[who]?1u:2u):0u));
 #if !defined(T3_BOOT_FIGHTER_0)
             if(way==T3_PM_CHARACTER_SELECT)restart_program(PHASE_SELECT);
             if(way==T3_PM_LEAVE)restart_program(PHASE_MENU);

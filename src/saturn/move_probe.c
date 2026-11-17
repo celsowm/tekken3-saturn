@@ -1678,10 +1678,13 @@ void t3_move_probe_practice_tick(uint16_t pad_word,uint16_t pressed_word) {
     t3_practice_data_step(&st->data,facts);
     t3_practice_markers_step(&st->markers,facts[0].attack,facts[1].hit_clean);
     if(facts[1].hit_clean) {   /* where it hit: the attack segment's end at contact (HitTest's slot point) */
-        const int8_t segment=g_owned_match.fighter[0].hit_gate.segment;   /* the gate is kept on the attacker */
-        if(segment>=0 && segment<2) {
-            const t3_vec3i_t end=g_owned_match.fighter[0].strike.segments[segment].end;
-            const int32_t point[3]={end.x,end.y,end.z};
+        const t3_psx_fighter_t* attacker=&g_owned_match.fighter[0];
+        const int8_t segment=attacker->hit_gate.segment;   /* the gate is kept on the attacker */
+        /* A projectile's contact (descriptor joint 0x18 or more) tests the segment its effect object published. */
+        const t3_vec3i_t* end=attacker->projectile_hit?&attacker->projectile.end:
+            (segment>=0 && segment<2?&attacker->strike.segments[segment].end:NULL);
+        if(end) {
+            const int32_t point[3]={end->x,end->y,end->z};
             t3_practice_markers_point(&st->markers,point);
         }
     }

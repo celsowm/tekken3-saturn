@@ -44,8 +44,8 @@ query and reset lists.
   SIGNAL on, closes it, walks up and punches, then sets STAND and punches again. Mednafen screenshots
   (`scripts/mednafen_shots.py`) showed: the menu and its values; the dummy crouching; the key display logging the
   scripted inputs; hit sparks, TOTAL DMG 14, 49, 84, 119, 140 (DMG 6, PCT 7, COMBO 1) and HIGH markers against the standing
-  dummy; full health bars; and no TIME UP through tick 3301, round 1. The freeze signal's colour was not seen (the test
-  disc has no fighter lighting).
+  dummy; full health bars; and no TIME UP through tick 3301, round 1. The freeze signal's colour needs fighter lighting
+  (see "FREEZE SIGNAL's tint").
 
 ## The menu-built disc
 
@@ -118,8 +118,11 @@ PKEYS.BIN also carries the markers' burst, the HIGH, MID and LOW labels, and the
 unblockable attacks (page 15; the overlay's marker table). A marker's kind comes from the attack word as in
 `practice_sim.py`'s `hit_marker`, its position from the attack segment's end at contact (`fighter[attacker].hit_gate.segment`
 into the attacker's `strike` segments, projected through the fight camera), and it lasts 60 frames. On Mednafen the burst with
-its HIGH label appeared on the dummy at the hit. The segment's end stands in for HitTest's slot point, which the C match does
-not keep; for attacks whose joint is 0x18 or more the original uses the defender's zone joint instead, which is not done.
+its HIGH label appeared on the dummy at the hit. The segment's end is HitTest's slot point (`HitTestSegments` stores the segment's
+end, `combat.gd` `_hit_segments`), which the C match does not keep. For attacks whose descriptor joint is 0x18 or more (fire,
+breath, gas) the segment is the one the effect object published, which the C match keeps as `projectile` (`projectile_hit`), so the
+marker takes `projectile.end` then. An earlier note here said the original uses the defender's zone joint for those attacks; it
+does not: the zone only selects the cylinder that was hit.
 
 ## The menu's structure and font
 
@@ -170,12 +173,12 @@ combos and passes `play_mednafen.py`'s feature check.
 
 ## FREEZE SIGNAL's tint (HIT ANALYSIS in the USA game)
 
-The original tints each fighter's back light (FUN_8003AA6C) green while it can act and red while it cannot. Fighter lighting would
-cost frame rate (docs/FIGHTER_FIDELITY.md: 21.96 img/s against 24.8) and cannot fit VDP1 VRAM beside the practice fonts, so the
-port tints the fighter's CRAM palette banks instead (`t3_characters_tint` in `characters.c`): at load each actor's INDEX8 palettes
-are kept, and when the signal changes the colours are rewritten a sixth of the way to green or red (bit 15 and index 0 kept).
-That is a few hundred words written only when a fighter's state flips, so there is no per-frame cost and no frame-rate change.
-On Mednafen the fighters turned green and red as they could and could not act, on the test disc and on the menu-built disc.
+The original tints each fighter's back light (FUN_8003AA6C) green while it can act and red while it cannot. The port does the
+same through the fighter lighting (docs/FIGHTER_FIDELITY.md, "Lighting as the default"): `t3_practice_signal_colour` gives the
+back colour, `t3_fighter_light_back` rebuilds the actor's shade table with it and the next relight rewrites every Gouraud table. It
+is a few hundred words written only when a fighter's state flips. The fighters turn green and red as they can and cannot act
+(Ymir, `scripts/ymir_practice_flow.py`, on the shipped disc). The earlier CRAM-bank tint was removed: the lit fighters' textures are
+LUT4 and no palette bank carries the colour, and a build without lighting has no freeze signal.
 
 ## Hit markers and menus
 

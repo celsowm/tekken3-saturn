@@ -324,45 +324,6 @@ static sat_result_t select_clip(actor_t* actor, uint8_t next) {
     return st;
 }
 
-/* ---- practice's freeze signal: the fighter's colours tinted green or red (FUN_8003AA6C's back light) ---- */
-/* A lit fighter's textures are LUT4: its back light carries the signal (t3_fighter_light_back), no CRAM bank does. */
-#if defined(T3_FIGHTER_LIGHTING)
-sat_result_t t3_characters_tint(unsigned actor,unsigned state) {(void)actor;(void)state;return SAT_OK;}
-#else
-enum { TINT_BANKS=2 };
-static struct {
-    uint16_t colours[TINT_BANKS*256u];
-    uint16_t base;uint8_t count,state;
-} g_tint[2];
-#endif
-
-#if !defined(T3_FIGHTER_LIGHTING)
-sat_result_t t3_characters_tint(unsigned actor,unsigned state) {
-    if(actor>1u || !g_tint[actor].count || g_tint[actor].state==state)return SAT_OK;
-    /* 0 none, 1 green (the fighter can act), 2 red: the original's back light multiplies the colours (the PS1 shows both
-     * fighters strongly green); here each channel is scaled in eighths, bit 15 stays */
-    static const uint8_t SCALE[3][3]={{8,8,8},{2,11,2},{11,2,2}};
-    uint16_t tinted[256];
-    for(unsigned p=0;p<g_tint[actor].count;++p) {
-        const uint16_t* source=g_tint[actor].colours+p*256u;
-        for(unsigned c=0;c<256u;++c) {
-            const uint16_t v=source[c];
-            if(!state || !(v&0x7FFFu)){tinted[c]=v;continue;}
-            uint16_t out=(uint16_t)(v&0x8000u);
-            for(unsigned ch=0;ch<3u;++ch) {
-                unsigned value=(((v>>(5u*ch))&31u)*SCALE[state][ch])/8u;
-                if(value>31u)value=31u;
-                out|=(uint16_t)(value<<(5u*ch));
-            }
-            tinted[c]=out;
-        }
-        SAT_TRY(sat_palette_upload_indexed8(tinted,(uint16_t)(g_tint[actor].base+p)));
-    }
-    g_tint[actor].state=(uint8_t)state;
-    return SAT_OK;
-}
-#endif
-
 sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* context) {
     unsigned i;
     sat_result_t st;
@@ -512,13 +473,6 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
         if (upload_textures &&
             (st = sat_model_upload_textures(&model,a->textures,a->texture_count)) != SAT_OK)
             return st;
-        /* Practice's freeze signal tints the fighter through its CRAM banks (t3_characters_tint): keep the colours. */
-#if !defined(T3_FIGHTER_LIGHTING)
-        if(i<2u && model.palette_count && model.palette_count<=TINT_BANKS) {
-            g_tint[i].base=model.palette_base;g_tint[i].count=(uint8_t)model.palette_count;g_tint[i].state=0;
-            __builtin_memcpy(g_tint[i].colours,model.palettes_rgb555,model.palette_count*256u*sizeof(uint16_t));
-        }
-#endif
         if(share_resources && i) {
             /* Preserve the original second bank's CRAM side effect. Only
              * immutable VDP1 pixels/descriptors/programs are shared. */
