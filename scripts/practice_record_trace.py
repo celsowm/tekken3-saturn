@@ -26,13 +26,27 @@ RECORDER = 0x2F          # L2 R2 L1 R1 Circle held when the FREE page closes: th
 FULL_RING = [ft.SQUARE, 0, ft.CROSS, 0, ft.CIRCLE, 0, ft.TRIANGLE, 0] * 40   # more key changes than the ring holds
 
 
+class Hold(list):
+    """Pad words played on consecutive frames, with no release frame between them."""
+
+
+class HoldDriver(ft.Driver):
+    def next(self):
+        if not self.queue and self.steps and isinstance(self.steps[0][1], Hold) and self.steps[0][0](self.h):
+            self.queue = list(self.steps.pop(0)[1])
+        return super().next()
+
+
 def scenario():
     base = next(s for s in ft.SCENARIOS if s.name == 'practice')
     to_select = len(ft._to_menu()) + len(ft._menu(6)) + 2     # the title, the menu entry, the select's two steps
     steps = list(base.steps[:to_select]) + [
         # MODE SELECT -> 1P FREESTYLE, then OK with the recorder keys held.
         (ft.paused(after=40), ft.presses(ft.CROSS)),
-        (ft.paused(after=8), ft.presses(ft.CROSS | RECORDER)),
+        # The shoulders first, then Circle (a choose button) closes the page while all four are held.
+        # The close is applied the frame after the choosing press (_resume reads the held pad), so all five stay held
+        # across it: the driver releases after every press, so the word is played as a hold.
+        (ft.paused(after=8), Hold([(RECORDER & ~ft.CIRCLE, 0), (RECORDER, 0), (RECORDER, 0), (RECORDER, 0), (0, 0)])),
         # Record: down + Select, wait, a few inputs, Select ends it; Select again replays it.
         (ft.at(8, 8, after=60), ft.presses(ft.DOWN | ft.SELECT)),
         (ft.at(8, 8, after=20), ft.presses(ft.SQUARE, 0, 0, 0, ft.CROSS, 0, 0, 0, ft.CIRCLE, 0, 0, 0, ft.DOWN, 0, 0, 0, ft.TRIANGLE)),
@@ -50,6 +64,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--out', type=Path, default=ROOT / 'third_party/Tekken3Remake/work/traces/flow_practice_record.bin')
     args = ap.parse_args()
+    ft.Driver = HoldDriver
     frames = ft.write_trace(scenario(), args.out)
     print(f'{frames} frames -> {args.out}')
 

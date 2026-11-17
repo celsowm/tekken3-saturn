@@ -65,9 +65,9 @@ overlay under `third_party/Tekken3Remake/work/jp_rev1/bns/`) into a private blob
 weak `t3_practice_combo_blob` symbols (no tables: no combos). `practice_guide.c` is the guide and recorder state machine
 (`_guide_step`, `_guide_ready`, `_guide_play`, `load_guide`). While the guide plays, its scripted word replaces the guided
 fighter's pad for that frame only (the original resets the input mode every frame). Select is the Saturn pad's Z.
-The golden test replays 362 guide frames of the original trace with 0 mismatches; the trace only covers READY, STAND and
-PLAY, so recording and replay are covered by unit tests only, and the stance slot and lying state, which the records do
-not hold, are taken from what the original did.
+The golden test replays 362 guide frames of the original trace (READY, STAND, PLAY) with 0 mismatches. The recorder's states
+have their own trace (see "The FREE page's input recorder"). The stance slot and lying state, which the records do not hold,
+are taken from what the original did.
 
 In the emulator the test disc's scripted pad went FREE, VS CPU, COMBO TRAINING, pressed Select, and Paul played the combo
 (COMBO 3, HIGH markers, TOTAL DMG 84) against the standing dummy; the prompt returned to `PLAY = SELECT` afterwards.
@@ -81,6 +81,15 @@ L2+R2+L1+R1+circle; here L+R+Z). Select (the Saturn pad's Z) replays the recorde
 Select ends the recording; `practice_guide.c` is the same state machine as COMBO TRAINING's. Recorded on Mednafen from a
 scripted pad: `PLAY(SEL) REC(DW+SEL)`, `START REC = ANY KEY`, a recorded walk and punch (TOTAL DMG 13), and the prompt back.
 The replay's own frames were not isolated in the stills.
+
+Against the original code: `scripts/practice_record_trace.py` records a scenario in Tekken3Remake's CPU harness (the FREE page
+closed with L2+R2+L1+R1+circle held, which needs the harness's hold: the driver releases after every press, and the close reads
+the held pad the frame after the press), down+Select, a button to start recording, a few inputs, Select to end it, Select to replay
+it, then a second recording run until the ring is full and a replay with Left held. The trace holds 3121 guide frames in READY,
+RECORD_WAIT, RECORDING, REPLAY and REPLAY_END; `practice_recorder_original_trace` replays them through `practice_guide.c` with
+0 mismatches (ctest, from `build/practice-record-golden`, made with `scripts/export_practice_trace.py --trace
+third_party/Tekken3Remake/work/traces/flow_practice_record.bin --out build/practice-record-golden/cases.txt`; the trace is game
+data and stays out of git).
 
 ## REPLAY SETTINGS
 
