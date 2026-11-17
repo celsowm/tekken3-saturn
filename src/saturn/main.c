@@ -643,7 +643,7 @@ static void how_to_page(void) {
 static uint8_t g_picks[2];   /* defined with its values below */
 static uint8_t g_command_list[9472] __attribute__((aligned(4)));
 static void command_page(void) {
-    enum { LINES=15, X=8, Y=40 };
+    enum { ENTRIES=8, X=8, Y=36 };
     const uint8_t* blob;
     uint32_t blob_size;
     sat_cdfs_volume_t* volume;
@@ -664,7 +664,7 @@ static void command_page(void) {
         SAT_PANIC_IF_ERROR(sat_input_poll());
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad));
         if(age>=3u) {
-            if((pad.pressed&SAT_PAD_DOWN)&&top+LINES<count)++top;
+            if((pad.pressed&SAT_PAD_DOWN)&&top+ENTRIES<count)++top;
             if((pad.pressed&SAT_PAD_UP)&&top)--top;
             if(pad.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))return;
         }
@@ -672,16 +672,36 @@ static void command_page(void) {
         SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"COMMAND",W/2,20));
         if(*problem)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,problem,W/2,100));
         else if(!count)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"NO LIST",W/2,100));
-        for(unsigned i=0;i<LINES&&top+i<count;++i) {
+        for(unsigned i=0;i<ENTRIES&&top+i<count;++i) {
             const char *name,*command;
-            char text[40];
+            char text[48];
             unsigned n=0;
             if(!t3_practice_command_line(blob,blob_size,g_picks[0],top+i,&name,&command))break;
-            while(*name&&n<15u)text[n++]=*name++;
-            while(n<16u)text[n++]=' ';
-            while(*command&&n<38u)text[n++]=*command++;
+            while(*name&&n<39u)text[n++]=*name++;
             text[n]=0;
-            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,X,Y+(int)i*10));
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,X,Y+(int)i*20));
+            /* the input: bytes 0x80-0x90 are direction arrows (db d df b f ub u uf, capitals when held, 16 neutral), 0x91-0xA0 button
+             * masks (1 LP, 2 RP, 3 LK, 4 RK, as "1+3"); the original draws them as icons, the debug font spells them */
+            static const char* const arrows[8]={"db","d","df","b","f","ub","u","uf"};
+            n=0;
+            for(const unsigned char* c=(const unsigned char*)command;*c&&n<37u;++c) {
+                char piece[8]="";
+                unsigned len=0;
+                if(*c>=0x80u&&*c<=0x90u) {
+                    const unsigned index=*c-0x80u;
+                    if(index==16u)piece[len++]='N';
+                    else for(const char* a=arrows[index&7u];*a;++a)piece[len++]=(char)((index&8u)&&*a>='a'&&*a<='z'?*a-32:*a);
+                    piece[len++]=',';
+                } else if(*c>=0x91u&&*c<=0xA0u) {
+                    const unsigned mask=*c-0x91u;
+                    for(unsigned b=0;b<4u;++b)if(mask&(1u<<b)){if(len)piece[len++]='+';piece[len++]=(char)('1'+b);}
+                    if(!len)piece[len++]='?';
+                    piece[len++]=',';
+                } else piece[len++]=(char)(*c>=32u&&*c<127u?*c:'?');
+                for(unsigned k=0;k<len&&n<37u;++k)text[n++]=piece[k];
+            }
+            text[n]=0;
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,X+16,Y+10+(int)i*20));
         }
         SAT_PANIC_IF_ERROR(sat_end_frame());
     }
