@@ -92,7 +92,7 @@ floor's far-limit step must stay 1 (INVALID_ARG otherwise); `SAT_RGB555` takes 5
   retail picture (`HOWTO.BIN`, packed by `scripts/pack_ball_howto.py` from the exported how_to.png, shrunk to 192 x 102) on the light frame
   with its black shadow (positions by the HUD's x * 20 / 23, y / 2 mapping), and a button returns to the fight (`how_to_page` in `main.c`;
   the page runs at the top of the next loop iteration, outside a frame, and keeps colour RAM bank 7, which the stage's backdrop shares,
-  to put it back). Not done: the pause menu around it (CANCEL, COMMAND, RESET), so START no longer restarts a running match. The VS
+  to put it back). START opens the pause menu around it (`pause_menu` in `main.c`: CANCEL, RESET, HOW TO, in the debug font; the fight stands still; RESET is the old START restart). Not done: COMMAND (the move list). The VS
   screen's caption reads TEKKEN BALL (the red lightning background, as the original's: the arcade picture, not the VS one).
 - Opponent rotation: the menu now picks the first game's opponent as Gon and later games with `ball_flow.c` (the first-game flag rides in
   the carried-rounds byte), but the met counts cannot survive the menu's restarts, so later picks are uniform over the unlocked pool

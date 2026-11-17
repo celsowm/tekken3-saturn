@@ -627,6 +627,41 @@ static void how_to_page(void) {
     }
     SAT_PANIC_IF_ERROR(sat_palette_upload_indexed8(saved,BANK));
 }
+/* The fight's pause menu in Tekken Ball (modes.md: CANCEL, COMMAND, RESET, plus HOW TO): START opens it, the fight stands still. COMMAND (the
+ * move list) is not made. Returns 1 for RESET, else 0 (CANCEL, START, or back from HOW TO). */
+static uint8_t g_ball_reset;
+static unsigned pause_menu(void) {
+    static const char* const items[3]={"CANCEL","RESET","HOW TO"};
+    unsigned cursor=0;
+    for(unsigned age=0;;++age) {
+        sat_pad_state_t pad={0};
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad));
+        if(age>=3u) {
+            if(pad.pressed&SAT_PAD_UP)cursor=cursor?cursor-1u:2u;
+            if(pad.pressed&SAT_PAD_DOWN)cursor=cursor>=2u?0u:cursor+1u;
+            if(pad.pressed&SAT_PAD_START)return 0;
+            if(pad.pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)) {
+                if(cursor==0u)return 0;
+                if(cursor==1u)return 1;
+                how_to_page();age=0;
+                continue;
+            }
+        }
+        SAT_PANIC_IF_ERROR(sat_begin_frame());
+        for(unsigned i=0;i<3u;++i) {
+            char text[16]="  ";
+            const char* name=items[i];
+            unsigned n=0;
+            text[0]=i==cursor?'>':' ';n=1;
+            while(*name&&n<14u)text[n++]=*name++;
+            text[n]=0;
+            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,text,W/2,92+(int)i*20));
+        }
+        SAT_PANIC_IF_ERROR(sat_end_frame());
+    }
+}
 /* Tekken Ball's part of an image: the court's backdrop placed from the camera, then the ball, its shadow and the court's lines
  * as scene faces (ball_render.c). */
 static void ball_image(void) {
@@ -2464,7 +2499,7 @@ int main(void) {
 #endif
     for (;;) {
 #if defined(T3_BALL_PROGRAM)
-        if(g_how_to_pending){g_how_to_pending=0;how_to_page();}
+        if(g_how_to_pending){g_how_to_pending=0;g_ball_reset=(uint8_t)pause_menu();}
 #endif
         sat_pad_state_t pad0 = {0}, pad1 = {0};
         uint32_t now, elapsed, hz, ticks, work_started_ms;
@@ -2594,13 +2629,19 @@ int main(void) {
         }
 #endif
 #if defined(T3_BALL_PROGRAM)
-        if((pad0.pressed&SAT_PAD_START)&&!g_game.match_done) {   /* START: the pause menu's HOW TO page (next iteration, outside a frame), then the fight goes on */
+        if((pad0.pressed&SAT_PAD_START)&&!g_game.match_done) {   /* START: the pause menu (next iteration, outside a frame), then the fight goes on */
             g_how_to_pending=1;
             pad0.pressed&=~(uint32_t)SAT_PAD_START;
         }
 #endif
         const int practice_again=g_practice && g_game.match_done;
-        if ((pad0.pressed & SAT_PAD_START) || practice_again) {
+#if defined(T3_BALL_PROGRAM)
+        const int ball_reset=g_ball_reset;
+        g_ball_reset=0;
+#else
+        const int ball_reset=0;
+#endif
+        if ((pad0.pressed & SAT_PAD_START) || practice_again || ball_reset) {
 #if defined(T3_FIGHTER_PACKS) && !defined(T3_BOOT_FIGHTER_0)
             if(g_practice && !practice_again)restart_program(PHASE_SELECT);
 #endif

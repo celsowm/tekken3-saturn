@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHOTS = (2300, 2440, 2600, 3300, 3700, 4300, 5000, 5600, 6200, 6800, 7400, 8000)
 
 
-def script(select=3300, ball_type=0, pause_at=0):
+def script(select=3300, ball_type=0, pause_at=0, pause_item=0):
     lines = ['0 NONE']
 
     def tap(at, button, length=6):
@@ -35,7 +35,12 @@ def script(select=3300, ball_type=0, pause_at=0):
     for k in range(30):                      # in the fight: walk forward and punch now and then
         tap(5200 + 150 * k, 'X')
     if pause_at:                             # START opens the HOW TO page; a button closes it 100 fields later
-        tap(pause_at, 'START'); tap(pause_at + 100, 'A')
+        tap(pause_at, 'START')
+        for k in range(pause_item):          # DOWN to the item: 1 RESET, 2 HOW TO (a button closes its page; the next one is CANCEL)
+            tap(pause_at + 30 + 15 * k, 'DOWN')
+        tap(pause_at + 80, 'A')
+        if pause_item == 2:
+            tap(pause_at + 160, 'A'); tap(pause_at + 220, 'A')
     return '\n'.join(lines) + '\n'
 
 
@@ -49,12 +54,13 @@ def main():
     p.add_argument('--shots', type=int, nargs='*', default=list(SHOTS))
     p.add_argument('--select', type=int, default=3300)
     p.add_argument('--ball-type', type=int, default=0)
-    p.add_argument('--pause-at', type=int, default=0, help='press START in the fight at this field (the HOW TO page)')
+    p.add_argument('--pause-at', type=int, default=0, help='press START in the fight at this field (the pause menu)')
+    p.add_argument('--pause-item', type=int, default=0, help='the pause menu item to choose: 0 CANCEL, 1 RESET, 2 HOW TO')
     p.add_argument('--keep', action='store_true', help='keep the full-size screenshots next to the sheet')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     pad = args.out / 'ball.pad'
-    pad.write_text(script(args.select, args.ball_type, args.pause_at))
+    pad.write_text(script(args.select, args.ball_type, args.pause_at, args.pause_item))
     command = [str(args.probe), '--iso', str(args.build / 'disc/music.cue'), '--bin', str(args.build / 'tekken3_saturn.app.bin'),
                '--bios', str(args.bios), '--frames', str(args.frames), '--out', str(args.out / 'run.json'), '--pad-script', str(pad)]
     for field in args.shots:
