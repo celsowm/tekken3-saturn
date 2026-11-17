@@ -1104,7 +1104,7 @@ void t3_move_probe_present(void) {
 #if defined(T3_BALL_TEST_POINT)
     /* Test only: every 5 seconds the ball shows a point's flash (kind 2, k = 5) for a second, to see its streaks on the probe */
     if((g_ball.ticks%300u)<60u){g_ball_view.ball.kind=2;g_ball_view.ball.timer=5;}
-    else if((g_ball.ticks%300u)>=120u&&(g_ball.ticks%300u)<240u){g_ball_view.ball.kind=4;g_ball_view.ball.timer=(uint8_t)(g_ball.ticks*2u);g_ball_view.ball.pos[0]=-600;g_ball_view.ball.pos[1]=-700;g_ball_view.ball.pos[2]=0;}   /* a set ball's pulse */
+    else if((g_ball.ticks%300u)>=120u&&(g_ball.ticks%300u)<240u){g_ball_view.ball.kind=4;g_ball_view.ball.timer=(uint8_t)(g_ball.ticks*2u);g_ball_view.ball.pos[0]=0;g_ball_view.ball.pos[1]=-1300;g_ball_view.ball.pos[2]=0;}   /* a set ball's pulse */
 #endif
 #endif
 #endif
