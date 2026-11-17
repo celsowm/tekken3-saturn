@@ -1086,6 +1086,10 @@ void t3_move_probe_present(void) {
     for(unsigned i=0;i<2u;++i)publish_owned_pose(i);
 #if defined(T3_BALL_PROGRAM)
     if(g_ball_on)t3_ball_game_view(&g_ball,&g_ball_view);   /* the image's ball, whatever the Slave has simulated since */
+#if defined(T3_BALL_TEST_POINT)
+    /* Test only: every 5 seconds the ball shows a point's flash (kind 2, k = 5) for a second, to see its streaks on the probe */
+    if((g_ball.ticks%300u)<60u){g_ball_view.ball.kind=2;g_ball_view.ball.timer=5;}
+#endif
 #endif
 #endif
 }

@@ -2307,6 +2307,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_compile_definitions(tekken3_ball PRIVATE T3_BOOT_FIGHTER_0=${_t3_bb0} T3_BOOT_FIGHTER_1=${_t3_bb1}
                 T3_BOOT_BALL_TYPE=${_t3_bb2})
         endif()
+        option(T3_BALL_TEST_POINT "Test: BALL.BIN shows a point's flash (kind 2) for a second every five seconds" OFF)
+        if(T3_BALL_TEST_POINT)
+            target_compile_definitions(tekken3_ball PRIVATE T3_BALL_TEST_POINT=1)
+        endif()
         libsaturn_configure_executable(tekken3_ball)
         libsaturn_add_binary(tekken3_ball MAX_BYTES 983040)
         add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/menu/BALL.BIN"
