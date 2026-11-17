@@ -32,15 +32,16 @@ def script(select=3300, ball_type=0, pause_at=0, pause_item=0):
         tap(2480 + 20 * k, 'DOWN')
     tap(2560, 'START')                       # BEGINNER (or the chosen type)
     tap(select, 'START'); tap(select + 120, 'START')   # the single-player select
-    for k in range(30):                      # in the fight: walk forward and punch now and then
-        tap(5200 + 150 * k, 'X')
+    for k in range(30):                      # in the fight: walk forward and punch now and then (X is also the menu's OK: none once paused)
+        if not pause_at or 5200 + 150 * k < pause_at:
+            tap(5200 + 150 * k, 'X')
     if pause_at:                             # START opens the HOW TO page; a button closes it 100 fields later
         tap(pause_at, 'START')
-        for k in range(pause_item):          # DOWN to the item: 1 RESET, 2 HOW TO (a button closes its page; the next one is CANCEL)
-            tap(pause_at + 30 + 15 * k, 'DOWN')
-        tap(pause_at + 80, 'A')
-        if pause_item == 2:
-            tap(pause_at + 160, 'A'); tap(pause_at + 220, 'A')
+        for k in range(pause_item):          # DOWN to the item: 1 COMMAND, 2 RESET, 3 HOW TO (a button closes a page; the next one is CANCEL)
+            tap(pause_at + 30 + 40 * k, 'DOWN', 14)
+        tap(pause_at + 70 + 40 * pause_item, 'A', 14)
+        if pause_item in (1, 3):
+            tap(pause_at + 260, 'A'); tap(pause_at + 320, 'A')
     return '\n'.join(lines) + '\n'
 
 
@@ -55,7 +56,7 @@ def main():
     p.add_argument('--select', type=int, default=3300)
     p.add_argument('--ball-type', type=int, default=0)
     p.add_argument('--pause-at', type=int, default=0, help='press START in the fight at this field (the pause menu)')
-    p.add_argument('--pause-item', type=int, default=0, help='the pause menu item to choose: 0 CANCEL, 1 RESET, 2 HOW TO')
+    p.add_argument('--pause-item', type=int, default=0, help='the pause menu item to choose: 0 CANCEL, 1 COMMAND, 2 RESET, 3 HOW TO')
     p.add_argument('--keep', action='store_true', help='keep the full-size screenshots next to the sheet')
     args = p.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)

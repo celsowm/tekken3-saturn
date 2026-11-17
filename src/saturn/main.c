@@ -584,7 +584,7 @@ static t3_ball_backdrop_t g_ball_backdrop;
  * button is pressed. The original's picture is 216 x 204 of 384 x 480 coordinates at (76, 128) on a frame of 240 x 236 at (64, 112); the
  * x' = x * 20 / 23 and y' = (y - 20) / 2 mapping of the HUD puts them here. The picture (shrunk to 192 x 102 by pack_ball_howto.py) is read on
  * first use and kept in VDP1 VRAM; the scene's face array is in use, so it has its own buffer in High Work RAM. */
-static uint8_t g_how_to[512+192*102] __attribute__((aligned(4)));
+static uint16_t g_how_to_palette[256];
 static uint8_t g_how_to_pending;
 static void how_to_page(void) {
     static sat_vdp1_texture_t picture;
@@ -595,18 +595,27 @@ static void how_to_page(void) {
      * while the page shows and put back when it closes. */
     volatile const uint16_t* cram=(volatile const uint16_t*)(0x25F00000u+BANK*512u);
     if(!ready) {
+        /* the picture goes to VDP1 VRAM a kilobyte at a time (the program has no room for it; the scene's face array is the Slave's) */
         sat_cdfs_volume_t* volume;
         sat_cdfs_file_t file;
-        uint32_t read=0;
+        uint32_t read=0,offset;
+        uint8_t chunk[1024];
         SAT_PANIC_IF_ERROR(t3_disc_volume(&volume));
         SAT_PANIC_IF_ERROR(sat_cdfs_lookup(volume,"HOWTO.BIN",&file));
-        SAT_PANIC_IF_ERROR(sat_cdfs_read_at(volume,&file,0,g_how_to,PALETTE+WIDTH*HEIGHT,&read));
-        if(read!=PALETTE+WIDTH*HEIGHT)SAT_PANIC_IF_ERROR(SAT_ERR_IO);
-        SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8_pixels(&picture,g_how_to+PALETTE,WIDTH,HEIGHT,BANK));
+        SAT_PANIC_IF_ERROR(sat_cdfs_read_at(volume,&file,0,g_how_to_palette,PALETTE,&read));
+        if(read!=PALETTE)SAT_PANIC_IF_ERROR(SAT_ERR_IO);
+        SAT_PANIC_IF_ERROR(sat_vdp1_vram_reserve(WIDTH*HEIGHT,&offset));
+        for(uint32_t at=0;at<WIDTH*HEIGHT;at+=sizeof chunk) {
+            const uint32_t n=WIDTH*HEIGHT-at<sizeof chunk?WIDTH*HEIGHT-at:sizeof chunk;
+            SAT_PANIC_IF_ERROR(sat_cdfs_read_at(volume,&file,PALETTE+at,chunk,n,&read));
+            if(read!=n)SAT_PANIC_IF_ERROR(SAT_ERR_IO);
+            SAT_PANIC_IF_ERROR(sat_vdp1_vram_write(offset+at,chunk,n));
+        }
+        picture=(sat_vdp1_texture_t){(uint16_t)(offset/8u),WIDTH,HEIGHT,BANK,1,SAT_VDP1_TEXTURE_INDEXED8};
         ready=1;
     }
     for(unsigned i=0;i<256u;++i)saved[i]=cram[i];
-    SAT_PANIC_IF_ERROR(sat_palette_upload_indexed8((const uint16_t*)g_how_to,BANK));
+    SAT_PANIC_IF_ERROR(sat_palette_upload_indexed8(g_how_to_palette,BANK));
     for(unsigned age=0;;++age) {
         sat_pad_state_t pad={0};
         SAT_PANIC_IF_ERROR(sat_wait_vblank());
@@ -629,9 +638,57 @@ static void how_to_page(void) {
 }
 /* The fight's pause menu in Tekken Ball (modes.md: CANCEL, COMMAND, RESET, plus HOW TO): START opens it, the fight stands still. COMMAND (the
  * move list) is not made. Returns 1 for RESET, else 0 (CANCEL, START, or back from HOW TO). */
+/* The pause menu's COMMAND page: the first player's command list (scripts/extract_command_lists.py's blob, CMDLIST.BIN) in the debug font;
+ * UP and DOWN scroll, any face button or START returns. The 9 KB are read when the page opens. */
+static uint8_t g_picks[2];   /* defined with its values below */
+static uint8_t g_command_list[9472] __attribute__((aligned(4)));
+static void command_page(void) {
+    enum { LINES=15, X=8, Y=40 };
+    const uint8_t* blob;
+    uint32_t blob_size;
+    sat_cdfs_volume_t* volume;
+    sat_cdfs_file_t file;
+    uint32_t read=0;
+    const char* problem="";
+    blob=NULL;blob_size=0;
+    if(t3_disc_volume(&volume)!=SAT_OK)problem="NO DISC";
+    else if(sat_cdfs_lookup(volume,"CMDLIST.BIN",&file)!=SAT_OK)problem="NO CMDLIST.BIN";
+    else if(file.size>sizeof g_command_list)problem="TOO BIG";
+    else if(sat_cdfs_read_at(volume,&file,0,g_command_list,file.size,&read)!=SAT_OK||read!=file.size)problem="READ FAILED";
+    else{blob=g_command_list;blob_size=file.size;}
+    const unsigned count=t3_practice_command_count(blob,blob_size,g_picks[0]);
+    unsigned top=0;
+    for(unsigned age=0;;++age) {
+        sat_pad_state_t pad={0};
+        SAT_PANIC_IF_ERROR(sat_wait_vblank());
+        SAT_PANIC_IF_ERROR(sat_input_poll());
+        SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad));
+        if(age>=3u) {
+            if((pad.pressed&SAT_PAD_DOWN)&&top+LINES<count)++top;
+            if((pad.pressed&SAT_PAD_UP)&&top)--top;
+            if(pad.pressed&(SAT_PAD_START|SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z))return;
+        }
+        SAT_PANIC_IF_ERROR(sat_begin_frame());
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"COMMAND",W/2,20));
+        if(*problem)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,problem,W/2,100));
+        else if(!count)SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"NO LIST",W/2,100));
+        for(unsigned i=0;i<LINES&&top+i<count;++i) {
+            const char *name,*command;
+            char text[40];
+            unsigned n=0;
+            if(!t3_practice_command_line(blob,blob_size,g_picks[0],top+i,&name,&command))break;
+            while(*name&&n<15u)text[n++]=*name++;
+            while(n<16u)text[n++]=' ';
+            while(*command&&n<38u)text[n++]=*command++;
+            text[n]=0;
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,X,Y+(int)i*10));
+        }
+        SAT_PANIC_IF_ERROR(sat_end_frame());
+    }
+}
 static uint8_t g_ball_reset;
 static unsigned pause_menu(void) {
-    static const char* const items[3]={"CANCEL","RESET","HOW TO"};
+    static const char* const items[4]={"CANCEL","COMMAND","RESET","HOW TO"};
     unsigned cursor=0;
     for(unsigned age=0;;++age) {
         sat_pad_state_t pad={0};
@@ -639,18 +696,19 @@ static unsigned pause_menu(void) {
         SAT_PANIC_IF_ERROR(sat_input_poll());
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0,0,&pad));
         if(age>=3u) {
-            if(pad.pressed&SAT_PAD_UP)cursor=cursor?cursor-1u:2u;
-            if(pad.pressed&SAT_PAD_DOWN)cursor=cursor>=2u?0u:cursor+1u;
+            if(pad.pressed&SAT_PAD_UP)cursor=cursor?cursor-1u:3u;
+            if(pad.pressed&SAT_PAD_DOWN)cursor=cursor>=3u?0u:cursor+1u;
             if(pad.pressed&SAT_PAD_START)return 0;
             if(pad.pressed&(SAT_PAD_A|SAT_PAD_B|SAT_PAD_C|SAT_PAD_X|SAT_PAD_Y|SAT_PAD_Z)) {
                 if(cursor==0u)return 0;
-                if(cursor==1u)return 1;
-                how_to_page();age=0;
+                if(cursor==2u)return 1;
+                if(cursor==1u)command_page();else how_to_page();
+                age=0;
                 continue;
             }
         }
         SAT_PANIC_IF_ERROR(sat_begin_frame());
-        for(unsigned i=0;i<3u;++i) {
+        for(unsigned i=0;i<4u;++i) {
             char text[16]="  ";
             const char* name=items[i];
             unsigned n=0;
@@ -1546,7 +1604,11 @@ static void draw_hud(void) {
                 SAT_PANIC_IF_ERROR(t3_original_hud_bar(g?GAUGE_X1:GAUGE_X0,GAUGE_Y,GAUGE_WIDTH,
                     bv->gauge[g].fill*GAUGE_FILL/BALL_GAUGE_WIDTH,bv->gauge[g].trail*GAUGE_FILL/BALL_GAUGE_WIDTH,g?0:1));
 #if defined(T3_BALL_TEST_POINT)
-            {char text[16]="FX 00 V00";const unsigned n=t3_move_probe_effect_count(),v=(unsigned)g_t3_prepared_particles.visible,c=(unsigned)g_t3_prepared_particles.count;text[3]=(char)('0'+n/10u%10u);text[4]=(char)('0'+n%10u);text[7]=(char)('0'+v/10u%10u);text[8]=(char)('0'+v%10u);(void)c;
+            {   /* test only: effects in the pool, particles the prepare calls visible, tiles of the particle overlay (two slots) */
+                char text[20]="FX 00 V00 T0000";
+                const unsigned n=t3_move_probe_effect_count(),v=(unsigned)g_t3_prepared_particles.visible,t=t3_stage_particle_tile_count();
+                text[3]=(char)('0'+n/10u%10u);text[4]=(char)('0'+n%10u);text[7]=(char)('0'+v/10u%10u);text[8]=(char)('0'+v%10u);
+                text[11]=(char)('0'+t/1000u%10u);text[12]=(char)('0'+t/100u%10u);text[13]=(char)('0'+t/10u%10u);text[14]=(char)('0'+t%10u);
              SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8,60));}
 #endif
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN BALL",W/2,36));   /* the mode's caption (FUN_8004EFF8) */

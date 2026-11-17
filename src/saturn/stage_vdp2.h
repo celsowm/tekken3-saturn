@@ -34,6 +34,9 @@ sat_result_t t3_stage_particle_probe_prepare(const uint8_t* pattern,const uint16
 #endif
 #if defined(T3_PARTICLE_MULTI_PROBE)
 sat_result_t t3_stage_particle_multi_begin(uint32_t frame);
+#if defined(T3_BALL_TEST_POINT)
+unsigned t3_stage_particle_tile_count(void);
+#endif
 sat_result_t t3_stage_particle_multi_add(const t3_psx_particle_quad_t* quad,const uint8_t* pattern,const uint16_t palette[16]);
 /* A false result guarantees an HUD mask cannot change this cell. */
 int t3_stage_particle_multi_has_cell(unsigned tile_x,unsigned tile_y);

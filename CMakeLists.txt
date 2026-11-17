@@ -2339,9 +2339,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py"
                 --data "${_t3_ball_blob}" --out "${_t3_ball_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py" "${_t3_ball_blob}" VERBATIM)
+        # The pause menu's COMMAND page reads the fighters' command lists (the practice blob, 9 KB) from the disc: the program has no room for them
+        set(_t3_ball_commands "")
+        if(T3_LOCAL_PRACTICE_COMMANDS)
+            string(REGEX REPLACE "\\.c$" ".bin" _t3_command_blob "${T3_LOCAL_PRACTICE_COMMANDS}")
+            if(EXISTS "${_t3_command_blob}")
+                add_custom_command(OUTPUT "${_t3_ball_gen}/CMDLIST.BIN"
+                    COMMAND "${CMAKE_COMMAND}" -E copy "${_t3_command_blob}" "${_t3_ball_gen}/CMDLIST.BIN"
+                    DEPENDS "${_t3_command_blob}" VERBATIM)
+                set(_t3_ball_commands "${_t3_ball_gen}/CMDLIST.BIN")
+            endif()
+        endif()
         set_source_files_properties(src/saturn/ball_render.c PROPERTIES COMPILE_OPTIONS "-Os")
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/BALL.BIN" "${_t3_ball_gen}/STG19.BIN" "${_t3_ball_gen}/HOWTO.BIN"
-            "${_t3_ball_gen}/BALLSPIN.BIN")
+            "${_t3_ball_gen}/BALLSPIN.BIN" ${_t3_ball_commands})
         if(TARGET tekken3_menu)
             target_sources(tekken3_menu PRIVATE src/game/ball_flow.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_BALL_PROGRAM=1)   # the menu offers TEKKEN BALL
