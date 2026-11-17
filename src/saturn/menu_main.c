@@ -74,7 +74,8 @@ static uint8_t g_io[BG_HEADER+MENU_BG_W*512+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
-static void ball_spin_draw(unsigned type);
+static void ball_spin_draw(unsigned type,unsigned side,int x,int y);
+static unsigned g_select_ball=3;   /* the select screen of Tekken Ball: the ball type whose ball turns in the opponent's slot, else 3 */
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
 static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
@@ -600,7 +601,7 @@ menu:;
                 static const char* const names[3]={"BEGINNER","EXPERT","GRAND MASTER"};
                 text(2,"TEKKEN BALL",MENU_BG_W/2,330);
                 for(unsigned r=0;r<3u;++r)text(g_ball_option==r?0:1,names[r],MENU_BG_W/2,362+(int)r*24);
-                ball_spin_draw(g_ball_option);
+                ball_spin_draw(g_ball_option,0,MENU_BG_W+250,385);   /* beside the type list */
                 if(pads.pad[0].pressed&SAT_PAD_UP)g_ball_option=g_ball_option?(uint8_t)(g_ball_option-1u):2u;
                 if(pads.pad[0].pressed&SAT_PAD_DOWN)g_ball_option=g_ball_option>=2u?0u:(uint8_t)(g_ball_option+1u);
                 if(pads.pad[0].pressed&START_BUTTONS){sfx(SFX_CONFIRM);ball_pick=0;leaving=2u;}
@@ -760,20 +761,21 @@ static sat_result_t cache_portraits(void) {
  * tall. A disc without the file shows no ball. */
 enum { SPIN_FRAMES=8, SPIN_W=40, SPIN_H=70, SPIN_PALETTE=92, SPIN_BYTES=SPIN_FRAMES*SPIN_W*SPIN_H,
        SPIN_BLOCK=SPIN_PALETTE*2+SPIN_BYTES, SPIN_X=MENU_BG_W+250, SPIN_Y=385 };
-static void ball_spin_draw(unsigned type) {
-    static int loaded=-1;
+static void ball_spin_draw(unsigned type,unsigned side,int x,int y) {
+    static int loaded[2]={-1,-1};
+    const unsigned slot=side?SLOT_B:SLOT_A;
     if(type>2u)return;
-    if(loaded!=(int)type) {
+    if(loaded[side]!=(int)type) {
         if(read_file("BALLSPIN.BIN",type*SPIN_BLOCK,g_io,SPIN_BLOCK)!=SAT_OK)return;
         uint8_t* pixels=g_io+SPIN_PALETTE*2;
-        for(unsigned i=0;i<SPIN_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+SLOT_A-1u);
-        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SPIN_PALETTE,(uint16_t)(SPR_BANK*256u+SLOT_A))!=SAT_OK)return;
-        if(sat_vdp1_vram_write((uint32_t)g_port_tex[0].srca*8u,pixels,SPIN_BYTES)!=SAT_OK)return;
-        loaded=(int)type;
+        for(unsigned i=0;i<SPIN_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+slot-1u);
+        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SPIN_PALETTE,(uint16_t)(SPR_BANK*256u+slot))!=SAT_OK)return;
+        if(sat_vdp1_vram_write((uint32_t)g_port_tex[side].srca*8u,pixels,SPIN_BYTES)!=SAT_OK)return;
+        loaded[side]=(int)type;
     }
-    const sat_vdp1_texture_t frame={(uint16_t)(g_port_tex[0].srca+((g_now/6u)%SPIN_FRAMES)*(SPIN_W*SPIN_H/8u)),SPIN_W,SPIN_H,SPR_BANK,1,
+    const sat_vdp1_texture_t frame={(uint16_t)(g_port_tex[side].srca+((g_now/6u)%SPIN_FRAMES)*(SPIN_W*SPIN_H/8u)),SPIN_W,SPIN_H,SPR_BANK,1,
                                     SAT_VDP1_TEXTURE_INDEXED8};
-    (void)sat_draw_sprite_scaled_screen(&frame,SPIN_X,SPIN_Y,SPIN_W*3,100,0);
+    (void)sat_draw_sprite_scaled_screen(&frame,(int16_t)x,(int16_t)y,SPIN_W*3,100,0);
 }
 
 static sat_result_t load_portrait(unsigned side,unsigned id) {
@@ -860,6 +862,10 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
         for(unsigned side=0;side<2;++side) {
             const unsigned id=(side&&empty1)?SILHOUETTE:t3_select_id(cursor[side]);
             const int bg_x=side?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
+            if(side && empty1 && g_select_ball<3u) {   /* Tekken Ball: its ball turns where the opponent will be, instead of the silhouette */
+                ball_spin_draw(g_select_ball,1,(bg_x+MENU_PORT_W/2)*2,SEL_SPRITE_Y+MENU_PORT_H/2);
+                continue;
+            }
             if(id!=shown[side]) {
                 if(++rest[side]>=PORT_REST_FRAMES) {
                     portrait_palette(side,0);
@@ -1199,6 +1205,7 @@ int main(void) {
     if(mode==MODE_BALL) {
         /* Tekken Ball: the single-player selection, the ball type chosen above, then BALL.BIN (the fight program with the
          * court). The first game is against Gon (modes.md, Tekken Ball: FUN_800B528C). */
+        g_select_ball=g_ball_option;
         select_flow(&g_arg[ARG_PICK0],0,1);
         {
             /* FUN_800B528C: the first game is Gon; later games pick among the unlocked characters of the pool. The met counts
