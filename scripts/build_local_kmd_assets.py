@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import sys
 
-from kmd_to_ska import parse_kmd, compile_ska, PART_ROWS, PART_MATRICES, SECOND_MESH
+from kmd_to_ska import parse_kmd, compile_ska, drawn_parts, PART_ROWS, PART_MATRICES, SECOND_MESH
 from compiled_render_plan import emit_c
 
 def skeleton_parts(model):
@@ -50,7 +50,7 @@ def projected_mesh(model, report):
         mapping.setdefault((part, row), []).append((slot, index, logical))
         logical_indices[part, row, slot] = logical
     blocks = []
-    for part, row_index in enumerate(PART_ROWS[:18]):
+    for part, row_index in drawn_parts(model):
         for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
             vb = model.rows[ri].vert
             if vb is None:
@@ -60,7 +60,7 @@ def projected_mesh(model, report):
                                map=[x for slot, index, _ in entries for x in (slot, index)],
                                logical=[x for slot, _, index in entries for x in (slot, index)]))
     faces = []
-    for part, row_index in enumerate(PART_ROWS[:18]):
+    for part, row_index in drawn_parts(model):
         for ri in [row_index] + ([row_index + 1] if part in SECOND_MESH else []):
             for face in model.rows[ri].faces or []:
                 v = [logical_indices[part, ri, slot] for slot in face]

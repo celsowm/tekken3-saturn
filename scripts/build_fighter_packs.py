@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 
+import kmd_to_ska
 from build_local_camera_assets import CHOICE_SECTION, STREAM_SECTION, compact_streams
 from build_local_kmd_assets import compile_mesh, projected_mesh, skeleton_parts
 from divmot_to_logic import sections_of
@@ -356,7 +357,10 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
     r = records(fighter)
     arc = (raw / f"{r['arc']:03}.bin").read_bytes()
     model = parse_kmd((raw / f"{r['kmd']:03}.bin").read_bytes())
+    kmd_to_ska.SKIP_PARTS = frozenset()
     enemy = is_force_enemy(fighter)
+    if fighter.name.upper().startswith('MOKUJIN'):
+        kmd_to_ska.SKIP_PARTS = frozenset({18})   # his stick is drawn only while his copied bank is Yoshimitsu's (FUN_800363B0)
     archive, report = compile_mesh(model, libsaturn, scratch / 'mesh', raw / f"{r['arc']:03}.bin", texture_cap,
                                    costume=fighter.slot - FORCE_ENEMIES[0].slot if enemy else None)
     if report['joints'] != 22 or not report['original_textures']:

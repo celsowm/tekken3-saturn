@@ -206,7 +206,7 @@ def record_slots(kmd):
     """Simulate PS1 scratch/global exchange in draw-part order, returning per-corner anchors."""
     scratch={};shared={};out={};face_refs=[];variants_omitted=0
     for part,row_index in enumerate(PART_ROWS):
-        if part>=18:continue # costume accessory enable table not yet decoded
+        if part in SKIP_PARTS:continue
         subrows=[row_index]+([row_index+1] if part in SECOND_MESH else [])
         for ri in subrows:
             row=kmd.rows[ri]
@@ -342,9 +342,18 @@ def projected_vertex_map(kmd, source_to_vertex):
     # must not overwrite that index without resolving projected differences.
     return [(part, row, slot, index) for (part, row, slot), index in seen.items()]
 
+SKIP_PARTS=frozenset()
+
+def drawn_parts(kmd):
+    """(part, row) the fighter may draw: parts 0..17 and the costume attachments (18..21: Gon's tail, held weapons, ...).
+    The enable table (0x80096222) enables exactly the attachment rows a model has; `kmd.skip_parts` leaves out the ones the
+    original draws only conditionally (Mokujin's stick); build_fighter_packs sets it for that fighter."""
+    skip=SKIP_PARTS
+    return [(part,row) for part,row in enumerate(PART_ROWS) if part not in skip]
+
 def drawn_rows(kmd):
     """(part, row) in the order the fighter draws them: parts 0..17, a second mesh after its part."""
-    for part,row_index in enumerate(PART_ROWS[:18]):
+    for part,row_index in drawn_parts(kmd):
         for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
             if kmd.rows[ri].vert is not None:yield part,ri
 
@@ -400,7 +409,7 @@ def native_textures(kmd,vram,cap,quads):
     """Native-density LUT4 patches (psx_character_textures.bake_face_lut4), shared when equal."""
     from psx_character_textures import bake_face_lut4
     luts={};unique={};textures=[];face_textures=[];reduced=0
-    for part,row_index in enumerate(PART_ROWS[:18]):
+    for part,row_index in drawn_parts(kmd):
         for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
             row=kmd.rows[ri]
             if row.vert is None:continue
@@ -480,7 +489,7 @@ def hand_variants(kmd,source,base):
 def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0,costume=None):
     model,quads,variants_omitted=to_source_model(kmd,source)
     double_sided=[];face_ot=[]
-    for part,row_index in enumerate(PART_ROWS[:18]):
+    for part,row_index in drawn_parts(kmd):
         for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
             row=kmd.rows[ri]
             if row.vert is not None:
@@ -531,7 +540,7 @@ def compile_ska(kmd,source,output,texture_arc=None,texture_cap=0,costume=None):
                                 source_arc_sha256=hashlib.sha256(texture_arc.read_bytes()).hexdigest())
         elif texture_arc is not None:
             rgba=[]
-            for part,row_index in enumerate(PART_ROWS[:18]):
+            for part,row_index in drawn_parts(kmd):
                 for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
                     row=kmd.rows[ri]
                     if row.vert is not None:
