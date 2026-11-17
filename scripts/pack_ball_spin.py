@@ -18,7 +18,9 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
-FRAMES, W, H, PALETTE_WORDS, SUPER = 8, 40, 70, 92, 5
+FRAMES, SUPER = 8, 5
+# (file, texel width and height, palette words): the type page's ball, and a small one for the select screen's 16 free codes
+VARIANTS = (('BALLSPIN.BIN', 40, 70, 92), ('BALLSML.BIN', 24, 42, 16))
 RIG_LIGHT, RIG_COLOUR = (-2048, -2896, -2048), 200
 HEAD, OPTION_WORDS = 6, 12
 
@@ -36,25 +38,7 @@ def light(normal, back, power):
     return [clamp15((b << 4) + (((RIG_COLOUR << 4) * ir[0] + ((RIG_COLOUR >> 1) << 4) * ir[1]) >> 12)) for b in back]
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--data', type=Path, required=True)
-    p.add_argument('--out', type=Path, required=True)
-    args = p.parse_args()
-    out = args.out.resolve()
-    if not any(root.resolve() in out.parents or root.resolve() == out for root in (ROOT / 'assets/imported', ROOT / 'build')):
-        p.error('output must be under assets/imported or build')
-    d = args.data.read_bytes()
-    verts = HEAD + 3 * OPTION_WORDS * 2 + 4 * 6
-    normals = verts + 42 * 6
-    tris = normals + 42 * 6
-    quads = tris + 16 * 3
-    colours = quads + 32 * 4
-    vertex = [struct.unpack('>3h', d[verts + 6 * i:verts + 6 * i + 6]) for i in range(42)]
-    normal = [struct.unpack('>3h', d[normals + 6 * i:normals + 6 * i + 6]) for i in range(42)]
-    faces = [tuple(d[tris + 3 * i:tris + 3 * i + 3]) for i in range(16)] + [tuple(d[quads + 4 * i:quads + 4 * i + 4]) for i in range(32)]
-    # a quad's corners are in strip order (0 1 / 2 3); a polygon takes them around
-    faces = [f if len(f) == 3 else (f[0], f[1], f[3], f[2]) for f in faces]
+def render(d, vertex, normal, faces, colours, W, H, PALETTE_WORDS):
     blob = bytearray()
     tilt = math.radians(25)
     for kind in range(3):
@@ -102,9 +86,33 @@ def main():
         words = [(palette[3 * i + 2] >> 3) << 10 | (palette[3 * i + 1] >> 3) << 5 | palette[3 * i] >> 3 for i in range(PALETTE_WORDS - 1)]
         pixels = np.where(alpha, np.asarray(indexed).astype(np.int32) + 1, 0).astype(np.uint8)
         blob += struct.pack(f'>{PALETTE_WORDS}H', *words, 0) + pixels.tobytes()
-    out.mkdir(parents=True, exist_ok=True)
-    (out / 'BALLSPIN.BIN').write_bytes(bytes(blob))
-    print(out / 'BALLSPIN.BIN', len(blob))
+    return bytes(blob)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--data', type=Path, required=True)
+    p.add_argument('--out', type=Path, required=True)
+    args = p.parse_args()
+    out = args.out.resolve()
+    if not any(root.resolve() in out.parents or root.resolve() == out for root in (ROOT / 'assets/imported', ROOT / 'build')):
+        p.error('output must be under assets/imported or build')
+    d = args.data.read_bytes()
+    verts = HEAD + 3 * OPTION_WORDS * 2 + 4 * 6
+    normals = verts + 42 * 6
+    tris = normals + 42 * 6
+    quads = tris + 16 * 3
+    colours = quads + 32 * 4
+    vertex = [struct.unpack('>3h', d[verts + 6 * i:verts + 6 * i + 6]) for i in range(42)]
+    normal = [struct.unpack('>3h', d[normals + 6 * i:normals + 6 * i + 6]) for i in range(42)]
+    faces = [tuple(d[tris + 3 * i:tris + 3 * i + 3]) for i in range(16)] + [tuple(d[quads + 4 * i:quads + 4 * i + 4]) for i in range(32)]
+    # a quad's corners are in strip order (0 1 / 2 3); a polygon takes them around
+    faces = [f if len(f) == 3 else (f[0], f[1], f[3], f[2]) for f in faces]
+    for name, w, h, words in VARIANTS:
+        blob = render(d, vertex, normal, faces, colours, w, h, words)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / name).write_bytes(blob)
+        print(out / name, len(blob))
 
 
 if __name__ == '__main__':

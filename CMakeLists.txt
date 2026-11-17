@@ -2335,7 +2335,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_ball_howto.py" "${T3_LOCAL_BALL_PICTURES}/how_to.png" VERBATIM)
         # The type page's spinning ball (the original's select screen turns it): rendered from the private ball data
         string(REGEX REPLACE "\\.c$" ".bin" _t3_ball_blob "${T3_LOCAL_BALL_DATA}")
-        add_custom_command(OUTPUT "${_t3_ball_gen}/BALLSPIN.BIN"
+        add_custom_command(OUTPUT "${_t3_ball_gen}/BALLSPIN.BIN" "${_t3_ball_gen}/BALLSML.BIN"
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py"
                 --data "${_t3_ball_blob}" --out "${_t3_ball_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py" "${_t3_ball_blob}" VERBATIM)
@@ -2352,7 +2352,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         set_source_files_properties(src/saturn/ball_render.c PROPERTIES COMPILE_OPTIONS "-Os")
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/BALL.BIN" "${_t3_ball_gen}/STG19.BIN" "${_t3_ball_gen}/HOWTO.BIN"
-            "${_t3_ball_gen}/BALLSPIN.BIN" ${_t3_ball_commands})
+            "${_t3_ball_gen}/BALLSPIN.BIN" "${_t3_ball_gen}/BALLSML.BIN" ${_t3_ball_commands})
         if(TARGET tekken3_menu)
             target_sources(tekken3_menu PRIVATE src/game/ball_flow.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_BALL_PROGRAM=1)   # the menu offers TEKKEN BALL

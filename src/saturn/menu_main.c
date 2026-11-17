@@ -75,7 +75,8 @@ static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
 static void ball_spin_draw(unsigned type,unsigned side,int x,int y);
-static unsigned g_select_ball=3;   /* the select screen of Tekken Ball: the ball type whose ball turns in the opponent's slot, else 3 */
+static void ball_small_draw(unsigned type,int x,int y);
+static unsigned g_select_ball=3;   /* the select screen of Tekken Ball: the ball type whose small ball turns between the slots, else 3 */
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
 static uint8_t g_port_cache[SILHOUETTE+1][PORT_FILE] __attribute__((section(".wram_l"),aligned(4)));
@@ -778,6 +779,31 @@ static void ball_spin_draw(unsigned type,unsigned side,int x,int y) {
     (void)sat_draw_sprite_scaled_screen(&frame,(int16_t)x,(int16_t)y,SPIN_W*3,100,0);
 }
 
+/* The small ball of the select screen (BALLSML.BIN: per type 16 palette words, then SML_FRAMES frames): between the two slots, in the
+ * palette codes the select screen leaves free (240 to 255, 15 colours), in a VRAM region of its own. */
+enum { SML_FRAMES=8, SML_W=24, SML_H=42, SML_BYTES=SML_FRAMES*SML_W*SML_H, SML_PALETTE=16, SML_BLOCK=SML_PALETTE*2+SML_BYTES, SML_CODE=240 };
+static void ball_small_draw(unsigned type,int x,int y) {
+    static int loaded=-1;
+    static uint16_t base;
+    static int ready;
+    if(type>2u)return;
+    if(!ready) {
+        uint32_t offset;
+        if(sat_vdp1_vram_reserve(SML_BYTES,&offset)!=SAT_OK)return;
+        base=(uint16_t)(offset/8u);ready=1;
+    }
+    if(loaded!=(int)type) {
+        if(read_file("BALLSML.BIN",type*SML_BLOCK,g_io,SML_BLOCK)!=SAT_OK)return;
+        uint8_t* pixels=g_io+SML_PALETTE*2;
+        for(unsigned i=0;i<SML_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+SML_CODE-1u);
+        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SML_PALETTE,(uint16_t)(SPR_BANK*256u+SML_CODE))!=SAT_OK)return;
+        if(sat_vdp1_vram_write((uint32_t)base*8u,pixels,SML_BYTES)!=SAT_OK)return;
+        loaded=(int)type;
+    }
+    const sat_vdp1_texture_t frame={(uint16_t)(base+((g_now/6u)%SML_FRAMES)*(SML_W*SML_H/8u)),SML_W,SML_H,SPR_BANK,1,SAT_VDP1_TEXTURE_INDEXED8};
+    (void)sat_draw_sprite_scaled_screen(&frame,(int16_t)x,(int16_t)y,SML_W*3,61,0);
+}
+
 static sat_result_t load_portrait(unsigned side,unsigned id) {
     const unsigned offset=side?SLOT_B-1u:SLOT_A-1u;
     __builtin_memcpy(g_io,g_port_cache[id],PORT_FILE);
@@ -862,10 +888,6 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
         for(unsigned side=0;side<2;++side) {
             const unsigned id=(side&&empty1)?SILHOUETTE:t3_select_id(cursor[side]);
             const int bg_x=side?SEL_PORT_RIGHT_X:SEL_PORT_LEFT_X;
-            if(side && empty1 && g_select_ball<3u) {   /* Tekken Ball: its ball turns where the opponent will be, instead of the silhouette */
-                ball_spin_draw(g_select_ball,1,(bg_x+MENU_PORT_W/2)*2,SEL_SPRITE_Y+MENU_PORT_H/2);
-                continue;
-            }
             if(id!=shown[side]) {
                 if(++rest[side]>=PORT_REST_FRAMES) {
                     portrait_palette(side,0);
@@ -885,6 +907,7 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
             }
             if(id!=SILHOUETTE)draw_name(id==20u?14u:id,bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
         }
+        if(g_select_ball<3u && !two)ball_small_draw(g_select_ball,MENU_BG_W,SEL_SPRITE_Y+MENU_PORT_H/2-45);   /* Tekken Ball: its ball turns between the two slots */
         /* Rising sparks: every 4th tick a 40-dot streak leaves a portrait, clipped above the plates. */
         if(!(elapsed&3u)) {
             static unsigned seed=12345u;
