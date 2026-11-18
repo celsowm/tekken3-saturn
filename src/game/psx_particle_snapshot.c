@@ -19,7 +19,8 @@ int t3_psx_particle_snapshot(t3_psx_particle_snapshot_t* out,const t3_psx_effect
         t3_psx_particle_snapshot_item_t* d=&out->item[count++];
         d->position[0]=s->x;d->position[1]=s->y;d->position[2]=s->z;
         d->clut[0]=s->clut[0];d->clut[1]=s->clut[1];
-        d->slot=(uint8_t)i;d->flags=s->flags;d->model=s->model;
+        d->slot=(uint8_t)i;d->flags=s->flags;
+        d->model=(uint8_t)(s->model|(s->fire_model<<4));d->frame=s->frame;
     }
     out->count=count;
     return 1;

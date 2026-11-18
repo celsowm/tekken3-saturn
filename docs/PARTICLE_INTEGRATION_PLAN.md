@@ -1855,3 +1855,85 @@ The `burst-2p` Saturn build and disc-image checks pass with both flipbook and
 particle preparation enabled. The host flipbook state test passes. The separate
 original spark phases test terminated with an illegal instruction in its Python
 harness on this run, so it was not verified. Depth ordering remains open.
+
+## 61. The fire, smoke, cloud and gas flipbooks and the Ball's glow (2026-11-17)
+
+- Every pool object of types 6 to 11 and 20 takes its frames from effect page 1 at (960,256); the UV tables, models and CLUTs
+  (`0x7DC6` to `0x7DCA`) are in the remake's `effects.md` and `UvTable`. 53 distinct cells (32 x 32 and 16 x 16), 121 frame ids.
+- `scripts/extract_psx_fire_flipbook.py` writes `FIRE.BIN` (22,462 bytes, private, `build/generated/private_ball`): five palettes,
+  eleven models, the frame to cell map and the cells packed 4-bit. `--check DUMP` matches the PS1 VRAM dump (0 cells differ). CLUTs
+  `0x7DC8` and `0x7DC9` draw their index 0 and make index 15 or 14 transparent; VDP1 treats code 0 as transparent, so the fire-only
+  cells are stored with texels 0 and 15 swapped and the runtime swaps the same two palette entries.
+- `psx_effect_uv.h` numbers the frames; a pool object carries `frame` and `fire_model` in the two padding bytes of its record (no
+  size change), the snapshot item carries `frame` in its spare byte and the fire model in the high nibble of `model`.
+  `psx_effect_fire.c` sets them per phase from the remake's rules (burn, fireball, flame, smoke, floor fire, cloud, gas).
+- `flipbook_burst.c` loads `FIRE.BIN` at boot (cells as LUT4 textures in VDP1 VRAM, palettes in CRAM bank 5 entries 49 to 128), and
+  `t3_flipbook_burst_draw` draws one additive sprite per object with a frame, after the fighters; `particle_prepare.c` hides those
+  objects' glow sprites. Type 15: `t3_flipbook_burst_ball_glow` (called from the ball's HUD block in `main.c`) draws kinds 6 and 7 as
+  the hitter's character flipbook frames 9 to 20 and kind 9 as the fireball's grow and loop, over the ball, half size 576 (1 by 5/3).
+- Seen on the Ymir probe with `T3_BALL_TEST_POINT` (forced burn, one object of each type between the fighters, kinds 6, 7 and 9):
+  flames along the burning fighter's joints, the fireball and flame, the floor fire and a ring of fire around the ball. Cost: BALL.BIN
+  `__bss_end` 0x060f9df0 to 0x060fa850 (about 2.6 KB; 0x060fa450 in the versus program); frame rate over fields 5,200 to 5,700 of
+  the probe flow with the forced burn: 196 images with the flames against 190 without (no loss).
+- PS1 side by side (burn): `scripts/pcsx_redux_ball_fire.lua` calls the original's EffectBurn (USA 0x8006EF60) from a breakpoint
+  on EffectsUpdate in a Ball fight and pauses every 5 frames; the PS1 shows flames running up the fighter's body. The Saturn probe
+  with the forced burn (`T3_BALL_TEST_POINT`) shows the same orange flames on the fighter plus the fireballs between the fighters.
+  The captures are retail frames and were deleted (disk budget, never committed).
+- Clouds and gas: the PS1's 50 % page. A PS1 capture of the breath cloud (type 10; `scripts/pcsx_redux_ball_fire.lua` with
+  `T3_FIRE_MODE=cloud`, the original's spawner USA `0x8006ECA4` on fighter 0 at USA `0x800A9228`) shows a translucent
+  cloud (pink for the normal breath, olive for Doctor B.'s) that tints the rock behind it and does not hide it. First decision: additive, not opaque; the later Gon gas comparison (below) replaced it for the clouds and the gas by a mesh sprite,
+  the closer match to the PS1's 50 % blend. Gas
+  (`=gas`, spawner USA `0x8006EDFC`) first showed nothing: its emitter (type 19, FUN_80074AD4) dies unless the owner's move
+  descriptor (the byte behind the pointer at the move table + 0x28) is 0x1B and its frame is at least table + 0x2D; the harness
+  now keeps both true, and the PS1 shows pale olive translucent clouds around the hips that tint the sand behind them, the same
+  blend as the breath cloud, so gas and cloud take the same blend, on a PS1 frame of its own.
+  Ball glow, PS1 side by side (`T3_FIRE_MODE=glow`: the volley overlay's glow starter, USA 0x800B4258 = Rev.1 0x800B4720
+  less the overlay's 0x4C8, with its once-only flag word at USA 0x800B5F94 cleared, and the ball's render kind held right
+  before each EffectsUpdate, since the ball logic resets it and the glow's update deletes the object unless the kind is its own;
+  the ball is the word at USA 0x800ADD74, Rev.1 0x800AE23C, which the accessor FUN_800B0C70 returns): kind 6 is the hitter's
+  character flipbook (frames 9 to 20) in flames wrapped round the ball, kind 7 (the second hitter) a small blue-white spark
+  glow, kind 9 (big = 1) an orange fireball over the ball's lower half. The Saturn probe (`T3_BALL_TEST_POINT`) draws the
+  same: flame rings round the ball in the forced windows, blue-white sparks for kind 7 (the second hitter's flipbook), the fireball in orange. Earlier attempts that drew nothing used a
+  wrong ball address and set the kind only once a frame. A second fighter (King vs Gon) was seen on the probe too. The draw
+  Gon's breath, flame, cloud and gas in versus: the test option `T3_TEST_GON_FX` (with `T3_DEMO_PAIR=17,0` and
+  `T3_TEST_SKIP_INTRO`) makes Gon's records run descriptors 0x18, 0x19, 0x1A and 0x1B in turn in the Gon against Paul attract
+  fight, through the match's own spawn path (`psx_match_effects.c`), because no pad script can select Gon and a CPU Gon never chose
+  those moves in 57 screenshots. 41 probe screenshots over fields 2000 to 3200 show the fire breath as a stream of yellow and
+  orange flames from his mouth, flames and embers where it hits Paul, the flame variant, the breath cloud as pink translucent puffs
+  and the gas as pale yellow-green puffs, all additive over the stage. The cloud's colour is the original's: CLUT 0x7DCA is
+  purple, and a PS1 capture of the spawner with its second argument 0 (the normal breath cloud) shows the same translucent
+  pink cloud. The fire breath's side by side: the same harness with `T3_FIRE_MODE=breath` (the original's type 6 spawner,
+  Rev.1 FUN_8006EC84, USA 0x8006E99C, on fighter 0) shows a stream of yellow-orange 32 by 32 flame fireballs flying along the
+  mouth direction, drawn in front of the ball and the rocks; the Saturn's forced Gon breath is the same stream of yellow-orange
+  flames, over the target and the stage. An earlier capture that read olive passed a nonzero argument, which is Doctor B.'s cloud (CLUT 0x7DC6).
+  Pad-scripted, too: `scripts/ymir_gon_fx.py` plays Gon in practice mode (the select reaches him with 19 RIGHT presses; the pad is
+  the PS1's: X Square LP, Y Triangle RP, A Cross LK, B Circle RK) and sends LP+RP, the Dino Breath, and back + RK, Gon with the
+  Wind. 36 probe screenshots show his breath hitting the dummy (a red hit burst at his mouth and the dummy burning in orange
+  flames) and the gas as puffs at his hips, over the stage. The gas's PS1 frame is Gon's own: the harness with
+  `T3_FIRE_MODE=gas T3_FIGHTER=1` (fighter 1 of the Ball fight is Gon, USA 0x800AAAB4) shows pale olive translucent puffs round his
+  hips that tint the court, as the probe's pad-scripted gas does.
+  The same move on the PS1, pad-scripted (`scripts/pcsx_redux_gon_practice.lua`: Gon unlocked by one write to the unlock mask,
+  USA 0x80097EF2 bit 1; PRACTICE MODE is two UP from ARCADE; the cursor reaches Gon with one LEFT; MODE SELECT opens at about vsync
+  2480, SQUARE twice for 1P FREESTYLE and OK; then LEFT + CIRCLE, back + RK, at vsync 2800): Gon raises his tail and olive-green
+  translucent clouds drift out from his hips toward the dummy, tinting the beach behind them, and his tail passes in front of the
+  clouds. The Saturn's pad-scripted gas matches in place, size and timing. The first version drew the clouds and the gas as
+  additive sprites, which came out a paler yellow than the PS1's darker olive: the PS1's 50 % page is (B + F) / 2 and the VDP2
+  add path gives B + F, and the ratio slots cannot be mixed with the add mode in one frame. So the clouds and the gas (models
+  cloud, gas A and B) are now plain VDP1 mesh sprites through an RGB table of the same palette (`g_fire_mesh_lut` in
+  `flipbook_burst.c`): the checkerboard of the sprite and what is behind it, the VDP2 floor too, averages on screen like the
+  50 % blend, and the probe shows the gas as an olive-green dither over the ground. The additive path stays for the fire,
+  burn, smoke and glow (the PS1's additive page). The gas now draws behind the fighters (see below); the breath cloud and flames still draw
+  in the overlay, over them.
+  The draw order is the plan's choice (the flames after the fighters, as the burst, a depth test only if needed): the PS1 burn
+  frames show the flames over the body and the breath's stream over the target, so no depth test was added; the PS1's ordering
+  table can still put a flame behind a fighter. Deferred: the fire's dynamic light, Gon's tail sway, pad vibration.
+  Frame-rate cost of the mesh path (clouds and gas), measured with `scripts/ymir_fight.py --fields 5000` on a forced Gon fight
+  (a breath, cloud, flame and gas cycle every 240 frames, `T3_TEST_GON_FX`): mesh 22.14 images/s, additive control 22.16
+  (worst segment 19.77 in both). No measurable cost.
+  Draw order: the gas (types 19/20) is drawn in the world pass before the fighters' faces (`t3_flipbook_burst_draw_behind`, called
+  before `flush_scene`), so it sits behind Gon's tail as on the PS1; it is behind both fighters, not sorted per object (the mixed
+  OT of `docs/POST_VRAM_FRAME_RATE_PLAN.md` would sort it, but needs Work RAM Low). Frame rate, same forced Gon fight
+  (`T3_DEMO_PAIR=17,0`, `T3_DEMO_CPU_MASK=0`): gas behind 23.53 images/s, gas in the overlay 23.53 (worst segment 23.46 in both).
+  Gas colour, numeric: the Saturn's gas pixels over the sand average (198, 198, 113) in two frames, B/G 0.55-0.59 and R = G; the
+  PS1's gas averages (155, 157, 85), B/G 0.54 and R = G. The hue matches; the brightness follows each stage's floor (the stages
+  and cameras differ, so no per-pixel diff). Clouds and gas stay mesh sprites: the VDP2 additive path cannot give the 50 % page.

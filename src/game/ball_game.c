@@ -123,9 +123,21 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
     /* a point's flash (kind 2, k = 5) throws 16 sparks (effect type 1) around the ball (ball_sim.sparks: the position -0xFF + 9 random bits
      * per axis, pitch 0x400 and a yaw of 0 or 0x100); the original's random numbers are the AI's, these come from the tick count */
 #if defined(T3_BALL_TEST_POINT)
+    if(g->ticks%300u>=60u && g->ticks%300u<120u)g->ball.kind=6;   /* test only: the charged ball's glows (kinds 6, 7 and 9) */
+    else if(g->ticks%300u>=120u && g->ticks%300u<180u)g->ball.kind=7;
+    else if(g->ticks%300u>=180u && g->ticks%300u<240u)g->ball.kind=9;
     if(g->ticks%300u==0u) {   /* test only: a point's flash and a burn of fighter 1 every five seconds */
         g->ball.kind=2;g->ball.timer=5;
         if(g->events.count<BALL_EV_MAX){t3_ball_event_t* x=&g->events.e[g->events.count++];x->kind=BALL_EV_BURN;x->a=0;x->b=x->c=x->d=x->e=0;}
+        if(m->config->effects) {   /* and the fire, flame, floor fire, cloud and gas objects in a row between the fighters */
+            static const uint8_t kinds[5]={6,8,9,10,20};
+            for(i=0;i<5u;++i) {
+                t3_psx_spark_t* o=t3_psx_effect_alloc(m->config->effects,kinds[i]);
+                if(!o)break;
+                o->x=(g->f[0].x+g->f[1].x)/2+((int32_t)i-2)*900;o->y=-400;o->z=g->f[0].z;
+                o->pitch=0;o->yaw=0x400;o->speed=0x300;
+            }
+        }
     }
 #endif
     if(g->ball.kind==2&&g->last_kind!=2&&g->ball.timer==5&&m->config->effects) {

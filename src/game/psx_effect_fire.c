@@ -3,9 +3,10 @@
  * https://polyformproject.org/licenses/noncommercial/1.0.0/
  * C adaptation of the fire, cloud and gas objects in pinned Tekken3Remake
  * remake/core/effects/effect_objects.gd. Changes: caller-owned pool, no light
- * list or vibration, and the original's UV flipbooks are not kept: the Saturn
- * draws these objects with the glow sprites. See NOTICE.md. */
+ * list or vibration; the original's UV tables are kept as frame ids (psx_effect_uv.h)
+ * and the glow sprites stay as the model when no flipbook is loaded. See NOTICE.md. */
 #include "psx_effect_fire.h"
+#include "psx_effect_uv.h"
 enum { VISIBLE=0x40,SEGMENT=0x02,OWNER_0=0x10,FLOOR=-0xD8 };
 enum { CLUT_DUST=0x7DC6,CLUT_GLOW=0x7DC7,CLUT_FIRE=0x7DC8,CLUT_BURST=0x7DC9,CLUT_CLOUD=0x7DCA };
 enum { MODEL_GLOW=3,MODEL_RISE=4 };
@@ -62,21 +63,28 @@ static void fireball(const fire_t* e,t3_psx_spark_t* o) {
     if(o->state==0) {
         o->state=1;o->flags|=VISIBLE;show(o,MODEL_GLOW,CLUT_FIRE);save_previous(o);
         const uint32_t r=next_random(e);
+        o->fire_model=(uint8_t)((r&1u)?T3_FM_FIREBALL_B:T3_FM_FIREBALL_A);
         o->b=(int32_t)((r>>2)&3u)+5;o->c=-1;o->d=1;o->speed=0xA00;o->a=0;
         o->pitch=(int16_t)(o->pitch-0x3F+(int32_t)((r>>4)&0x7Fu));
         o->yaw=(int16_t)(o->yaw-0x1F+(int32_t)((r>>6)&0x3Fu));
         aim(e,o);
     }
     if(o->state==1) {
-        o->c=add(o->c,1);
+        o->c=add(o->c,1);o->frame=(uint8_t)(T3_UV_FIREBALL_GROW+o->c);
         if(o->c>6){o->state=2;o->c=(int32_t)next_random(e);o->speed=0x1000;aim(e,o);}
     } else if(o->state==2) {
-        o->c=add(o->c,1);o->a=add(o->a,1);
-        if(o->b<=o->a){o->c=-1;o->state=3;(void)next_random(e);}
+        o->c=add(o->c,1);o->a=add(o->a,1);o->frame=(uint8_t)(T3_UV_FIREBALL_LOOP+(o->c&7));
+        if(o->b<=o->a){
+            o->c=-1;o->state=3;
+            o->fire_model=(uint8_t)((next_random(e)&1u)?T3_FM_FIREBALL_B:T3_FM_FIREBALL_A);
+        }
     } else if(o->state==3) {
         o->clut[0]=o->clut[1]=CLUT_BURST;
         o->c=add(o->c,1);
-        if(o->c<8){if(o->d && !segment_frames(e,0)[o->c])o->d=0;}
+        if(o->c<8){
+            o->frame=(uint8_t)(T3_UV_FIREBALL_BURST+o->c);o->fire_model=(uint8_t)((o->c&1)?T3_FM_FIREBALL_B:T3_FM_FIREBALL_A);
+            if(o->d && !segment_frames(e,0)[o->c])o->d=0;
+        }
         else finish(o);
     }
     move(o);
@@ -96,7 +104,7 @@ static void fireball(const fire_t* e,t3_psx_spark_t* o) {
 static void smoke(const fire_t* e,t3_psx_spark_t* o) {
     if(o->state<2) {
         if(o->state==0) {
-            o->state=1;o->flags|=VISIBLE;show(o,MODEL_RISE,CLUT_GLOW);
+            o->state=1;o->flags|=VISIBLE;show(o,MODEL_RISE,CLUT_GLOW);o->fire_model=T3_FM_SMOKE;
             const uint32_t r1=next_random(e),r2=next_random(e),u=r1|(r2<<16);
             o->b=(int32_t)((u>>10)&0x1Fu);o->a=0;
             o->x=add(o->x,-0x7F+(int32_t)(r1&0xFFu));
@@ -107,11 +115,12 @@ static void smoke(const fire_t* e,t3_psx_spark_t* o) {
             o->speed=(int16_t)((((u>>12)&0x3FFu)*5u>>2)+0x200u);
             aim(e,o);
         }
-        o->a=add(o->a,1);
+        o->a=add(o->a,1);o->frame=(uint8_t)(T3_UV_SMOKE_PUFF+((o->a&0xE)>>1));
         if(o->b<=o->a){o->a=-1;o->state=2;}
     } else {
         o->a=add(o->a,1);
         if(o->a>=0xC)finish(o);
+        else o->frame=(uint8_t)(T3_UV_SMOKE_FADE+o->a);
     }
     o->vy=add(o->vy,-0x30000);
     move(o);
@@ -132,19 +141,23 @@ static void flame(const fire_t* e,t3_psx_spark_t* o) {
         if(o->state==0) {
             o->state=1;o->flags|=VISIBLE|SEGMENT;show(o,MODEL_GLOW,CLUT_FIRE);
             const uint32_t r=next_random(e);
+            o->fire_model=(uint8_t)((r&1u)?T3_FM_FLAME_A:T3_FM_FLAME_B);
             o->b=(int32_t)((r>>2)&3u)+5;o->c=-1;o->a=0;o->speed=0x800;
             aim(e,o);
         }
-        o->c=add(o->c,1);
+        o->c=add(o->c,1);o->frame=(uint8_t)(T3_UV_FLAME_GROW+(o->c>>1));
         if(o->c>6){o->state=2;o->c=(int32_t)next_random(e);}
     } else if(o->state==2) {
-        o->c=add(o->c,1);o->a=add(o->a,1);
+        o->c=add(o->c,1);o->a=add(o->a,1);o->frame=(uint8_t)(T3_UV_FLAME_LOOP+((o->c&6)>>1));
         if(o->b<=o->a){o->state=4;o->c=-1;}
     } else {
         if(o->state==3){o->state=4;o->vx=o->vy=o->vz=0;o->c=-1;}
         o->clut[0]=o->clut[1]=CLUT_BURST;
         o->c=add(o->c,1);
-        if(o->c<9){if((o->flags&SEGMENT) && !segment_frames(e,8)[o->c])o->flags&=(uint8_t)~SEGMENT;}
+        if(o->c<9){
+            o->frame=(uint8_t)(T3_UV_FLAME_BURST+(o->c>>1));
+            if((o->flags&SEGMENT) && !segment_frames(e,8)[o->c])o->flags&=(uint8_t)~SEGMENT;
+        }
         else finish(o);
     }
     save_previous(o);move(o);floor_clip(e,o);
@@ -153,15 +166,15 @@ static void flame(const fire_t* e,t3_psx_spark_t* o) {
 static void floor_fire(const fire_t* e,t3_psx_spark_t* o) {
     if(o->state<2) {
         if(o->state==0) {
-            o->state=1;o->flags|=VISIBLE;show(o,MODEL_GLOW,CLUT_GLOW);
+            o->state=1;o->flags|=VISIBLE;show(o,MODEL_GLOW,CLUT_GLOW);o->fire_model=T3_FM_FLOOR_FIRE;
             const uint32_t r1=next_random(e),r2=next_random(e),u=r1|(r2<<16);
             o->y=-0x100;o->vy=0;o->a=(int32_t)(u>>2);o->b=(int32_t)(r1&0x1Fu)+0x3C;
         }
-        o->a=add(o->a,1);o->b=add(o->b,-1);
+        o->a=add(o->a,1);o->b=add(o->b,-1);o->frame=(uint8_t)(T3_UV_SMOKE_PUFF+((o->a&0xE)>>1));
         if(o->b<0){o->a=-1;o->state=2;}
     } else {
         o->a=add(o->a,1);
-        if(o->a<0x10){o->vy=add(o->vy,-0x24000);o->y=add(o->y,o->vy>>16);}
+        if(o->a<0x10){o->frame=(uint8_t)(T3_UV_FIRE_FADE+o->a);o->vy=add(o->vy,-0x24000);o->y=add(o->y,o->vy>>16);}
         else finish(o);
     }
     if(chance(e,next_random(e),0x28000))spawn_smoke(e,o,0x400,0);
@@ -169,7 +182,7 @@ static void floor_fire(const fire_t* e,t3_psx_spark_t* o) {
 static void cloud(const fire_t* e,t3_psx_spark_t* o) {
     if((o->flags&SEGMENT) && !owner_active(e,o,o->d?DOCTOR_CLOUD:BREATH_CLOUD))o->flags&=(uint8_t)~SEGMENT;
     if(o->state==0) {
-        o->state=1;o->flags|=VISIBLE|SEGMENT;show(o,MODEL_GLOW,o->d?CLUT_DUST:CLUT_CLOUD);
+        o->state=1;o->flags|=VISIBLE|SEGMENT;show(o,MODEL_GLOW,o->d?CLUT_DUST:CLUT_CLOUD);o->fire_model=T3_FM_CLOUD;
         const uint32_t r1=next_random(e),r2=next_random(e),u=r1|(r2<<16);
         o->c=-1;o->speed=0x300;
         o->pitch=(int16_t)(o->pitch-0x7F+(int32_t)(r1&0xFFu));
@@ -178,7 +191,10 @@ static void cloud(const fire_t* e,t3_psx_spark_t* o) {
     }
     if(o->state==1) {
         o->c=add(o->c,1);
-        if(o->c<0x15){if((o->flags&SEGMENT) && !segment_frames(e,17)[o->c])o->flags&=(uint8_t)~SEGMENT;}
+        if(o->c<0x15){
+            o->frame=(uint8_t)(T3_UV_CLOUD+o->c);
+            if((o->flags&SEGMENT) && !segment_frames(e,17)[o->c])o->flags&=(uint8_t)~SEGMENT;
+        }
         else finish(o);
     }
     save_previous(o);move(o);
@@ -188,6 +204,8 @@ static void burn_follow(const fire_t* e,t3_psx_spark_t* o) {
     o->b=add(o->b,1);
     const t3_vec3i_t p=f->world[o->d].origin;
     o->x=p.x;o->y=p.y;o->z=p.z;
+    o->fire_model=(uint8_t)((o->flags&0x20u)?T3_FM_BURN_GON:T3_FM_BURN);
+    o->frame=(uint8_t)(T3_UV_FLAME_LOOP+((o->b&6)>>1));
     if(chance(e,next_random(e),0x3C000))spawn_smoke(e,o,0x400,0);
     o->a=add(o->a,-1);
     if(o->a<0){o->a=0;o->vy=0;o->state=(uint8_t)(o->state+1u);}
@@ -201,11 +219,12 @@ static void burn(const fire_t* e,t3_psx_spark_t* o) {
         }
         burn_follow(e,o);
     } else if(o->state==2) {
+        o->frame=(uint8_t)(T3_UV_FLAME_LOOP+(o->a>>1));
         o->vy=add(o->vy,-0x18000);o->a=add(o->a,1);o->y=add(o->y,o->vy>>16);
         if(o->a>6){o->a=-1;o->state=3;}
     } else {
         o->a=add(o->a,1);
-        if(o->a<5){o->clut[0]=o->clut[1]=CLUT_BURST;o->vy=add(o->vy,-0x18000);o->y=add(o->y,o->vy>>16);}
+        if(o->a<5){o->frame=(uint8_t)(T3_UV_FLAME_BURST+(o->a>>1));o->clut[0]=o->clut[1]=CLUT_BURST;o->vy=add(o->vy,-0x18000);o->y=add(o->y,o->vy>>16);}
         else finish(o);
     }
 }
@@ -230,12 +249,14 @@ static void gas(const fire_t* e,t3_psx_spark_t* o) {
     if((o->flags&SEGMENT) && !owner_active(e,o,GAS))o->flags&=(uint8_t)~SEGMENT;
     save_previous(o);
     if(o->state==0) {
-        o->state=1;o->flags|=VISIBLE|SEGMENT;(void)next_random(e);show(o,MODEL_GLOW,CLUT_DUST);
+        o->state=1;o->flags|=VISIBLE|SEGMENT;show(o,MODEL_GLOW,CLUT_DUST);
+        o->fire_model=(uint8_t)((next_random(e)&1u)?T3_FM_GAS_B:T3_FM_GAS_A);
         o->c=-1;aim(e,o);move(o);o->vy=0;
     }
     if(o->state==1) {
         o->c=add(o->c,1);
         if(o->c<0x36) {
+            o->frame=(uint8_t)(T3_UV_GAS+(o->c>>1));
             o->vy=add(o->vy,-0x3999);o->y=add(o->y,o->vy>>16);
             if((o->flags&SEGMENT) && !segment_frames(e,38)[o->c>>1])o->flags&=(uint8_t)~SEGMENT;
         } else finish(o);

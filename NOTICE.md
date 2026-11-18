@@ -44,7 +44,10 @@ implementation of Tekken3Remake.
   `src/game/psx_spark.c` (normal/power hit-spark phases and integer trajectories
   from `remake/core/effects/effect_objects.gd` and `docs/research/code/effects.md`),
   `src/game/psx_effect_fire.c` (fire breath, clouds, Gon's flame and gas, smoke,
-  floor fire and burning from `remake/core/effects/effect_objects.gd`),
+  floor fire and burning from `remake/core/effects/effect_objects.gd`; the
+  frame ids of `src/game/psx_effect_uv.h` and the tables read by
+  `scripts/extract_psx_fire_flipbook.py` from its `UvTable` and
+  `tools/remake_import/effects.py`),
   True Ogre's sway in `src/game/psx_match.c` (from
   `remake/core/fighter/fighter_animation.gd`, `fighter_hands.gd` and
   `docs/research/formats/animation.md`),

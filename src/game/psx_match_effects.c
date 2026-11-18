@@ -82,6 +82,19 @@ int t3_psx_match_effects_update(t3_psx_match_t* m,int replay) {
         if(found==1)actors[i].first_joint=actors[i].joints[0];
         else if(f->ground.power_timer)return 0;
     }
+#if defined(T3_TEST_GON_FX)
+    /* test only: Gon's fire breath, breath cloud, flame and gas in turn, each for 40 frames, every 240 frames (the gas fires on the
+     * descriptor's first active frame, so it holds its pose at active_first for one frame and then moves on) */
+    for(unsigned i=0;i<2;++i) {
+        if(c->character[i]!=17u)continue;
+        static const uint8_t joints[4]={0x18,0x19,0x1A,0x1B};
+        const unsigned phase=m->frame_counter%240u,slot=phase/60u;
+        if(phase%60u>=40u)continue;
+        actors[i].first_joint=joints[slot];
+        actors[i].active_first=0;actors[i].active_last=40;
+        actors[i].pose=(int16_t)(phase%60u);
+    }
+#endif
     if(!replay || !(m->replay.play&1)) {
         if(c->effect_table_bytes!=T3_PSX_EFFECT_TABLE_BYTES)return 0;
         descriptor_spawn(m,0,&actors[0]);descriptor_spawn(m,1,&actors[1]);

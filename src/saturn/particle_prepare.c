@@ -71,6 +71,9 @@ sat_result_t t3_particle_prepare_image(void) {
         t3_psx_particle_draw_t* draw=&g_t3_prepared_particles.draw[i];
         if(!t3_psx_particle_prepare(&image->sprites.item[i],&g_assets,&view,(image->frame_counter+T3_PARTICLE_CLUT_FLIP)&1u,draw))
             return SAT_ERR_VERIFY_FAILED;
+#if defined(T3_FLIPBOOK_BURST)
+        if(image->sprites.item[i].frame)draw->quad.visible=0;   /* the fire flipbook draws it (flipbook_burst.c) */
+#endif
         visible+=draw->quad.visible;
     }
 #if defined(T3_PARTICLE_CLUT_HIST)

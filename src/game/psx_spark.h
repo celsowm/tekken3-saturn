@@ -8,6 +8,7 @@ typedef struct {
     uint8_t type,flags,state,model;
     int16_t pitch,yaw,speed;
     uint16_t clut[2];
+    uint8_t frame,fire_model; /* the fire flipbook's frame id and model (psx_effect_uv.h); 0 draws the glow sprite of `model` */
     int32_t x,y,z,vx,vy,vz,a,b,c,d;
     int32_t px,py,pz; /* the previous position: a projectile's hit segment start */
 } t3_psx_spark_t;

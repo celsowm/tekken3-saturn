@@ -16,7 +16,7 @@ int main(int argc,char** argv) {
         for(unsigned i=1;i<15;++i)if(scanf("%"SCNd32,&row[i])!=1)return 2;
         const t3_psx_camera_view_t camera={row[0],row[1],row[2],row[3],row[4],row[5],row[6]};
         t3_psx_particle_snapshot_item_t item={{row[7],row[8],row[9]},
-            {(uint16_t)row[12],(uint16_t)row[13]},0,(uint8_t)row[10],(uint8_t)row[11]};
+            {(uint16_t)row[12],(uint16_t)row[13]},0,(uint8_t)row[10],(uint8_t)row[11],0};
         t3_psx_particle_view_t view;t3_psx_particle_draw_t draw;
         if(!t3_psx_particle_build_view(&camera,&trig,&view) ||
            !t3_psx_particle_prepare(&item,&assets,&view,(unsigned)row[14],&draw))return 2;

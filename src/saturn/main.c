@@ -1672,28 +1672,20 @@ static void draw_hud(void) {
                     }
                 }
                 if((bv->ball.kind==6||bv->ball.kind==7||bv->ball.kind==9)&&bv->active) {
-                    /* The charged ball's glow (effect type 15) is the hitter's character flipbook looped on the ball; that art is
-                     * not on the disc, so this is an approximation: a pulsing half-transparent halo in the owner's colour
-                     * (white for a charge of 100 or more), two stacked octagons (a square and a diamond each). */
-                    static uint8_t pulse;
-                    int32_t centre[3],edge[3],offset[3]={bv->ball.pos[0]+0x120,bv->ball.pos[1],bv->ball.pos[2]};
+                    /* The charged ball's glow (effect type 15, FUN_80073F78): kinds 6 and 7 loop the hitter's character flipbook
+                     * (frames 9 to 20) on the ball, kind 9 is a flame (type 6's grow and loop); the sprite is the quad of the
+                     * original's model 0x8002595C (half size 576, 1 by 5/3 on the screen) over the ball. */
+                    static unsigned glow_tick,glow_kind;
+                    int32_t centre[3],edge[3],offset[3]={bv->ball.pos[0]+576,bv->ball.pos[1],bv->ball.pos[2]};
                     t3_psx_camera_project(&view_matrix,bv->ball.pos,centre);
                     t3_psx_camera_project(&view_matrix,offset,edge);
                     const int cx=t3_psx_viewport_x(centre[0])-160,cy=t3_psx_viewport_y(centre[1])-112;
-                    int radius=t3_psx_viewport_x(edge[0])-t3_psx_viewport_x(centre[0]);
-                    const uint16_t colour=bv->ball.kind==9?SAT_RGB555(31,31,24):bv->ball.kind==6?SAT_RGB555(31,18,4):SAT_RGB555(6,22,31);
-                    if(radius<0)radius=-radius;
-                    ++pulse;
-                    for(unsigned layer=0;layer<2u;++layer) {
-                        const int r=radius+1+(int)layer*3+(int)((pulse>>1)&3u);
-                        const sat_quad2_t square={{(int16_t)(cx-r),(int16_t)(cx+r),(int16_t)(cx+r),(int16_t)(cx-r)},
-                                                  {(int16_t)(cy-r),(int16_t)(cy-r),(int16_t)(cy+r),(int16_t)(cy+r)}};
-                        const int d=r*7/5;   /* a square of half-side r and a diamond of half-diagonal 1.4 r make an octagon */
-                        const sat_quad2_t diamond={{(int16_t)cx,(int16_t)(cx+d),(int16_t)cx,(int16_t)(cx-d)},
-                                                   {(int16_t)(cy-d),(int16_t)cy,(int16_t)(cy+d),(int16_t)cy}};
-                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&square,colour,SAT_SPRITE_FLAG_HALF_TRANSPARENT));
-                        SAT_PANIC_IF_ERROR(sat_draw_quad2_polygon_effects(&diamond,colour,SAT_SPRITE_FLAG_HALF_TRANSPARENT));
-                    }
+                    int half_w=t3_psx_viewport_x(edge[0])-t3_psx_viewport_x(centre[0]);
+                    int half_h=t3_psx_viewport_y(centre[1]+(edge[0]-centre[0])*5/3)-t3_psx_viewport_y(centre[1]);
+                    if(half_w<0)half_w=-half_w;
+                    if(half_h<0)half_h=-half_h;
+                    if((unsigned)bv->ball.kind!=glow_kind){glow_kind=(unsigned)bv->ball.kind;glow_tick=0;}
+                    SAT_PANIC_IF_ERROR(t3_flipbook_burst_ball_glow(cx,cy,half_w,half_h,glow_kind,glow_tick++));
                 }
                 for(unsigned k=0;k<BALL_POPUPS;++k) {
                     const t3_ball_popup_t* pp=&bv->popup[k];
@@ -2923,6 +2915,9 @@ int main(void) {
 #endif
 #if defined(T3_NATIVE_WAIT_PROBE)
         const uint16_t native_flush_started=sat_time_frc();
+#endif
+#if defined(T3_FLIPBOOK_BURST)
+        SAT_PANIC_IF_ERROR(t3_flipbook_burst_draw_behind());
 #endif
 #if defined(T3_EFFECT_RING)
         const uint16_t flush_started_frc=sat_time_frc();

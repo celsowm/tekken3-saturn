@@ -22,7 +22,7 @@ t3_psx_spark_t* t3_psx_effect_alloc(t3_psx_effect_pool_t* p,unsigned type) {
     p->previous[i]=p->tail;p->next[i]=80;
     if(p->tail!=80)p->next[p->tail]=(uint8_t)i;else p->head=(uint8_t)i;
     p->tail=(uint8_t)i;++p->count;
-    t3_psx_spark_t* o=&p->object[i];o->type=(uint8_t)type;o->flags=0x80;o->state=0;return o;
+    t3_psx_spark_t* o=&p->object[i];o->type=(uint8_t)type;o->flags=0x80;o->state=0;o->frame=o->fire_model=0;return o;
 }
 static void release(t3_psx_effect_pool_t* p,unsigned i) {
     unsigned a=p->previous[i],b=p->next[i];

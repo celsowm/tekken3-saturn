@@ -8,7 +8,11 @@ typedef struct {
     int32_t position[3];
     uint16_t clut[2];
     uint8_t slot,flags,model;
+    uint8_t frame;  /* the fire flipbook's frame id (psx_effect_uv.h); 0 for a glow sprite */
 } t3_psx_particle_snapshot_item_t;
+/* A snapshot item carries the object's fire model in the high nibble of `model` (the sprite models are 1-5). */
+#define T3_PSX_SNAPSHOT_MODEL(item) ((item)->model&15u)
+#define T3_PSX_SNAPSHOT_FIRE_MODEL(item) ((item)->model>>4)
 typedef struct {
     t3_psx_particle_snapshot_item_t item[T3_PSX_EFFECT_CAPACITY];
     unsigned count;

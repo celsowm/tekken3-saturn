@@ -1271,6 +1271,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
                 "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
                 "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        # The pool's fire, smoke, cloud and gas flipbooks (effect page 1), drawn through the same path
+        add_custom_command(OUTPUT "${_t3_particle_gen}/FIRE.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_fire_flipbook.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_particle_gen}"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_fire_flipbook.py"
+                "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${CMAKE_SOURCE_DIR}/third_party/Tekken3Remake/tools/research/system_textures.py"
+                "${T3_LOCAL_HUD_EXE}" VERBATIM)
+        list(APPEND _t3_stage_disc_files "${_t3_particle_gen}/FIRE.BIN")
+        target_sources(tekken3_saturn PRIVATE "${_t3_particle_gen}/FIRE.BIN")
         if(NOT T3_LOCAL_HUD_ACTOR0_ARC OR NOT T3_LOCAL_HUD_ACTOR1_ARC)
             message(FATAL_ERROR "T3_FLIPBOOK_BURST requires T3_LOCAL_HUD_ACTOR0_ARC and T3_LOCAL_HUD_ACTOR1_ARC")
         endif()
@@ -2238,6 +2248,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
     set(T3_DEMO_PAIR "" CACHE STRING "Test builds: fixed attract fight pair, empty for the rotation")
     if(T3_DEMO_PAIR)
         target_compile_definitions(tekken3_menu PRIVATE T3_DEMO_PAIR=${T3_DEMO_PAIR})
+    endif()
+    # Test builds: Gon's records run his fire breath, breath cloud, flame and gas descriptors in turn (psx_match_effects.c),
+    # so the fire pool's objects are seen in a fight without the AI choosing those moves. Pair it with T3_DEMO_PAIR=17,0.
+    option(T3_TEST_GON_FX "Test: Gon's breath, cloud, flame and gas descriptors run in turn in the fight" OFF)
+    if(T3_TEST_GON_FX)
+        target_compile_definitions(tekken3_fight PRIVATE T3_TEST_GON_FX=1)
     endif()
     # Test builds: a cold boot opens the Tekken Force result with sample values and these result flags
     # (7 keys, 8 saved Doctor B., 16 the boss list), so the screen is seen without playing four levels.
