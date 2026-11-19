@@ -43,7 +43,7 @@ sat_result_t t3_characters_force_reload(void);
 sat_result_t t3_characters_force_bind_enemy(unsigned actor,unsigned key);
 unsigned t3_characters_force_model(unsigned actor);
 /* Diagnostic only: compare the last skin output to the serial solver. */
-sat_result_t t3_characters_force_check_skin(uint32_t* checked);
+sat_result_t t3_characters_force_check_skin(const sat_scene_t* scene,uint32_t* checked);
 /* Tekken Force owns its match, so the frontend publishes each actor's
  * original joint pose every tick (as the move probe does for its fixture)
  * and the camera origin the renderer rebases it to. Rebasing keeps the joint

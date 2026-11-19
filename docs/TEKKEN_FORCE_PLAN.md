@@ -1301,6 +1301,47 @@ every frame. The evaluator no longer injects the recorded value; it reports any 
 Frame rate (70 s): the input hash is unchanged; the state hash changes because the player now walks past the old wall
 (2578104655 → 2983578197). 612 fields, 7 discarded, **181 images, worst gap 7**, against the control's 181 and 7.
 
+### Skinning Force actors straight to screen (2026-11-19)
+
+A Ymir profile of the Force replay (Master only; the Slave does not run in Force) put the generic paths on top:
+`project_vertices` 9.1%, world skinning (`deform_vertices`) 6.6%, the generic screen cull
+(`append_screen_culled<false,false>`) 6.0% and the world transform in `submit_instance<true>` 4.7%. The fight
+skips all four: it skins straight to screen (docs/THIRTY_IMAGE_GATE.md, "Skinning straight to screen") and culls
+with the assembly loop. Force skinned to world because it predates that path; nothing in Force needed world vertices.
+
+`T3_FORCE_SKIN_TO_SCREEN` (on by default) gives Force the same path:
+
+- Each actor's world matrix (the sixfold visual scale alone) becomes an integral skin placement.
+  `sat_skin_clip_joints` and `sat_skin_project_range` write its projected vertices in one transform.
+- The actor's own index copy holds each corner's byte offset, and the mesh reads the resident asset's indices. The
+  topology is bound after init's last compaction, which moves the tables, and again by each enemy rebind.
+- The actor is submitted with `pre_projected`, so the face pass culls with `sat_scene3d_screen_cull_sh2`.
+- A pose the fast path refuses falls back to skinning to world and the old submission. The refused attempt appends
+  nothing. `g_t3_force_screen_fallbacks` counts these (1 in 3,000 fields of the replay; 1,277 actor submissions went
+  to screen).
+- It skins on the Master, so it excludes `T3_FORCE_PARALLEL_SKINNING`.
+
+The input probe's tick-600 skin check now compares a screen-skinned actor with deform, place and project done
+separately: within one pixel and 16 units of w (803 vertices checked).
+`T3_FORCE_PROBE_FREEZE_TICK` (diagnostic) holds the replay at a tick and keeps drawing, for matched-state captures.
+
+Ymir, replay to tick 600, same SDK and build directory, only the option toggled:
+
+| | Off (control) | On |
+|---|---|---|
+| Input / state hash | 1714359845 / 2983578197 | same |
+| Fields to tick 600 | 604 | 602 |
+| **Images** | **240** | **371** |
+| Worst gap (fields) | 5 | 4 |
+
+Mednafen (`scripts/mednafen_force_rate.py`, 70 s, no recording): the same hashes, **182 → 251 images** to tick 600
+(609 and 604 fields), worst gap 7 → 6.
+
+Frozen at tick 300, two pixels differ (channel delta 8, one model edge): rounding once instead of twice, as in the
+fight. Frozen at tick 550 the screens are identical, and one face's place in the painter order moved. In the 48-field
+profile window the four generic functions are gone. `sat_skin_rigid_project_sh2`, `sat_skin_blend_project_sh2`,
+`sat_scene3d_screen_cull_sh2` and `sat_skin_clip_joints_sh2` replace them, and per-image work is lower.
+
 ### Update: the Force result screen in the original art (2026-11-12)
 
 A cleared run (`T3_FORCE_RUN_RESULT`) no longer draws the debug-font result in FORCE.BIN. It saves its progress,

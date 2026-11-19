@@ -1393,6 +1393,10 @@ int main(void) {
             sat_video_refresh_hz(),T3_HZ);
         previous_field=field;
         for(uint32_t tick=0;tick<ticks;++tick) {
+#if T3_FORCE_INPUT_PROBE && T3_FORCE_PROBE_FREEZE_TICK
+        /* Diagnostic: hold the state at this tick and keep drawing it, so two builds render the same state. */
+        if(g_owned_match.ticks>=T3_FORCE_PROBE_FREEZE_TICK)break;
+#endif
         uint16_t held=physical_pad(pad0.held),pressed=tick?0:pending_pressed;
 #if T3_FORCE_INPUT_PROBE
         held=force_probe_pad(g_owned_match.ticks+1u);
@@ -1457,7 +1461,7 @@ int main(void) {
 #if T3_FORCE_INPUT_PROBE
         if(g_owned_match.ticks>=600u && !g_force_probe_skin_checked) {
             uint32_t checked;
-            SAT_PANIC_IF_ERROR(t3_characters_force_check_skin(&checked));
+            SAT_PANIC_IF_ERROR(t3_characters_force_check_skin(&scene,&checked));
             g_force_probe_skin_checked=checked;
         }
 #endif

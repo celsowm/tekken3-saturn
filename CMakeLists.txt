@@ -1985,6 +1985,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             # alone, so an A/B samples a few starts (docs/TEKKEN_FORCE_PLAN.md, Force sound on).
             set(T3_FORCE_PROBE_START_FIELDS 0 CACHE STRING "Diagnostic only: fields the input probe waits before the level")
             set(T3_FORCE_PROBE_TEXT_PAD 0 CACHE STRING "Diagnostic only: bytes of code ahead of the game library (layout A/B)")
+            set(T3_FORCE_PROBE_FREEZE_TICK 0 CACHE STRING "Diagnostic only: the input probe stops the simulation at this tick and keeps drawing (0: never)")
             option(T3_FORCE_PARALLEL_SKINNING "Split visible Force skin vertices between both SH-2 CPUs" OFF)
             option(T3_FORCE_NO_FLOOR "Skip the floor (frame-rate A/B control)" OFF)
             option(T3_FORCE_NO_FLOOR_FADE "Skip the level 1-2 floor's distance fade (frame-rate A/B control)" OFF)
@@ -1994,6 +1995,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             endif()
             if(T3_FORCE_PARALLEL_SKINNING AND NOT T3_FORCE_POSE_CACHE_ENTRIES STREQUAL "16")
                 message(FATAL_ERROR "The experimental Force parallel skinning layout requires 16 pose entries")
+            endif()
+            option(T3_FORCE_SKIN_TO_SCREEN "Skin Force actors straight to screen and cull them with the assembly loop" ON)
+            if(T3_FORCE_SKIN_TO_SCREEN AND T3_FORCE_PARALLEL_SKINNING)
+                message(FATAL_ERROR "T3_FORCE_SKIN_TO_SCREEN skins each actor on the Master; turn off T3_FORCE_PARALLEL_SKINNING")
             endif()
             option(T3_FORCE_BOSS_PROBE "Diagnostic only: start Force at its area-change boss boundary" OFF)
             option(T3_FORCE_CLEAR_PROBE "Diagnostic only: enter the fourth stage tally to test progress and saving" OFF)
@@ -2036,6 +2041,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                 T3_FORCE_DEBUG_HUD=$<BOOL:${T3_FORCE_DEBUG_HUD}>
                 T3_FORCE_INPUT_PROBE=$<BOOL:${T3_FORCE_INPUT_PROBE}>
                 T3_FORCE_PROBE_START_FIELDS=${T3_FORCE_PROBE_START_FIELDS}
+                T3_FORCE_PROBE_FREEZE_TICK=${T3_FORCE_PROBE_FREEZE_TICK}
                 T3_FORCE_NO_FLOOR=$<BOOL:${T3_FORCE_NO_FLOOR}>
                 T3_FORCE_NO_FLOOR_FADE=$<BOOL:${T3_FORCE_NO_FLOOR_FADE}>
                 T3_FORCE_POSE_CACHE_ENTRIES=${T3_FORCE_POSE_CACHE_ENTRIES}
@@ -2069,6 +2075,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             target_compile_options(tekken3_force PRIVATE -Wall -Wextra -O2)
             if(T3_FORCE_PARALLEL_SKINNING)
                 target_compile_definitions(tekken3_force PRIVATE T3_PARALLEL_SKINNING=1)
+            endif()
+            if(T3_FORCE_SKIN_TO_SCREEN)
+                target_compile_definitions(tekken3_force PRIVATE T3_FORCE_SKIN_TO_SCREEN=1)
             endif()
             target_link_libraries(tekken3_force PRIVATE tekken3_fight_force LibSaturn::Saturn)
             if(T3_FORCE_INPUT_PROBE)

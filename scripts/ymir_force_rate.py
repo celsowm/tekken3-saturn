@@ -47,6 +47,8 @@ def main():
     p.add_argument('--profile', type=int, nargs=2, metavar=('FROM', 'COUNT'),
                    help='bounded per-CPU --debug-profile window (intrusive: not a rate run)')
     p.add_argument('--trace-capacity', type=int, default=1048576)
+    p.add_argument('--symbol', action='append', default=[], metavar='NAME',
+                   help='also dump this 32-bit counter at the last frame (repeatable, C name)')
     p.add_argument('--timeout', type=int, default=1800)
     a = p.parse_args()
     out = a.out.resolve()
@@ -59,6 +61,9 @@ def main():
                '--out', str(out / 'ymir.json'), '--dump-mem', f'{address:#x}:{size}:{out / "probe-600.bin"}',
                '--screenshot', f'{a.frames - 1}:{out / "screen.png"}',
                '--port-device', '1:pad', '--port-device', '2:pad']
+    extra = [(name, *symbol(elf, '_' + name)) for name in a.symbol]
+    for name, at, length in extra:
+        command += ['--dump-mem', f'{at:#x}:{length}:{out / (name + ".bin")}']
     if a.dump_vdp1:
         command += ['--dump-mem', f'0x05c00000:524288:{out / "vdp1-vram.bin"}', '--dump-fb', str(out / 'vdp1-fb.bin')]
     if a.profile:
@@ -70,6 +75,9 @@ def main():
     result = dict(build=str(a.build.resolve()), elf_sha256=sha(elf), frames=a.frames,
                   probe_600=dict(zip(WORDS, words)), reached_tick_600=words[0] == 600,
                   screen_sha256=sha(out / 'screen.png'))
+    if extra:
+        result['symbols'] = {name: list(struct.unpack(f'>{length // 4}I', (out / (name + '.bin')).read_bytes()))
+                             for name, _, length in extra}
     for name in ('vdp1-vram.bin', 'vdp1-fb.bin'):
         if (out / name).exists():
             result[name.replace('-', '_').replace('.bin', '_sha256')] = sha(out / name)

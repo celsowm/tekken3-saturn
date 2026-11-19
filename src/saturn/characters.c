@@ -239,6 +239,24 @@ static t3_psx_joint_t g_force_pose[ACTOR_COUNT][T3_PSX_DRAW_PARTS];
 static uint32_t g_force_parts_mask[ACTOR_COUNT];
 static uint8_t g_force_shown[ACTOR_COUNT], g_force_pose_ready[ACTOR_COUNT];
 static int32_t g_force_origin_x, g_force_origin_z;
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+/* Skinning straight to screen, as the fight does (docs/THIRTY_IMAGE_GATE.md):
+ * one concatenated transform per vertex, then the assembly screen cull. The
+ * actors are prepared one at a time, so one set of clip joints serves all. */
+static sat_mat4_t g_force_clip_joints[T3_JOINT_COUNT];
+static uint8_t g_force_screen[ACTOR_COUNT];
+volatile uint32_t g_t3_force_screen_frames, g_t3_force_screen_fallbacks;
+
+/* The mesh reads the resident asset's indices; the actor's own copy holds
+ * each corner's byte offset into the projected vertices for the cull loop. */
+static void force_screen_topology(actor_t* a,const sat_character_asset_t* asset) {
+    _Static_assert(T3_VERTEX_COUNT*sizeof(sat_projected_vertex_t)<=65535u,"a corner offset must fit 16 bits");
+    a->mesh.indices=(uint16_t*)(uintptr_t)asset->model.indices;
+    for(unsigned k=0;k<asset->model.face_count*4u;++k)
+        a->indices[k]=(uint16_t)(asset->model.indices[k]*sizeof(sat_projected_vertex_t));
+    a->corner_offsets=a->indices;
+}
+#endif
 #endif
 static uint32_t g_texture_vram_bytes, g_skin_work_ms;
 #if defined(T3_COMPILED_RENDERER)
@@ -648,6 +666,16 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #if defined(T3_ASSET_TOPOLOGY)
     g_t3_asset_topology_ready=1;
 #endif
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+    /* Every compaction (which moves the index tables) is done by now. */
+    for(unsigned i=0;i<ACTOR_COUNT;++i) {
+        actor_t* a=&g_actors[i];
+        force_screen_topology(a,a->asset);
+        if((st=sat_scene3d_instance_binding_init(&a->binding,&a->mesh,
+                a->materials,a->texture_count,a->instance.face_materials))!=SAT_OK)return st;
+        a->binding.programs=&a->material_programs;
+    }
+#endif
 #if defined(T3_COMPILED_RENDERER)
     /* An unsupported asset keeps the reference path. All metadata is checked
      * once against the decoded SKA, rather than trusted per frame. */
@@ -695,6 +723,9 @@ sat_result_t t3_characters_force_bind_enemy(unsigned actor,unsigned key) {
     SAT_TRY(sat_skin_validate_mesh(&asset->skin,&a->mesh));
     __builtin_memcpy(a->face_materials,asset->model.face_texture_indices,
         a->mesh.face_count*sizeof(*a->face_materials));
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+    force_screen_topology(a,asset);
+#endif
     SAT_TRY(sat_skeleton_instance_init(&a->skeleton,&asset->skeleton,a->nodes,
         T3_JOINT_COUNT,a->scratch,T3_JOINT_COUNT));
     SAT_TRY(sat_skeleton_rest_pose(&asset->skeleton,a->pose,T3_JOINT_COUNT));
@@ -722,13 +753,35 @@ unsigned t3_characters_force_model(unsigned actor) {
     return actor<ACTOR_COUNT?t3_fighter_pack(g_force_pack_index[actor])->id:255u;
 }
 
-sat_result_t t3_characters_force_check_skin(uint32_t* checked) {
+sat_result_t t3_characters_force_check_skin(const sat_scene_t* scene,uint32_t* checked) {
     sat_vec3_t expected[T3_VERTEX_COUNT];
+    (void)scene;
     *checked=0;
     for(unsigned i=0;i<T3_DRAW_ACTORS;++i) {
         const actor_t* a=&g_actors[i];
         if(!g_force_shown[i] || !g_force_pose_ready[i])continue;
         SAT_TRY(sat_skin_deform(&a->asset->skin,a->joints,T3_JOINT_COUNT,expected,T3_VERTEX_COUNT));
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+        if(g_force_screen[i]) {
+            /* Deform, place and project separately: rounding twice moves a
+             * clip coordinate by a few 16.16 units, at most a pixel. */
+            _Static_assert(sizeof(sat_projected_vertex_t)<=sizeof(sat_vec3_t),"projected reference fits");
+            const int32_t scale=a->world.m[0]/SAT_FX16_ONE;
+            for(unsigned j=0;j<a->vertex_count;++j)
+                a->world_vertices[j]=(sat_vec3_t){expected[j].x*scale,expected[j].y*scale,expected[j].z*scale};
+            sat_projected_vertex_t* reference=(sat_projected_vertex_t*)(void*)expected;
+            SAT_TRY(sat_project_vertices(&scene->faces.view_proj,a->world_vertices,(uint16_t)a->vertex_count,reference));
+            for(unsigned j=0;j<a->vertex_count;++j) {
+                const sat_projected_vertex_t* got=&a->projected[j];
+                const int32_t dw=got->w-reference[j].w;
+                if(dw< -16 || dw>16)return SAT_ERR_VERSION;
+                if(got->w>0 && (got->x-reference[j].x< -1 || got->x-reference[j].x>1 ||
+                                got->y-reference[j].y< -1 || got->y-reference[j].y>1))return SAT_ERR_VERSION;
+            }
+            *checked+=a->vertex_count;
+            continue;
+        }
+#endif
         for(unsigned j=0;j<a->vertex_count;++j) {
             const sat_vec3_t* actual=&a->mesh.vertices[j];
             if(expected[j].x!=actual->x || expected[j].y!=actual->y || expected[j].z!=actual->z)
@@ -2277,6 +2330,62 @@ const t3_character_phase_profile_t* t3_characters_phase_profile(void) {
 #endif
 }
 
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+/* The world matrix as a skin placement, when it is an integral scale alone
+ * (Force's is the sixfold visual scale): scaling by an integer is exact, as
+ * the face pass's own world transform is. */
+static int force_placement(const sat_mat4_t* world,sat_skin_placement_t* out) {
+    if(!world)return 0;
+    const sat_fx16_t s=world->m[0];
+    if(s<=0 || (s&(SAT_FX16_ONE-1)))return 0;
+    for(unsigned k=0;k<16u;++k) {
+        const sat_fx16_t want=k==15u?SAT_FX16_ONE:(k==0u || k==5u || k==10u)?s:0;
+        if(world->m[k]!=want)return 0;
+    }
+    *out=(sat_skin_placement_t){s/SAT_FX16_ONE,{0,0,0},0x0FFFFFFF};
+    return 1;
+}
+
+/* Skins the actor straight to screen and submits it pre-projected. A pose
+ * the fast path refuses (a corner behind the camera or off the drawable
+ * range, a coefficient that could overflow) is skinned to world and
+ * submitted as before; nothing was appended for the refused attempt. */
+static sat_result_t force_submit_actor(sat_scene_t* scene,actor_t* a) {
+    const unsigned i=(unsigned)(a-g_actors);
+    sat_skin_placement_t placement;
+    g_force_screen[i]=0u;
+    if(force_placement(a->instance.world,&placement) &&
+       sat_skin_clip_joints(a->joints,T3_JOINT_COUNT,&placement,&scene->faces.view_proj,
+           g_force_clip_joints)==SAT_OK &&
+       sat_skin_project_range(&a->asset->skin,g_force_clip_joints,T3_JOINT_COUNT,0,a->vertex_count,
+           (int16_t)scene->faces.width,(int16_t)scene->faces.height,a->projected,T3_VERTEX_COUNT)==SAT_OK) {
+        /* The placement is already in the clip joints. */
+        const sat_mat4_t* const world=a->instance.world;
+        a->instance.world=NULL;
+        a->instance.pre_projected=1u;
+        a->instance.projected_offsets=a->corner_offsets;
+        const sat_result_t st=sat_scene_submit_instance(scene,&a->instance,
+            SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices);
+        a->instance.world=world;
+        a->instance.pre_projected=0u;
+        a->instance.projected_offsets=NULL;
+        if(st!=SAT_ERR_UNSUPPORTED) {
+            if(st==SAT_OK) {
+                g_force_screen[i]=1u;
+                ++g_t3_force_screen_frames;
+            }
+            return st;
+        }
+    }
+    ++g_t3_force_screen_fallbacks;
+    T3_PERF_START(skin_started);
+    sat_result_t st=sat_skin_update_mesh(&a->asset->skin,a->joints,T3_JOINT_COUNT,&a->mesh,0,NULL);
+    if(st!=SAT_OK)return st;
+    T3_PERF_ADD(skin,skin_started);
+    return sat_scene_submit_instance(scene,&a->instance,SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices);
+}
+#endif
+
 sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
     unsigned i;
     sat_result_t st;
@@ -2285,7 +2394,11 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
 #if defined(T3_FUSED_ACTOR_PREPARATION)
     fused=t3_move_probe_owned() && T3_DRAW_ACTORS==2;
 #endif
-    if ((st = prepare_actors(fused)) != SAT_OK) {
+    int defer_skin=fused;
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+    defer_skin=1; /* force_submit_actor skins each actor, to screen or world */
+#endif
+    if ((st = prepare_actors(defer_skin)) != SAT_OK) {
 #if defined(T3_FORCE_PROGRAM)
         SAT_PANIC_IF_ERROR(st);
 #endif
@@ -2423,8 +2536,12 @@ sat_result_t t3_characters_render(sat_scene_t* scene, const t3_match_t* game) {
         if(!g_force_shown[i] || !g_force_pose_ready[i])continue;
 #endif
         if(!t3_move_probe_fighter_shown(i))continue;
+#if defined(T3_FORCE_SKIN_TO_SCREEN)
+        if((st=force_submit_actor(scene,a))!=SAT_OK) {
+#else
         if((st=sat_scene_submit_instance(scene,&a->instance,
             SAT_SCENE3D_SLOT_INHERIT,a->projected,a->world_vertices))!=SAT_OK) {
+#endif
 #if defined(T3_FORCE_PROGRAM)
             SAT_PANIC_IF_ERROR(st);
 #endif
