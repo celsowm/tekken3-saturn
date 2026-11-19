@@ -71,9 +71,13 @@ def record(buf, base, tex, index):
         words[4] = 0  # unused source address
     if kind in (0, 1, 2, 3, 4, 5, 6) and (pmod & 7) in (4, 5, 6, 7):
         address = words[14] * 8
-        data.append(('Gouraud', region(buf, address, 8, base + COMMANDS, base + BANK,
-                                       f'command {index} Gouraud')))
-        words[14] = (address - base - COMMANDS) // 8
+        if tex <= address and address + 8 <= VRAM:
+            # A shared table (e.g. persistent lighting) does not move with the bank.
+            data.append(('Gouraud shared', buf[address:address + 8]))
+        else:
+            data.append(('Gouraud', region(buf, address, 8, base + COMMANDS, base + BANK,
+                                           f'command {index} Gouraud')))
+            words[14] = (address - base - COMMANDS) // 8
     else:
         words[14] = 0
     words[15] = 0  # reserved
