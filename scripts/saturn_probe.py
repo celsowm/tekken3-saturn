@@ -293,6 +293,11 @@ def run(args):
     for i,span in enumerate(getattr(args,'dump_range',[])):
         address,length=(int(part,0) for part in span.split(':'))
         command.extend(['--dump-mem',f'{address:#x}:{length}:{out / f"range-{i}.bin"}'])
+    if getattr(args,'dump_vdp1',False):
+        # End-of-run VDP1 VRAM (command banks, textures, Gouraud) and the raw
+        # display framebuffer, for scripts/compare_vdp1_vram.py and byte diffs.
+        command.extend(['--dump-mem',f'0x05c00000:{512*1024}:{out / "vdp1-vram.bin"}',
+                        '--dump-fb',str(out/'vdp1-fb.bin')])
     if dump_requests:
         shutil.copyfile(build/'CMakeCache.txt',out/'capture.CMakeCache.txt')
     if args.profile or getattr(args,'debug_profile',False):
@@ -434,6 +439,7 @@ def parser():
                    help='skip dump symbols this ELF lacks (a profile-only run of a build without the diagnostics)')
     p.add_argument('--dump-vdp2-vram',action='append',default=[],help='VDP2 word offset:word count in the Ymir JSON')
     p.add_argument('--dump-range',action='append',default=[],help='ADDRESS:BYTES of guest memory, written to range-N.bin')
+    p.add_argument('--dump-vdp1',action='store_true',help='write vdp1-vram.bin (512 KiB VRAM) and vdp1-fb.bin (display framebuffer)')
     return p
 
 

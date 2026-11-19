@@ -6,6 +6,8 @@ contiguous command tables, referenced texture/LUT/Gouraud data and END. It
 reports the first difference; it does not emulate command flow or rendering.
 """
 import argparse
+import hashlib
+import json
 import struct
 from pathlib import Path
 
@@ -78,8 +80,21 @@ def record(buf, base, tex, index):
     return tuple(words), tuple(data)
 
 
-def compare(control, candidate):
-    a, ab, at = load(control, False)
+def normalized(path, banked=True):
+    """Bank-relative command fields plus referenced-data hashes, END-terminated."""
+    buf, base, tex = load(path, banked)
+    rows = []
+    for i in range(2048):
+        words, data = record(buf, base, tex, i)
+        rows.append(dict(fields=list(words), data={name: hashlib.sha256(blob).hexdigest()
+                                                   for name, blob in data}))
+        if words == ('END',):
+            return dict(bank_base=base, commands=i, rows=rows)
+    raise ValueError(f'{path}: no END within 2048 entries')
+
+
+def compare(control, candidate, banked_control=False):
+    a, ab, at = load(control, banked_control)
     b, bb, bt = load(candidate, True)
     for i in range(2048):
         ac, ad = record(a, ab, at, i)
@@ -105,8 +120,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('control')
     parser.add_argument('candidate')
+    parser.add_argument('--banked-control', action='store_true',
+                        help='the control is also a banked capture (SDK A/B of the same game)')
+    parser.add_argument('--normalized-out', type=Path,
+                        help='write both normalized command lists as JSON (needs --banked-control)')
     args = parser.parse_args()
     try:
-        compare(args.control, args.candidate)
+        if args.normalized_out:
+            if not args.banked_control:
+                raise ValueError('--normalized-out requires --banked-control')
+            args.normalized_out.write_text(json.dumps(
+                {'control': normalized(args.control), 'candidate': normalized(args.candidate)}) + '\n')
+        compare(args.control, args.candidate, args.banked_control)
     except ValueError as error:
         parser.exit(1, f'{error}\n')
