@@ -13,10 +13,9 @@
  * This bridge is a PRIVATE visual study, not a claim of exact orientation
  * parity: the real PS1 part basis and facing transform still need an oracle.
  *
- * The first 18 draw parts correspond to skin-visible KMD geometry.
- * The remaining 4 costume/accessory parts have no imported geometry yet.
- * All 18 must be valid; otherwise the output is left untouched so the
- * existing procedural/rest-pose renderer stays in use.
+ * The 18 body parts are required. Costume attachments with a valid pose
+ * are converted too. Missing attachment matrices retain the caller's
+ * fallback values. If validation fails, all output is left untouched.
  */
 #define T3_PSX_VISIBLE_PARTS 18u
 #define T3_PSX_VISIBLE_MASK ((1u << T3_PSX_VISIBLE_PARTS) - 1u)

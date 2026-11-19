@@ -70,10 +70,33 @@ static int facts(t3_ball_fighter_t* o,t3_psx_match_t* m,unsigned i) {
     return 1;
 }
 
+#if defined(T3_BALL_TEST_CHARGED)
+#define T3_BALL_TEST_CHARGED_AT 600u
+#ifndef T3_BALL_TEST_CHARGED_FRAMES
+#define T3_BALL_TEST_CHARGED_FRAMES 8u
+#endif
+#ifndef T3_BALL_TEST_CHARGE
+#define T3_BALL_TEST_CHARGE 50
+#endif
+volatile int32_t g_t3_charged_log[T3_BALL_TEST_CHARGED_FRAMES][11];
+/* the stand-in's first attack segment at the touch (start x,y,z, end x,y,z): the hit direction of the charged hit (set_hit_dir) */
+volatile int32_t g_t3_charged_seg[6];
+#endif
 int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t* tables) {
     unsigned i;
     if(!g||!m||!tables||!g->active)return 0;
     g->events.count=0;
+    if(m->flow.played!=(int32_t)g->played) {
+        /* FUN_800B0C90 runs at every round start: a new ball served by the last round's loser, empty gauges and no texts.
+         * The first round's ball was started by t3_ball_game_init. */
+        if(g->played) {
+            g->world.serve_side=m->flow.serve_side&1;g->world.first_round=m->flow.played==1;
+            t3_ball_fight_start(&g->ball,&g->world,g->options[g->option]);
+            __builtin_memset(g->gauge,0,sizeof g->gauge);__builtin_memset(g->popup,0,sizeof g->popup);
+            g->last_kind=0;
+        }
+        g->played=(uint8_t)m->flow.played;
+    }
     for(i=0;i<2u;++i) {
         const t3_psx_fighter_t* f=&m->fighter[i];
         const int16_t slot=(int16_t)f->vm.slot,pose=(int16_t)f->vm.clock.pose_frame;
@@ -89,15 +112,70 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
     g->world.no_winner_mark=0;
     for(i=0;i<2u;++i){t3_ball_move_tuning(&g->f[i]);g->f[i].f87=0;}
     if(g->world.touch_sound_wait>0)--g->world.touch_sound_wait;
-    /* the ball waits while the fight is frozen (a hit's freeze, a pause) or a replay plays it back */
-    if(!m->flow.freeze&&m->replay.mode!=T3_REPLAY_PLAYING) {
-        if(!t3_ball_update(&g->ball,&g->world,g->f,tables,0,&g->events))return 0;
-        if(!t3_ball_after_update(&g->ball,&g->world,tables,&g->events))return 0;
+#if defined(T3_BALL_TEST_CHARGED)
+    /* test only (the PS1 probe's shot, scripts/pcsx_redux_ball_hit.lua with T3_HIT_BODY=0): at tick T3_BALL_TEST_CHARGED_AT the ball,
+     * charged by fighter 1, touches fighter 0's body, and fighter 0 (the touched one) takes the charge: the victim's reaction is compared */
+#if defined(T3_BALL_TEST_UNGUARDED)
+    /* test only: fighter 0's powerTimer (120 frames) runs from the tick before the touch, so the fighter update of the touch tick clears its
+     * guard (combat.md: "cleared while powerTimer runs") and the charged touch and its HitApply see an unguarded fighter */
+    if(g->ticks==T3_BALL_TEST_CHARGED_AT-1u)m->fighter[0].ground.power_timer=120;
+#endif
+    if(g->ticks==T3_BALL_TEST_CHARGED_AT) {
+        /* the owner (the charger) is fighter 1; a touch by the owner is ignored, and a touch overwrites the charge in the same tick (_charged_touch) */
+        g->ball.owner=1;g->ball.target=1;g->ball.charge=T3_BALL_TEST_CHARGE;g->ball.state=BALL_FLY;
+        g->ball.pos[0]=g->f[0].x;g->ball.pos[1]=g->f[0].head-0x200;g->ball.pos[2]=g->f[0].z;
+        for(i=0;i<3;++i){g->ball.prev[i]=g->ball.pos[i];g->ball.vel[i]=0;}
+        g->ball.speed=0;
+        g->stand_in=m->fighter[1];   /* the owner's strike copies the charger's record (attack_hit); the forced touch has none, so the copy is made here */
+        g->world.stand_in.level=0xFFFF;   /* and its attack word (attack_hit): the guard test of the charged touch reads it */
+        g_t3_charged_seg[0]=g->stand_in.strike.segments[0].start.x;g_t3_charged_seg[1]=g->stand_in.strike.segments[0].start.y;
+        g_t3_charged_seg[2]=g->stand_in.strike.segments[0].start.z;g_t3_charged_seg[3]=g->stand_in.strike.segments[0].end.x;
+        g_t3_charged_seg[4]=g->stand_in.strike.segments[0].end.y;g_t3_charged_seg[5]=g->stand_in.strike.segments[0].end.z;
+        /* the PS1 charger had no attack segment at this tick (its record reads zero there, so the hit direction is zero): the forced
+         * stand-in has none either, so the slide is not steered by a stale segment of the charger's last move */
+        g->stand_in.strike.segments[0].start.x=g->stand_in.strike.segments[0].start.y=g->stand_in.strike.segments[0].start.z=0;
+        g->stand_in.strike.segments[0].end.x=g->stand_in.strike.segments[0].end.y=g->stand_in.strike.segments[0].end.z=0;
+        /* attack_touch runs before body_touch: a fighter's strike segments still lying in its body would strike the ball as a set-up
+         * normal hit (owner 0, charge 0), so this tick's touch has no strike segments and only the body test decides it */
+        g->f[0].seg_count=0;g->f[1].seg_count=0;
+        /* body_touch reads the swept volume the last tick left (hit_volume), not pos: place it at the forced pos too, and clear touch_wait */
+        {
+            unsigned j,c;
+            for(j=0;j<4u;++j)for(c=0;c<3u;++c)
+                g->ball.volume[j][c]=g->ball.volume[j][3+c]=g->ball.pos[c]+(int32_t)(int16_t)g->world.hit_offsets[j][c];
+        }
+        g->ball.touch_wait=0;
     }
-    /* SoundPlayFighter(0, id, 0): the ball's sounds are effect requests (the player plays the ones whose original code was extracted) */
+#endif
+    /* the ball waits while the fight is frozen (a hit's freeze, a pause); the replay records it, or plays it back instead of
+     * running it (replay_state.gd ball: the playback frames are the ones ReplayUpdate returned non-zero for) */
+    if(!m->flow.freeze) {
+        const int mode=m->replay.mode;
+        if(mode==T3_REPLAY_RECORDING) {
+            t3_ball_replay_frame_t* r=&g->replay[(unsigned)m->replay.record%BALL_REPLAY_FRAMES];
+            for(i=0;i<3u;++i){r->pos[i]=g->ball.pos[i];r->squash_axis[i]=(int16_t)g->ball.squash_axis[i];}
+            r->spin[0]=(int16_t)g->ball.spin[0];r->spin[1]=(int16_t)g->ball.spin[1];
+            r->kind=(uint8_t)g->ball.kind;r->timer=(uint8_t)g->ball.timer;r->squash=(int16_t)g->ball.squash;
+        } else if(mode==T3_REPLAY_PLAYING||mode==T3_REPLAY_FIRST) {
+            const t3_ball_replay_frame_t* r=&g->replay[(unsigned)(m->replay.play>>1)%BALL_REPLAY_FRAMES];
+            for(i=0;i<3u;++i){g->ball.pos[i]=r->pos[i];g->ball.squash_axis[i]=r->squash_axis[i];}
+            g->ball.spin[0]=r->spin[0];g->ball.spin[1]=r->spin[1];
+            g->ball.kind=r->kind;g->ball.timer=r->timer;g->ball.squash=r->squash;
+        }
+        if(mode!=T3_REPLAY_PLAYING&&mode!=T3_REPLAY_FIRST&&mode!=T3_REPLAY_ENDING) {
+            if(!t3_ball_update(&g->ball,&g->world,g->f,tables,0,&g->events))return 0;
+            if(!t3_ball_after_update(&g->ball,&g->world,tables,&g->events))return 0;
+        } else if(g->ball.kind==2&&g->ball.timer==5&&g->events.count<BALL_EV_MAX) {
+            /* the replayed point's flash replays its bounce */
+            t3_ball_event_t* x=&g->events.e[g->events.count++];
+            x->kind=BALL_EV_SOUND;x->a=0x4E6E;x->b=x->c=x->d=x->e=0;
+        }
+    }
+    m->ball_shows=(uint8_t)g->world.result;
+    /* SoundPlayFighter(0, code, 0): the ball's sounds are raw sound codes, not sound-table ids (0x704E is not table entry 0x4E) */
     for(i=0;i<(unsigned)g->events.count;++i)
         if(g->events.e[i].kind==BALL_EV_SOUND&&m->config->sound_sink)
-            m->config->sound_sink(m->config->sound_sink_user,T3_SOUND_EFFECT,0u,(uint16_t)g->events.e[i].a);
+            m->config->sound_sink(m->config->sound_sink_user,T3_SOUND_CODE,0u,(uint16_t)g->events.e[i].a);
     for(i=0;i<(unsigned)g->events.count;++i)   /* a hard landing shakes the camera (CameraShakeStart, scripts 0 and 1 as the fighters' landings) */
         if(g->events.e[i].kind==BALL_EV_SHAKE&&(unsigned)g->events.e[i].a<2u)t3_psx_camera_shake_start(&m->camera.camera,g->events.e[i].a);
     for(i=0;i<(unsigned)g->events.count;++i)   /* the original copies the hitter's whole record into the stand-in */
@@ -115,6 +193,8 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
         int32_t health=g->f[i].health;
         /* A charged ball that reached this player: the next HitApply takes it as a hit from the other fighter with the charge as damage
          * (it decides guarding and the reaction); the point's damage (health) is the ball's own. */
+        /* f87 is set on the hitter, the fighter whose body the ball touched, and that fighter takes the charge: the owner is the opponent
+         * (modes.md, "Charged ball hits the opponent"; the PS1 probe with the ball on one body) */
         if(g->f[i].f87) {m->ball_hit.pending=1;m->ball_hit.victim=(uint8_t)i;m->ball_hit.zone=(uint8_t)g->f[i].contact_cyl;m->ball_hit.charge=(int16_t)g->world.stand_in.damage;m->ball_hit.stand_in=&g->stand_in;}
         /* a point as the ball left it, or a charged hit: the health never goes below 0 */
         f->health_q16=health<0?0:health;
@@ -156,6 +236,18 @@ int t3_ball_game_tick(t3_ball_game_t* g,t3_psx_match_t* m,const t3_ball_tables_t
     /* the fight camera's third target (FUN_800B4948): the ball as this tick left it, seen by the next frame's camera */
     for(i=0;i<3u;++i)m->camera.camera.ball[i]=g->ball.pos[i];
     m->camera.camera.ball_on=1;
+#if defined(T3_BALL_TEST_CHARGED)
+    /* test only: T3_BALL_TEST_CHARGED_FRAMES ticks from the forced touch, eleven words a tick: ticks since, fighter 0's health (16.16,
+     * the touched fighter that takes the charge), its slot, guard, in_air and got_hit (the hit transaction's fact that tick), its root z
+     * (the ball world's), fighter 1's (the charger's) health, slot and got_hit, to see which fighter takes the hit reaction and when the
+     * damage lands, then the ball's state (5: the lethal hit's pop-up) */
+    if(g->ticks>=T3_BALL_TEST_CHARGED_AT && g->ticks<T3_BALL_TEST_CHARGED_AT+T3_BALL_TEST_CHARGED_FRAMES) {
+        volatile int32_t* row=g_t3_charged_log[g->ticks-T3_BALL_TEST_CHARGED_AT];
+        row[0]=(int32_t)(g->ticks-T3_BALL_TEST_CHARGED_AT);row[1]=m->fighter[0].health_q16;row[2]=(int32_t)m->fighter[0].vm.slot;
+        row[3]=m->fighter[0].ground.guard;row[4]=m->fighter[0].ground.in_air;row[5]=m->fighter[0].got_hit;row[6]=g->f[0].z;
+        row[7]=m->fighter[1].health_q16;row[8]=(int32_t)m->fighter[1].vm.slot;row[9]=m->fighter[1].got_hit;row[10]=g->ball.state;
+    }
+#endif
     ++g->ticks;
     return 1;
 }

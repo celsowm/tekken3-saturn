@@ -35,6 +35,10 @@ int t3_psx_replay_start(t3_psx_replay_t* state);
 int t3_psx_replay_start_back(t3_psx_replay_t* state,int back);
 /* -1 invalid, 0 live, 1 playback. ENDING -> DONE clears blends in caller. */
 int t3_psx_replay_update(t3_psx_replay_t* state);
+/* Tekken Ball (replay_state.gd start/update): a replay plays the last 30 frames, at double speed but for the last of
+ * `shows`; with more than three shows the third ends 16 frames early. `shown` counts the replays so far (the one playing). */
+int t3_psx_replay_start_ball(t3_psx_replay_t* state);
+int t3_psx_replay_update_ball(t3_psx_replay_t* state,int shown,int shows);
 /* Read only the current epoch, never stale slots from an earlier round. */
 const t3_psx_replay_pair_t* t3_psx_replay_at(const t3_psx_replay_storage_t* storage,
                                            const t3_psx_replay_t* state,unsigned index);

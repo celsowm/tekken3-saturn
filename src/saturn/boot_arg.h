@@ -15,6 +15,7 @@ enum {
     /* LADDER_CHALLENGE: a challenger's VS match interrupts the run; LADDER_SWAP: port 2's player
      * won one and carries the run on, so the fight reads the two pads the other way round. */
     ARG_BALL=0x40,         /* ARG_FLAGS bit 6 */
+    ARG_BALL_PLAYED=0x80,  /* ARG_FLAGS bit 7: a Tekken Ball game has been played (the next opponent is not forced to be Gon) */
     LADDER_ON=1, LADDER_CARRY=2, LADDER_CHALLENGE=4, LADDER_SWAP=8,
     PHASE_TITLE='T', PHASE_MENU='M', PHASE_SELECT='S', PHASE_FIGHT='F', PHASE_DEMO='D', PHASE_RESULT='R',
     PHASE_ENDING='E'

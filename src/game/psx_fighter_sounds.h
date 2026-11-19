@@ -5,7 +5,9 @@
 
 /* Sound decisions only. Rendering/audio backends consume the original codes;
  * replay recording and voice remapping belong to the consumer. */
-enum { T3_SOUND_SYSTEM=1,T3_SOUND_VOICE=2,T3_SOUND_EFFECT=3,T3_SOUND_VOICE_OFF=4 };
+/* T3_SOUND_CODE: a raw sound code (SoundPlayFighter's bank, voice, volume, program and tone bits), not a sound-table id: Tekken
+ * Ball's ball plays these */
+enum { T3_SOUND_SYSTEM=1,T3_SOUND_VOICE=2,T3_SOUND_EFFECT=3,T3_SOUND_VOICE_OFF=4,T3_SOUND_CODE=5 };
 typedef void (*t3_psx_sound_emit_t)(void* user,unsigned kind,unsigned player,uint16_t code);
 typedef struct {
     const uint8_t* data;size_t size;

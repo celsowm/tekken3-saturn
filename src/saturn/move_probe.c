@@ -223,6 +223,13 @@ static uint8_t g_ball_on,g_ball_option;
 #else
 enum { g_ball_on=0 };
 #endif
+/* FUN_800519B4: the fight's maximum health by mode (docs/research/code/resident-functions.md). Tekken Ball is mode 7, which takes the
+ * switch's default, 130 (the PS1 probe reads 130 with the Ball's fighters); the other modes keep 140, practice 200. */
+static int32_t fight_max_health_q16(void) {
+    if(g_practice_clock)return 200*65536;
+    if(g_ball_on)return 130*65536;
+    return 140*65536;
+}
 /* COMBO TRAINING's combo tables: scripts/extract_practice_combos.py's C source, when the build has it. */
 extern const uint8_t t3_practice_combo_blob[] __attribute__((weak));
 extern const uint32_t t3_practice_combo_blob_size __attribute__((weak));
@@ -629,15 +636,15 @@ void t3_move_probe_reset(unsigned round) {
 #if defined(T3_LOCAL_RSQRT_BYTES) && T3_LOCAL_RSQRT_BYTES > 0
     g_owned_config.rsqrt=(t3_psx_rsqrt_t){t3_local_rsqrt_blob,T3_LOCAL_RSQRT_BYTES};
 #endif
-    g_owned_config.scale_percent=T3_KMD_SCALE_PERCENT;g_owned_config.max_health_q16=(g_practice_clock?200:140)*65536; /* practice: FUN_800519B4 */
+    g_owned_config.scale_percent=T3_KMD_SCALE_PERCENT;g_owned_config.max_health_q16=fight_max_health_q16(); /* FUN_800519B4 */
     /* Measured USA Paul mirror round placement; render conversion is separate. */
     g_owned_config.spawn[0]=(t3_psx_spawn_t){{-1000,0,-4},{-1000,-1027,-4},16384u,16384u};
     g_owned_config.spawn[1]=(t3_psx_spawn_t){{1000,0,4},{1000,-1027,4},49151u,49151u};
     if(g_ball_on) {
         /* Tekken Ball's court (FUN_800B0C90): the players start at x = -/+0x1400 facing each other, on its z = 0 line */
         g_owned_config.ball_court=1;
-        g_owned_config.spawn[0]=(t3_psx_spawn_t){{-0x1400,0,0},{-0x1400,-1027,0},16384u,16384u};
-        g_owned_config.spawn[1]=(t3_psx_spawn_t){{0x1400,0,0},{0x1400,-1027,0},49151u,49151u};
+        g_owned_config.spawn[0]=(t3_psx_spawn_t){{-BALL_COURT_HALF_X,0,0},{-BALL_COURT_HALF_X,-1027,0},16384u,16384u};
+        g_owned_config.spawn[1]=(t3_psx_spawn_t){{BALL_COURT_HALF_X,0,0},{BALL_COURT_HALF_X,-1027,0},49151u,49151u};
     }
 #if defined(T3_PSX_CAMERA)
     g_camera_trig=(t3_psx_trig_t){t3_local_trig_blob,T3_LOCAL_TRIG_BYTES};
@@ -771,20 +778,34 @@ static void publish_owned_pose(unsigned i) {
     for(unsigned axis=0;axis<3;++axis)g_root_pose[i][axis]=f->pose[axis];
     for(unsigned part=0;part<T3_PSX_DRAW_PARTS;++part)
         g_world_pose[i][part]=f->world[ACTOR_PARTS(i)[part].slot];
-    /* The costume attachments (parts 18 to 21: Gon's tail) have no pose of their own yet (psx_pose.c: no attachment dynamics): they ride
-     * their parent rigidly, so the original projection, which refuses a part outside the mask, and the lighting take them. */
-    for(unsigned part=18u;part<T3_PSX_DRAW_PARTS;++part) {
+    /* Draw costume attachments at their KMD rest rotation relative to their
+     * animated parent. The original adds spring dynamics to this rotation
+     * (Tekken3Remake docs/research/formats/animation.md; see NOTICE.md). */
+#if defined(T3_FIGHTER_PACKS)
+    const int16_t (*rest)[3]=t3_fighter_pack(i)->attachment_rest;
+#endif
+    for(unsigned part=T3_PSX_ROTATION_SLOTS;part<T3_PSX_DRAW_PARTS;++part) {
         const t3_psx_part_t* p=&ACTOR_PARTS(i)[part];
-        if(p->parent<0 || !(g_fk_parts[i]&(1u<<(unsigned)p->parent)) || (g_fk_parts[i]&(1u<<part)))continue;
+        const uint32_t bit=t3_psx_bit(part);
+        if(p->parent<0 || !(g_fk_parts[i]&t3_psx_bit((unsigned)p->parent)) || (g_fk_parts[i]&bit))continue;
         const t3_psx_joint_t* parent=&g_world_pose[i][p->parent];
         const int32_t delta[3]={p->offset.x,p->offset.y,p->offset.z};
         t3_psx_joint_t* joint=&g_world_pose[i][part];
         __builtin_memset(joint,0,sizeof *joint);
         joint->rotation=parent->rotation;
+#if defined(T3_FIGHTER_PACKS)
+        if(rest) {
+            const int16_t* angles=rest[part-T3_PSX_ROTATION_SLOTS];
+            t3_psx_matrix_t local;
+            if((angles[0] || angles[1] || angles[2]) &&
+               t3_psx_euler_matrix(angles[0],angles[1],angles[2],&g_owned_config.ik.trig,&local))
+                t3_psx_mul_rot(&parent->rotation,&local,&joint->rotation);
+        }
+#endif
         joint->origin.x=parent->origin.x+t3_psx_dot12(parent->rotation.m[0],delta);
         joint->origin.y=parent->origin.y+t3_psx_dot12(parent->rotation.m[1],delta);
         joint->origin.z=parent->origin.z+t3_psx_dot12(parent->rotation.m[2],delta);
-        g_fk_parts[i]|=1u<<part;
+        g_fk_parts[i]|=bit;
     }
     g_hurt_ready[i]=(uint8_t)t3_psx_hurt_from_parts(f->world,f->parts_mask,0,zones);
     g_hurt_head_y[i]=g_hurt_ready[i]?zones[0].center.y:0;
@@ -1574,7 +1595,7 @@ void t3_move_probe_set_practice(uint8_t on) {
     g_practice_clock=on;
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
     g_owned_config.practice=on;
-    g_owned_config.max_health_q16=(on?200:140)*65536;
+    g_owned_config.max_health_q16=fight_max_health_q16();
 #endif
 }
 #if defined(T3_ENABLE_PSX_OWNED_MATCH)
@@ -1866,6 +1887,13 @@ int32_t t3_move_probe_round_value(unsigned field) {
     case 17:return g_owned_match.flow.max_rounds;
 #if defined(T3_ORIGINAL_HUD)
     case 18:return g_owned_match.hud_replay_entry;
+#endif
+#if defined(T3_PSX_BALL)
+    case 19:{   /* Tekken Ball: 1, the result message waits for the last replay (round_hud.gd); 2, the bars are hidden */
+        const t3_psx_round_flow_t* flow=&g_owned_match.flow;
+        if(!g_owned_config.ball_court)return 0;
+        return (flow->ball_shown<(int32_t)g_owned_match.ball_shows-1?1:0)|(flow->hud_hidden?2:0);
+    }
 #endif
     }
 #else

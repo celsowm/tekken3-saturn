@@ -247,6 +247,7 @@ typedef struct t3_psx_match {
      * as the attacker, the ball being the only source of damage). */
 #if defined(T3_PSX_BALL)
     struct {uint8_t pending,victim,zone;int16_t charge;const t3_psx_fighter_t* stand_in;} ball_hit;   /* stand_in: the hitter's record as the ball was struck */
+    uint8_t ball_shows;   /* Tekken Ball: the deciding point's replays (0x800AFF8C), as the ball's tick left it */
 #endif
     uint32_t pair_distance; /* PairwiseDistances' pair table (0x8009EA08) */
     uint32_t frame_counter; /* g_frameCounter of the frame being stepped */

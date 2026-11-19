@@ -19,11 +19,25 @@ REQUIRED = {'INTRO.MOV': 'the Tekken 3 opening movie (-DT3_LOCAL_INTRO_MOVIE)',
             'MENU.BIN': 'the title and select menus', 'INTRO.BIN': 'the intro program',
             'END00.MOV': 'the arcade ending movies (-DT3_LOCAL_ENDING_MOVIES, scripts/pack_ending_movies.py)',
             'FORCE.BIN': 'the Tekken Force program (-DT3_LOCAL_FORCE_LEVELS)',
-            'LEV1.BIN': 'the Tekken Force levels (-DT3_LOCAL_FORCE_LEVELS, scripts/build_force_levels.py)',
+            **{f'LEV{level}.BIN': f'Tekken Force level {level} (-DT3_LOCAL_FORCE_LEVELS, scripts/build_force_levels.py)'
+               for level in range(1, 5)},
+            **{f'F{slot}.BIN': f'Tekken Force enemy pack {slot} (-DT3_LOCAL_FORCE_LEVELS)'
+               for slot in range(21, 25)},
+            'BOSS.BIN': 'the Tekken Force boss table (-DT3_LOCAL_FORCE_LEVELS)',
             'BOSSPAK.BIN': 'the Tekken Force bosses (scripts/build_force_boss_packs.py)',
+            'TRIG.BIN': 'the Tekken Force trigonometry table (-DT3_LOCAL_FORCE_LEVELS)',
+            'TABLES.BIN': 'the Tekken Force rules tables (-DT3_LOCAL_FORCE_LEVELS)',
+            'KEYS.BIN': 'the Tekken Force key art (-DT3_LOCAL_FORCE_LEVELS)',
+            'FHUD.BIN': 'the Tekken Force HUD (scripts/extract_force_hud.py)',
+            'LOAD.BIN': 'the Tekken Force loading screen',
             'FSFX.BIN': 'the Tekken Force sounds (-DT3_FORCE_SFX=ON with -DT3_LOCAL_SFX)',
             'BALL.BIN': 'the Tekken Ball program (-DT3_LOCAL_BALL_DATA and -DT3_LOCAL_BALL_PICTURES)',
             'STG19.BIN': "Tekken Ball's court (scripts/build_ball_stage.py)",
+            'BALLSPIN.BIN': 'the Tekken Ball type selector (scripts/pack_ball_spin.py)',
+            'BALLSML.BIN': 'the Tekken Ball select preview (scripts/pack_ball_spin.py)',
+            'BHUD.BIN': 'the Tekken Ball HUD (scripts/extract_ball_hud.py)',
+            'BSFX.BIN': 'the Tekken Ball sounds (-DT3_LOCAL_SFX)',
+            'CMDLIST.BIN': 'the Tekken Ball command list (-DT3_LOCAL_PRACTICE_COMMANDS)',
             'HOWTO.BIN': "Tekken Ball's HOW TO page (scripts/pack_ball_howto.py)",
             'FIRE.BIN': 'the fire, smoke, cloud and gas flipbooks (scripts/extract_psx_fire_flipbook.py)'}
 
@@ -36,7 +50,7 @@ def missing_features(disc):
     iso_root = next((r for r in roots if r.is_dir()), None)
     if iso_root is None:
         return None
-    missing = [f'{name}: {what}' for name, what in REQUIRED.items() if not (iso_root / name).exists()]
+    missing = [f'{name}: {what}' for name, what in REQUIRED.items() if not (iso_root / name).is_file()]
     # A measurement build carries the movies but its intro program does not play them.
     cache = disc.parent.parent / 'CMakeCache.txt'
     if cache.is_file() and 'T3_TEST_SKIP_INTRO:BOOL=ON' in cache.read_text(errors='replace'):

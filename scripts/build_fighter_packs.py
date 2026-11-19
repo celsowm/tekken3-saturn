@@ -381,6 +381,13 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
 
     place('parts', b''.join(struct.pack('>bBxxiii', parent, slot, x, y, z)
                             for parent, slot, (x, y, z) in skeleton_parts(model)))
+    # FighterSetupPart keeps the KMD's signed rest angles for costume attachments.
+    # See Tekken3Remake docs/research/formats/animation.md and NOTICE.md.
+    rest = [word & 0xffff for row in kmd_to_ska.PART_ROWS[18:]
+            for word in model.rows[row].words[9:12]]
+    fields['attachment_rest'] = 0
+    if any(rest):
+        place('attachment_rest', struct.pack('>12H', *rest), 2)
     place('radii', struct.pack('>8h', *body_radii(fighter)))
     place('choices', choices)
     place('streams', streams)
@@ -444,7 +451,7 @@ def build(fighter, raw, exe, system_vram, libsaturn, scratch, texture_cap=0, han
              fnv1a(bank), fields['projected'], len(mesh), fields['projected_faces'], projected_vertices,
              fields['face_ot'], *directory, normal_count, fields['light_parts'], fields['light_stream'],
              fields['light_shaded'], fields['light_tones'], hand_row_count, fields['hand_variants'],
-             shadow_faces, fields['shadow'], fields['light_state']]
+             shadow_faces, fields['shadow'], fields['light_state'], fields['attachment_rest']]
     if len(words) * 4 > HEADER_BYTES:
         raise ValueError('pack header overflow')
     struct.pack_into(f'>{len(words)}I', image, 0, *words)

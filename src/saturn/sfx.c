@@ -93,6 +93,11 @@ sat_result_t t3_sfx_init(void* scratch, uint32_t scratch_bytes) {
     if((st=sat_cdfs_lookup(volume,T3_SFX_FILE,&file))!=SAT_OK)return st;
     if(file.size!=T3_SFX_FILE_BYTES)return SAT_ERR_VERSION;
     if((st=sat_audio_init())!=SAT_OK)return st;
+#if defined(T3_BALL_PROGRAM) && !defined(T3_ADX_MUSIC)
+    /* The Ball's sounds (BSFX.BIN) and both voice packs outgrow the resident area by about 16 KB. Its music is CD-DA,
+     * so no stream is ever opened: the four streaming rings (64 KB) hold sounds instead. */
+    if((st=sat_sound_ram_borrow_stream_rings(4u))!=SAT_OK)return st;
+#endif
     for(unsigned i=0;i<T3_SFX_COUNT;++i) {
         /* Rows with the same offset and size are one sample: share its Sound RAM copy. */
         unsigned same=i;
@@ -144,9 +149,10 @@ static uint32_t g_hurt_tick[2];
 static uint8_t g_hurt_set[2],g_hurt_next[2],g_shout_next[2],g_swings;
 #endif
 /* A match sound request: the sample extracted for that exact original code, or
- * counted as unmapped (no approximation). Kinds: T3_SOUND_SYSTEM/VOICE/EFFECT. */
+ * counted as unmapped (no approximation). Kinds: T3_SOUND_SYSTEM/VOICE/EFFECT/CODE. */
 static void play_request(const t3_combat_event_t* e) {
     unsigned bank;
+    if(e->sound==T3_SOUND_CODE){t3_sfx_play_code(e->code);return;}   /* a raw code: key bank 3 (Tekken Ball's ball) */
     if(e->sound==T3_SOUND_EFFECT)bank=0u;
     else if(e->sound==T3_SOUND_SYSTEM)bank=1u;
     else if(e->sound==T3_SOUND_VOICE)bank=2u;

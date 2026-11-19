@@ -216,12 +216,16 @@ The shipped default is above every earlier control (24.79–24.83 / 21.43).
 Not done, because each one needs work the port doesn't have yet
 (3dmk-models.md):
 
-- **Costume attachments' sway (Gon's tail, parts 18 to 21):** drawn since the packer takes every attachment row a model has, and carried rigidly by their parent
-  (`publish_owned_pose` in `move_probe.c`; `psx_pose.c` skips slots 18 to 21). The original moves them with a spring simulation: `FUN_80037F10`
-  (Rev.1; about 265 decompiled lines, GTE matrix work, per-character tables at 0x80096660, 0x80096144 and 0x80096154, helpers `FUN_8003A58C`,
-  `FUN_8003A810`, `FUN_80038684`, `FUN_800388C0`), set up by `FUN_80037EAC`. Not in the research docs; a bit-exact port with a harness check is its own project.
-- **True Ogre's row 22:** it follows channel 0, but it belongs to
-  attachment part 19. The port draws only parts 0–17 (`drawn_rows`).
+- **Costume attachment sway (hair, belts and Gon's tail, parts 18 to 21):**
+  The fighter packs store the KMD rest angles. `publish_owned_pose` applies
+  them relative to the animated parent, and both the original projection and
+  the LibSaturn skin bridge use the resulting transforms. In the Nina–Lei
+  attract match, Nina's ponytail and Lei's braid are visible in the
+  same-input Ymir comparison (`build/ballfin-hair/comparison.png`).
+  The PS1 spring simulation is documented under Costume attachments in Tekken3Remake's
+  `docs/research/formats/animation.md` and still needs implementation.
+- **True Ogre's row 22:** it belongs to attachment part 19. The row's
+  channel 0 vertex variants still need implementation.
 - **True Ogre's wings (row 2):** they play their own frame lists
   (`0x80095CAC` idle, `0x80095CC0` flap). In `ogre3/ogre4` the variant
   blocks are strides into the motion bank's runtime buffer, not file

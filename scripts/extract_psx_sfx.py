@@ -44,6 +44,12 @@ FORCE_SOUNDS = {
     'tally': 0x4C6C, 'key': 0x4CEB, 'pickup': 0x4E6A, 'lifeup': 0x87C0, 'rescue': 0x50F4,
     'count5': 0x8694, 'count4': 0x8693, 'count3': 0x8652, 'count2': 0x8711, 'count1': 0x86D0,
 }
+# Tekken Ball's ball plays raw sound codes too (SoundPlayFighter(0, code, 0), modes.md/tekken_ball.gd; all in VAB 0): the serve,
+# the reset, the bounce, the touch, the set, the spike and the charged ball, the guarded charge, the weak charged ball.
+BALL_SOUNDS = {
+    'serve': 0x4CE8, 'reset': 0x4CE9, 'bounce': 0x4E6E, 'touch': 0x704E, 'set': 0x7082, 'spike': 0x4DAF,
+    'guarded': 0x7043, 'weak': 0x4E6D,
+}
 USA_EXE_SHA256 = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
 # g_soundTable at USA 0x80097050, mapped from Rev.1 0x80097474.
 SOUND_TABLE_OFFSET, SOUND_TABLE_COUNT = 0x87850, 212
@@ -155,6 +161,8 @@ def main():
                    help='also write SFX.BIN and t3_local_sfx.h (the Saturn build\'s inputs) here')
     p.add_argument('--with-force', action='store_true',
                    help='also add Tekken Force\'s runner sounds (key bank 3) to SFX.BIN: the Force disc\'s file')
+    p.add_argument('--with-ball', action='store_true',
+                   help='also add Tekken Ball\'s ball sounds (raw codes, key bank 3) to SFX.BIN: the Ball program\'s file')
     p.add_argument('--force', action='store_true',
                    help='only Tekken Force\'s runner sounds, written as FORCESFX.BIN and t3_local_force_sfx.h (T3_FORCE_SFX_*)')
     args = p.parse_args()
@@ -191,6 +199,8 @@ def main():
     if args.with_force:
         banks = {1: (vh, d[VB:VB + VAB_BYTES - 0x1220]), 2: (sys_vh, d[SYS_VB:SYS_VB + SYS_BYTES - sys_vh_len])}
         jobs += [(name, *banks[code >> 14], code, 3, 0, code) for name, code in FORCE_SOUNDS.items()]
+    if args.with_ball:
+        jobs += [('ball_' + name, vh, d[VB:VB + VAB_BYTES - 0x1220], code, 3, 0, code) for name, code in BALL_SOUNDS.items()]
     return write(args, jobs, 'SFX.BIN', 't3_local_sfx.h', 'T3_LOCAL_SFX_H', 'T3_SFX')
 
 
@@ -199,9 +209,8 @@ def write(args, jobs, bin_name, header_name, guard, prefix):
     for name, job_vh, body, code, bank, slot, tone_code in jobs:
         vag, hz, samples = vab_sound(job_vh, body, tone_code)
         data = bytes((v >> 8) & 255 for v in samples)
-        same = [r for r in rows if r[6] == bank and r[5] == len(data) and r[3] == hz
-                and bytes(pcm[r[4]:r[4] + r[5]]) == data]
-        if same:                    # identical sound: share the bytes; the loader makes one Sound RAM copy
+        same = [r for r in rows if r[5] == len(data) and r[3] == hz and bytes(pcm[r[4]:r[4] + r[5]]) == data]
+        if same:                    # identical sound (in any key bank): share the bytes; the loader makes one Sound RAM copy
             rows.append((name, code, vag, hz, same[0][4], len(samples), bank, slot))
             continue
         while len(pcm) & 3:

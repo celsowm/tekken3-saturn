@@ -131,9 +131,11 @@ int t3_psx_match_camera_frame(t3_psx_match_t* m) {
      * winner camera (WINNER_0/1) and the loser camera with its set-up. The
      * director moves on by itself; the flow's copy changes only on events. */
     if(flow==T3_PSX_CAMERA_RESET && c->flow!=flow)c->phase=flow;
-    else if((flow==T3_PSX_CAMERA_WINNER_0 || flow==T3_PSX_CAMERA_WINNER_1) && c->phase<T3_PSX_CAMERA_WINNER_0)
-        c->phase=flow;
-    else if((flow==T3_PSX_CAMERA_LOSER_0 || flow==T3_PSX_CAMERA_LOSER_1) && c->phase!=flow) {
+    else if((flow==T3_PSX_CAMERA_WINNER_0 || flow==T3_PSX_CAMERA_WINNER_1) && (c->phase<T3_PSX_CAMERA_WINNER_0 || c->flow!=flow))
+        c->phase=flow;   /* also from the loser camera: Tekken Ball's replays and win poses pick a winner phase after it */
+    else if((flow==T3_PSX_CAMERA_LOSER_0 || flow==T3_PSX_CAMERA_LOSER_1) && (c->phase!=flow || c->flow!=flow)) {
+        /* _result_camera starts the loser camera each time it picks it: Tekken Ball's win poses pick it again after
+         * the replays that its first start (result frame 16) introduced */
         T3_CAMERA_PHASE(62);
         const t3_psx_camera_fighter_t* l=&f[flow==T3_PSX_CAMERA_LOSER_1];
         if(!t3_psx_camera_loser_start(&c->camera,config->tables,l,l->health!=0,&fr))return 0;
@@ -185,7 +187,12 @@ int t3_psx_match_camera_replay(t3_psx_match_t* m,t3_psx_camera_fighter_t f[2],in
         }
         if(!t3_psx_camera_replay_start(&c->camera,config->tables,f,&fr))return 0;
     }
-    t3_psx_camera_replay_step(&c->camera,config->tables,f);
+    if(m->config->ball_court) {
+        /* Tekken Ball's replay frame runs the director in the round end's phase (the loser camera, then the winner's), not
+         * the replay orbit (fight_simulation.gd _replay_frame) */
+        t3_psx_camera_frame_t fr=frame_of(m);
+        if(t3_psx_camera_step(&c->camera,config->tables,f,&fr,&c->phase)<=0)return 0;
+    } else t3_psx_camera_replay_step(&c->camera,config->tables,f);
     if(!view(m))return 0;
     return t3_psx_match_camera_after(m,0);
 }

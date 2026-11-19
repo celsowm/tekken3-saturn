@@ -3,7 +3,9 @@
  * https://polyformproject.org/licenses/noncommercial/1.0.0/
  * Normal VS RoundFlow adapted from pinned Tekken3Remake round_flow.gd.
  * Changes: typed portable state, explicit external facts and move/render
- * actions, pair-atomic failure, no mode-specific/audio/effect implementation.
+ * actions, pair-atomic failure, no mode-specific/audio/effect implementation
+ * beyond Tekken Force's round end and Tekken Ball's replays (_ball_replays,
+ * _ball_result).
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "psx_round_flow.h"
 #include "psx_round.h"
@@ -18,7 +20,7 @@ static void win_wait(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2],
                      const t3_psx_round_flow_facts_t* f) {
     s->blend_hold=2;
     if((s->camera==2 && s->counter==75) ||
-       ((s->camera==6 || s->camera==7) && s->counter==60))s->done=1;
+       ((s->camera==6 || s->camera==7) && s->counter==(f->ball?0xF0:60)))s->done=1;   /* Tekken Ball's loser camera runs longer */
     if(s->camera==5) {
         for(unsigned i=0;i<2;++i)if(a[i].win_pose<1 || a[i].length-1<=a[i].pose)s->win_done[i]=1;
         if(s->win_done[0] && s->win_done[1])s->done=1;
@@ -54,6 +56,46 @@ static void camera(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2],
     }
     a[0].active=selected<0 || selected==0;
     a[1].active=selected<0 || selected==1;
+}
+/* The winner's pose (button-chosen), the round-end camera, the loser's pose under the loser camera, then the win poses. */
+static void win_poses(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2],
+                      const t3_psx_round_flow_facts_t* f,t3_psx_round_flow_actions_t* x) {
+    for(unsigned i=0;i<2;++i)if(a[i].won>0) {
+        unsigned button=f->frame_counter&1u;
+        if(f->physical[i]&0x20u)button=3;
+        if(f->physical[i]&0x40u)button=2;
+        if(f->physical[i]&0x10u)button=1;
+        if(f->physical[i]&0x80u)button=0;
+        a[i].win_pose=(int32_t)(f->frame_counter&1u)+1;
+        x->start_slot[i]=(int16_t)(3431u+button);x->grounded_mask|=(uint8_t)(1u<<i);
+        a[i].pose=1;
+        break;
+    }
+    camera(s,a,f);
+    if(s->camera==6 || s->camera==7)for(unsigned i=0;i<2;++i)if(a[i].won<0){
+        x->start_slot[i]=(int16_t)(a[i].health?3436:3429);a[i].pose=1;
+    }
+    x->clear_blends=1;s->state=T3_ROUND_WIN_POSES;
+    win_start(s,a,f);
+}
+/* Tekken Ball in RESULT: 16 frames after the result the deciding point's replay starts, with the loser camera, and the loser
+ * serves the next round; the round's clock stands while a replay plays, and each finished one starts the next until
+ * `ball_shows` have played. */
+static void ball_replays(t3_psx_round_flow_t* s,const t3_psx_round_actor_t a[2],
+                         const t3_psx_round_flow_facts_t* f,t3_psx_round_flow_actions_t* x) {
+    const int loser=a[0].won<0?0:1;
+    if(s->counter==16) {
+        s->ball_shown=1;s->hud_hidden=1;s->replay_request=1;
+        s->camera=loser?7:6;   /* the match camera starts the loser camera on this change */
+        s->serve_side=loser;
+    } else if(s->ball_shown>0) {
+        if(f->replay_mode!=5){--s->counter;return;}
+        x->clear_effects=1;x->stop_sounds=1;
+        if(s->ball_shown<(int32_t)f->ball_shows) {
+            s->replay_request=1;--s->counter;++s->ball_shown;
+            s->camera=loser?4:3;
+        } else s->hud_hidden=0;
+    }
 }
 static int result(t3_psx_round_flow_t* s,t3_psx_round_actor_t a[2]) {
     uint16_t left[2];
@@ -104,7 +146,7 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
                          const t3_psx_round_flow_facts_t* f,t3_psx_round_flow_actions_t* actions) {
     t3_psx_round_flow_t s;
     t3_psx_round_actor_t a[2];
-    t3_psx_round_flow_actions_t x={{-1,-1},0,0,0,0,0};
+    t3_psx_round_flow_actions_t x={{-1,-1},0,0,0,0,0,0,0};
     if(!out || !actors || !f || !actions)return 0;
     s=*out;a[0]=actors[0];a[1]=actors[1];
     if(s.state<0 || (s.state>6 && s.state!=9 && !ROUND_FORCE_STATE(s.state)) || s.counter<0 || s.counter==INT32_MAX ||
@@ -134,16 +176,28 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
             else if(!(s.result&1) && !a[i].is_cpu)s.input[i]=1;
             else {s.input[i]=2;a[i].script_input=a[i].bank_type!=18 && (a[i].state_word&0x204)?0x1000:0;}
         }
+        if(f->ball)ball_replays(&s,a,f,&x);
         if((s.result&0x1F) && s.counter==90)s.done=1;
 #ifdef T3_PSX_FIGHTERS
         if(s.done && f->force) {
             /* Tekken Force: no replay. The round ends, or STAGE CLEAR!! for a won level. */
             s.input[0]=s.input[1]=0;x.stop_sounds=1;
-            if(a[0].won!=1)s.state=T3_ROUND_END;
+            /* The timer can expire before the boss. A grunt's health can
+             * award the generic round to the player without clearing the level. */
+            if(a[0].won!=1 || !f->force_level_ended)s.state=T3_ROUND_END;
             else {s.state=T3_ROUND_STAGE_CLEAR;s.counter=0;}
             break;
         }
 #endif
+        if(s.done && f->ball) {
+            /* _ball_result: its replays are shown, so the win poses start at once; a loser beaten by the CPU keeps health 1 */
+            s.input[0]=s.input[1]=0;x.stop_sounds=1;
+            s.camera=2;
+            for(unsigned i=0;i<2;++i)if(a[i].won<0 && a[1u-i].is_cpu){a[i].health=1;x.sliver_mask|=(uint8_t)(1u<<i);}
+            win_poses(&s,a,f,&x);
+            ++s.ball_shown;
+            break;
+        }
         if(s.done){s.input[0]=s.input[1]=0;s.state=T3_ROUND_REPLAY_DONE;s.replay_request=1;x.stop_sounds=1;}
         break;
     case T3_ROUND_REPLAY:
@@ -154,24 +208,8 @@ int t3_psx_round_flow_step(t3_psx_round_flow_t* out,t3_psx_round_actor_t actors[
         x.stop_sounds=1;
         s.blend_hold=2;
         if(!s.match_result && (start_pressed(&s,f) || f->replay_skip)){s.state=T3_ROUND_END;break;}
-        for(unsigned i=0;i<2;++i)if(a[i].won>0) {
-            unsigned button=f->frame_counter&1u;
-            if(f->physical[i]&0x20u)button=3;
-            if(f->physical[i]&0x40u)button=2;
-            if(f->physical[i]&0x10u)button=1;
-            if(f->physical[i]&0x80u)button=0;
-            a[i].win_pose=(int32_t)(f->frame_counter&1u)+1;
-            x.start_slot[i]=(int16_t)(3431u+button);x.grounded_mask|=(uint8_t)(1u<<i);
-            a[i].pose=1;
-            break;
-        }
         x.animate_before_camera=(s.result&1)==0;
-        camera(&s,a,f);
-        if(s.camera==6 || s.camera==7)for(unsigned i=0;i<2;++i)if(a[i].won<0){
-            x.start_slot[i]=(int16_t)(a[i].health?3436:3429);a[i].pose=1;
-        }
-        x.clear_blends=1;s.state=T3_ROUND_WIN_POSES;
-        win_start(&s,a,f);
+        win_poses(&s,a,f,&x);
         break;
     case T3_ROUND_WIN_POSES:win_start(&s,a,f);break;
     case T3_ROUND_WIN_WAIT:win_wait(&s,a,f);break;

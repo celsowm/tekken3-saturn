@@ -170,7 +170,7 @@ def run(args):
     if workload_profile in saturn_workload.RELEASE_PROFILES and (args.profile or getattr(args, 'debug_profile', False)):
         raise ValueError(workload_profile + ' cadence excludes intrusive CPU profiling; use diagnostic')
     out.mkdir(parents=True, exist_ok=True)
-    elf = build / 'tekken3_saturn.elf'
+    elf = args.elf or build / 'tekken3_saturn.elf'
     binary = build / 'tekken3_saturn.app.bin'
     syms = symbols(elf, args.nm)
     address, size = syms['_g_t3_diagnostics']
@@ -428,6 +428,7 @@ def parser():
     p.add_argument('--trace-frames',type=int,default=30)
     p.add_argument('--trace-capacity',type=int,default=262144)
     p.add_argument('--snapshot-symbol',action='append',default=[],help='resolve an exact PC checkpoint from this ELF')
+    p.add_argument('--elf',type=Path,help='the program whose symbols the dumps read (default: the versus program, tekken3_saturn.elf)')
     p.add_argument('--dump-symbol',action='append',default=[],help='dump a variable using this ELF; write a byte-order/address manifest')
     p.add_argument('--allow-missing-dumps',action='store_true',
                    help='skip dump symbols this ELF lacks (a profile-only run of a build without the diagnostics)')

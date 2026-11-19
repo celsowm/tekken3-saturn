@@ -74,6 +74,9 @@ implementation of Tekken3Remake.
   `scripts/kmd_to_ska.py` and `scripts/build_local_kmd_assets.py` (preservation
   of original KMD face type and ordering flags; with `scripts/build_fighter_packs.py`, the
   KMD normal exchange, face colour offsets and stage light rigs),
+  `scripts/build_fighter_packs.py` and `src/saturn/move_probe.c` (costume
+  attachment rest angles from `tools/remake_import/character.py` and
+  `docs/research/formats/animation.md`),
   `src/saturn/fighter_hands.c` and `scripts/kmd_to_ska.py` `hand_variants`
   (PartSelectVertexVariant's hand and jaw vertex variants from
   `docs/research/formats/3dmk-models.md`), `scripts/kmd_variants.py`,
@@ -98,7 +101,8 @@ implementation of Tekken3Remake.
   `src/game/psx_hud_messages.c` (normal round text selection from
   `remake/core/fight/round_hud.gd` and the replay label from `fight-frame.md`),
   `src/saturn/menu_main.c` (also the Tekken Force result screen from `modes.md` state 15,
-  `tools/research/draw_sim.py` `force_screen_draw`/`force_portrait` and `hud.md`'s font CLUT rule),
+  `tools/research/draw_sim.py` `force_screen_draw`/`force_portrait` and `hud.md`'s font CLUT rule; and
+  Tekken Ball's type choice on the select from `modes.md` and `tools/research/select_sim.py` `BallHooks`),
   `scripts/pack_force_result_art.py` (the result picture, `modes.md` and `draw_sim.py` `result_picture`),
   `scripts/pack_menu_art.py`,
   `scripts/extract_menu_art.py`, `scripts/extract_select_music.py`, `scripts/extract_menu_sfx.py`,
@@ -113,6 +117,9 @@ implementation of Tekken3Remake.
   name, score line, key and progress bar layout and colours from `docs/research/code/hud.md`,
   `remake/presentation/hud/mode_hud_view.gd`, `tools/research/draw_sim.py` and
   `tools/research/force_sim.py`),
+  `src/saturn/ball_hud_art.c`, `scripts/extract_ball_hud.py` (Tekken Ball's HUD mode line, coin prompt and
+  power gauges: positions, texts, CLUTs and the pulse from `docs/research/code/hud.md`, `modes.md` and
+  `tools/research/draw_sim.py`),
   `src/game/move_lifecycle.c`, `src/game/psx_ground.c`,
   `src/game/psx_match.c`, `src/game/psx_body.c`,
   `src/game/psx_exact_contact.c`, `src/game/psx_hit_transaction.c` and
@@ -123,7 +130,7 @@ implementation of Tekken3Remake.
   `src/game/input_history.c`, `src/game/psx_reaction.c`,
   `src/game/move_index.c`, `src/game/attack_records.c`,
   `src/game/psx_ai.c`, `src/game/psx_ai_game.c`, `tools/psx_ai_flat.c`,
-  `scripts/extract_psx_sfx.py` (sound codes, playback rate and the PS-ADPCM rule from
+  `scripts/extract_psx_sfx.py` (sound codes, among them Tekken Ball's, playback rate and the PS-ADPCM rule from
   `docs/research/code/sound.md` and `formats/vab-banks.md`), and
   `src/game/psx_blend_math.c` adapt
   grounded physics, original hit transaction/reaction queuing and KO collapse,
@@ -134,9 +141,13 @@ implementation of Tekken3Remake.
   and `fight_math.py`, plus body profiles from
   `remake/core/combat/combat.gd`, procedural head tracking from
   `remake/core/fighter/fighter_animation.gd` and result classification from
-  `remake/core/fight/round_flow.gd`, plus selective round placement from
-  `remake/core/fight/fight_simulation.gd` and replay state/pose hooks from
-  `remake/core/fight/replay_state.gd`, plus the fight camera director, view
+  `remake/core/fight/round_flow.gd` (with Tekken Ball's deciding-point
+  replays, serve side and result from its `_ball_replays` and `_ball_result`),
+  plus selective round placement from `remake/core/fight/fight_simulation.gd`
+  and Tekken Ball's court-end placement from `remake/core/ball/tekken_ball.gd`,
+  and replay state/pose hooks from
+  `remake/core/fight/replay_state.gd` (with Tekken Ball's replay start, speed
+  and end), plus the fight camera director, view
   matrix, backdrop turn, camera streams, round-end phases and shake from
   `remake/core/camera/camera_director.gd`, `camera_math.gd`,
   `view_matrix.gd`, `backdrop_turn.gd`, `camera_reel.gd`, `camera_phase.gd`

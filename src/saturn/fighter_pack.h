@@ -60,6 +60,7 @@ typedef struct {
     uint32_t vertices,faces,textures,palettes,voice_count,compact_bytes,bank_fnv1a;
     const char* name;
     const t3_psx_part_t* parts;
+    const int16_t (*attachment_rest)[3]; /* KMD Euler angles for parts 18 through 21 */
     const int16_t* radii; /* eight body spheres */
     const t3_psx_camera_choice_t* choices;
     uint32_t choice_count;

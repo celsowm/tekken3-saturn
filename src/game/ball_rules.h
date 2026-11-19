@@ -53,7 +53,7 @@ typedef struct {
     int32_t touch_sound_wait;      /* 0x800B6AE8 */
     int32_t point;                 /* 0x800B6B4C: 1 + the index of the player who lost the point, else 0 */
     int32_t charged_hit;           /* 0x800B6B54 */
-    int32_t result;                /* 0x800AFF8C: points still needed */
+    int32_t result;                /* 0x800AFF8C: the deciding point's replays (2; 6 after a lethal iron-ball hit) */
     int32_t no_score;              /* 0x800958A0 */
     int32_t no_winner_mark;        /* 0x800958C4 */
     int32_t round_clock;           /* 0x80095884 */

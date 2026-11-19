@@ -32,10 +32,14 @@ enum {
     PARAM_A=0x3c000, COEFFICIENT_A=0x3c200,
     /* One entry (x, y, increment) per line, written in VBlank. */
     LINE_SCROLL=0x3d000,
+    STRIP_BLANK_ROW=255,
     PALETTE=6, PICTURE_PALETTE=7,
     CHUNK_BYTES=8192,
     LINE_WORDS=HEIGHT*6
 };
+_Static_assert(LINE_SCROLL+LINE_WORDS*2 <= STRIP_BLANK_ROW*T3_STAGE_COLUMNS &&
+               (STRIP_BLANK_ROW+1)*T3_STAGE_COLUMNS <= FLOOR_BITMAP,
+               "The strip's transparent row must fit between the line table and floor");
 static sat_vdp2_rotation_params_t g_params __attribute__((section(".wram_l")));
 /* Rebuilt every image: High WRAM, where an access costs a quarter of Low's. */
 static t3_stage_backdrop_line_t g_backdrop[HEIGHT];
@@ -515,9 +519,15 @@ sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre) {
         g_floor_level=(uint16_t)head_word(T3_STAGE_WORD_OGRE_LEVEL);
         for(unsigned i=0;i<256u;++i)g_load_words[T3_STAGE_PICTURE_PALETTE_AT/2+i]=0;
     }
-    /* Rows 240..255 of this 1024x256 bitmap hold the rotation and coefficient
-     * tables and the line scroll table; the line scroll never shows them. */
-    return stream_to_vram(T3_STAGE_PICTURE_AT,T3_STAGE_PICTURE_BYTES,0);
+    /* The stage tables use the space after the uploaded picture. The strip
+     * samples a separate transparent row when the camera looks beyond it. */
+    SAT_TRY(stream_to_vram(T3_STAGE_PICTURE_AT,T3_STAGE_PICTURE_BYTES,0));
+    if(g_strip) {
+        uint16_t* const blank=g_load_words+CHUNK_BYTES/2;
+        __builtin_memset(blank,0,T3_STAGE_COLUMNS);
+        return sat_vdp2_vram_write_words(STRIP_BLANK_ROW*T3_STAGE_COLUMNS/2,blank,T3_STAGE_COLUMNS/2);
+    }
+    return SAT_OK;
 }
 
 uint16_t t3_stage_vdp2_shadow(void) {return g_shadow;}
@@ -642,8 +652,7 @@ static void fill_strip_backdrop(void) {
     const uint32_t base=((uint32_t)(g_strip_scroll+g_strip_shift))&(T3_STAGE_COLUMNS-1u);
     for(unsigned y=0;y<HEIGHT;++y) {
         int32_t row=(int32_t)(2u*y+20u)-g_strip_top-STRIP_CUT_ROWS;
-        if(row<0)row=0;
-        if(row>(int32_t)T3_STAGE_ROWS-1)row=(int32_t)T3_STAGE_ROWS-1;
+        if((uint32_t)row>=T3_STAGE_ROWS)row=STRIP_BLANK_ROW;
         g_backdrop[y].x=(int32_t)(base<<16);
         g_backdrop[y].y=row<<16;
         g_backdrop[y].zoom=STRIP_ZOOM;

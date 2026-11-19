@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pack the spinning ball of Tekken Ball's type page (the original's select screen shows it turning) for MENU.BIN.
+"""Pack the spinning ball of Tekken Ball's type choice on the select screen (the original turns its 3D ball there) for MENU.BIN.
 
 Each ball type is rendered from the private ball data (scripts/extract_ball_data.py: the 42-vertex mesh, the type's eight triangle
 and eight quad colours, its specular power and back colour) with the same lighting as the fight (src/game/ball_light.c, the default
@@ -19,8 +19,9 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 FRAMES, SUPER = 8, 5
-# (file, texel width and height, palette words): the type page's ball, and a small one for the select screen's 16 free codes
-VARIANTS = (('BALLSPIN.BIN', 40, 70, 92), ('BALLSML.BIN', 24, 42, 16))
+# (file, texel width and height, palette words): the type choice's ball (slot B's first 60 codes: the rest of the slot holds
+# the choice's text palettes), and a small one for the select screen's 16 free codes
+VARIANTS = (('BALLSPIN.BIN', 40, 70, 60), ('BALLSML.BIN', 24, 42, 16))
 RIG_LIGHT, RIG_COLOUR = (-2048, -2896, -2048), 200
 HEAD, OPTION_WORDS = 6, 12
 

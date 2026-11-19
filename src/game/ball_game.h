@@ -16,6 +16,9 @@ enum { BALL_DATA_VERSION=1, BALL_COURT_HALF_X=0x1400, BALL_COURT_HALF_Z=0x100 };
 /* A text over the ball: the charge a hit added (number) or "!" (-1), at the ball's place when it was made, for BALL_POPUP_FRAMES. */
 enum { BALL_POPUPS=4, BALL_POPUP_FRAMES=30 };
 typedef struct { int32_t pos[3];int16_t number;uint8_t age,colour,used; } t3_ball_popup_t;
+/* One frame of the ball's replay ring (0x7EF8 in the replay buffer, 0x24 bytes there): what the replay draws. */
+enum { BALL_REPLAY_FRAMES=30 };
+typedef struct { int32_t pos[3];int16_t spin[2],squash_axis[3],squash;uint8_t kind,timer; } t3_ball_replay_frame_t;
 
 typedef struct {
     t3_ball_t ball;
@@ -26,9 +29,11 @@ typedef struct {
     uint16_t options[3][12];       /* the three ball types' rows (0x800B6460) */
     int16_t last_slot[2],last_pose[2]; /* the running move, to release the per-move lock when it changes */
     uint8_t active,option,mesh_ok,last_kind;
+    uint8_t played;                /* the match's round the ball was last started for (0: not yet) */
     uint32_t ticks;
     t3_ball_popup_t popup[BALL_POPUPS];   /* the texts over the ball (volley.ovl FUN_800B445C: 8 slots there) */
     t3_psx_fighter_t stand_in;            /* the stand-in attacker (0x800AC808): the hitter's record when the ball was struck */
+    t3_ball_replay_frame_t replay[BALL_REPLAY_FRAMES];   /* the last 30 frames, by the replay's record index */
 } t3_ball_game_t;
 
 /* The data blob of scripts/extract_ball_data.py ("T3BL", big endian). The ball type is 0..2 (beach, gum, iron). */

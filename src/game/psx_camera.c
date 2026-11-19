@@ -1299,6 +1299,9 @@ static int loser_step(cam_t* c,const tab_t* t,const fig_t* f) {
         c->view.x=c->loser[0];c->view.y=c->loser[1];c->view.z=c->loser[2];
         return 1;
     }
+#if defined(T3_PSX_BALL)
+    if(!c->ball_on)
+#endif
     c->overhead=1;   /* not in Tekken Ball */
     c->view.pitch=0x400;
     c->view.yaw=c->loser_yaw+0x800-div_trunc(f->heading,16);

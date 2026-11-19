@@ -352,7 +352,7 @@ def drawn_parts(kmd):
     return [(part,row) for part,row in enumerate(PART_ROWS) if part not in skip]
 
 def drawn_rows(kmd):
-    """(part, row) in the order the fighter draws them: parts 0..17, a second mesh after its part."""
+    """(part, row) in draw order, with each second mesh following its part."""
     for part,row_index in drawn_parts(kmd):
         for ri in [row_index]+([row_index+1] if part in SECOND_MESH else []):
             if kmd.rows[ri].vert is not None:yield part,ri

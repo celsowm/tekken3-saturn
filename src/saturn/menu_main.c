@@ -18,6 +18,7 @@
 #include "boot_arg.h"
 #if defined(T3_BALL_PROGRAM)
 #include "ball_flow.h"
+#include "ball_save.h"
 #endif
 #if defined(T3_FORCE_PROGRAM)
 #include "psx_force_handoff.h"
@@ -46,6 +47,7 @@
 #include "saturn/exec.h"
 #include "saturn/font.h"
 #include "saturn/input.h"
+#include "saturn/render3d.h"
 #include "saturn/saturn.h"
 #include "saturn/vdp1.h"
 #include "saturn/vdp2.h"
@@ -62,6 +64,7 @@ enum {
     FONT_SETS=3, TILE_BASE=0x40000, TILE_BANK=1,
     CODE_WHITE=1, CODE_GREY=2, CODE_GOLD=3, CODE_P1=4, CODE_P2=5, CODE_P1_HI=6, CODE_P2_HI=7,
     SLOT_A=8, SLOT_B=100, GLOW_P1=192, GLOW_P2=198, GLOW_BANDS=6, CODE_BLACK=204, CODE_BAR=205, CODE_BAR_EDGE=206,
+    CODE_ARROW=207,
     ARG_DEBUG=1, ARG_PRACTICE=2, ARG_MUSIC_OFF=16, ARG_VERSUS=32, MODE_DEMO=100,
     FADE_FRAMES=32, SELECT_TIMER_UNIT=93, SELECT_FRAMES=20*SELECT_TIMER_UNIT,
     PORT_REST_FRAMES=4, PORT_FADE_FRAMES=16,
@@ -74,8 +77,10 @@ static uint8_t g_io[BG_HEADER+MENU_BG_W*512+16] __attribute__((aligned(4)));
 static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
-static void ball_spin_draw(unsigned type,unsigned side,int x,int y);
 static void ball_small_draw(unsigned type,int x,int y);
+#if defined(T3_BALL_PROGRAM) || defined(T3_FORCE_PROGRAM)
+static uint32_t g_save_workspace[SAT_SAVE_WORKSPACE_BYTES/4u];   /* the Boot ROM backup library's, for the Ball and Force records */
+#endif
 static unsigned g_select_ball=3;   /* the select screen of Tekken Ball: the ball type whose small ball turns between the slots, else 3 */
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
@@ -105,6 +110,7 @@ static void sprite_palette(void) {
     g_pal[CODE_BLACK]=(uint16_t)w555(0,0,0);
     g_pal[CODE_BAR]=(uint16_t)w555(15,15,16);
     g_pal[CODE_BAR_EDGE]=(uint16_t)w555(6,6,7);
+    g_pal[CODE_ARROW]=(uint16_t)w555(31,31,0);   /* Tekken Ball's type arrows: the original's 0xFFFF00 */
     g_pal[CODE_P1_HI]=(uint16_t)w555(31,22,18);
     g_pal[CODE_P2_HI]=(uint16_t)w555(20,26,31);
     for(unsigned i=0;i<4;++i) {
@@ -331,7 +337,7 @@ static void text(unsigned set,const char* s,int bg_cx,int y) {
 /* The strings in the original fonts (TEXT.BIN, scripts/pack_menu_art.py): glyph codes ready for the
  * sprite bank, one group per screen. A picture is drawn 2 dots per texel across and 1:1 down: a
  * vertical scale would shimmer between the interlaced fields. */
-static uint8_t g_text_blob[224*1024] __attribute__((section(".wram_l"),aligned(4)));
+static uint8_t g_text_blob[240*1024] __attribute__((section(".wram_l"),aligned(4)));
 static const uint8_t* g_text_data[TX_COUNT];
 static sat_vdp1_texture_t g_tx[TX_COUNT];
 static unsigned g_text_palettes;
@@ -353,11 +359,19 @@ static sat_result_t read_text(void) {
     return SAT_OK;
 }
 
-/* Uploads one screen's palettes into the master palette and its pictures into VDP1 VRAM. */
-static void load_text_group(unsigned group) {
+/* Loads one group's palettes into the master palette and colour RAM. */
+static void text_palettes(unsigned group) {
     const uint8_t* at=g_text_blob+12;
     for(unsigned i=0;i<g_text_palettes;++i,at+=34)
-        if(at[0]==group)for(unsigned c=0;c<16;++c)g_pal[at[1]+c]=(uint16_t)be16(at+2+2*c);
+        if(at[0]==group) {
+            for(unsigned c=0;c<16;++c)g_pal[at[1]+c]=(uint16_t)be16(at+2+2*c);
+            (void)sat_vdp2_palette_upload(g_pal+at[1],16,(uint16_t)(SPR_BANK*256u+at[1]));
+        }
+}
+
+/* Uploads one screen's palettes into the master palette and its pictures into VDP1 VRAM. */
+static void load_text_group(unsigned group) {
+    text_palettes(group);
     for(unsigned i=0;i<TX_COUNT;++i)
         if(g_text_data[i][0]==group)
             SAT_PANIC_IF_ERROR(sat_tex_upload_indexed8(&g_tx[i],g_text_data[i]+6,
@@ -522,6 +536,7 @@ static int adx_test_requested(const pads_t* pads) {
 static unsigned title_flow(void) {
     pads_t pads;
     SAT_PANIC_IF_ERROR(load_backdrop("TITLEBG.BIN"));
+title:
     for(;;) {
         /* NAMCO PRESENTS: 32 frames in, at least 90 up, 32 out. */
         backdrop_show(0);
@@ -570,7 +585,7 @@ static unsigned title_flow(void) {
 menu:;
     {
         /* The ring of modes around the selected row, 26 dots apart (the original's 28 of 480). */
-        unsigned selected=0,idle=0,option=0,option_row=0,leaving=0,ball_pick=0;
+        unsigned selected=0,idle=0,option=0,option_row=0,leaving=0;
         backdrop_show(1);
         fade(0);
         for(;;) {
@@ -581,9 +596,9 @@ menu:;
                 leaving+=2u;
                 fade(-(int)(leaving*255u/FADE_FRAMES));
                 if(leaving>=FADE_FRAMES+2u) {frame_end();return selected;}
-            } else if(idle>480u && !option && !ball_pick) {
+            } else if(idle>480u && !option) {
                 frame_end();
-                return title_flow();
+                goto title;
             }
             rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
             if(option) {
@@ -593,19 +608,10 @@ menu:;
                 if(pads.pad[0].pressed&(SAT_PAD_UP|SAT_PAD_DOWN))option_row^=1u;
                 if(pads.pad[0].pressed&(SAT_PAD_LEFT|SAT_PAD_RIGHT|SAT_PAD_A|SAT_PAD_X))
                     g_arg[4]^=option_row?ARG_MUSIC_OFF:ARG_DEBUG;
-                if(pads.pad[0].pressed&(SAT_PAD_B|SAT_PAD_START))option=0;
-                frame_end();
-                continue;
-            }
-            if(ball_pick) {
-                /* TEKKEN BALL: the ball type (volley.ovl's side selection: BEGINNER, EXPERT, GRAND MASTER) */
-                static const char* const names[3]={"BEGINNER","EXPERT","GRAND MASTER"};
-                text(2,"TEKKEN BALL",MENU_BG_W/2,330);
-                for(unsigned r=0;r<3u;++r)text(g_ball_option==r?0:1,names[r],MENU_BG_W/2,362+(int)r*24);
-                ball_spin_draw(g_ball_option,0,MENU_BG_W+250,385);   /* beside the type list */
-                if(pads.pad[0].pressed&SAT_PAD_UP)g_ball_option=g_ball_option?(uint8_t)(g_ball_option-1u):2u;
-                if(pads.pad[0].pressed&SAT_PAD_DOWN)g_ball_option=g_ball_option>=2u?0u:(uint8_t)(g_ball_option+1u);
-                if(pads.pad[0].pressed&START_BUTTONS){sfx(SFX_CONFIRM);ball_pick=0;leaving=2u;}
+                if(pads.pad[0].pressed&(SAT_PAD_B|SAT_PAD_START)) {
+                    option=0;
+                    idle=0;
+                }
                 frame_end();
                 continue;
             }
@@ -614,7 +620,7 @@ menu:;
             for(int k=-2;k<=2;++k) {
                 const unsigned mode=(selected+MODES+(unsigned)(k+MODES))%MODES;
                 const int distance=k<0?-k:k;
-                const unsigned variant=distance==0?0u:distance==2||!mode_playable(mode,&pads)?2u:1u;
+                const unsigned variant=!mode_playable(mode,&pads)||distance==2?2u:distance==0?0u:1u;
                 pic(TX_MODE0_SELECTED+mode*3u+variant,MENU_BG_W/2,350+k*26);
             }
             if(leaving) {frame_end();continue;}
@@ -623,7 +629,6 @@ menu:;
             if((pads.pad[0].pressed&START_BUTTONS) && mode_playable(selected,&pads)) {
                 sfx(SFX_CONFIRM);
                 if(selected==MODE_OPTION)option=1;
-                else if(selected==MODE_BALL)ball_pick=1;
                 else leaving=2u;
             }
             frame_end();
@@ -729,8 +734,11 @@ static void glow_palette(unsigned side,unsigned colour) {
 static sat_vdp1_texture_t g_name[SILHOUETTE];
 static uint8_t g_name_extent[SILHOUETTE][2];
 
+/* Once per program: each upload takes new VDP1 VRAM (Tekken Ball reads the portraits again for its VS screen). */
 static sat_result_t load_names(void) {
     static uint8_t pixels[NAME_W*NAME_H];
+    static uint8_t loaded;
+    if(loaded)return SAT_OK;
     SAT_TRY(read_file("NAMES.BIN",0,g_io,NAME_HEAD+SILHOUETTE*NAME_W*NAME_H));
     for(unsigned id=0;id<SILHOUETTE;++id) {
         g_name_extent[id][0]=g_io[2*id];g_name_extent[id][1]=g_io[2*id+1];
@@ -738,6 +746,7 @@ static sat_result_t load_names(void) {
         for(unsigned i=0;i<NAME_W*NAME_H;++i)pixels[i]=mask[i]?CODE_BLACK:0;
         SAT_TRY(sat_tex_upload_indexed8(&g_name[id],pixels,NAME_W,NAME_H,g_pal,SPR_BANK));
     }
+    loaded=1;
     return SAT_OK;
 }
 
@@ -756,34 +765,86 @@ static sat_result_t cache_portraits(void) {
     return SAT_OK;
 }
 
-/* The spinning ball of the type page (the original's select screen turns the ball between the two fighters): BALLSPIN.BIN holds, per
- * type, a palette and SPIN_FRAMES frames (scripts/pack_ball_spin.py). They go into the first portrait's VRAM and palette slot, which
- * the select screen after this page loads afresh; each frame is its own texture, drawn three times as wide as the texel and 100 / 70 as
- * tall. A disc without the file shows no ball. */
-enum { SPIN_FRAMES=8, SPIN_W=40, SPIN_H=70, SPIN_PALETTE=92, SPIN_BYTES=SPIN_FRAMES*SPIN_W*SPIN_H,
-       SPIN_BLOCK=SPIN_PALETTE*2+SPIN_BYTES, SPIN_X=MENU_BG_W+250, SPIN_Y=385 };
-static void ball_spin_draw(unsigned type,unsigned side,int x,int y) {
-    static int loaded[2]={-1,-1};
-    const unsigned slot=side?SLOT_B:SLOT_A;
+/* The spinning ball of Tekken Ball's type choice (the original turns its 3D ball there): BALLSPIN.BIN holds, per type, a palette and
+ * SPIN_FRAMES frames (scripts/pack_ball_spin.py). They go into the second portrait's VRAM and the first SPIN_PALETTE codes of its
+ * palette slot (the CPU's silhouette is not drawn while the choice shows; the rest of the slot holds the choice's text palettes);
+ * each frame is its own texture, drawn three times as wide as the texel and 100 / 70 as tall. A disc without the file shows no ball. */
+enum { SPIN_FRAMES=8, SPIN_W=40, SPIN_H=70, SPIN_PALETTE=60, SPIN_BYTES=SPIN_FRAMES*SPIN_W*SPIN_H,
+       SPIN_BLOCK=SPIN_PALETTE*2+SPIN_BYTES };
+static int g_spin_loaded=-1;   /* the type in slot B's VRAM, -1 once a portrait is there again */
+static void ball_spin_draw(unsigned type,int x,int y) {
     if(type>2u)return;
-    if(loaded[side]!=(int)type) {
+    if(g_spin_loaded!=(int)type) {
         if(read_file("BALLSPIN.BIN",type*SPIN_BLOCK,g_io,SPIN_BLOCK)!=SAT_OK)return;
         uint8_t* pixels=g_io+SPIN_PALETTE*2;
-        for(unsigned i=0;i<SPIN_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+slot-1u);
-        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SPIN_PALETTE,(uint16_t)(SPR_BANK*256u+slot))!=SAT_OK)return;
-        if(sat_vdp1_vram_write((uint32_t)g_port_tex[side].srca*8u,pixels,SPIN_BYTES)!=SAT_OK)return;
-        loaded[side]=(int)type;
+        for(unsigned i=0;i<SPIN_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+SLOT_B-1u);
+        if(sat_vdp2_palette_upload((const uint16_t*)g_io,SPIN_PALETTE,(uint16_t)(SPR_BANK*256u+SLOT_B))!=SAT_OK)return;
+        if(sat_vdp1_vram_write((uint32_t)g_port_tex[1].srca*8u,pixels,SPIN_BYTES)!=SAT_OK)return;
+        g_spin_loaded=(int)type;
     }
-    const sat_vdp1_texture_t frame={(uint16_t)(g_port_tex[side].srca+((g_now/6u)%SPIN_FRAMES)*(SPIN_W*SPIN_H/8u)),SPIN_W,SPIN_H,SPR_BANK,1,
+    const sat_vdp1_texture_t frame={(uint16_t)(g_port_tex[1].srca+((g_now/6u)%SPIN_FRAMES)*(SPIN_W*SPIN_H/8u)),SPIN_W,SPIN_H,SPR_BANK,1,
                                     SAT_VDP1_TEXTURE_INDEXED8};
     (void)sat_draw_sprite_scaled_screen(&frame,(int16_t)x,(int16_t)y,SPIN_W*3,100,0);
+}
+
+/* Tekken Ball's type choice after the player's fighter (select_sim.py BallHooks side_select / draw, volley.ovl FUN_800B569C and
+ * FUN_800B593C; modes.md "Tekken Ball's select"). The ball's x translation eases an eighth of the way to its target each field;
+ * LEFT sends it to -0x1000 and RIGHT to +0x1000, and once it passes +-0x800 in that direction the next (LEFT) or previous (RIGHT)
+ * type comes in from the other side, aimed at 0. At rest (within 0x3F of the target) a face button confirms, B (the original's
+ * SELECT) backs out, the yellow arrows blink (field & 0x20) and the type's texts show. */
+typedef struct {int32_t x,target;int8_t dir;uint8_t type;} ball_roll_t;
+static void ball_roll_field(ball_roll_t* r) {
+    r->x+=(r->target-r->x)>>3;
+    if(r->x<-0x7FF && r->dir==-1) {r->type=r->type+1u>2u?0u:(uint8_t)(r->type+1u);r->x=0x800;r->target=0;}
+    if(r->x>0x7FF && r->dir==1) {r->type=r->type?(uint8_t)(r->type-1u):2u;r->x=-0x800;r->target=0;}
+}
+static int ball_roll_rests(const ball_roll_t* r) {
+    const int32_t d=r->x-r->target;
+    return d>=-0x3F && d<=0x3F;
+}
+
+/* The original's 368 x 480 places on this screen: x in background units, y in lines, the panel moved down BALL_DY lines to clear the
+ * name plates. FUN_800B5B6C's view puts the resting ball's centre at (185, 348); a translation of x moves it x * 500 / 4992 dots
+ * (H 500 over the depth 0x1380). */
+enum { BALL_PS1_W=368, BALL_PS1_H=480, BALL_DY=18, BALL_PANEL_Y=SEL_PLATE_Y+18 };
+static int ball_x(int x) {return x*MENU_BG_W/BALL_PS1_W;}
+static int ball_y(int y) {return y*MENU_BG_H/BALL_PS1_H+BALL_DY;}
+/* Picture `id` with its top at original y; left at original x, or centred there. */
+static void ball_text(unsigned id,int x,int y,int centred) {
+    const int middle=ball_y(y)+(int)be16(g_text_data[id]+4)/2;
+    if(centred)pic(id,ball_x(x),middle);
+    else pic_left(id,ball_x(x),middle);
+}
+/* One of FUN_800B569C's flat yellow triangles, in original coordinates. */
+static void ball_arrow(const int16_t* xy) {
+    sat_quad2_t quad;
+    for(unsigned k=0;k<4u;++k) {
+        const unsigned v=k<3u?k:2u;
+        quad.x[k]=(int16_t)(ball_x(xy[2*v])*2-SCREEN_W/2);
+        quad.y[k]=(int16_t)(ball_y(xy[2*v+1])-SCREEN_H/2);
+    }
+    (void)sat_draw_quad2_polygon(&quad,CODE_ARROW);
+}
+static void ball_choice_draw(const ball_roll_t* r) {
+    static const int16_t RIGHT[6]={0xFC,0x14E,0xFC,0x15E,0x104,0x156},LEFT[6]={0x74,0x14E,0x74,0x15E,0x6C,0x156};
+    rect(0,BALL_PANEL_Y,SCREEN_W,SCREEN_H-BALL_PANEL_Y,CODE_BLACK);
+    ball_spin_draw(r->type,ball_x(185+(int)(r->x*500/0x1380))*2,ball_y(348));
+    if(!ball_roll_rests(r))return;
+    if(g_now&0x20u) {ball_arrow(RIGHT);ball_arrow(LEFT);}
+    /* the name (font 0, colour 11) and the description (font 1, colour 4) centred on x 0xB8, BALL DAMAGE (colour 5) at
+     * (0x87, 0x19E), then "%3d%f%H%V%%": 20 * type + 60 right-aligned in three font-1 places from x 0xA0, the % in font 0 */
+    ball_text(TX_BALL_NAME0+r->type,0xB8,0x144,1);
+    ball_text(TX_BALL_DESC0+r->type,0xB8,0x156,1);
+    ball_text(TX_BALL_DAMAGE,0x87,0x19E,0);
+    ball_text(TX_BALL_PERCENT0+r->type,0xA0+TX_FONT1_ADVANCE*(r->type==2u?0:1),0x1B0,0);
+    ball_text(TX_BALL_PERCENT_SIGN,0xC9,0x1B6,0);
 }
 
 /* The small ball of the select screen (BALLSML.BIN: per type 16 palette words, then SML_FRAMES frames): between the two slots, in the
  * palette codes the select screen leaves free (240 to 255, 15 colours), in a VRAM region of its own. */
 enum { SML_FRAMES=8, SML_W=24, SML_H=42, SML_BYTES=SML_FRAMES*SML_W*SML_H, SML_PALETTE=16, SML_BLOCK=SML_PALETTE*2+SML_BYTES, SML_CODE=240 };
+static int g_small_loaded=-1;   /* the type whose palette is at SML_CODE, -1 once a text palette is there again */
 static void ball_small_draw(unsigned type,int x,int y) {
-    static int loaded=-1;
     static uint16_t base;
     static int ready;
     if(type>2u)return;
@@ -792,13 +853,13 @@ static void ball_small_draw(unsigned type,int x,int y) {
         if(sat_vdp1_vram_reserve(SML_BYTES,&offset)!=SAT_OK)return;
         base=(uint16_t)(offset/8u);ready=1;
     }
-    if(loaded!=(int)type) {
+    if(g_small_loaded!=(int)type) {
         if(read_file("BALLSML.BIN",type*SML_BLOCK,g_io,SML_BLOCK)!=SAT_OK)return;
         uint8_t* pixels=g_io+SML_PALETTE*2;
         for(unsigned i=0;i<SML_BYTES;++i)if(pixels[i])pixels[i]=(uint8_t)(pixels[i]+SML_CODE-1u);
         if(sat_vdp2_palette_upload((const uint16_t*)g_io,SML_PALETTE,(uint16_t)(SPR_BANK*256u+SML_CODE))!=SAT_OK)return;
         if(sat_vdp1_vram_write((uint32_t)base*8u,pixels,SML_BYTES)!=SAT_OK)return;
-        loaded=(int)type;
+        g_small_loaded=(int)type;
     }
     const sat_vdp1_texture_t frame={(uint16_t)(base+((g_now/6u)%SML_FRAMES)*(SML_W*SML_H/8u)),SML_W,SML_H,SPR_BANK,1,SAT_VDP1_TEXTURE_INDEXED8};
     (void)sat_draw_sprite_scaled_screen(&frame,(int16_t)x,(int16_t)y,SML_W*3,61,0);
@@ -852,8 +913,12 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
     pads_t pads;
     t3_select_cursor_t cursor[2]={t3_select_find(picks[0]),t3_select_find(picks[1])};
     /* A ladder is one player's even with a second pad: port 2 joins only as a challenger. */
+    const unsigned run=(g_arg[ARG_FLAGS]>>2)&3u;
     int two=0;
     unsigned chosen[2]={0,0},shown[2]={FIGHTERS+1,FIGHTERS+1},rest[2]={0,0},fade_in[2]={0,0};
+    /* Tekken Ball: the type choice runs between the player's pick and the end (ball.type is the type shown) */
+    unsigned ball_phase=0,ball_phase_start=0;
+    ball_roll_t ball={0,0,1,(uint8_t)(g_select_ball<3u?g_select_ball:0u)};
     backdrop_show(0);
     SAT_PANIC_IF_ERROR(load_backdrop("SELBG.BIN"));
     SAT_PANIC_IF_ERROR(load_bitmap("TILEBG.BIN",TILE_BASE,TILE_BANK,MENU_BG_W,512,512));
@@ -864,11 +929,25 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
 #if defined(T3_SELECT_CDDA_SECTORS)
     if(!(g_arg[4]&ARG_MUSIC_OFF) && t3_select_cdda_start()==SAT_OK)t3_stage_cdda_mix();
 #endif
-    for(unsigned elapsed=0,t0=g_now;elapsed<SELECT_FRAMES&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
+    for(unsigned elapsed=0,t0=g_now;(elapsed<SELECT_FRAMES||ball_phase)&&!(chosen[0]&&chosen[1]);elapsed=g_now-t0) {
         frame_begin(&pads);
         fade(elapsed<FADE_FRAMES?-255+(int)(elapsed*255/FADE_FRAMES):0);
-        two=pads.pad[1].connected&&!ladder&&!force;
-        if(two) {
+        two=pads.pad[1].connected&&!ladder&&!force&&run==T3_RUN_ARCADE;
+        if(ball_phase) {
+            /* the original steps every field; this loop runs every other one */
+            ball_roll_field(&ball);ball_roll_field(&ball);
+            if(pads.pad[0].pressed&SAT_PAD_LEFT) {ball.target=-0x1000;ball.dir=-1;}
+            if(pads.pad[0].pressed&SAT_PAD_RIGHT) {ball.target=0x1000;ball.dir=1;}
+            if(ball_roll_rests(&ball)) {
+                if(pads.pad[0].pressed&SAT_PAD_B) {
+                    /* back to the fighter: the silhouette and the select's text palettes return */
+                    t0+=elapsed-ball_phase_start;
+                    elapsed=ball_phase_start;
+                    ball_phase=0;chosen[0]=0;shown[1]=FIGHTERS+1;rest[1]=PORT_REST_FRAMES;g_spin_loaded=-1;g_small_loaded=-1;
+                    text_palettes(1);
+                } else if(pads.pad[0].pressed&START_BUTTONS) {chosen[1]=1;sfx(SFX_PICK);}
+            }
+        } else if(two) {
             for(unsigned side=0;side<2;++side) {
                 if(chosen[side])continue;
                 cursor[side]=steer(cursor[side],&pads.pad[side]);
@@ -876,7 +955,16 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
             }
         } else if(!chosen[0]) {
             cursor[0]=steer(cursor[0],&pads.pad[0]);
-            if(pads.pad[0].pressed&START_BUTTONS) {chosen[0]=1;chosen[1]=ladder||force;sfx(SFX_PICK);}
+            if(pads.pad[0].pressed&START_BUTTONS) {
+                chosen[0]=1;chosen[1]=ladder||force;sfx(SFX_PICK);
+                if(g_select_ball<3u && !ladder) {
+                    /* Tekken Ball: the ball's type next, its palettes over the codes the choice leaves idle */
+                    chosen[1]=0;ball_phase=1;ball=(ball_roll_t){0,0,1,ball.type};
+                    ball_phase_start=elapsed;
+                    shown[1]=SILHOUETTE;rest[1]=0;fade_in[1]=PORT_FADE_FRAMES+1u;
+                    text_palettes(3);
+                }
+            }
         } else if(pads.pad[0].pressed&SAT_PAD_B) {
             chosen[0]=0;
         } else {
@@ -897,7 +985,7 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
             } else rest[side]=0;
             if(shown[side]<=SILHOUETTE && fade_in[side]<=PORT_FADE_FRAMES)
                 portrait_palette(side,2u*fade_in[side]++);
-            if(shown[side]<=SILHOUETTE) {
+            if(shown[side]<=SILHOUETTE && !(side && ball_phase)) {
                 const int band=(SEL_GLOW_H+GLOW_BANDS-1)/GLOW_BANDS;
                 for(unsigned i=0;i<GLOW_BANDS;++i)
                     rect((bg_x-2)*2,SEL_PORT_Y+(int)i*band,(MENU_PORT_W+4)*2,
@@ -907,7 +995,8 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
             }
             if(id!=SILHOUETTE)draw_name(id==20u?14u:id,bg_x+MENU_PORT_W/2,SEL_PLATE_Y);
         }
-        if(g_select_ball<3u && !two)ball_small_draw(g_select_ball,MENU_BG_W,SEL_SPRITE_Y+MENU_PORT_H/2-45);   /* Tekken Ball: its ball turns between the two slots */
+        if(ball_phase)ball_choice_draw(&ball);
+        else if(g_select_ball<3u && !two)ball_small_draw(g_select_ball,MENU_BG_W,SEL_SPRITE_Y+MENU_PORT_H/2-45);   /* Tekken Ball: its ball turns between the two slots */
         /* Rising sparks: every 4th tick a 40-dot streak leaves a portrait, clipped above the plates. */
         if(!(elapsed&3u)) {
             static unsigned seed=12345u;
@@ -927,8 +1016,9 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
                 rect(spark->x,spark->y,2,40,spark->life>12?CODE_WHITE:CODE_GREY);
             }
         }
-        /* The big gold timer between the portraits. */
-        {
+        /* The big gold timer between the portraits (hidden, and not running out, while Tekken Ball's type is chosen: its palette
+         * is the description's then). */
+        if(!ball_phase) {
             const unsigned left=(SELECT_FRAMES-elapsed+SELECT_TIMER_UNIT-1u)/SELECT_TIMER_UNIT;
             for(unsigned digit=0;digit<2;++digit) {
                 const unsigned value=digit?left%10u:(left/10u)%10u;
@@ -936,7 +1026,7 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
                     (int16_t)(MENU_BG_W+(int)digit*50-25),(int16_t)252,48,38,0);
             }
         }
-        for(unsigned side=0;side<2;++side) {
+        for(unsigned side=0;side<2 && !ball_phase;++side) {
             if(cursor[side].column>=T3_SELECT_DRAWN_COLUMNS)continue;
             if(side&&empty1)continue;
             if(!chosen[side]&&(elapsed&16u)&&!(side==0u&&!two&&chosen[0]))continue;
@@ -945,20 +1035,21 @@ static void select_flow(uint8_t picks[2],int ladder,int force) {
                      SEL_GRID_X+(int)cursor[side].column*SEL_PITCH+2,
                      SEL_GRID_Y+(int)cursor[side].row*SEL_ROW_PITCH+9);
         }
-        if(empty1 && (elapsed&32u))pic_left(TX_INSERT_COIN,MENU_BG_W-128,SEL_PORT_Y-26);
+        if(empty1 && run==T3_RUN_ARCADE && (elapsed&32u))
+            pic_left(TX_INSERT_COIN,MENU_BG_W-128,SEL_PORT_Y-26);
         /* The steel tiles drift diagonally. */
         (void)sat_vdp2_layer_set_scroll(SAT_VDP2_NBG1,0,(int32_t)((elapsed*3u/2u)&511u)<<16);
         frame_end();
     }
     picks[0]=(uint8_t)t3_select_id(cursor[0]);
     picks[1]=(uint8_t)t3_select_id(cursor[1]);
+    if(g_select_ball<3u)g_select_ball=ball.type;   /* Tekken Ball: the type chosen (or shown when time ran out) */
     if(ladder)ladder_start();
     else if(!(g_arg[ARG_LADDER]&LADDER_CHALLENGE))g_arg[ARG_LADDER]=0;   /* a challenger keeps the run */
 #if defined(T3_VS_SCREEN)
     {
         /* The caption follows the mode (modes.md). Port 2 decides arcade or VS, as choose_cpu does.
          * The chosen fighters stay on screen for this read. */
-        const unsigned run=(g_arg[4]>>2)&3u;
         t3_vs_kind_t kind=T3_VS_ARCADE;
         if(g_arg[4]&ARG_PRACTICE)kind=T3_VS_PRACTICE;
         else if(run==T3_RUN_SURVIVAL)kind=T3_VS_SURVIVAL;
@@ -1224,24 +1315,33 @@ int main(void) {
     if(g_arg[0]!=PHASE_SELECT)g_arg[ARG_LADDER]=0;   /* back at the title: the run is over */
     if(g_arg[0]!=PHASE_SELECT)mode=title_flow();
 #if defined(T3_BALL_PROGRAM)
-    if(g_arg[0]==PHASE_SELECT && (g_arg[4]&ARG_BALL)) {mode=MODE_BALL;g_ball_option=g_arg[ARG_STAGE]&3u;}   /* back from a Tekken Ball match */
+    const int ball_again=g_arg[0]==PHASE_SELECT && (g_arg[4]&ARG_BALL);
+    if(ball_again) {mode=MODE_BALL;g_ball_option=g_arg[ARG_STAGE]&3u;}   /* back from a Tekken Ball match */
     if(mode==MODE_BALL) {
-        /* Tekken Ball: the single-player selection, the ball type chosen above, then BALL.BIN (the fight program with the
-         * court). The first game is against Gon (modes.md, Tekken Ball: FUN_800B528C). */
+        /* Tekken Ball: the single-player selection with the ball's type after the fighter (the last game's type first), then
+         * BALL.BIN (the fight program with the court). The first game is against Gon (modes.md, Tekken Ball: FUN_800B528C). */
         g_select_ball=g_ball_option;
         select_flow(&g_arg[ARG_PICK0],0,1);
+        g_ball_option=(uint8_t)g_select_ball;
         {
-            /* FUN_800B528C: the first game is Gon; later games pick among the unlocked characters of the pool. The met counts
-             * (the original keeps them per context) do not survive the menu's restarts, so they start equal: a uniform pick. */
+            /* FUN_800B528C: the first game ever is Gon; later games pick among the unlocked characters of the pool. Both
+             * survive the programs' restarts in the internal backup record (ball_save.c): the first-game flag for good (the
+             * original saves 0x800982FE with its progress), the met counts for the session (they live in the mode's
+             * context, so they restart when Tekken Ball is chosen from the title). ARG_BALL_PLAYED covers a missing
+             * or full backup memory within a session. */
             t3_ball_choice_t choice={0};
+            (void)t3_ball_save_load(&choice,g_save_workspace,sizeof g_save_workspace);
+            if(!ball_again)for(unsigned c=0;c<BALL_CHARACTERS;++c)choice.met[c]=0;
+            if(g_arg[4]&ARG_BALL_PLAYED)choice.first_done=1;
             choice.unlocked=BALL_OPPONENT_POOL;choice.lcg=g_now*2654435761u+1u;choice.frame=g_now;
-            choice.first_done=(uint8_t)(g_arg[ARG_CARRY_PLAYED]!=0);   /* carried through the fight's restarts */
             g_arg[ARG_PICK1]=(uint8_t)(t3_ball_opponent(&choice)>>2);
-            g_arg[ARG_CARRY_PLAYED]=1;
+            (void)t3_ball_save_store(&choice,g_save_workspace,sizeof g_save_workspace);
         }
         g_arg[0]=PHASE_FIGHT;
         g_arg[ARG_STAGE]=g_ball_option;
-        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|ARG_BALL);
+        /* the match starts at round 1: the carried rounds are the arcade's (the first-game mark is a flag bit) */
+        g_arg[ARG_CARRY_WINS]=g_arg[ARG_CARRY_WINS+1]=g_arg[ARG_CARRY_PLAYED]=0;
+        g_arg[4]=(uint8_t)((g_arg[4]&(ARG_DEBUG|ARG_MUSIC_OFF))|ARG_BALL|ARG_BALL_PLAYED);
         g_arg[5]=g_arg[6]=g_arg[7]=0;g_arg[ARG_LADDER]=0;
 #if defined(T3_VS_SCREEN)
         SAT_PANIC_IF_ERROR(cache_portraits());
@@ -1259,8 +1359,7 @@ int main(void) {
         t3_force_handoff_t start={0};
         uint8_t block[T3_FORCE_HANDOFF_BYTES];
         t3_force_progress_t progress={0};
-        static uint32_t workspace[SAT_SAVE_WORKSPACE_BYTES/4u];
-        (void)t3_force_save_load(&progress,workspace,sizeof workspace);
+        (void)t3_force_save_load(&progress,g_save_workspace,sizeof g_save_workspace);
         start.keys=progress.keys;start.hiscore=progress.hiscore;
         if(progress.doctor)start.flags=T3_FORCE_FLAG_DOCTOR_UNLOCKED;
         for(unsigned i=0;i<4;++i)start.bosses[i]=255u;

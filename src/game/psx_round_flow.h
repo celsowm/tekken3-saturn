@@ -15,6 +15,9 @@ typedef struct {
     int32_t input[2],freeze,no_damage,camera,timer_stopped;
     int32_t to_win,max_rounds,blend_hold,human_mask,tie_choice,draw_wins;
     int32_t match_result,match_winner,match_loser,win_done[2];
+    /* Tekken Ball (round_flow.gd _ball_replays): the deciding point's replays shown so far (0x800AFF88, LAST_POINT), the side
+     * that serves the next round (0x800AFF90, the loser) and the HUD's bars hidden while the replays play (hud_shown 0). */
+    int32_t ball_shown,serve_side,hud_hidden;
 } t3_psx_round_flow_t;
 typedef struct {
     int32_t health,maximum,wins,won,win_pose,active,pose,length;
@@ -32,10 +35,15 @@ typedef struct {
      * field has no health, move or pose to validate. */
     uint8_t force,force_level_ended;
     uint8_t force_tally_done; /* the level runner's tally has finished (STAGE CLEAR waits for Start after it) */
+    /* Tekken Ball: the round replays its deciding point `ball_shows` times (0x800AFF8C: 2, 6 after a lethal iron-ball hit)
+     * and goes from the result straight to the win poses. */
+    uint8_t ball,ball_shows;
 } t3_psx_round_flow_facts_t;
 typedef struct {
     int16_t start_slot[2]; /* -1 means no move start. Resolve with original VM. */
     uint8_t grounded_mask,clear_blends,animate_before_camera,fight_clock_advance,stop_sounds;
+    /* Tekken Ball: the effects are cleared as a replay ends (EFFECTS_CLEAR), and a loser beaten by the CPU keeps health 1 */
+    uint8_t clear_effects,sliver_mask;
 } t3_psx_round_flow_actions_t;
 /* Pair-atomic on invalid/unsupported input. Mode-specific team/arcade logic
  * and costume 0x26's VBlank-selected victory are outside normal Paul VS. */

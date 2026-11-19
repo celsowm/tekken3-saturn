@@ -1,7 +1,26 @@
 #include "force_progress.h"
+#include "psx_round_flow.h"
 #include <assert.h>
 #include <string.h>
+
+static void check_force_round_end(int boss_phase, int expected_state) {
+    t3_psx_round_flow_t flow={.state=T3_ROUND_FIGHT,.played=1,.to_win=1,.max_rounds=1,.human_mask=1};
+    t3_psx_round_actor_t actors[2]={
+        {.health=100*65536,.maximum=130*65536,.active=1,.length=1},
+        {.health=20*65536,.maximum=130*65536,.active=1,.length=1,.is_cpu=1},
+    };
+    t3_psx_round_flow_facts_t facts={.force=1,.force_level_ended=boss_phase};
+    t3_psx_round_flow_actions_t actions;
+    assert(t3_psx_round_flow_step(&flow,actors,&facts,&actions));
+    assert(flow.state==T3_ROUND_RESULT && actors[0].won==1);
+    for(unsigned tick=0;tick<90;++tick)
+        assert(t3_psx_round_flow_step(&flow,actors,&facts,&actions));
+    assert(flow.state==expected_state && actions.stop_sounds);
+}
+
 int main(void){
+    check_force_round_end(0,T3_ROUND_END);
+    check_force_round_end(1,T3_ROUND_STAGE_CLEAR);
     /* All four regular stages have scripts; only the earned fifth stage
      * enters the direct-boss state. */
     t3_force_level_t setup;

@@ -13,6 +13,9 @@
 #include "psx_contact.h"
 #include "branch_rules.h"
 #include "psx_ai_game.h"
+#if defined(T3_PSX_BALL)
+#include "ball_game.h"
+#endif
 #include <saturn/int_math.h>
 /* A Tekken Force stretch resumed from a recorded RAM image (host evaluators only, config.round_gap_frames set):
  * compiled out of the Saturn build, which never resumes. */
@@ -1476,6 +1479,7 @@ static int place_original_round(t3_psx_match_t* n,int first) {
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)t3_psx_hud_bar_reset(&n->hud_bars[i]);
     r->camera=r->freeze=r->input[0]=r->input[1]=r->result=0;
     r->state=T3_ROUND_INTRO;r->win_done[0]=r->win_done[1]=0;r->blend_hold=20;
+    r->ball_shown=r->hud_hidden=0;   /* Tekken Ball's round start (FUN_800B0C90) clears LAST_POINT; the serve side stays */
     n->throw_count=0;
     if(n->replay.epoch==UINT32_MAX)return 0;
     t3_psx_replay_reset(&n->replay,n->replay.epoch+1);
@@ -1521,6 +1525,10 @@ static int place_original_round(t3_psx_match_t* n,int first) {
         }
         v->clock.pose_frame=v->clock.root_frame=(int16_t)(first && v->move.length>150?v->move.length-149:1);
         int32_t placed_x=i?1000:-1000;
+#if defined(T3_PSX_BALL)
+        /* FUN_800B0C90 (tekken_ball.gd fight_start) puts both fighters at the court ends each round. */
+        if(n->config->ball_court)placed_x=i?BALL_COURT_HALF_X:-BALL_COURT_HALF_X;
+#endif
         if(n->config->start_force) {
             placed_x=0;
 #if T3_PSX_FIGHTERS>2
@@ -1883,6 +1891,10 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     } else if(n->practice_replay_back>0)n->practice_replay_back=0;
     if(n->flow.replay_request) {
         T3_MATCH_PHASE(3);
+#if defined(T3_PSX_BALL)
+        if(n->config->ball_court) {if(!t3_psx_replay_start_ball(&n->replay))return 0;}
+        else
+#endif
         if(!t3_psx_replay_start(&n->replay))return 0;
         n->flow.replay_request=0;
         if(n->replay.mode==T3_REPLAY_STARTING)n->flow.blend_hold=20;
@@ -1890,7 +1902,12 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     n->hud_replay_entry=(uint8_t)n->replay.mode;
     int ending=n->replay.mode==T3_REPLAY_ENDING;
     T3_MATCH_PHASE(4);
+#if defined(T3_PSX_BALL)
+    int playback=n->config->ball_court?t3_psx_replay_update_ball(&n->replay,n->flow.ball_shown,n->ball_shows):
+        t3_psx_replay_update(&n->replay);
+#else
     int playback=t3_psx_replay_update(&n->replay);
+#endif
     if(playback<0)return 0;
     if(ending) {
         n->flow.blend_hold=20;
@@ -1902,6 +1919,9 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     int old_camera=n->flow.camera;uint8_t old_active[T3_PSX_FIGHTERS];for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)old_active[i]=n->fighter[i].body.active;
     facts.replay_mode=n->replay.mode;facts.replay_skip=n->replay_skip;facts.frame_counter=frame->frame_counter;
     facts.team_round=1; /* Normal VS setup keeps g_teamRound at 1. */
+#if defined(T3_PSX_BALL)
+    facts.ball=n->config->ball_court;facts.ball_shows=n->ball_shows;
+#endif
 #if T3_PSX_FIGHTERS>2
     facts.force=n->config->start_force;facts.force_level_ended=n->level_ended;facts.force_tally_done=(uint8_t)n->force.tally_done;
 #endif
@@ -1923,6 +1943,8 @@ static int step_original_core(t3_psx_match_t* n,t3_input_t p0,t3_input_t p1,
     T3_MATCH_PHASE(20);
     if(!t3_psx_round_flow_step(&n->flow,n->round_actor,&facts,&actions))return 0;
     if(actions.stop_sounds)for(unsigned i=0;i<T3_PSX_FIGHTERS;++i)t3_psx_sound_script_stop(&n->sound[i]);
+    if(actions.clear_effects && n->config->effects)t3_psx_effect_pool_round(n->config->effects);
+    for(unsigned i=0;i<2u;++i)if(actions.sliver_mask&(1u<<i))n->fighter[i].health_q16=1;
     if(actions.fight_clock_advance)++n->fight_clock;
     for(unsigned i=0;i<T3_PSX_FIGHTERS;++i) {
         T3_MATCH_PHASE(30+i);

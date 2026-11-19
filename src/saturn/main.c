@@ -29,7 +29,9 @@
 #if defined(T3_BALL_PROGRAM)
 #include "ball_render.h"
 #include "ball_backdrop.h"
+#include "ball_hud_art.h"
 #include "psx_viewport.h"
+static uint8_t g_ball_pad2;   /* a controller in port 2: the mode line's coin prompt says PUSH P2 START */
 #endif
 #if defined(T3_VDP1_COVERAGE_PROBE)
 #include "coverage_probe.h"
@@ -220,7 +222,7 @@ static t3_psx_hud_bar_t g_image_hud_bars[2]
     ;
 #endif
 #if defined(T3_ORIGINAL_HUD)
-static int32_t g_image_round[12]
+static int32_t g_image_round[13]
 #if defined(T3_PARTICLE_ORDERED_MASK_PROBE)
     __attribute__((section(".wram_l")))
 #endif
@@ -989,8 +991,9 @@ static void choose_cpu(const sat_pad_state_t* pad1) {
 #if defined(T3_REPLAY_INPUT_TAPE) || defined(T3_REFERENCE_REPLAY)
     (void)pad1;t3_move_probe_set_cpu(0u,1u,4u);
 #else
-    /* A ladder keeps its CPU whatever port 2 holds, except in a challenger's match. */
-    const int human2=pad1->connected && (!g_ladder || (g_ladder&LADDER_CHALLENGE));
+    /* Ladders use the CPU outside challenger matches. Survival, Time Attack and solo Ball are CPU modes. */
+    const int human2=pad1->connected && g_run_mode==T3_RUN_ARCADE && !(g_menu_flags&ARG_BALL) &&
+        (!g_ladder || (g_ladder&LADDER_CHALLENGE));
     if(human2)g_arcade_stage=0u;
     {
         uint8_t level=g_ladder?t3_arcade_level(g_arcade_stage):(uint8_t)(4u+g_arcade_stage);
@@ -1500,6 +1503,7 @@ static void capture_image_match(void) {
     g_image_round[9]=t3_move_probe_round_value(16);
     g_image_round[10]=t3_move_probe_round_value(17);
     g_image_round[11]=t3_move_probe_round_value(18);
+    g_image_round[12]=t3_move_probe_round_value(19);
 #endif
     g_t3_slave_sim_pose_tick=g_game.total_ticks;
 }
@@ -1599,6 +1603,9 @@ static void draw_hud(void) {
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, "P1", 8, 5));
     SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud, t3_move_probe_cpu_mask()&2u?"CPU":"P2", 288, 5));
 #endif
+    /* HudRoundUpdate draws nothing while hud_shown (0x800AE6C8) is 0: Tekken Ball clears it from result frame 16 until its
+     * deciding point's last replay ends, which hides the bars, timer, marks, names and mode line together */
+    int ball_hidden=0;
 #if defined(T3_ORIGINAL_HUD_BARS) && defined(T3_ENABLE_PSX_OWNED_MATCH)
 #if defined(T3_SLAVE_SIMULATION)
     const t3_psx_hud_bar_t* bars=g_image_hud_bars;
@@ -1607,7 +1614,14 @@ static void draw_hud(void) {
     t3_move_probe_hud_bars(current_bars);
     const t3_psx_hud_bar_t* bars=current_bars;
 #endif
-    if(!g_practice) {   /* practice sets hud_shown to 0 (practice_mode.gd frame): no bars, timer, marks or names */
+#if defined(T3_SLAVE_SIMULATION) && defined(T3_ORIGINAL_HUD)
+    ball_hidden=(g_image_round[12]&2)!=0;
+#else
+    ball_hidden=(t3_move_probe_round_value(19)&2)!=0;
+#endif
+    /* practice sets hud_shown to 0 (practice_mode.gd frame), and Tekken Ball while its deciding point replays: no bars,
+     * timer, marks or names */
+    if(!g_practice && !ball_hidden) {
         SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X0,BAR_Y,BAR_WIDTH,
             bars[0].drawn*BAR_FILL/152,bars[0].recent*BAR_FILL/152,1));
         SAT_PANIC_IF_ERROR(t3_original_hud_bar(BAR_X1,BAR_Y,BAR_WIDTH,
@@ -1615,14 +1629,12 @@ static void draw_hud(void) {
     }
 #if defined(T3_BALL_PROGRAM)
     {
-        /* Tekken Ball's two power gauges (FUN_800B4E6C): 76 original dots at original x 10 and 278, y 434, here the health
-         * bar's art with the gauge's fill and trail (psx_viewport.h's mapping: x * 20 / 23, (y - 20) / 2) */
+        /* Tekken Ball's two power gauges (FUN_800B4E6C, ball_hud_art.c); the gauge of the player whose charged ball is in
+         * play pulses (the owner of a ball with a charge) */
         const t3_ball_view_t* bv=t3_move_probe_ball();
         if(bv) {
-            enum { GAUGE_X0=9, GAUGE_X1=242, GAUGE_Y=206, GAUGE_WIDTH=66, GAUGE_FILL=62 };
-            for(unsigned g=0;g<2u;++g)
-                SAT_PANIC_IF_ERROR(t3_original_hud_bar(g?GAUGE_X1:GAUGE_X0,GAUGE_Y,GAUGE_WIDTH,
-                    bv->gauge[g].fill*GAUGE_FILL/BALL_GAUGE_WIDTH,bv->gauge[g].trail*GAUGE_FILL/BALL_GAUGE_WIDTH,g?0:1));
+            const unsigned highlight=bv->ball.charge!=0 && bv->ball.owner>=0 && bv->ball.owner<2?1u<<bv->ball.owner:0u;
+            SAT_PANIC_IF_ERROR(t3_ball_hud_gauges(bv->gauge,highlight,sat_field_count()));
 #if defined(T3_BALL_TEST_POINT)
             {   /* test only: effects in the pool and the particles the prepare calls visible */
                 char text[20]="FX 00 V00";
@@ -1631,7 +1643,7 @@ static void draw_hud(void) {
                 SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8,60));
             }
 #endif
-            SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"TEKKEN BALL",W/2,36));   /* the mode's caption (FUN_8004EFF8) */
+            if(!ball_hidden)SAT_PANIC_IF_ERROR(t3_ball_hud_mode_line(0u,sat_field_count(),g_ball_pad2));   /* the mode line (FUN_8004EFF8) */
             /* the texts over the ball: "!" for a set or an unblockable, the charge a hit added; they rise while they last */
             t3_psx_camera_matrix_t view_matrix;
             if(t3_move_probe_camera_matrix(&view_matrix)) {
@@ -1837,13 +1849,14 @@ static void draw_hud(void) {
                 if(text[0])SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,text,8+40*(int)(6u-age),208));
             }
         }
+    } else if(ball_hidden) {
     } else
 #if defined(T3_BALL_PROGRAM)
     SAT_PANIC_IF_ERROR(t3_original_hud_timer_infinite(t3_original_hud_x(169),1));   /* Tekken Ball plays without a time limit */
 #else
     SAT_PANIC_IF_ERROR(t3_original_hud_timer((game->timer + 59u) / 60u,t3_original_hud_x(169),1));
 #endif
-    if(!g_practice) {
+    if(!g_practice && !ball_hidden) {
         for(unsigned mark=0;mark<2;++mark) {
             SAT_PANIC_IF_ERROR(t3_original_hud_mark(0,game->wins[0]>mark,t3_original_hud_x(151-14*(int)mark),25));
             SAT_PANIC_IF_ERROR(t3_original_hud_mark(1,game->wins[1]>mark,t3_original_hud_x(202+14*(int)mark),25));
@@ -1886,6 +1899,7 @@ static void draw_hud(void) {
 #if defined(T3_ORIGINAL_HUD)
     const int round_result=g_image_round[6],human_mask=g_image_round[7],replay_request=g_image_round[8];
     const int frame_counter=g_image_round[9],max_rounds=g_image_round[10],replay_entry=g_image_round[11];
+    const int ball_round=g_image_round[12];
 #endif
 #else
     const int replay=t3_move_probe_round_value(4);
@@ -1896,6 +1910,7 @@ static void draw_hud(void) {
     const int round_result=t3_move_probe_round_value(13),human_mask=t3_move_probe_round_value(14);
     const int replay_request=t3_move_probe_round_value(15),frame_counter=t3_move_probe_round_value(16);
     const int max_rounds=t3_move_probe_round_value(17),replay_entry=t3_move_probe_round_value(18);
+    const int ball_round=t3_move_probe_round_value(19);
 #endif
 #endif
 #if !defined(T3_ORIGINAL_HUD)
@@ -1925,6 +1940,7 @@ static void draw_hud(void) {
         .played=round_number,.max_rounds=max_rounds,.result=round_result,
         .replay_request=replay_request,.human_mask=human_mask,.winner=game->winner,
         .frame_counter=(uint32_t)frame_counter,.replay_mode=replay_entry,.practice=g_practice,
+        .ball_wait=(uint8_t)(ball_round&1),
 #if defined(T3_FIGHTER_PACKS)
         .winner_name=t3_fighter_pack(game->winner==0?0u:1u)->name};
 #else
@@ -2517,6 +2533,9 @@ int main(void) {
 #endif
 #if defined(T3_ORIGINAL_HUD)
     SAT_PANIC_IF_ERROR(t3_original_hud_init(g_faces,sizeof g_faces));
+#if defined(T3_BALL_PROGRAM)
+    SAT_PANIC_IF_ERROR(t3_ball_hud_art_init(g_faces,sizeof g_faces));
+#endif
 #if defined(T3_PRACTICE_ICONS)
     if(g_practice)(void)t3_practice_icons_init(g_faces,sizeof g_faces);   /* without the file or the room the key display stays text */
 #endif
@@ -2604,6 +2623,9 @@ int main(void) {
         SAT_PANIC_IF_ERROR(sat_input_poll());
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(0, 0, &pad0));
         SAT_PANIC_IF_ERROR(sat_pad_tap_state(1, 0, &pad1));
+#if defined(T3_BALL_PROGRAM)
+        g_ball_pad2=(uint8_t)(pad1.connected!=0);
+#endif
         T3_PERF_ADD(input,input_started);
 #if defined(T3_PRACTICE_SELFTEST)
         {   /* A scripted pad 1 for the emulator check (no key injection): open the menu, change rows, close, fight. */

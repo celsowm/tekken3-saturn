@@ -3,7 +3,8 @@
  * https://polyformproject.org/licenses/noncommercial/1.0.0/
  * Normal VS replay cursor/KO mark/interpolation adapted from pinned
  * Tekken3Remake replay_state.gd. Changes: portable value-owned metadata,
- * caller-owned history with epoch validation, no audio/effect/hand log.
+ * caller-owned history with epoch validation, no audio/effect/hand log;
+ * Tekken Ball's window, speed and early end.
  * See NOTICE.md and third_party/Tekken3Remake/LICENSE.md. */
 #include "psx_replay.h"
 static int mod600(int n){int m=n%600;return m<0?m+600:m;}
@@ -38,12 +39,17 @@ int t3_psx_replay_start(t3_psx_replay_t* s) {
     if(age<150 && s->recorded>152)s->mark=mod600((s->record-150)*2);
     s->mode=T3_REPLAY_STARTING;s->play=s->mark;return 1;
 }
-int t3_psx_replay_update(t3_psx_replay_t* s) {
+int t3_psx_replay_start_ball(t3_psx_replay_t* s) {
+    if(!t3_psx_replay_start(s))return 0;
+    if(s->mode==T3_REPLAY_STARTING)s->mark=s->play=mod600((s->record-30)*2);
+    return 1;
+}
+static int update(t3_psx_replay_t* s,int step,int end) {
     if(!valid(s))return -1;
     switch(s->mode) {
     case T3_REPLAY_PLAYING:
-        s->play=(s->play+1)%600;
-        if(s->play==mod600(s->record*2-2) || s->skip)s->mode=T3_REPLAY_ENDING;
+        s->play=(s->play+step)%600;
+        if(s->play==mod600(s->record*2-end) || s->skip)s->mode=T3_REPLAY_ENDING;
         return 1;
     case T3_REPLAY_STARTING:s->mode=T3_REPLAY_FIRST;return 1;
     case T3_REPLAY_FIRST:s->mode=T3_REPLAY_PLAYING;s->skip=0;return 1;
@@ -53,6 +59,10 @@ int t3_psx_replay_update(t3_psx_replay_t* s) {
         s->record=(s->record+1)%300;return 0;
     default:return 0;
     }
+}
+int t3_psx_replay_update(t3_psx_replay_t* s){return update(s,1,2);}
+int t3_psx_replay_update_ball(t3_psx_replay_t* s,int shown,int shows) {
+    return update(s,shown<shows?2:1,shown==3 && shows>3?0x20:2);
 }
 const t3_psx_replay_pair_t* t3_psx_replay_at(const t3_psx_replay_storage_t* storage,
                                            const t3_psx_replay_t* s,unsigned index) {

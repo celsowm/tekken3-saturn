@@ -39,5 +39,18 @@ int main(void) {
     assert(root.x==-1 && root.y==0 && root.z==2);
     root=t3_psx_replay_root(a,b,0);assert(!memcmp(&root,&a,sizeof(a)));
     before=s;assert(!t3_psx_replay_mark_ko(&s,32768) && !memcmp(&s,&before,sizeof(s)));
+    /* Tekken Ball: without a KO mark the first start ends at once (and leaves a mark); the next plays the last 30 frames,
+     * at double speed but for the last show; the third of six ends 16 frames early. */
+    t3_psx_replay_reset(&s,1);s.record=100;s.recorded=200;
+    assert(t3_psx_replay_start_ball(&s) && s.mode==5 && s.mark>=0);
+    const int ends[3][3]={{1,2,29},{2,2,58},{3,6,14}};
+    for(unsigned k=0;k<3;++k) {
+        assert(t3_psx_replay_start_ball(&s) && s.mode==2 && s.play==140 && s.mark==140);
+        assert(t3_psx_replay_update_ball(&s,ends[k][0],ends[k][1])==1 && s.mode==3);
+        assert(t3_psx_replay_update_ball(&s,ends[k][0],ends[k][1])==1 && s.mode==1);
+        for(int i=1;i<ends[k][2];++i)assert(t3_psx_replay_update_ball(&s,ends[k][0],ends[k][1])==1 && s.mode==1);
+        assert(t3_psx_replay_update_ball(&s,ends[k][0],ends[k][1])==1 && s.mode==4);
+        assert(!t3_psx_replay_update_ball(&s,ends[k][0],ends[k][1]) && s.mode==5 && s.record==100);
+    }
     return 0;
 }

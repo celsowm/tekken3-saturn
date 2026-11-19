@@ -1,0 +1,12 @@
+#!/bin/bash
+# Wrapper for sh2eb-elf-gcc that strips -arch flags (added by CMake on macOS)
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        -arch) shift ;;  # skip -arch and its argument
+        -arch=*) continue ;;
+        *) args+=("$arg") ;;
+    esac
+    shift
+done
+exec /Users/celso/dev/saturn-tools/bin/sh2eb-elf-gcc "${args[@]}"

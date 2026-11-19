@@ -114,11 +114,11 @@ Status (2026-10-23, details in `docs/FIGHT_ORACLE.md` and `docs/PAUL_STAGE_VDP2.
   advances at 60 Hz and matches 33,575 original trace transitions. The
   original text and round messages are also present in the current build;
   complete visual parity remains open. See [ORIGINAL_HUD.md](ORIGINAL_HUD.md).
-- [~] Menus: the roster build has the original title sequence, a mode list and
-  the character select at 704x448 (`MENU.BIN`, see `docs/ROSTER.md`); ARCADE,
-  VS, PRACTICE, TIME ATTACK, SURVIVAL, OPTION and TEKKEN FORCE lead somewhere
-  (Force: its four levels, Doctor B., saving and sound, see
-  [TEKKEN_FORCE_PLAN.md](TEKKEN_FORCE_PLAN.md)); Team Battle is listed only.
+- [~] Menus: the roster build has a title sequence, mode list and character
+  select at 704x448 (`MENU.BIN`). Arcade, VS, Practice, Time Attack, Survival,
+  solo Tekken Ball, Tekken Force and Option Mode have routes from the menu.
+  Team Battle is disabled. Theater, record tables, costume selection and
+  expanded options are pending. [Mode details](ROSTER.md)
 - [ ] More stages and characters (the private import covers Paul, Law and stage 0).
 
 ## Milestone 4: completeness and fidelity

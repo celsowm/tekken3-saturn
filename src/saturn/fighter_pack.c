@@ -158,6 +158,13 @@ static sat_result_t open_pack_source(unsigned actor,unsigned id,const char* sour
     pack->face_ot=(const uint8_t(*)[2])(const void*)(store+w[25]);
     /* Lighting data exists with the LUT4 textures only; zero normals mark it absent. */
     const uint32_t* light=w+LIGHT_WORD;
+    const uint32_t attachment_rest=light[10];
+    const uint32_t attachment_rest_bytes=(T3_PSX_DRAW_PARTS-T3_PSX_ROTATION_SLOTS)*3u*sizeof(int16_t);
+    if(attachment_rest) {
+        if((attachment_rest&1u) || attachment_rest>hot ||
+           hot-attachment_rest<attachment_rest_bytes)return SAT_ERR_VERSION;
+        pack->attachment_rest=(const int16_t(*)[3])(const void*)(store+attachment_rest);
+    }
     pack->light_normal_count=light[0];
     if(light[0]) {
         pack->light_parts=(const t3_light_part_t*)(const void*)(store+light[1]);

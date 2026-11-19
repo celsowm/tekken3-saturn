@@ -21,7 +21,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_vertex_exchange.c src/game/psx
 target_sources(tekken3_fight PRIVATE src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_blend_math.c src/game/psx_blend.c)
 target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_force_floor.c src/game/psx_force_camera.c src/game/psx_force_handoff.c src/game/force_progress.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c)
-target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c src/game/ball_rules.c src/game/ball_flow.c src/game/ball_hud.c src/game/ball_game.c src/game/ball_backdrop.c src/game/ball_ai.c src/game/ball_pose.c src/game/ball_light.c)
+target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c src/game/ball_rules.c src/game/ball_flow.c src/game/ball_progress.c src/game/ball_hud.c src/game/ball_game.c src/game/ball_backdrop.c src/game/ball_ai.c src/game/ball_pose.c src/game/ball_light.c)
 # Tekken Ball runs once per tick on the Slave; the high Work RAM image has no slack (docs/TEKKEN_BALL_PLAN.md), so it is built for size.
 set_source_files_properties(src/game/ball_rules.c src/game/ball_game.c src/game/ball_flow.c src/game/ball_hud.c src/game/ball_ai.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
@@ -61,7 +61,7 @@ add_library(tekken3_fight_force STATIC
     src/game/psx_effect_pool.c src/game/psx_effect_fire.c src/game/psx_match_effects.c
     src/game/psx_blend_math.c src/game/psx_blend.c
     src/game/psx_force_level.c src/game/psx_force_target.c src/game/psx_force_walls.c src/game/psx_force_floor.c src/game/psx_force_camera.c src/game/psx_force_handoff.c src/game/force_progress.c src/game/psx_head.c src/game/psx_blink.c src/game/psx_hands.c src/game/psx_fighter_sounds.c
-    src/game/psx_ai.c src/game/psx_ai_game.c src/game/ball_rules.c src/game/ball_flow.c src/game/ball_hud.c src/game/ball_game.c src/game/ball_backdrop.c src/game/ball_ai.c src/game/ball_pose.c src/game/ball_light.c
+    src/game/psx_ai.c src/game/psx_ai_game.c src/game/ball_rules.c src/game/ball_flow.c src/game/ball_progress.c src/game/ball_hud.c src/game/ball_game.c src/game/ball_backdrop.c src/game/ball_ai.c src/game/ball_pose.c src/game/ball_light.c
     src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
         src/game/arcade_ladder.c
     src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c src/game/practice_commands.c
@@ -2299,7 +2299,20 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_compile_definitions(tekken3_fight_ball PUBLIC T3_PSX_BALL=1)
         get_target_property(_t3_ball_sources tekken3_saturn SOURCES)
         list(FILTER _t3_ball_sources EXCLUDE REGEX "practice_(icons|font|hud)\\.c$|practice-(commands|combos)\\.c$")
-        add_executable(tekken3_ball ${_t3_ball_sources} src/saturn/ball_render.c "${T3_LOCAL_BALL_DATA}")
+        # The ball's own sounds (raw codes, key bank 3) join the versus sounds in BSFX.BIN (74 KB more of Sound RAM, Ball only:
+        # the versus SFX.BIN stays as it is)
+        set(_t3_ball_sfx_gen "")
+        if(_t3_sfx_gen)
+            set(_t3_ball_sfx_gen "${CMAKE_BINARY_DIR}/generated/ball_sfx")
+            add_custom_command(OUTPUT "${_t3_ball_sfx_gen}/BSFX.BIN" "${_t3_ball_sfx_gen}/t3_local_sfx.h"
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" --with-ball
+                    --exe "${T3_LOCAL_SFX}/SLUS_004.02" --out "${_t3_ball_sfx_gen}/tables" --generated "${_t3_ball_sfx_gen}"
+                    ${_t3_sfx_voice_args}
+                COMMAND "${CMAKE_COMMAND}" -E rename "${_t3_ball_sfx_gen}/SFX.BIN" "${_t3_ball_sfx_gen}/BSFX.BIN"
+                DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_psx_sfx.py" "${T3_LOCAL_SFX}/SLUS_004.02" ${_t3_sfx_voice_inputs} VERBATIM)
+            list(TRANSFORM _t3_ball_sources REPLACE "^${_t3_sfx_gen}/t3_local_sfx\\.h$" "${_t3_ball_sfx_gen}/t3_local_sfx.h")
+        endif()
+        add_executable(tekken3_ball ${_t3_ball_sources} src/saturn/ball_render.c src/saturn/ball_hud_art.c "${T3_LOCAL_BALL_DATA}")
         foreach(_t3_prop COMPILE_DEFINITIONS COMPILE_OPTIONS INCLUDE_DIRECTORIES LINK_LIBRARIES LINK_OPTIONS)
             get_target_property(_t3_value tekken3_saturn ${_t3_prop})
             if(_t3_value)
@@ -2309,6 +2322,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         get_target_property(_t3_link_depends tekken3_saturn LINK_DEPENDS)
         if(_t3_link_depends)
             set_property(TARGET tekken3_ball PROPERTY LINK_DEPENDS ${_t3_link_depends})
+        endif()
+        if(_t3_ball_sfx_gen)
+            get_target_property(_t3_ball_includes tekken3_ball INCLUDE_DIRECTORIES)
+            list(TRANSFORM _t3_ball_includes REPLACE "^${_t3_sfx_gen}$" "${_t3_ball_sfx_gen}")
+            set_property(TARGET tekken3_ball PROPERTY INCLUDE_DIRECTORIES ${_t3_ball_includes})
+            target_compile_definitions(tekken3_ball PRIVATE T3_SFX_FILE="BSFX.BIN")
+            list(APPEND _t3_stage_disc_files "${_t3_ball_sfx_gen}/BSFX.BIN")
         endif()
         get_target_property(_t3_ball_libs tekken3_ball LINK_LIBRARIES)
         list(TRANSFORM _t3_ball_libs REPLACE "^tekken3_fight$" "tekken3_fight_ball")
@@ -2329,6 +2349,21 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             if(TARGET tekken3_fight_ball)
                 target_compile_definitions(tekken3_fight_ball PRIVATE T3_BALL_TEST_POINT=1)   # ball_game.c forces the point
             endif()
+        endif()
+        # Test builds: at tick 600 of the ball fight a ball charged by fighter 1 touches fighter 0, and fighter 0's reaction is
+        # logged in g_t3_charged_log (ball_game.c): the Ymir side of the charged-hit comparison.
+        option(T3_BALL_TEST_CHARGED "Test: a forced charged ball touch on fighter 0 at tick 600 of the ball fight, logged" OFF)
+        set(T3_BALL_TEST_CHARGE 50 CACHE STRING "With T3_BALL_TEST_CHARGED: the forced ball's charge (100 or more is the lethal hit)")
+        # The log's rows (44 bytes each) share Work RAM High with the ball's replay ring and the test's code: 20 do not fit.
+        set(T3_BALL_TEST_CHARGED_FRAMES 8 CACHE STRING "With T3_BALL_TEST_CHARGED: ticks logged from the touch")
+        if(T3_BALL_TEST_CHARGED AND TARGET tekken3_fight_ball)
+            target_compile_definitions(tekken3_fight_ball PRIVATE T3_BALL_TEST_CHARGED=1 T3_BALL_TEST_CHARGE=${T3_BALL_TEST_CHARGE}
+                T3_BALL_TEST_CHARGED_FRAMES=${T3_BALL_TEST_CHARGED_FRAMES}u)
+        endif()
+        # With T3_BALL_TEST_CHARGED: the touched fighter's powerTimer runs before the touch, so its guard is 0 (the unguarded charged hit).
+        option(T3_BALL_TEST_UNGUARDED "Test: the charged touch of T3_BALL_TEST_CHARGED on an unguarded fighter 0 (powerTimer)" OFF)
+        if(T3_BALL_TEST_CHARGED AND T3_BALL_TEST_UNGUARDED AND TARGET tekken3_fight_ball)
+            target_compile_definitions(tekken3_fight_ball PRIVATE T3_BALL_TEST_UNGUARDED=1)
         endif()
         libsaturn_configure_executable(tekken3_ball)
         libsaturn_add_binary(tekken3_ball MAX_BYTES 983040)
@@ -2355,6 +2390,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py"
                 --data "${_t3_ball_blob}" --out "${_t3_ball_gen}"
             DEPENDS "${CMAKE_SOURCE_DIR}/scripts/pack_ball_spin.py" "${_t3_ball_blob}" VERBATIM)
+        # The HUD's mode line (TEKKEN BALL and the coin prompt in the original's font 0) and the power gauges' art, from the
+        # USA executable
+        add_custom_command(OUTPUT "${_t3_ball_gen}/BHUD.BIN"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/scripts/extract_ball_hud.py"
+                --exe "${T3_LOCAL_HUD_EXE}" --out "${_t3_ball_gen}/BHUD.BIN"
+            DEPENDS "${CMAKE_SOURCE_DIR}/scripts/extract_ball_hud.py" "${CMAKE_SOURCE_DIR}/scripts/extract_psx_hud.py"
+                "${T3_LOCAL_HUD_EXE}" VERBATIM)
         # The pause menu's COMMAND page reads the fighters' command lists (the practice blob, 9 KB) from the disc: the program has no room for them
         set(_t3_ball_commands "")
         if(T3_LOCAL_PRACTICE_COMMANDS)
@@ -2368,9 +2410,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
         set_source_files_properties(src/saturn/ball_render.c PROPERTIES COMPILE_OPTIONS "-Os")
         list(APPEND _t3_stage_disc_files "${CMAKE_BINARY_DIR}/menu/BALL.BIN" "${_t3_ball_gen}/STG19.BIN" "${_t3_ball_gen}/HOWTO.BIN"
-            "${_t3_ball_gen}/BALLSPIN.BIN" "${_t3_ball_gen}/BALLSML.BIN" ${_t3_ball_commands})
+            "${_t3_ball_gen}/BALLSPIN.BIN" "${_t3_ball_gen}/BALLSML.BIN" "${_t3_ball_gen}/BHUD.BIN" ${_t3_ball_commands})
         if(TARGET tekken3_menu)
-            target_sources(tekken3_menu PRIVATE src/game/ball_flow.c)
+            target_sources(tekken3_menu PRIVATE src/game/ball_flow.c src/game/ball_progress.c src/saturn/ball_save.c)
             target_compile_definitions(tekken3_menu PRIVATE T3_BALL_PROGRAM=1)   # the menu offers TEKKEN BALL
         endif()
         set(T3_BALL_TEST_DISC OFF CACHE BOOL "Also build a disc that boots BALL.BIN directly (with T3_BOOT_FIGHTERS: straight into a match)")
@@ -2495,6 +2537,11 @@ else()
             "${T3_SATURN_MATH_INCLUDE_DIR}")
         target_compile_options(test_compiled_renderer PRIVATE -Wall -Wextra -Werror)
         add_test(NAME compiled_renderer_exact_arithmetic COMMAND test_compiled_renderer)
+        add_executable(test_psx_skin_bridge tests/test_psx_skin_bridge.c src/saturn/psx_skin_bridge.c)
+        target_include_directories(test_psx_skin_bridge PRIVATE src/saturn src/game
+            "${T3_SATURN_MATH_INCLUDE_DIR}")
+        target_compile_options(test_psx_skin_bridge PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME psx_skin_bridge_attachment_matrices COMMAND test_psx_skin_bridge)
         add_executable(test_tick_clock tests/test_tick_clock.c)
         target_link_libraries(test_tick_clock PRIVATE tekken3_fight)
         add_test(NAME scheduling_time_accounting COMMAND test_tick_clock)
@@ -2719,9 +2766,13 @@ else()
         target_compile_options(test_practice_data PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME practice_attack_data COMMAND test_practice_data)
         add_executable(test_force_progress tests/test_force_progress.c)
-        target_link_libraries(test_force_progress PRIVATE tekken3_fight)
+        target_link_libraries(test_force_progress PRIVATE tekken3_fight_force)
         target_compile_options(test_force_progress PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME force_progress_save_and_run_transitions COMMAND test_force_progress)
+        add_executable(test_ball_progress tests/test_ball_progress.c)
+        target_link_libraries(test_ball_progress PRIVATE tekken3_fight)
+        target_compile_options(test_ball_progress PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME ball_progress_save COMMAND test_ball_progress)
         add_executable(test_psx_force_tables tests/test_psx_force_tables.c)
         target_link_libraries(test_psx_force_tables PRIVATE tekken3_fight)
         target_compile_options(test_psx_force_tables PRIVATE -Wall -Wextra -Werror -UNDEBUG)

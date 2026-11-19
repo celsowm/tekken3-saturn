@@ -32,7 +32,7 @@ unsigned t3_psx_hud_messages(const t3_psx_hud_messages_t* f,t3_psx_hud_message_t
             out[count++].text[6]="0123456789ABCDEF"[(unsigned)f->played&15u];
         }
         if(f->frame>=(f->played==1?106:46))message(&out[count++],"READY?",9,2,118,228);
-    } else if(f->state==T3_ROUND_RESULT && !f->replay_request) {
+    } else if(f->state==T3_ROUND_RESULT && !f->replay_request && !f->ball_wait) {
         if(f->result&1)message(out,"TIME UP",3,2,107,228);
         else if(f->result&8)message(out,"PERFECT!",2,2,96,228);
         else if(f->result&4)message(out,"DOUBLE K.O.",1,2,63,228);

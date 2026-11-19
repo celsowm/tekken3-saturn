@@ -4,7 +4,9 @@
 
 Each fight frame k is stepped from the ball and engine words recorded after frame k-1, with the fighters' facts
 (positions, attack segments, hurt cylinders, move level and damage) as frame k left them, and its result is
-compared with the ball recorded after frame k. The fighters' move records are not in the trace: every move is taken
+compared with the ball recorded after frame k. The fields the ball writes into a fighter in a hit (locked, f88, fd1, f23) are taken from frame k-1: the hit that sets
+them is this frame's, and its touch test runs before the write (without this, a serve that a fighter hits is missed).
+The fighters' move records are not in the trace: every move is taken
 as an ordinary one (no projectile segments) and the stand-in's move byte is 0. `--s7` is the caller's register the
 original reuses as the hit mask on frames that skip the hit tests (game-bugs.md #44). Run with the Tekken3Remake venv:
 
@@ -33,6 +35,8 @@ FIGHT = 8
 ENGINE_WORDS = (eb.bs.LOB_BASE, 0x80097350, eb.bs.NO_SCORE, eb.bs.NO_WINNER_MARK, eb.bs.ROUND_CLOCK)
 STATE_RANGE = 'state'
 GAUGES = 0x800B68E8
+# the fighter fields t3_ball_update writes in a hit (the hitter's +0x85, +0x88, +0xD1 and +0x23 words), by address offset
+BALL_WRITTEN = {'locked': 0x85, 'f88': 0x88, 'fd1': 0xD1, 'f23': 0x23}
 
 
 def load_trace(path):
@@ -124,6 +128,9 @@ def main():
             for i in range(2):                       # the fighters as frame k left them
                 off = pre._off(eb.FIGHTERS[i])
                 pre.data[off:off + header['fighter_size']] = records[i]
+                if i < len(previous[2]):             # the ball's own writes are not yet made when its touch tests run
+                    for at in BALL_WRITTEN.values():
+                        pre.data[off + at:off + at + 4] = previous[2][i][at:at + 4]
             for a in ENGINE_WORDS:                   # the engine's words as frame k has them when the ball runs
                 pre.put(a, 'I', cur.u32(a))
             # the replay of a deciding point plays the ball back from the ring; a new round or the select screen restarts it

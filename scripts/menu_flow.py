@@ -30,7 +30,7 @@ def main():
     p.add_argument('--title-at', type=int, default=400,
                    help='field of START on the title; the mode list is worked from 80 fields later')
     p.add_argument('--down', type=int, default=0,
-                   help='DOWN presses on the mode list before choosing (5: Tekken Force)')
+                   help='DOWN presses on the mode list before choosing (5: Tekken Ball, 6: Tekken Force)')
     p.add_argument('--series', type=int, nargs=3, metavar=('FROM', 'TO', 'STEP'),
                    help='also keep these fields and print each one\'s size and mean brightness, to time black gaps')
     args = p.parse_args()

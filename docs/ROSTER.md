@@ -32,12 +32,13 @@ uses bank 9.
   the cursor rests). Hi-res VDP1 draws codes of one 256-colour CRAM bank, so
   codes are split: cursors 1-7, portrait slots 8-99 and 100-191 (92 colours each), glow
   192-203, bars 204-206, text palettes at 16.. (title) or 208/224/240 (select). The title follows `modes.md`: NAMCO PRESENTS, white flash, fade in
-  from white, 300 frames with the blinking prompt, then the mode list. The
+  from white and 300 frames with the blinking prompt. START opens the mode list. The
   frame counter is the original's 60 Hz clock; a hi-res picture takes two
   fields, so each frame advances it by 2.
-- **Select rules.** Cursor rules in `src/game/select_grid.c`. Port 2 connected:
-  each pad picks its fighter. No port 2: pad 1 picks both, and B takes the
-  first pick back.
+- **Select rules.** Cursor rules live in `src/game/select_grid.c`. In VS each
+  pad picks its own fighter. When P1 picks two fighters, B on the second slot
+  returns to the first pick. Solo Arcade, Force and Ball each ask for one
+  fighter. Ball then asks for the ball type.
 - **Select details.** The steel background is the original's 8 x 8 tile map
   (select.ovl `0x80118BDC`, ten 48 x 64 tiles) scrolling on its own VDP2 layer
   (`TILEBG.BIN`, NBG1); the names are the original name pictures (`NAMES.BIN`); the panel behind a portrait takes that portrait's
@@ -59,36 +60,16 @@ uses bank 9.
   panel glow, plates and timer follow them. `scripts/menu_flow.py` captures ours.
 - **Attract demonstration.** If nobody presses anything for the title's 300 ticks,
   `MENU.BIN` fades out and starts a CPU-vs-CPU fight (`PHASE_DEMO`, a short
-  rotation of pairs); any button or the end of the match returns to the title.
-  The original's opening movie is not played.
+  rotation of pairs); any button or the end of the match returns through the
+  title sequence. The full disc includes the opening movie.
 - **Menu sounds.** The original cursor, pick, list and START sounds
   (`scripts/extract_menu_sfx.py`: codes 0x55F5, 0x50F4, 0x546C, 0x4D87 and 0x4CC0
   from the combat bank VAB 0) play through the SDK audio (`MENUSFX.BIN`).
-- **Practice.** PRACTICE leads to the select, then a fight where P2 stands still
-  (or is a second human on pad 2); the match starts again by itself, and START
-  leaves for the select. The flag travels in bit 1 of the boot argument's last byte.
-  Rules from Tekken3Remake `practice_mode.gd`: hits do no damage (`fight.practice`),
-  both fighters hold 200 health (FUN_800519B4) and the round timer stands still.
-  The attack data (`src/game/practice_data.c`, a port of `_player_data`,
-  `_count_combo`, `_combo_markers`, `_damage`, `_throw_flag` and the react chain)
-  shows TOTAL DMG, the last hit and its share, and the combo count per side in the
-  debug font. START opens a pause menu (the fight stands still; `practice_menu.c`) with
-  a MODE row (FREE or VS CPU), then TRAINING DUMMY (STAND, CROUCH, STAND GUARD,
-  CROUCH GUARD, GUARD ALL, AUTO GUARD, UKEMI MAE/OKU, CONTROLLER = pad 2;
-  `practice_dummy.c`, a port of FUN_800B87C8) and COUNTER ATTACKS on FREE, or CPU
-  DIFFICULTY and CPU LEVEL on VS CPU (the dummy becomes a CPU fighter), then ATTACK
-  DATA, FREEZE SIGNAL (green or red back light, with fighter lighting), KEY DISPLAY (the last inputs from the key ring, `practice_keys.c`, as text),
-  PLAYER SELECT and EXIT. The round caption reads PRACTICE MODE and no winner message
-  shows. Not yet ported: the COMBO TRAINING page, REPLAY SETTINGS,
-  COMMAND LIST, the hit markers' sprites at the hit point, the key display's arrow and button sprites, and the
-  original-font layout of the menu and readout (debug font now).
-  Attack data is checked against the original code: `scripts/export_practice_trace.py` turns Tekken3Remake's
-  `flow_trace.py practice` recording into cases and `tests/test_practice_golden.c` replays them (1564 frames,
-  16 clean hits, 140 frames inside a combo, 0 mismatches; skipped without the trace, which stays out of git).
-  The key ring (1000 frames) and the hit markers' bookkeeping (1564 frames) are replayed the same way, 0 mismatches; the idle reset's trigger and the markers' drawing (text levels, no projected point) are not checked. The throw flag comes
-  from the original's own stored value, since the records do not hold the move row.
-  Run end to end in Mednafen on a test disc (a scripted pad opens the menu, changes the dummy and punches); the
-  report and the Slave-CPU plumbing are in [PRACTICE_MODE.md](PRACTICE_MODE.md).
+- **Practice.** Choose both fighters, then press START in the arena to open
+  the practice menu. It includes 1P Freestyle, VS CPU, Combo Training,
+  Player Select and Reset. The mode has a standing or configurable dummy,
+  attack data, command lists and combo replay. See the
+  [Practice controls and verification](PRACTICE_MODE.md).
 - **Survival and Time Attack.** Both are runs over the same select. Survival
   raises the CPU level with the wins (middle of the ranges in `modes.md`, level 0
   on every tenth win) and ends at the first loss; Time Attack is ten wins on the
@@ -98,17 +79,44 @@ uses bank 9.
   no record table is kept. The rules are `src/game/run_rules.c`, host-tested
   (`survival_time_attack_rules`: levels, survival ends at a loss, time attack at
   the tenth win). On Ymir: the result screen, and a survival loss back to the
-  title; a tenth win itself was not played.
+  title; a tenth win itself was not played. A second connected pad leaves P1
+  in control of both selection slots and the opponent under CPU control.
 - **Phase 0 spike.** `tests/spike_hires_menu.c` (`-DT3_HIRES_SPIKE=ON`, built after
   the menus, though the plan wanted it first) checks the approach on its own: a
   352-wide VDP2 bitmap shown 2x wide, a VDP1 8-bit sprite and text over it, and a
   colour-offset fade from white, all at 704x448 on Ymir. All four work. It cannot
   show interlace flicker: screenshots composite both fields, so flicker is not
   measured anywhere in this work.
-- **Not in the menus yet.** No costume choice (one costume per fighter, so a
-  choice would change nothing), and Team Battle is listed but does nothing:
-  team needs a roster of members with swap-in. TEKKEN FORCE MODE starts the
-  separate Force executable (`FORCE.BIN`, see `docs/TEKKEN_FORCE_PLAN.md`).
+- **Other modes and options.** Tekken Ball has a solo CPU match, ball type
+  selection and in-match help. Local two-player Ball and its unlock path are open.
+  Tekken Force starts its separate executable (`FORCE.BIN`).
+  [Force and Ball verification](TEKKEN_FORCE_BALL_FINISH_PLAN.md)
+  Option Mode offers Debug and Music. Team Battle has a disabled row and
+  still needs team selection and fighter swaps. Theater, costume selection,
+  and record tables are pending.
+
+## Menu and controller verification
+
+The headless Ymir replays entered Time Attack and Survival with both ports
+connected. P1 selected both fighters in each run, and the fights used the CPU
+on side two. A separate VS replay let each pad pick its fighter and reached a
+match with both sides under pad control. With port 2 disconnected, selecting
+the dim VS row leaves the mode menu in place, as does selecting Team Battle.
+The idle replay returned from the mode list to the title sequence and reopened
+the menu on START. Survival and Time Attack omit the second-pad prompt.
+
+After leaving Option Mode open past the main menu timeout, B returned to the
+Option row. Reopening it preserved both in-session settings. In Tekken Ball,
+the replay spent 2,250 fields in the ball picker, pressed B, returned to the
+fighter grid with 17 seconds displayed, picked King and started a match
+against CPU Gon with both pads still connected. Screenshots, controller
+scripts and CPU-mask reads are under `build/force-ball-finish/modes/`.
+
+The full mixed-mode disc passed the launcher feature check, and all 64,898
+data sectors matched the ISO. The `music.bin` SHA-256 is
+`250e2434c5a5a46105c52fa36c64a06c27d10d70e1be55a2c751f1bad9b9902e`.
+The host suite recorded 120 passes, eight fixture-dependent skips and zero
+failures.
 - **Fire and gas.** `src/game/psx_effect_fire.c` ports effect types 6-11, 19 and
   20; burn and projectile hit points live in `psx_match_effects.c` and
   `psx_match.c`. Kuma and True Ogre use the adjusted distance, and True Ogre has

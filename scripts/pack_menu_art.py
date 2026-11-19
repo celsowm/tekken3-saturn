@@ -316,7 +316,8 @@ def texts(exe, out):
 
     'T3TX0001', u16 palettes, u16 textures; palettes (group, base code, 16 words); textures
     (group, palette, w, h, w*h codes). Group 0 is the title and mode list (palettes at codes
-    16, 32 ...), group 1 the select (yellow, cyan, white at 208, 224, 240)."""
+    16, 32 ...), group 1 the select (yellow, cyan, white at 208, 224, 240), group 3 the palettes
+    of Tekken Ball's type choice on the select (pictures in group 1)."""
     fonts = Fonts(exe)
     base = lambda w: [word(*rgb555(v)) if v else 0 for v in w]            # noqa: E731
     colours = {'gold': fonts.palette(GOLD), 'red': fonts.palette(RED), 'cyan': fonts.palette(CYAN),
@@ -368,6 +369,25 @@ def texts(exe, out):
         add(f'TAG_{tag}', 1, 'white', 0, tag)
     for digit in range(10):
         add(f'DIGIT{digit}', 1, 'yellow', 2, str(digit))
+    # Tekken Ball's type choice on the select (volley.ovl FUN_800B593C; modes.md "Tekken Ball's select"): the name in colour
+    # 11 (font 0's, the same CLUT as the cyan block), the description in font 1 colour 4, BALL DAMAGE in colour 5 and
+    # "%3d%f%H%V%%" in colour 6 (the number in font 1, the % in font 0, the white block). Group 3 holds the palettes the
+    # choice loads over codes the select leaves idle while it shows: the timer's yellow (208), two blocks after the 59-colour
+    # spinning ball in slot B (159, 175), and white again over the small ball's (240).
+    if fonts.palette(11) != fonts.palette(CYAN):
+        raise ValueError('the ball name colour is no longer the cyan block')
+    for code, k in ((208, 4 + 16), (159, 6 + 16), (175, 5), (240, WHITE)):
+        palettes.append((3, code, [(v & 0x7FFF) | 0x8000 if v else 0 for v in fonts.palette(k)]))
+    code_of.update({(1, 'ball_desc'): 208, (1, 'ball_number'): 159, (1, 'ball_damage'): 175})
+    # per type, in type order (menu_main.c adds the type to the first id)
+    for k, name in enumerate(('BEGINNER', 'EXPERT', 'GRAND MASTER')):
+        add(f'BALL_NAME{k}', 1, 'cyan', 0, name)
+    for k, desc in enumerate(('BEACH BALL', 'GUM BALL', 'IRON BALL')):
+        add(f'BALL_DESC{k}', 1, 'ball_desc', 1, desc)
+    for k in range(3):
+        add(f'BALL_PERCENT{k}', 1, 'ball_number', 1, str(20 * k + 60))
+    add('BALL_DAMAGE', 1, 'ball_damage', 0, 'BALL DAMAGE')
+    add('BALL_PERCENT_SIGN', 1, 'white', 0, '%')
     # Group 2: the Tekken Force result (result.ovl FUN_800F1F08). Its format strings name the font and
     # the colour; the CLUT is the colour plus the font's CLUT offset (hud.md: 16 for font 1, 32 for
     # font 2): the title 32, font 1's colours 2, 5, 6, 8 at 18, 21, 22, 24. Codes 112..191: the second

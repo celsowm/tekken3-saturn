@@ -1,3 +1,4 @@
+#include "ball_game.h"
 #include "psx_match.h"
 #ifdef NDEBUG
 #undef NDEBUG
@@ -261,6 +262,20 @@ int main(void) {
     for(unsigned i=0;i<30;++i)assert(t3_psx_match_step_original(&game,forward,forward,&video));
     assert(game.flow.state==T3_ROUND_FIGHT && game.flow.timer==2399);
     game.flow.timer_stopped=0;
+    c.ball_court=1;
+    assert(t3_psx_match_init(&game,&c));
+    assert(game.fighter[0].ground.root.x==-BALL_COURT_HALF_X);
+    assert(game.fighter[1].ground.root.x==BALL_COURT_HALF_X);
+    game.fighter[0].ground.root.x=-100;
+    game.fighter[1].ground.root.x=100;
+    game.flow.state=T3_ROUND_END;
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(t3_psx_match_step_original(&game,neutral,neutral,&video));
+    assert(game.flow.played==2);
+    assert(game.fighter[0].ground.root.x==-BALL_COURT_HALF_X);
+    assert(game.fighter[1].ground.root.x==BALL_COURT_HALF_X);
+    c.ball_court=0;
     test_throw_situation();
     test_attack_pending();
     c.start_intro=0;c.start_seed=0;
