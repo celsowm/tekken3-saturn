@@ -252,7 +252,7 @@ def run(args):
         dump_requests.extend(('_g_t3_ai_'+n,'ai-'+n.replace('_','-')+'.bin') for n in ('calls','ticks','max_ticks','reads','conditions','pad_hash'))
     if workload['configuration'].get('T3_LOCAL_SFX'):
         dump_requests.extend(('_g_t3_sfx_'+n,'sfx-'+n.replace('_','-')+'.bin') for n in (
-            'played','play_frc','play_max_frc','update_ms','ko_voices','ram_used','ram_capacity','ram_high_water',
+            'played','play_frc','play_max_frc','update_frc','ko_voices','ram_used','ram_capacity','ram_high_water',
             'resident_sounds','voice_steals','failed_plays'))
         dump_requests.extend(('_g_t3_event_'+n,'event-'+n.replace('_','-')+'.bin') for n in (
             'overflow','hits','blocks','swings','sounds','popped'))
