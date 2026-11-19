@@ -170,6 +170,12 @@ typedef struct {
 #endif
     sat_mat4_t world;
     uint8_t clip;
+#if T3_STATIC_BASE_CACHE
+    /* World matrices of the last base skeleton, valid while its clip holds
+     * one still pose and no fade runs: the pose cannot change then. */
+    uint8_t base_cached;
+    sat_mat4_t base_joints[T3_JOINT_COUNT];
+#endif
     int32_t last_x, last_z;
 } actor_t;
 
@@ -335,6 +341,9 @@ static uint8_t clip_for(const t3_fighter_t* fighter, int moving) {
 static sat_result_t select_clip(actor_t* actor, uint8_t next) {
     sat_result_t st;
     if (actor->clip == next) return SAT_OK;
+#if T3_STATIC_BASE_CACHE
+    actor->base_cached = 0u;
+#endif
     st = sat_pose_fade_begin(&actor->fade, actor->pose, FADE_Q16);
     if (st != SAT_OK) return st;
     st = sat_skel_clip_player_set_clip(&actor->clip_player, &actor->clips[next], 0);
@@ -572,6 +581,9 @@ sat_result_t t3_characters_init(t3_character_load_progress_fn progress, void* co
 #endif
         __builtin_memcpy(a->face_materials, asset->model.face_texture_indices,
                asset->model.face_count*sizeof(*a->face_materials));
+#if T3_STATIC_BASE_CACHE
+        a->base_cached = 0u;
+#endif
         if ((st = sat_skeleton_instance_init(&a->skeleton,
                 &asset->skeleton, a->nodes, T3_JOINT_COUNT,
                 a->scratch, T3_JOINT_COUNT)) != SAT_OK) return st;
@@ -726,6 +738,9 @@ sat_result_t t3_characters_force_bind_enemy(unsigned actor,unsigned key) {
 #if defined(T3_FORCE_SKIN_TO_SCREEN)
     force_screen_topology(a,asset);
 #endif
+#if T3_STATIC_BASE_CACHE
+    a->base_cached=0u;
+#endif
     SAT_TRY(sat_skeleton_instance_init(&a->skeleton,&asset->skeleton,a->nodes,
         T3_JOINT_COUNT,a->scratch,T3_JOINT_COUNT));
     SAT_TRY(sat_skeleton_rest_pose(&asset->skeleton,a->pose,T3_JOINT_COUNT));
@@ -809,6 +824,9 @@ sat_result_t t3_characters_reset(void) {
     for (i = 0; i < ACTOR_COUNT; ++i) {
         actor_t* a = &g_actors[i];
         a->clip = T3_CLIP_IDLE;
+#if T3_STATIC_BASE_CACHE
+        a->base_cached = 0u;
+#endif
         g_skin_preview_applied[i]=0u;
         a->last_x = i ? 360 : -360;
         a->last_z = 0;
@@ -881,6 +899,49 @@ static sat_result_t prepare_base_skeleton(actor_t* a) {
             a->pose,T3_JOINT_COUNT)) != SAT_OK) return st;
     return sat_skeleton_world_matrices(&a->skeleton,a->joints,T3_JOINT_COUNT);
 }
+
+#if T3_STATIC_BASE_CACHE
+uint32_t g_t3_base_skeleton_reused;
+#if T3_STATIC_BASE_CACHE_VERIFY
+uint32_t g_t3_base_skeleton_mismatches;
+#endif
+
+/* A clip whose frames are all the same pose (the imported bind pose is). */
+static int clip_is_still(const sat_skeleton_clip_t* clip) {
+    const uint8_t* frames=(const uint8_t*)clip->frames;
+    const uint32_t bytes=(uint32_t)clip->joint_count*(uint32_t)sizeof(*clip->frames);
+    for(uint32_t f=1;f<clip->frame_count;++f)
+        for(uint32_t k=0;k<bytes;++k)if(frames[f*bytes+k]!=frames[k])return 0;
+    return 1;
+}
+
+/* prepare_base_skeleton for a pose that cannot change: a still clip with no
+ * fade samples the same pose at any time, so its world matrices are
+ * evaluated once and copied afterwards. select_clip clears the cache. */
+static sat_result_t prepare_static_base(actor_t* a) {
+    const int fading=sat_pose_fade_active(&a->fade);
+    if(!fading && a->base_cached) {
+#if T3_STATIC_BASE_CACHE_VERIFY
+        sat_result_t checked=prepare_base_skeleton(a);
+        if(checked!=SAT_OK)return checked;
+        for(unsigned joint=0;joint<T3_JOINT_COUNT;++joint)
+            for(unsigned k=0;k<16u;++k)
+                if(a->joints[joint].m[k]!=a->base_joints[joint].m[k]) {
+                    ++g_t3_base_skeleton_mismatches;joint=T3_JOINT_COUNT;break;
+                }
+#endif
+        __builtin_memcpy(a->joints,a->base_joints,sizeof(a->joints));
+        ++g_t3_base_skeleton_reused;
+        return SAT_OK;
+    }
+    sat_result_t st=prepare_base_skeleton(a);
+    if(st!=SAT_OK)return st;
+    const int fixed=!fading && clip_is_still(&a->clips[a->clip]);
+    if(fixed)__builtin_memcpy(a->base_joints,a->joints,sizeof(a->joints));
+    a->base_cached=(uint8_t)fixed;
+    return SAT_OK;
+}
+#endif
 
 #if defined(T3_PARALLEL_SKINNING)
 typedef struct {
@@ -999,7 +1060,11 @@ static sat_result_t prepare_actors(int defer_skin) {
                t3_psx_skin_bridge(originals,parts_mask,a->joints)) {
                 g_skin_preview_applied[i]=1u;
             } else {
+#if T3_STATIC_BASE_CACHE
+                if((st=prepare_static_base(a))!=SAT_OK)return st;
+#else
                 if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
+#endif
                 if(available && t3_psx_skin_bridge(originals,parts_mask,a->joints))
                     g_skin_preview_applied[i]=1u;
             }
@@ -1024,6 +1089,8 @@ static sat_result_t prepare_actors(int defer_skin) {
             g_force_pose_ready[i]=1u;
         }
 
+#elif T3_STATIC_BASE_CACHE
+        if((st=prepare_static_base(a))!=SAT_OK)return st;
 #else
         if((st=prepare_base_skeleton(a))!=SAT_OK)return st;
 #endif

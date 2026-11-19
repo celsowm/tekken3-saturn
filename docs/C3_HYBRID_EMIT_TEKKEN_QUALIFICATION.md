@@ -252,3 +252,41 @@ python3 $T/scripts/pack_c3_qualification.py --run ../build/vdp1-tekken-v4-<id> -
 - the follow-up results
 
 It holds no ROM, BIOS, VRAM dump or binary.
+
+## Follow-up: the five priorities (2026-11-19)
+
+| # | Priority | Result |
+|---|---|---|
+| 1 | Force generic cull and projection | Done. Force actors now skin straight to screen (`T3_FORCE_SKIN_TO_SCREEN`, commit `51624db`). Ymir images to tick 600: 240 to 371. Mednafen: 182 to 251. Same input and state hashes. |
+| 2 | Force generic `deform_vertices` | Explained by 1. Only skin-to-screen has assembly kernels, and Force predated that path. It is fixed by the same change. |
+| 3 | `paint_order_grouped_buckets` | No gain, so the rewrite was reverted. About 97% of its cost is the stable scatter, which was already shown no faster in assembly. See LibSaturn `docs/PAINTER_DISTRIBUTION_SH2_EXPERIMENT.md`. |
+| 4 | Fight Master work reduction | Done: `T3_STATIC_BASE_CACHE`, below. |
+| 5 | Slave speedups | Not started, on purpose. The Slave still waits about 32% of the window (`slave_wait_request` only) after 4, so the Master is still the limit. |
+
+### Static base skeleton cache
+
+Every image, the fight evaluated the base skeleton of both fighters:
+
+1. sample the clip
+2. 22 joints of `sat_quat16_nlerp`
+3. `sat_quat16_to_mat4`
+4. world matrices
+
+The imported idle clip has three frames, and all three hold the same bind pose. Only one clip is built (`T3_CLIP_COUNT` 1), so the result never changes.
+
+How the cache works:
+
+- **Filling.** `prepare_static_base` evaluates the skeleton once and checks that every frame of the clip is the same pose. It keeps the world matrices only when that holds and no fade runs.
+- **Reuse.** After that, each image copies the kept matrices.
+- **Reset.** `select_clip`, `t3_characters_reset` and asset binding clear the cache.
+
+| Lei vs King, combat tape, fields 2000-2047, cache on | Off | On |
+|---|---|---|
+| Images in the window | 32 | 36 |
+| `t3_characters_render`, median Master cycles per image | 430,856 | 375,386 (−12.9%) |
+| `sat_skeleton_evaluate` + `nlerp` + `quat16_to_mat4` + clip sample, cycles | 1,163,536 | 0 |
+| `slave_wait_request`, share of the Slave | 34.8% | 31.6% |
+
+Exactness: `-DT3_STATIC_BASE_CACHE_VERIFY=ON` still evaluates the skeleton on every hit and compares the result with the cache. To field 2600 there were 2,260 hits and 0 differing matrices.
+
+Ball copies the fight's definitions, and its Work RAM High has no room for the 1.4 KB per actor. CMake removes the option from Ball, so Ball is unchanged.
