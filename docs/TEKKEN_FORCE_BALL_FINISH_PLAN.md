@@ -47,6 +47,9 @@ Both modes run from the full Saturn disc in Mednafen. Force has four stages, the
 
 ## References
 
+- The project pins Tekken3Remake at `e59c4da`. To run the Ball and Force trace
+  tools on that checkout, apply the [research fixes](../tools/patches/tekken3remake-ball-force-traces.patch)
+  with `git -C third_party/Tekken3Remake apply ../../tools/patches/tekken3remake-ball-force-traces.patch`.
 - [Tekken Force implementation notes](TEKKEN_FORCE_PLAN.md) and [latest integration review](TEKKEN_FORCE_REVIEW.md)
 - [Tekken Ball implementation and PS1 comparisons](TEKKEN_BALL_PLAN.md)
 - [Original mode and unlock rules](../third_party/Tekken3Remake/docs/research/code/modes.md) and [original input traces](../third_party/Tekken3Remake/tools/research/flow_trace.py)
