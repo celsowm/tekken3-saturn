@@ -14,8 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from build_stage_packs import (BAKE_HEIGHT, COLUMNS, ROWS, ROWS_PER_TAN, STAGE_NUMBERS, TAN_TOP,
-                               read_arc, stage_metadata)
+from build_stage_packs import (BAKE_HEIGHT, PANO_COLUMNS as COLUMNS, PANO_ROWS as ROWS,
+                               PANO_ROWS_PER_TAN as ROWS_PER_TAN, STAGE_NUMBERS, TAN_TOP, read_arc, stage_metadata)
 from panorama_raycast import FLAT, Panorama
 
 

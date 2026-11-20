@@ -3,9 +3,10 @@
 
 Only user-supplied files are read. No retail data is shipped with this tool.
 Each panorama becomes a 360-degree cylinder picture baked from above the
-fighters' midpoint (panorama_raycast.py); src/game/stage_backdrop.c maps it
-onto the screen line by line. Each floor becomes one 8-bit bitmap repeating
-across the ground. src/game/stage_format.h defines the file layout.
+fighters' midpoint (panorama_raycast.py) and stored as VDP2 cells with 16
+palettes (stage_cells.py); src/game/stage_backdrop.c maps it onto the screen
+line by line. Each floor becomes one 8-bit bitmap repeating across the
+ground. src/game/stage_format.h defines the file layout.
 
 Floor distance shading is not emulated, and a spotlight floor is one fixed
 brightness (spot_level), because a VDP2 floor has no per-vertex brightness.
@@ -26,14 +27,18 @@ ROOT = Path(__file__).resolve().parents[1]
 FORMAT = {name: value for name, value in re.findall(r'#define T3_STAGE_(\w+) (0x[0-9a-f]+|\d+)',
                                                     (ROOT/'src/game/stage_format.h').read_text())}
 COLUMNS, ROWS = int(FORMAT['COLUMNS']), int(FORMAT['ROWS'])
+PANO_COLUMNS, PANO_ROWS = int(FORMAT['PANO_COLUMNS']), int(FORMAT['PANO_ROWS'])
+PANO_ROWS_PER_TAN = int(FORMAT['PANO_ROWS_PER_TAN'])/65536
+PALETTE_NUMBER, MAX_CHARS = int(FORMAT['PALETTE_NUMBER']), int(FORMAT['MAX_CHARS'])
 FLOOR_W, FLOOR_H = int(FORMAT['FLOOR_W']), int(FORMAT['FLOOR_H'])
 BAKE_HEIGHT = int(FORMAT['BAKE_HEIGHT'])
 TAN_TOP, ROWS_PER_TAN = int(FORMAT['TAN_TOP'])/65536, int(FORMAT['ROWS_PER_TAN'])/65536
 HEAD_BYTES, FLOOR_PALETTE_AT = int(FORMAT['HEAD_BYTES']), int(FORMAT['FLOOR_PALETTE_AT'])
 PICTURE_PALETTE_AT = int(FORMAT['PICTURE_PALETTE_AT'])
-# Rays per texel side. VDP2 magnifies the picture about 1.8 x 1.5 with nearest
-# sampling, so one ray per texel leaves stair steps and dropped source texels.
-SUPERSAMPLE = 4
+# Rays per texel side. The cylinder holds about one texel per screen dot
+# (PANO_COLUMNS), a texel is the mean of its rays, and two a side already
+# cover the source's texels (backdrop_format_study.py).
+SUPERSAMPLE = 2
 US_EXE_SHA = 'fbda8b68e5799dbef4af39a161783bc670c15b0aa0e87dce65e210717da19b8c'
 LAYOUT = ROOT/'third_party/Tekken3Remake/tools/remake_import/layouts/usa.json'
 EXE_BASE, EXE_HEADER = 0x80010000, 0x800
@@ -207,48 +212,37 @@ def box_filter(colour, columns, rows, factor):
     return np.where(count*2 >= factor*factor, out | 0x8000, 0).reshape(-1)
 
 
-def cylinder(tmd, vram, height, supersample=SUPERSAMPLE):
-    """The panorama as seen from BAKE_HEIGHT above the midpoint, one 360-degree
-    picture: column c looks along atan2(x, z) = 2 pi (c + 0.5) / COLUMNS, row r
-    at the elevation tangent TAN_TOP - (r + 0.5) / ROWS_PER_TAN, each texel the
-    mean of supersample x supersample rays centred there."""
+def cylinder_colour(tmd, vram, height, supersample=SUPERSAMPLE, columns=PANO_COLUMNS, rows=PANO_ROWS,
+                    rows_per_tan=PANO_ROWS_PER_TAN):
+    """The unquantized cylinder: RGB555 per texel (0 transparent), and the panorama."""
     import numpy as np
     from panorama_raycast import Panorama, cylinder_dirs
     scene = Panorama(tmd, vram, height)
-    dirs = cylinder_dirs(COLUMNS*supersample, ROWS*supersample, TAN_TOP, ROWS_PER_TAN*supersample)
+    dirs = cylinder_dirs(columns*supersample, rows*supersample, TAN_TOP, rows_per_tan*supersample)
     # In bands of rows: every triangle tests every ray of a cast.
-    band = COLUMNS*supersample*ROWS*supersample//24
+    band = columns*supersample*rows*supersample//24
     colour = np.concatenate([scene.cast((0.0, -float(BAKE_HEIGHT), 0.0), dirs[at:at + band])[1]
                              for at in range(0, len(dirs), band)])
-    colour = box_filter(colour, COLUMNS, ROWS, supersample)
+    return colour, scene
+
+
+def cylinder(tmd, vram, height, supersample=SUPERSAMPLE):
+    """The panorama as seen from BAKE_HEIGHT above the midpoint, one 360-degree
+    picture: column c looks along atan2(x, z) = 2 pi (c + 0.5) / PANO_COLUMNS, row r
+    at the elevation tangent TAN_TOP - (r + 0.5) / PANO_ROWS_PER_TAN, each texel the
+    mean of supersample x supersample rays centred there. Returns the cells
+    (stage_cells.cell_picture), the panorama and the manifest's figures."""
+    from stage_cells import cell_picture
+    colour, scene = cylinder_colour(tmd, vram, height, supersample)
+    colour = box_filter(colour, PANO_COLUMNS, PANO_ROWS, supersample)
     opaque = colour != 0
-    distinct = sorted(set(int(c) for c in colour[opaque]))
-    if len(distinct) <= 255:
-        palette = distinct
-        lookup = {c: i for i, c in enumerate(palette)}
-        chosen = np.array([lookup[int(c)] for c in colour[opaque]])
-    else:
-        # One 8-bit CRAM bank: median cut with k-means refinement, no dither
-        # (the layer is magnified on screen, so patterns would show).
-        from PIL import Image
-        rgb = np.stack([(colour[opaque] >> (5*k)) & 31 for k in range(3)], axis=1).astype(np.uint8)*8
-        strip = Image.fromarray(rgb.reshape(1, -1, 3), 'RGB')
-        quantized = strip.quantize(colors=255, method=Image.Quantize.MEDIANCUT, kmeans=8,
-                                   dither=Image.Dither.NONE)
-        levels = np.array(quantized.getpalette()[:255*3]).reshape(-1, 3)
-        levels = np.minimum(31, (levels + 4)//8)
-        palette = [int(0x8000 | r | g << 5 | b << 10) for r, g, b in levels]
-        chosen = np.array(quantized).reshape(-1)
-    indices = np.zeros(len(colour), dtype=np.uint8)
-    indices[opaque] = chosen + 1
-    # Largest channel error in 5-bit steps, for the manifest.
-    got = np.array(palette)[chosen]
-    error = max(int(np.abs(((got >> (5*k)) & 31) - ((colour[opaque] >> (5*k)) & 31)).max()) for k in range(3))
+    cells = cell_picture(colour, PANO_COLUMNS, PANO_ROWS, MAX_CHARS)
     # Whether the picture meets the top or bottom of its range: a wall cut off there.
-    edges = dict(top_row_opaque=round(float(opaque[:COLUMNS].mean()), 3),
-                 bottom_row_opaque=round(float(opaque[-COLUMNS:].mean()), 3),
+    edges = dict(top_row_opaque=round(float(opaque[:PANO_COLUMNS].mean()), 3),
+                 bottom_row_opaque=round(float(opaque[-PANO_COLUMNS:].mean()), 3),
                  opaque=round(float(opaque.mean()), 3))
-    return bytes(indices), [0] + palette, scene, dict(distinct=len(distinct), max_channel_error=error, **edges)
+    return cells, scene, dict(characters=len(cells['chars']), unique_cells=cells['unique'],
+                              rms_error=round(cells['rms'], 3), **edges)
 
 
 def rgb555(red, green, blue):
@@ -293,6 +287,29 @@ def pack(number, box_half, back, shadow, ogre_level, floor_palette, floor, pictu
     return payload + floor + picture
 
 
+def pack_cells(number, box_half, back, shadow, ogre_level, floor_palette, floor, cells):
+    """Format version 4 (stage_format.h): the cylinder as cell names and characters."""
+    import numpy as np
+    chars, palette_of, names = cells['chars'], cells['palette_of'], cells['names']
+    if len(chars) > MAX_CHARS or names.shape != (PANO_ROWS//8, PANO_COLUMNS//8) or len(floor) != FLOOR_W*FLOOR_H:
+        raise ValueError('unexpected picture or floor size')
+    words = [int(FORMAT['MAGIC'], 16), int(FORMAT['CELL_VERSION']), number, box_half, back, shadow, ogre_level,
+             len(chars)]
+    payload = struct.pack(f'>{len(words)}I', *words)
+    payload += bytes(FLOOR_PALETTE_AT-len(payload))
+    payload += struct.pack(f'>{len(floor_palette)}H', *floor_palette)
+    payload += bytes(PICTURE_PALETTE_AT-len(payload))
+    payload += struct.pack('>256H', *cells['palettes'].reshape(-1))
+    payload += bytes(HEAD_BYTES-len(payload))
+    # 2-word names: flips and special bits clear, the 7-bit palette number, then the character number.
+    flat = names.reshape(-1).astype(np.uint32)
+    payload += floor + (((PALETTE_NUMBER + palette_of[flat]).astype(np.uint32) << 16) | flat).astype('>u4').tobytes()
+    # 4-bit characters: the left dot in the high nibble.
+    dots = chars.reshape(len(chars), 32, 2).astype(np.uint8)
+    body = ((dots[..., 0] << 4) | dots[..., 1]).tobytes()
+    return payload + body + bytes(-len(body) % HEAD_BYTES)
+
+
 def build_stage(source, output, stage, supersample=SUPERSAMPLE):
     started = time.monotonic()
     arc_path, tmd_path = source/f'raw/{36 + stage:03}.bin', source/f'raw/{56 + stage:03}.bin'
@@ -302,26 +319,26 @@ def build_stage(source, output, stage, supersample=SUPERSAMPLE):
     kind = floor_kind(descriptor)
     level = spot_level(kind)
     floor, floor_palette, cut = floor_bitmap(vram, descriptor, level)
-    picture, picture_palette, scene, quantization = cylinder(tmd, vram, height, supersample)
+    cells, scene, quantization = cylinder(tmd, vram, height, supersample)
     half = round(scene.half)
     back = rgb555(*GRATE_BACK) if stage == GRATE_STAGE else 0x8000
     # True Ogre turns a standard floor into kind 2; a spotlight floor keeps its own.
     ogre_level = 128 if kind else spot_level(2, OGRE_CLAMP_DIM if stage == OGRE_DIM_STAGE else OGRE_CLAMP)
-    payload = pack(stage, half, back, rgb555(*shadow), ogre_level, floor_palette, floor, picture_palette, picture)
+    payload = pack_cells(stage, half, back, rgb555(*shadow), ogre_level, floor_palette, floor, cells)
     (output/f'STG{stage:02}.BIN').write_bytes(payload)
     manifest = dict(stage=stage, tims=tims, panorama_height=height, panorama_half=half, shadow=shadow,
                     floor_kind=kind, floor_shading=struct.unpack_from('<h', descriptor, 0x326)[0], floor_level=level,
                     ogre_level=ogre_level, floor_colours=len(floor_palette)-1, floor_pattern_cut=cut,
-                    cylinder=dict(supersample=supersample, colours=len(picture_palette)-1, **quantization),
+                    cylinder=dict(supersample=supersample, **quantization),
                     sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (arc_path, tmd_path)},
                     output_sha256=hashlib.sha256(payload).hexdigest(), output_bytes=len(payload),
                     bake_seconds=round(time.monotonic()-started, 1))
     (output/f'STG{stage:02}.json').write_text(json.dumps(manifest, indent=2)+'\n')
-    preview(output, stage, picture, picture_palette, floor, floor_palette)
+    preview(output, stage, cells['picture'], floor, floor_palette)
     return manifest
 
 
-def preview(output, stage, picture, picture_palette, floor, floor_palette):
+def preview(output, stage, picture, floor, floor_palette):
     try:
         from PIL import Image
     except ImportError:
@@ -329,9 +346,7 @@ def preview(output, stage, picture, picture_palette, floor, floor_palette):
 
     def rgb(c):
         return tuple(((c >> (5*k)) & 31)*255//31 for k in range(3))
-    im = Image.new('RGB', (COLUMNS, ROWS))
-    im.putdata([rgb(picture_palette[i]) for i in picture])
-    im.save(output/f'panorama{stage:02}.png')
+    Image.fromarray((picture*255//31).astype('uint8'), 'RGB').save(output/f'panorama{stage:02}.png')
     im = Image.new('RGB', (FLOOR_W, FLOOR_H))
     im.putdata([rgb(floor_palette[i]) for i in floor])
     im.save(output/f'floor{stage:02}.png')
@@ -340,12 +355,12 @@ def preview(output, stage, picture, picture_palette, floor, floor_palette):
 def contact_sheet(output, stages):
     """Every panorama beside its floor, for looking at the whole set at once."""
     from PIL import Image
-    row = ROWS+8
-    sheet = Image.new('RGB', (COLUMNS+FLOOR_W//2+8, row*len(stages)), (255, 0, 255))
+    row = PANO_ROWS+8
+    sheet = Image.new('RGB', (PANO_COLUMNS+FLOOR_W//2+8, row*len(stages)), (255, 0, 255))
     for i, stage in enumerate(stages):
         sheet.paste(Image.open(output/f'panorama{stage:02}.png'), (0, i*row))
         floor = Image.open(output/f'floor{stage:02}.png').resize((FLOOR_W//2, FLOOR_H//2))
-        sheet.paste(floor, (COLUMNS+8, i*row))
+        sheet.paste(floor, (PANO_COLUMNS+8, i*row))
     sheet.save(output/'contact.png')
 
 

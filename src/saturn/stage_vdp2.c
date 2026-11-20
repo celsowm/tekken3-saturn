@@ -35,6 +35,10 @@ enum {
     STRIP_BLANK_ROW=255,
     PALETTE=6, PICTURE_PALETTE=7,
     CHUNK_BYTES=8192,
+    /* The cell backdrop: characters from VRAM 0 up to the line and coefficient tables, the four
+     * pattern name pages (two planes of 2 x 1) in the top half of bank B1, rows below the picture blank.
+     * The hit particles' layer keeps B1 up to its tiles' end, checked below. */
+    NAME_PAGES=0x68000, PAGE_BYTES=0x4000, NAME_ROW_BYTES=T3_STAGE_PANO_COLUMNS/8*4,
     LINE_WORDS=HEIGHT*6
 };
 _Static_assert(LINE_SCROLL+LINE_WORDS*2 <= STRIP_BLANK_ROW*T3_STAGE_COLUMNS &&
@@ -97,7 +101,7 @@ static union {
     struct { t3_particle_tile_probe_t tiles[2]; } live;
 } g_stage_boot_or_particles __attribute__((section(".wram_l"),aligned(4)));
 _Static_assert(sizeof(g_stage_boot_or_particles.live)<=24576u,"live stage data exceeds particle budget");
-_Static_assert(0x64080u+T3_PARTICLE_PROBE_MAX_TILES*128u<=0x80000u,"particle characters exceed VDP2 VRAM");
+_Static_assert(0x64080u+T3_PARTICLE_PROBE_MAX_TILES*128u<=NAME_PAGES,"particle characters reach the backdrop's name pages");
 #define g_load_words (g_stage_boot_or_particles.load_words)
 #define g_probe_tiles (g_stage_boot_or_particles.live.tiles)
 #else
@@ -394,7 +398,7 @@ sat_result_t t3_stage_particle_probe_prepare(const uint8_t* pattern,const uint16
 #endif
 
 static t3_stage_backdrop_t g_cylinder={0,T3_STAGE_BAKE_HEIGHT,T3_STAGE_TAN_TOP,
-    T3_STAGE_ROWS_PER_TAN,T3_STAGE_COLUMNS,T3_STAGE_ROWS,WIDTH,HEIGHT};
+    T3_STAGE_PANO_ROWS_PER_TAN,T3_STAGE_PANO_COLUMNS,T3_STAGE_PANO_ROWS,WIDTH,HEIGHT};
 static sat_cdfs_file_t g_file;
 static uint16_t g_back,g_shadow,g_floor_level=128;
 
@@ -501,6 +505,33 @@ static sat_result_t stream_to_vram(uint32_t at,uint32_t bytes,uint32_t address) 
     return SAT_OK;
 }
 
+_Static_assert(T3_STAGE_MAX_CHARS*32u<=PARAM_A,"The characters must end before the rotation tables");
+_Static_assert(T3_STAGE_PALETTE_NUMBER==PICTURE_PALETTE*16u,"The panorama palettes are colour RAM bank 7");
+_Static_assert(T3_STAGE_PANO_COLUMNS/8u*4u*(T3_STAGE_PANO_ROWS/8u)==T3_STAGE_NAMES_BYTES &&
+               T3_STAGE_PANO_ROWS/8u<=64u && NAME_ROW_BYTES==4u*(PAGE_BYTES/64u),"A name row is four page rows");
+#if !defined(T3_BALL_PROGRAM)
+/* The cell names go to bank B1 in t3_stage_vdp2_init, once the VS screen has let go of bank B:
+ * the pages are cleared (the rows below the picture, and the wrap above it, are the transparent
+ * character), then each row of 256 names is cut into its four 64-name page rows. */
+static sat_result_t load_names(void) {
+    uint16_t* const chunk=g_load_words+CHUNK_BYTES/2;
+    __builtin_memset(chunk,0,CHUNK_BYTES);
+    for(uint32_t at=0;at<4u*PAGE_BYTES;at+=CHUNK_BYTES)
+        SAT_TRY(sat_vdp2_vram_write_words((NAME_PAGES+at)/2,chunk,CHUNK_BYTES/2));
+    enum { ROWS_PER_CHUNK=CHUNK_BYTES/NAME_ROW_BYTES, CELL_ROWS=T3_STAGE_PANO_ROWS/8 };
+    for(unsigned row=0;row<CELL_ROWS;row+=ROWS_PER_CHUNK) {
+        unsigned count=CELL_ROWS-row;
+        if(count>ROWS_PER_CHUNK)count=ROWS_PER_CHUNK;
+        SAT_TRY(read_part(&g_file,T3_STAGE_NAMES_AT+row*NAME_ROW_BYTES,chunk,count*NAME_ROW_BYTES));
+        for(unsigned r=0;r<count;++r)
+            for(unsigned page=0;page<4u;++page)
+                SAT_TRY(sat_vdp2_vram_write_words((NAME_PAGES+page*PAGE_BYTES+(row+r)*(PAGE_BYTES/64u))/2,
+                    chunk+r*(NAME_ROW_BYTES/2)+page*(PAGE_BYTES/64u/2),PAGE_BYTES/64u/2));
+    }
+    return SAT_OK;
+}
+#endif
+
 /* The head stays in g_load_words for t3_stage_vdp2_init, and the picture goes
  * straight to VDP2 bank A. In a True Ogre fight there is no panorama: its
  * colours stay black, and the floor takes the spotlight's brightness. */
@@ -512,11 +543,24 @@ sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre) {
     if((st=t3_disc_volume(&g_volume))!=SAT_OK)return st;
     g_t3_stage_boot_step=4;
     if((st=sat_cdfs_lookup(g_volume,name,&g_file))!=SAT_OK)return st;
-    if(g_file.size!=T3_STAGE_FILE_BYTES)return SAT_ERR_VERSION;
     g_t3_stage_boot_step=5;
     if((st=read_part(&g_file,0,g_load_words,T3_STAGE_HEAD_BYTES))!=SAT_OK)return st;
-    if(head_word(T3_STAGE_WORD_MAGIC)!=T3_STAGE_MAGIC || head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_VERSION ||
-       head_word(T3_STAGE_WORD_NUMBER)!=stage)return SAT_ERR_VERSION;
+    /* Tekken Ball's court (stage 19) is a bitmap strip; the fight stages are cells. */
+#if defined(T3_BALL_PROGRAM)
+    if(stage!=19u)return SAT_ERR_UNSUPPORTED;
+    if(g_file.size!=T3_STAGE_FILE_BYTES || head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_VERSION)return SAT_ERR_VERSION;
+#else
+    uint32_t chars=0;
+    if(stage==19u) {
+        if(g_file.size!=T3_STAGE_FILE_BYTES || head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_VERSION)return SAT_ERR_VERSION;
+    } else {
+        chars=head_word(T3_STAGE_WORD_CHARS);
+        if(head_word(T3_STAGE_WORD_VERSION)!=T3_STAGE_CELL_VERSION || !chars || chars>T3_STAGE_MAX_CHARS ||
+           g_file.size!=T3_STAGE_CHARS_AT+((chars*32u+T3_STAGE_HEAD_BYTES-1u)/T3_STAGE_HEAD_BYTES)*T3_STAGE_HEAD_BYTES)
+            return SAT_ERR_VERSION;
+    }
+#endif
+    if(head_word(T3_STAGE_WORD_MAGIC)!=T3_STAGE_MAGIC || head_word(T3_STAGE_WORD_NUMBER)!=stage)return SAT_ERR_VERSION;
     g_cylinder.box_half=(int32_t)head_word(T3_STAGE_WORD_BOX_HALF);
     g_strip=stage==19u;g_valid=0;     /* Tekken Ball's court: a flat strip, no walls */
     g_back=(uint16_t)head_word(T3_STAGE_WORD_BACK);
@@ -528,6 +572,9 @@ sat_result_t t3_stage_vdp2_load(unsigned stage,int true_ogre) {
     }
     /* The stage tables use the space after the uploaded picture. The strip
      * samples a separate transparent row when the camera looks beyond it. */
+#if !defined(T3_BALL_PROGRAM)
+    if(chars)return stream_to_vram(T3_STAGE_CHARS_AT,chars*32u,0);
+#endif
     SAT_TRY(stream_to_vram(T3_STAGE_PICTURE_AT,T3_STAGE_PICTURE_BYTES,0));
     if(g_strip) {
         uint16_t* const blank=g_load_words+CHUNK_BYTES/2;
@@ -557,11 +604,22 @@ sat_result_t t3_stage_vdp2_init(void) {
     if((st=stream_to_vram(T3_STAGE_FLOOR_AT,T3_STAGE_FLOOR_BYTES,FLOOR_BITMAP))!=SAT_OK)return st;
     sat_vdp2_layer_config_t background;
     sat_vdp2_layer_config_default(SAT_VDP2_NBG0,&background);
-    background.bitmap=1; background.bitmap_size=SAT_VDP2_BITMAP_1024X256;
-    background.color_mode=SAT_VDP2_COLOR_MODE_256;
-    background.palette=PICTURE_PALETTE;
+#if !defined(T3_BALL_PROGRAM)
+    if(!g_strip) {
+        if((st=load_names())!=SAT_OK)return st;
+        background.pattern_name_words=2; background.plane_pages_x=2;
+        background.color_mode=SAT_VDP2_COLOR_MODE_16;
+        background.char_bank_mask=SAT_VDP2_BANK_A0|SAT_VDP2_BANK_A1;
+        for(unsigned plane=0;plane<4u;++plane)background.plane_address[plane]=NAME_PAGES+(plane&1u)*2u*PAGE_BYTES;
+    } else
+#endif
+    {
+        background.bitmap=1; background.bitmap_size=SAT_VDP2_BITMAP_1024X256;
+        background.color_mode=SAT_VDP2_COLOR_MODE_256;
+        background.palette=PICTURE_PALETTE;
+        background.plane_address[0]=0;
+    }
     background.priority=1; background.transparent=1;
-    background.plane_address[0]=0;
     g_t3_stage_boot_step=13;
     if((st=sat_vdp2_layer_configure(&background))!=SAT_OK)return st;
     const sat_vdp2_line_scroll_config_t lines={SAT_VDP2_NBG0,1,1,1,0,0,0,LINE_SCROLL};
@@ -709,7 +767,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
         /* Stage rays previously assumed x=160; the mapped original GTE
          * center is x=167. Sample the same ray seven pixels earlier. (The court's strip is placed in screen dots already.) */
         if(!g_strip)column=(column-(t3_psx_viewport_x(192)-WIDTH/2)*(int32_t)g_backdrop[y].zoom)
-            &((T3_STAGE_COLUMNS<<16)-1);
+            &((T3_STAGE_PANO_COLUMNS<<16)-1);
 #endif
         line_words[0]=line_word(column,0x7FFu);
         line_words[1]=line_word(g_backdrop[y].y,0x7FFu);

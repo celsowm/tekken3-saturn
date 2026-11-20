@@ -794,6 +794,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
                     --source "${T3_LOCAL_STAGES}" --output "${_t3_stage_gen}"
                     --stages "${_t3_stage}" --jobs 1
                 DEPENDS "${CMAKE_SOURCE_DIR}/scripts/build_stage_packs.py"
+                    "${CMAKE_SOURCE_DIR}/scripts/stage_cells.py"
                     "${CMAKE_SOURCE_DIR}/scripts/panorama_raycast.py"
                     "${CMAKE_SOURCE_DIR}/scripts/psx_character_textures.py"
                     "${CMAKE_SOURCE_DIR}/src/game/stage_format.h"

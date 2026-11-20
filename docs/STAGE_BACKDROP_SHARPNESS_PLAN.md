@@ -1,6 +1,6 @@
 # Sharper stage backdrops: plan
 
-Status: planned (2026-11-19). Scope: the fight stages' NBG0 panorama. Tekken
+Status: done (2026-11-20), see "Results" at the end. Scope: the fight stages' NBG0 panorama. Tekken
 Ball's court strip (stage 19) and Tekken Force keep their current paths until
 the fight stages are qualified.
 
@@ -127,3 +127,47 @@ Each step ends with numbers in this file. Rejected variants are deleted at once.
   (zoom-in cameras still benefit).
 - **Larger stage files mean longer loads.** About 270 KB against 240 KB today
   for format A.
+
+## Results (2026-11-20)
+
+**Step 0, the formats** (`scripts/backdrop_format_study.py`, all 14 stages, 2 x 2 rays a texel). Format A
+(4-bit cells, 16 palettes of 15 colours) at 2048 x 352: RMS colour error 0.32-0.80 of a 5-bit step (today's
+255-colour cut: 0.02-0.39 at 1024 x 240), every stage uses at most 16 palettes. Unique characters: at most 6,011
+at 2048 x 240 and 8,692 at 2048 x 352 (stage 8), against 7,680 that fit VRAM A0/A1 below the rotation tables.
+Merging the 935 surplus characters of stage 8 into their nearest neighbours moves its RMS from 0.323 to 0.331.
+The filter hardly matters at this density (2 x 2 mean against a single ray differ by under 0.03 step).
+**Chosen: format A at 2048 x 352**, 4-bit characters deduplicated, capped at 7,680.
+
+**Step 1, screen space** (`scripts/backdrop_sharp_proof.py`, eight synthetic fight cameras, stage 0). Per-dot error
+against the true ray cast does not fall (today 6.3-9.5 levels, 2048 x 352 6.6-9.9): the line scroll places the
+picture several texels off (PAUL_STAGE_VDP2.md, "Accuracy"), and a sharper picture shows that misplacement more,
+which any pixel metric punishes. Allowing each 16 x 16 block to slide 12 x 4 dots gives equal error at 2048 x 352
+(3.7-5.2 against 3.8-5.1) and 10% worse at 2048 x 240. Gradient energy over the truth's: 0.65-0.78 today,
+0.70-0.87 at 2048 x 352. The decisive evidence is visual: the sign "FURNITURE" is unreadable today, a smear at
+2048 x 240 and legible at 2048 x 352. The gate became "sharpness up and the image legible", not "error down".
+
+**Step 2, planner.** `test_vdp2_nbg_logic` now plans NBG0 as 16-colour cells with 2-word names in two 2 x 1-page
+planes, characters in A0/A1, line scroll with zoom, at reductions 1, 1/2 and 1/4. Writing it found nothing, but
+running the game found a LibSaturn bug: the map registers of 2 x 1 and 2 x 2 page planes held `address / plane
+size`, and the manual (table 4.8) wants `address / page size` (bit 0, or bits 1-0, ignored). Every game before
+used 1-page planes, where the two agree; with two pages the layer read the wrong tables and drew nothing, on
+Mednafen and Ymir alike. Fixed in `nbg_logic.hpp` and `rotation_logic.hpp`, with a register test from the table.
+
+**Step 3, the game.** Stage format version 4 (`stage_format.h`): head, floor, 256 x 44 two-word names, the
+characters. `stage_cells.py` clusters the cells into 16 palettes, shares equal characters and merges down to the
+limit; `build_stage_packs.py` writes it (and bakes 2 x 2 rays a texel, about 2 minutes a stage instead of 6).
+`stage_vdp2.c` loads the characters into A0/A1 and, in init (bank B belongs to the VS screen until then), the names
+into the top half of B1 at 0x68000-0x77fff (the hit particles' NBG1 keeps B1 up to 0x65a80, asserted at build
+time), then configures NBG0 as cells. `stage_backdrop.c` accepts 2048 columns (the VDP2's 11-bit horizontal scroll
+is the limit; `test_stage_backdrop` runs at 1024 x 240, 2048 x 240 and 2048 x 352). Tekken Ball's court keeps the
+version 3 bitmap path and its program does not link the cell loader. Files are 305-400 KB (376 KB before).
+
+**Step 4, qualification** (Mednafen, 280 s attract fight, stage 9). Marked 29.94 / worst 26.26 img/s against
+29.91 / 26.21 with the same code and the old backdrop: no cost, as expected since the CPU mapping is unchanged.
+Stage load time was not measured (about 30 KB more to read and 176 short VRAM writes for the names).
+
+**Step 5, 2048 x 352** was chosen in step 0, so there is no separate 240-row trial.
+
+**Not done.** Tekken Ball and Tekken Force keep their flat paths; hardware has not seen it. The horizontal
+increment reaches about 1.0 at the widest fight cameras (0.98 seen); above 1.0 the VDP2 would need its 1/2
+reduction, which the planner does support but the game does not request.

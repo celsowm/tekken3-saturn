@@ -317,3 +317,10 @@ A single CD screening recorded 611 increments in the old 18-to-78 interval;
 there was no fresh paired control, so this is not a qualified gain. That
 runtime experiment was archived and removed. Evidence remains under
 `assets/imported/stage-cache-source` and `stage-cache-*`.
+
+## Cell backdrop (format version 4)
+
+Since 2026-11-20 the fight stages' NBG0 is cell format, not a 1024 x 240 bitmap: 2048 x 352 texels (one texel
+about a screen dot), 4 bits a dot, 16 palettes of 15 colours (CRAM bank 7, palette numbers 112-127), equal 8 x 8
+cells shared (at most 7,680 characters). Layout, loader and the measurements: docs/STAGE_BACKDROP_SHARPNESS_PLAN.md.
+The text above describes the bitmap path, which only Tekken Ball's court still uses.

@@ -221,7 +221,7 @@ int t3_stage_backdrop_lines_offset(const t3_stage_backdrop_t* b,const int32_t m[
     int32_t top,bottom;
     unsigned step_shift;
     /* Columns are a power of two: the layer wraps at its bitmap width. */
-    if(!b || !m || !eye || !lines || !b->columns || b->columns>1024 || (b->columns&(b->columns-1)) ||
+    if(!b || !m || !eye || !lines || !b->columns || b->columns>2048 || (b->columns&(b->columns-1)) ||
        b->rows<9 || b->width<2 || b->width>1024 || b->height<2 || b->height>MAX_HEIGHT ||
        b->box_half<=0 || b->box_half>MAX_BOX_HALF || b->rows_per_tan<=0 ||
        b->rows_per_tan>(INT32_MAX/(2*TAN_LIMIT/ONE)) || vertical_offset< -MAX_HEIGHT || vertical_offset>MAX_HEIGHT ||

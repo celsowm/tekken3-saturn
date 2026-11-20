@@ -119,4 +119,71 @@ class StageTests(unittest.TestCase):
         self.assertEqual(int(stage.box_filter(np.array([red,0,0,0]),1,1,2)[0]),0)
 
 
+    def cylinder(self):
+        """A synthetic cylinder: sky rows, then bands of a few colours with a stripe pattern."""
+        import numpy as np
+        rows,columns=stage.PANO_ROWS,stage.PANO_COLUMNS
+        y,x=np.mgrid[0:rows,0:columns]
+        colour=np.zeros((rows,columns),np.int64)
+        band=y>=64
+        palette=np.array([0x8000|(r|g<<5|b<<10) for r,g,b in
+                          ((31,0,0),(0,31,0),(0,0,31),(20,20,0),(0,20,20),(10,10,10),(25,5,25),(5,25,5),(31,31,31))])
+        colour[band]=palette[((x//8+y//8+(x//3)%2)%len(palette))[band]]
+        return colour
+
+    def test_cells_share_characters_and_keep_the_palette_budget(self):
+        import numpy as np
+        import stage_cells
+        got=stage_cells.cell_picture(self.cylinder(),stage.PANO_COLUMNS,stage.PANO_ROWS,stage.MAX_CHARS)
+        chars,names,palette_of=got['chars'],got['names'],got['palette_of']
+        self.assertEqual(names.shape,(stage.PANO_ROWS//8,stage.PANO_COLUMNS//8))
+        self.assertTrue(not chars[0].any(),'character 0 is the transparent cell')
+        self.assertTrue((names[:8]==0).all(),'the sky rows are character 0')
+        self.assertLess(len(chars),names.size//2,'equal cells share a character')
+        self.assertLessEqual(int(palette_of.max()),stage_cells.PALETTES-1)
+        self.assertLessEqual(int(chars.max()),stage_cells.PALETTE_COLOURS)
+        self.assertEqual(got['palettes'].shape,(stage_cells.PALETTES,16))
+        self.assertTrue((got['palettes'][:,0]==0).all(),'dot 0 of every palette is transparent')
+        self.assertLess(got['rms'],0.5,'nine colours fit one palette exactly')
+
+    def test_cells_merge_down_to_the_character_limit(self):
+        import numpy as np
+        import stage_cells
+        rng=np.random.default_rng(5)
+        colour=self.cylinder()
+        # Noise in the lower half makes nearly every cell unique.
+        noisy=rng.random(colour[200:].shape)<0.5
+        colour[200:]=np.where(noisy,0x8000|0x7fff&int(rng.integers(0,0x7fff)),colour[200:])
+        full=stage_cells.cell_picture(colour,stage.PANO_COLUMNS,stage.PANO_ROWS,1<<20)
+        limit=len(full['chars'])-300
+        capped=stage_cells.cell_picture(colour,stage.PANO_COLUMNS,stage.PANO_ROWS,limit)
+        self.assertEqual(len(capped['chars']),limit)
+        self.assertTrue(not capped['chars'][0].any())
+        self.assertLess(int(capped['names'].max()),limit)
+
+    def test_cell_pack_layout(self):
+        import numpy as np
+        import stage_cells
+        cells=stage_cells.cell_picture(self.cylinder(),stage.PANO_COLUMNS,stage.PANO_ROWS,stage.MAX_CHARS)
+        floor=bytes(stage.FLOOR_W*stage.FLOOR_H)
+        out=stage.pack_cells(3,1200,0x8000,0x8123,39,[0,0x8001],floor,cells)
+        chars=len(cells['chars'])
+        names_at=stage.HEAD_BYTES+len(floor)
+        chars_at=names_at+stage.PANO_COLUMNS//8*(stage.PANO_ROWS//8)*4
+        self.assertEqual(len(out)%stage.HEAD_BYTES,0)
+        self.assertEqual(len(out),chars_at+(chars*32+stage.HEAD_BYTES-1)//stage.HEAD_BYTES*stage.HEAD_BYTES)
+        self.assertEqual(struct.unpack_from('>8I',out),
+                         (int(stage.FORMAT['MAGIC'],16),int(stage.FORMAT['CELL_VERSION']),3,1200,0x8000,0x8123,39,chars))
+        self.assertEqual(struct.unpack_from('>H',out,stage.FLOOR_PALETTE_AT+2)[0],0x8001)
+        # A name: palette number, then the character number; the characters are 4 bits a dot, left dot high.
+        at=(10*(stage.PANO_COLUMNS//8)+20)*4
+        number=int(cells['names'][10,20])
+        self.assertEqual(struct.unpack_from('>HH',out,names_at+at),
+                         (stage.PALETTE_NUMBER+int(cells['palette_of'][number]),number))
+        dots=cells['chars'][number]
+        self.assertEqual(out[chars_at+32*number],(int(dots[0])<<4)|int(dots[1]))
+        self.assertEqual(out[chars_at+32*number+31],(int(dots[62])<<4)|int(dots[63]))
+        with self.assertRaises(ValueError):stage.pack_cells(3,1200,0,0,39,[0],floor[:-1],cells)
+
+
 if __name__=='__main__':unittest.main()

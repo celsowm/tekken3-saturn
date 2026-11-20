@@ -11,7 +11,7 @@
 #define ONE 65536.0
 #define PI 3.14159265358979323846
 
-static const t3_stage_backdrop_t B={9608,1100,52429,13107200,1024,240,320,224};
+static t3_stage_backdrop_t B={9608,1100,52429,13107200,1024,240,320,224};
 
 typedef struct { double column,row,increment,depth; int seen; } ref_t;
 
@@ -114,19 +114,27 @@ static void check(double yaw_deg,double pitch_deg,double ex,double height,double
      * interpolated linearly over 32 lines: within a third of a dot (the line
      * scroll itself misses by several texels, check_backdrop_mapping.py).
      * The increment is rounded to the VDP2's 1/256. */
-    if(worst_column>0.04 || worst_row>0.15 || worst_increment>0.003 || worst_depth>0.002) {
+    if(worst_column>0.04*B.columns/1024 || worst_row>0.15*B.rows_per_tan/(200*65536) ||
+       worst_increment>0.003*B.columns/1024 || worst_depth>0.002) {
         fprintf(stderr,"yaw %g pitch %g eye (%g %g %g) turn %d step %u: column %g row %g increment %g depth %g\n",
                 yaw_deg,pitch_deg,ex,height,ez,turn,step,worst_column,worst_row,worst_increment,worst_depth);
         assert(0);
     }
 }
 
-int main(void) {
+static void run(void) {
     static t3_stage_backdrop_line_t lines[224];
     int32_t m[16]={0},e[3]={0};
     /* Straight ahead along PS1 +z the centre column is 0 (the bake's yaw 0). */
     m[0]=178000;m[5]=238000;m[14]=-65536;
     assert(t3_stage_backdrop_lines(&B,m,e,0,1,lines,NULL));
+    {
+        /* More than 2048 columns would pass the VDP2's 11-bit horizontal scroll. */
+        const t3_stage_backdrop_t saved=B;
+        B.columns=4096;
+        assert(!t3_stage_backdrop_lines(&B,m,e,0,1,lines,NULL));
+        B=saved;
+    }
     {
         const double column=fmod(lines[111].x/ONE+160*(lines[111].zoom/ONE)+B.columns/2,B.columns)-B.columns/2;
         assert(fabs(column)<0.05);
@@ -143,5 +151,16 @@ int main(void) {
     assert(!t3_stage_backdrop_lines(&B,m,e,0,1,lines,NULL));
     m[1]=0;
     assert(!t3_stage_backdrop_lines(&B,m,e,0,3,lines,NULL));
+}
+
+int main(void) {
+    static const t3_stage_backdrop_t sizes[]={
+        {9608,1100,52429,13107200,1024,240,320,224},    /* the 1024-column picture */
+        {9608,1100,52429,13107200,2048,240,320,224},    /* wider: about one texel a dot */
+        {9608,1100,52429,19202048,2048,352,320,224}};   /* wider and taller */
+    for(unsigned i=0;i<sizeof sizes/sizeof *sizes;++i) {
+        B=sizes[i];
+        run();
+    }
     return 0;
 }

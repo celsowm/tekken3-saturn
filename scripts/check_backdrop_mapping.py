@@ -24,7 +24,9 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_stage_packs import BAKE_HEIGHT, COLUMNS, PICTURE_PALETTE_AT, ROWS, ROWS_PER_TAN, TAN_TOP, read_arc  # noqa: E402
+from build_stage_packs import (BAKE_HEIGHT, FLOOR_H, FLOOR_W, HEAD_BYTES, PALETTE_NUMBER, PANO_COLUMNS as COLUMNS,  # noqa: E402
+                               PANO_ROWS as ROWS, PANO_ROWS_PER_TAN as ROWS_PER_TAN, PICTURE_PALETTE_AT, TAN_TOP,
+                               read_arc)
 from panorama_raycast import Panorama  # noqa: E402
 
 WIDTH, HEIGHT = 320, 224
@@ -69,6 +71,19 @@ def bake_view(points):
     return column, (TAN_TOP - tan)*ROWS_PER_TAN
 
 
+def cell_picture(stg, columns, rows):
+    """A format version 4 file's cells as one 8-bit image of colour numbers (palette * 16 + dot),
+    matching the 256 palette words at PICTURE_PALETTE_AT."""
+    chars = struct.unpack_from('>I', stg, 28)[0]
+    at = HEAD_BYTES + FLOOR_W*FLOOR_H
+    names = np.frombuffer(stg, '>u4', (rows//8)*(columns//8), at).reshape(rows//8, columns//8)
+    body = np.frombuffer(stg, np.uint8, chars*32, at + names.size*4).reshape(chars, 32)
+    dots = np.stack([body >> 4, body & 15], axis=-1).reshape(chars, 8, 8)
+    palette = ((names >> 16) & 0x7F).astype(np.int64) - PALETTE_NUMBER
+    cells = dots[(names & 0x7FFF).astype(np.int64)] | (palette << 4)[..., None, None]
+    return cells.swapaxes(1, 2).reshape(rows, columns).astype(np.uint8)
+
+
 def rgb(colour):
     return np.stack([((colour >> (5*k)) & 31)*255//31 for k in range(3)], axis=-1).astype(np.uint8)
 
@@ -89,7 +104,7 @@ def main():
     stg = (a.stage/f'STG{a.number:02}.BIN').read_bytes()
     columns, rows = COLUMNS, ROWS
     palette = np.array(struct.unpack_from('>256H', stg, PICTURE_PALETTE_AT), dtype=np.int64)
-    picture = np.frombuffer(stg, np.uint8, columns*rows, len(stg)-columns*rows).reshape(rows, columns)
+    picture = cell_picture(stg, columns, rows)
     half = manifest['panorama_half']
 
     vram, _, _ = read_arc((a.source/f'raw/{36 + a.number:03}.bin').read_bytes())
