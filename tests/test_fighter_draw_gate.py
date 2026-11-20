@@ -23,7 +23,7 @@ def body(source, name):
 
 class Gate(unittest.TestCase):
     def test_every_submission_path_is_counted(self):
-        self.assertEqual(len(re.findall(r'\bsat_scene_submit_instance\(', CHARACTERS)), 6,
+        self.assertEqual(len(re.findall(r'\bsat_scene_submit_instance\(', CHARACTERS)), 8,   # 2 of them in force_submit_actor, whose one caller is behind the shown gate
                          'a fighter submission path changed: gate it on the fighter being shown, then update this count')
 
     def test_the_fused_path_reads_and_obeys_the_flag(self):
