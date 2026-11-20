@@ -43,11 +43,18 @@ _Static_assert(LINE_SCROLL+LINE_WORDS*2 <= STRIP_BLANK_ROW*T3_STAGE_COLUMNS &&
 static sat_vdp2_rotation_params_t g_params __attribute__((section(".wram_l")));
 /* Rebuilt every image: High WRAM, where an access costs a quarter of Low's. */
 static t3_stage_backdrop_line_t g_backdrop[HEIGHT];
+#if defined(T3_BALL_PROGRAM)
+/* Tekken Ball loads only its court, a flat strip with no walls: it links
+ * neither the panorama mapping nor its wall depths (Work RAM High is full). */
+#define WALL_DEPTH(i) 0
+#else
 static sat_fx16_t g_wall_depth[HEIGHT]
 #if defined(T3_PARTICLE_GENERAL_MASK_PROBE)
     __attribute__((section(".wram_l")))
 #endif
     ;
+#define WALL_DEPTH(i) g_wall_depth[i]
+#endif
 /* The VRAM words of one image's mapping, in the order of the fixed tables
  * they replace. Two slots: an image's tables are filled while the previous
  * image may still wait for its swap. */
@@ -678,7 +685,10 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     if(g_strip) {
         fill_strip_backdrop();
     } else {
-#if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
+#if defined(T3_BALL_PROGRAM)
+    (void)eye;
+    return SAT_ERR_UNSUPPORTED;
+#elif defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     sat_mat4_t backdrop_view=camera->view_proj;
     for(unsigned i=4;i<8;++i)backdrop_view.m[i]=(int32_t)((int64_t)backdrop_view.m[i]*15/14);
     if(!t3_stage_backdrop_lines_offset(&g_cylinder,backdrop_view.m,eye,turn,1,2,g_backdrop,g_wall_depth))
@@ -712,7 +722,11 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     sat_vdp2_floor_t floor={WIDTH,HEIGHT,0,(int32_t)((int64_t)64*65536*65536/(1800*96)),
         (int32_t)(((int64_t)center_x*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_W*SAT_FX16_ONE)),
         -(int32_t)(((int64_t)center_z*64*SAT_FX16_ONE/1800)%(T3_STAGE_FLOOR_H*SAT_FX16_ONE)),0,
+#if defined(T3_BALL_PROGRAM)
+        0,1};
+#else
         g_strip?0:g_wall_depth,1};
+#endif
 #if defined(T3_STAGE_ORIGINAL_VERTICAL_PROBE)
     /* Generate a 228-line virtual view, then display lines 4..227. Its
      * center is 114-4=110 and the original 240-line half-height becomes
@@ -723,7 +737,7 @@ sat_result_t t3_stage_vdp2_prepare(const sat_camera3d_t* camera,int32_t center_x
     sat_fx16_t* far_lines=(sat_fx16_t*)(void*)tables->coefficients;
     for(unsigned i=4;i<8;++i)floor_view.m[i]=(int32_t)((int64_t)floor_view.m[i]*20/19);
     for(unsigned i=0;i<4;++i)far_lines[i]=0;
-    for(unsigned i=0;i<HEIGHT;++i)far_lines[i+4]=g_wall_depth[i];
+    for(unsigned i=0;i<HEIGHT;++i)far_lines[i+4]=WALL_DEPTH(i);
     floor.height=HEIGHT+4;floor.far_lines=far_lines;
     STAGE_SPLIT_START(floor_started);
     sat_result_t st=sat_vdp2_floor_from_view(&floor,&floor_view,&camera->eye,
@@ -759,7 +773,10 @@ sat_result_t t3_stage_vdp2_sync(void) {
     /* Everything prepare writes, for the CPU that did not run it. */
     const struct {const void* address;uint32_t size;} range[]={
         {&g_params,sizeof g_params},{g_backdrop,sizeof g_backdrop},
-        {g_wall_depth,sizeof g_wall_depth},{&g_tables[g_slot],sizeof g_tables[g_slot]},
+#if !defined(T3_BALL_PROGRAM)
+        {g_wall_depth,sizeof g_wall_depth},
+#endif
+        {&g_tables[g_slot],sizeof g_tables[g_slot]},
         {&g_previous_camera,sizeof g_previous_camera},{g_previous_center,sizeof g_previous_center},
         {&g_previous_turn,sizeof g_previous_turn},{&g_valid,sizeof g_valid},{&g_dirty,sizeof g_dirty},
         {(const void*)&g_t3_vdp2_floor_prepared,sizeof g_t3_vdp2_floor_prepared},

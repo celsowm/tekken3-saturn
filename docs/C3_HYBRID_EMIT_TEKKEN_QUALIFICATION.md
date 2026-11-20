@@ -290,3 +290,37 @@ How the cache works:
 Exactness: `-DT3_STATIC_BASE_CACHE_VERIFY=ON` still evaluates the skeleton on every hit and compares the result with the cache. To field 2600 there were 2,260 hits and 0 differing matrices.
 
 Ball copies the fight's definitions, and its Work RAM High has no room for the 1.4 KB per actor. CMake removes the option from Ball, so Ball is unchanged.
+
+## Cleanup of the experiment switches (2026-11-19)
+
+The A/B switches of this campaign are gone from both repositories; what won is
+now the only path.
+
+- LibSaturn promoted: screen clip mode 2, the affine hierarchy compose and the
+  exact two-influence weighted blend. Removed: static projection, the painter
+  variants, near clip V2, world cull, the C3 emitter, the MAC studies and their
+  benches (see `SH2_ASSEMBLY_OPTIMIZATION_MASTER_PLAN.md`, section 12).
+- Tekken: `T3_STATIC_BASE_CACHE` is always on (Ball still filters it out for
+  Work RAM High); its `_VERIFY` diagnostic, `T3_FORCE_SKIN_TO_SCREEN` (always on
+  for Force) and the incompatible `T3_FORCE_PARALLEL_SKINNING` are removed;
+  `scripts/pack_c3_qualification.py` is removed. Kept as diagnostics:
+  `T3_RENDER_BENCH_TICK`, the Force probes and `T3_MASTER_SKIN_CHECK`.
+- Master share of actor 1 (`T3_MASTER_SKIN_PERCENT`), Mednafen 280 s, same disc:
+
+  | Share | Marked img/s | Worst segment |
+  | ---: | ---: | ---: |
+  | 65 (old default) | 29.84 | 26.11 |
+  | 50 | 29.99 | 26.26 |
+  | 35 | 29.91 | 26.11 |
+  | 80 | 29.76 | 26.11 |
+
+  50 is the new default. With the promoted LibSaturn installed it measures
+  29.91 / 26.21 (images 2616), within run noise of the same share before
+  promotion; the fight loop barely calls the promoted paths.
+- Tekken Ball's Work RAM High had under 110 bytes spare; the promoted code
+  needed about 300. The weighted blend's overflow fallback is now out of line
+  (+40 bytes instead of +716), and Ball, which loads only the flat court strip,
+  no longer links the panorama mapping's wall depths (3,964 bytes spare now).
+- Not re-run: a frozen VDP1 identity against the pre-promotion build, which
+  needs the old SDK rebuilt in the one prefix. The promoted kernels are covered
+  by the exactness tests in LibSaturn (`gmake test`).

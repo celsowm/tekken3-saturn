@@ -902,9 +902,6 @@ static sat_result_t prepare_base_skeleton(actor_t* a) {
 
 #if T3_STATIC_BASE_CACHE
 uint32_t g_t3_base_skeleton_reused;
-#if T3_STATIC_BASE_CACHE_VERIFY
-uint32_t g_t3_base_skeleton_mismatches;
-#endif
 
 /* A clip whose frames are all the same pose (the imported bind pose is). */
 static int clip_is_still(const sat_skeleton_clip_t* clip) {
@@ -921,15 +918,6 @@ static int clip_is_still(const sat_skeleton_clip_t* clip) {
 static sat_result_t prepare_static_base(actor_t* a) {
     const int fading=sat_pose_fade_active(&a->fade);
     if(!fading && a->base_cached) {
-#if T3_STATIC_BASE_CACHE_VERIFY
-        sat_result_t checked=prepare_base_skeleton(a);
-        if(checked!=SAT_OK)return checked;
-        for(unsigned joint=0;joint<T3_JOINT_COUNT;++joint)
-            for(unsigned k=0;k<16u;++k)
-                if(a->joints[joint].m[k]!=a->base_joints[joint].m[k]) {
-                    ++g_t3_base_skeleton_mismatches;joint=T3_JOINT_COUNT;break;
-                }
-#endif
         __builtin_memcpy(a->joints,a->base_joints,sizeof(a->joints));
         ++g_t3_base_skeleton_reused;
         return SAT_OK;
