@@ -7,6 +7,7 @@
 #include "saturn/font.h"
 #include "saturn/vdp2.h"
 #include "vs_layout.h"
+#include "version.h"
 
 enum {
     STRIDE=512, BG_HEADER=12, BG_PALETTE=512, IMAGE_BYTES=VS_W*VS_H, BACKGROUND_BYTES=BG_HEADER+BG_PALETTE+IMAGE_BYTES,
@@ -61,7 +62,7 @@ static sat_result_t compose_panel(uint8_t* image,uint8_t* record,unsigned pictur
 }
 
 static void credit(uint8_t* image) {
-    static const char line[]="V0.4 MADE USING celsowm/libsaturn";
+    static const char line[]=T3_VERSION " MADE USING celsowm/libsaturn";
     const unsigned length=sizeof line-1u;
     const unsigned left=(VS_W-length*CREDIT_GLYPH_W)/2u;
     for(unsigned i=0;i<length;++i) {

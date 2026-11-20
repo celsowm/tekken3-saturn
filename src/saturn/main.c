@@ -46,6 +46,7 @@ static uint8_t g_ball_pad2;   /* a controller in port 2: the mode line's coin pr
 #include "saturn/scene.h"
 #include "saturn/scene3d.h"
 #include "saturn/video.h"
+#include "version.h"
 #include "saturn/asset_memory.h"
 #include "saturn/texture_memory.h"
 #include "saturn/vdp1.h"
@@ -436,7 +437,7 @@ static void loading_frame(unsigned completed, const char* stage) {
     SAT_PANIC_IF_ERROR(sat_set_clear_color(screen.background));
     SAT_PANIC_IF_ERROR(sat_vdp2_back_color_set(screen.background));
     SAT_PANIC_IF_ERROR(sat_begin_frame());
-    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 V0.4", W / 2, LOADING_TITLE_Y));
+    SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "TEKKEN 3 " T3_VERSION, W / 2, LOADING_TITLE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "LOADING", W / 2, LOADING_LABEL_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, stage, W / 2, LOADING_STAGE_Y));
     SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud, "MADE USING celsowm/libsaturn", W / 2, LOADING_CREDIT_Y));
@@ -1075,7 +1076,7 @@ static void title_screen(void) {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&namco_texture,160,184,63,8,7));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"(C)1994 1995 1996 1998 NAMCO LTD.",W/2,192));
             SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"ALL RIGHTS RESERVED",W/2,203));
-            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,"V0.4",264,4));
+            SAT_PANIC_IF_ERROR(sat_hud_text(&g_hud,T3_VERSION,264,4));
         } else {
         {
             SAT_PANIC_IF_ERROR(sat_draw_sprite_scaled_screen(&title_texture,160,112,320,224,7));
@@ -1102,7 +1103,7 @@ static void title_screen(void) {
                     &g_font.glyphs[(unsigned)logo[i]-32u],64+(int)i*24,28,24,32,
                     g_hud.palette));
         }
-        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,"V0.4  -  PAUL VS LAW",W/2,70));
+        SAT_PANIC_IF_ERROR(sat_hud_text_centered(&g_hud,T3_VERSION "  -  PAUL VS LAW",W/2,70));
         SAT_PANIC_IF_ERROR(sat_hud_bar(&g_hud,44,88,232,2,1,1,
             SAT_RGB555(22,4,3),SAT_RGB555(22,4,3)));
         if(options) {

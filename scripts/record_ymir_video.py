@@ -64,6 +64,9 @@ def route(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--build', type=Path, default=ROOT / 'build/saturn')
+    p.add_argument('--iso', type=Path, help='the disc CUE, instead of <build>/disc/music.cue (an older release)')
+    p.add_argument('--bin', type=Path, help='the boot program, instead of <build>/tekken3_saturn.app.bin '
+                   '(scripts/extract_disc_file.py gets 0.BIN out of a packaged disc)')
     p.add_argument('--probe', type=Path, default=ROOT.parent / 'lib-saturn/harness/build-macos/probe')
     p.add_argument('--bios', type=Path, default=ROOT / 'assets/imported/ymir/profile/roms/ipl/saturn_101a_us.bin')
     p.add_argument('--out', type=Path, required=True)
@@ -86,7 +89,9 @@ def main():
     pad.write_text(args.pad.read_text() if args.pad else route(args))
     audio = work / 'audio.s16'
     fields = range(args.from_field, args.frames, args.step)
-    cmd = [str(args.probe), '--iso', str(args.build / 'disc/music.cue'), '--bin', str(args.build / 'tekken3_saturn.app.bin'),
+    iso = args.iso or args.build / 'disc/music.cue'
+    program = args.bin or args.build / 'tekken3_saturn.app.bin'
+    cmd = [str(args.probe), '--iso', str(iso), '--bin', str(program),
            '--bios', str(args.bios), '--frames', str(args.frames), '--out', str(work / 'run.json'),
            '--pad-script', str(pad), '--dump-audio', str(audio)]
     for field in fields:

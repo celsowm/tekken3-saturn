@@ -3,6 +3,25 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## V0.5: lit fighters, Tekken Ball, Practice
+
+Fighters are shaded with VDP1 Gouraud shading from the stage lighting (the default since `5ebdff7`). The release disc's
+benchmark fight, measured on Mednafen on 2026-11-20 (`mednafen_fight.py --seconds 170`, a `-DT3_TEST_SKIP_INTRO=ON` build of the
+same sources, AI pad hash `0xb99cc280`): **33.15 marked / 31.60 worst segment img/s**, against 29.73 / 28.25 at the R2 reference (+3.42 /
++3.35, so the net frame-rate rule of [POST_VRAM_EXECUTION_TRACKER.md](POST_VRAM_EXECUTION_TRACKER.md) holds) and against 33.37 / 31.75 when
+lighting became the default (-0.22 / -0.15 from the later Ball, Force and backdrop work). V0.4 shipped at 29.46 on the same fight. The disc also carries TEKKEN BALL
+([TEKKEN_BALL_PLAN.md](TEKKEN_BALL_PLAN.md)), PRACTICE ([PRACTICE_MODE.md](PRACTICE_MODE.md)), and SURVIVAL and TIME ATTACK with
+their best results in the internal backup. The release name is written once, as `T3_VERSION` in `src/saturn/version.h`;
+`scripts/package_itch_demo.py` and the video editors read it through `scripts/release_version.py`. Needs the V0.4 flags plus
+`-DT3_LOCAL_BALL_DATA` and `-DT3_LOCAL_BALL_PICTURES` (`scripts/play_mednafen.py` lists what a disc must carry).
+
+The V0.5 showcase video and itch art come from five Ymir takes (`record_ymir_video.py`, cut by `edit_v05_video.py`, stills by
+`make_v05_itch_art.py`). The Gouraud before/after needs the *same* round on both discs: V0.4's disc is read with
+`extract_disc_file.py` (its `0.BIN`) and `record_ymir_video.py --iso --bin`; the arcade route with the default pick draws the same
+opponent and stage on both (other picks do not: V0.4 loads a different opponent than its VS screen shows), and V0.4 reaches the same
+moment 45 program fields earlier than V0.5 (found by matching edge maps of dense screenshots), so the takes start at V0.4 field 4355 and
+V0.5 field 4400. The poses and the round timer then agree frame for frame, and only the shading differs.
+
 ## V0.4: Tekken Force
 
 TEKKEN FORCE MODE starts the separate Force executable from the mode list: four levels, the bosses, the keys, Doctor B.'s

@@ -7,36 +7,39 @@ from pathlib import Path
 import zipfile
 
 from play_mednafen import missing_features
+from release_version import version
 
 ROOT = Path(__file__).resolve().parents[1]
-README = '''TEKKEN 3 V0.4 - SEGA SATURN FAN PORT (DEMO)
+README = '''TEKKEN 3 {version} - SEGA SATURN FAN PORT (DEMO)
 
 HOW TO PLAY
 Open music.cue in a Saturn emulator (Mednafen, Ymir...) with a compatible Saturn
 BIOS, or use a Saturn disc loader. Keep music.bin next to music.cue. A BIOS and
 emulator are not included.
 
-WHAT IS NEW IN V0.4: TEKKEN FORCE
-- TEKKEN FORCE MODE is in. Pick your fighter and walk through the four
-  side-scrolling levels against Crow, Falcon, Hawk and Owl, up to two at a time,
-  with each level's boss at its end. The level script, enemy AI, camera and walls
-  are ported from the original's code and checked frame by frame against
-  recordings of the original.
-- The timer, the bonus seconds per defeat, roast chicken, LIFE UP!, the keys,
-  NOW LOADING, STAGE CLEAR!!, the tally and the result screen, in the original's
-  art, fonts and sounds.
-- Three keys open the final stage against Doctor B. The keys, the high score and
-  Doctor B. are saved to the Saturn's internal memory (a few free blocks; it
-  never formats the memory).
-- Smoother fights: the benchmark fight runs at about 29.5 images per second in
-  Mednafen, against about 25.6 before this version.
+WHAT IS NEW IN {version}
+- LIT FIGHTERS: every fighter is now shaded with VDP1 Gouraud shading from the stage
+  lighting, relit as the fighter turns, in place of the flat colours of V0.4. It is
+  on by default.
+- TEKKEN BALL MODE: the beach ball (BEGINNER), the gum ball (EXPERT) and the iron
+  ball (GRAND MASTER), with the original's court, flames, sparks and point flash.
+  START opens the pause menu: CANCEL, COMMAND, RESET and HOW TO.
+- PRACTICE MODE: 1P FREESTYLE, VS CPU and COMBO TRAINING, with the training dummy
+  settings, attack data, hit markers, HIT ANALYSIS (FREEZE SIGNAL) and the input
+  recorder with COMBO REPLAY. START opens its menu.
+- SURVIVAL and TIME ATTACK: your best results are kept in the Saturn's internal
+  memory and shown on the result screen.
+- Redrawn stage backdrops.
+- Smoother fights: the benchmark fight runs at about 33 images per second in Mednafen with the lighting on,
+  against about 29.5 in V0.4.
+Still from V0.4: TEKKEN FORCE MODE (four levels, the bosses and Doctor B.).
 Still from V0.3: ARCADE MODE (the ten-fight ladder with all 14 stages, CONTINUE?,
 True Ogre, the endings and NEW CHALLENGER), VS MODE, the boot intro and the VS
 screen.
 
 PLAYING
-Press START at the title, then ARCADE MODE (one player), VS MODE (two players,
-connect a second controller first) or TEKKEN FORCE MODE (one player).
+Press START at the title, then pick a mode. ARCADE, TEKKEN FORCE, TEKKEN BALL, SURVIVAL, TIME ATTACK and PRACTICE
+are one player; VS MODE is two players (connect a second controller first).
 Saturn pad: D-pad moves, X/Y punches, A/B kicks, L guard, R crouch, C jump.
 In OPTION MODE, UP/DOWN picks a row and LEFT/RIGHT changes it: DEBUG shows a
 performance report, MUSIC turns the CD music off.
@@ -45,6 +48,11 @@ W crouch, Return START. Set these in your emulator.
 
 Not in yet: Team Battle, the staff roll, the ending captions, the Ogre cutscene,
 costumes and the ranking screen.
+
+SAVED DATA
+Tekken Force's keys and high score, Doctor B., and the best Survival and Time Attack
+results are saved to the Saturn's internal memory (a few free blocks; it never
+formats the memory).
 
 REAL SATURN
 This build has run in emulators. On a real Saturn it is not verified: the movie
@@ -91,7 +99,7 @@ def main():
              'NOTICE.md': ROOT / 'NOTICE.md'}
     manifest = {'elf_sha256': digest(elf), 'files': {name: digest(path) for name, path in files.items()}}
     with zipfile.ZipFile(out, 'x', zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
-        archive.writestr('README.txt', README)
+        archive.writestr('README.txt', README.format(version=version()))
         archive.writestr('MANIFEST.json', json.dumps(manifest, indent=2) + '\n')
         for name, path in files.items():
             archive.write(path, name)
