@@ -24,7 +24,7 @@ target_sources(tekken3_fight PRIVATE src/game/psx_force_level.c src/game/psx_for
 target_sources(tekken3_fight PRIVATE src/game/psx_ai.c src/game/psx_ai_game.c src/game/ball_rules.c src/game/ball_flow.c src/game/ball_progress.c src/game/ball_hud.c src/game/ball_game.c src/game/ball_backdrop.c src/game/ball_ai.c src/game/ball_pose.c src/game/ball_light.c)
 # Tekken Ball runs once per tick on the Slave; the high Work RAM image has no slack (docs/TEKKEN_BALL_PLAN.md), so it is built for size.
 set_source_files_properties(src/game/ball_rules.c src/game/ball_game.c src/game/ball_flow.c src/game/ball_hud.c src/game/ball_ai.c PROPERTIES COMPILE_OPTIONS "-Os")
-target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c
+target_sources(tekken3_fight PRIVATE src/game/psx_camera.c src/game/psx_match_camera.c src/game/select_grid.c src/game/run_rules.c src/game/run_records.c
     src/game/arcade_ladder.c)
 target_sources(tekken3_fight PRIVATE src/game/stage_backdrop.c src/game/stage_floor_center.c src/game/stage_rules.c src/game/practice_data.c src/game/practice_dummy.c src/game/practice_menu.c src/game/practice_keys.c src/game/practice_signal.c src/game/practice_guide.c src/game/practice_replay.c src/game/practice_commands.c)
 target_sources(tekken3_fight PRIVATE src/game/tick_clock.c)
@@ -2101,7 +2101,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         endif()
 
         add_executable(tekken3_menu src/saturn/menu_main.c src/saturn/disc.c src/saturn/roster_names.c
-            src/game/select_grid.c src/game/arcade_ladder.c "${_t3_menu_gen}/menu_layout.h")
+            src/game/select_grid.c src/game/arcade_ladder.c src/game/run_records.c src/saturn/run_save.c "${_t3_menu_gen}/menu_layout.h")
         target_include_directories(tekken3_menu PRIVATE "${_t3_menu_gen}" src/saturn src/game)
         # Experimental Arcade music test (docs/ARCADE_MUSIC_ENGINE.md): the converter's output directory
         # (meta.bin, bank.bin, loads.bin, pages.bin; private, never in Git). L+R+START on the title opens it.
@@ -2517,6 +2517,10 @@ else()
         target_link_libraries(test_run_rules PRIVATE tekken3_fight)
         target_compile_options(test_run_rules PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         add_test(NAME survival_time_attack_rules COMMAND test_run_rules)
+        add_executable(test_run_records tests/test_run_records.c)
+        target_link_libraries(test_run_records PRIVATE tekken3_fight)
+        target_compile_options(test_run_records PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        add_test(NAME run_records_pack_and_rules COMMAND test_run_records)
         add_executable(test_arcade_ladder tests/test_arcade_ladder.c)
         target_link_libraries(test_arcade_ladder PRIVATE tekken3_fight)
         target_compile_options(test_arcade_ladder PRIVATE -Wall -Wextra -Werror -UNDEBUG)

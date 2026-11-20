@@ -27,6 +27,7 @@
 #include "disc.h"
 #include "menu_layout.h"
 #include "run_rules.h"
+#include "run_save.h"
 #include "select_grid.h"
 #include "stage_cdda.h"
 #if defined(T3_ARCADE_MUSIC_TEST)
@@ -78,9 +79,7 @@ static uint16_t g_pal[256];
 static sat_ascii_font_t g_font[FONT_SETS];   /* white, grey, gold: the SDK font, for the plain pages */
 static sat_vdp1_texture_t g_port_tex[2];
 static void ball_small_draw(unsigned type,int x,int y);
-#if defined(T3_BALL_PROGRAM) || defined(T3_FORCE_PROGRAM)
-static uint32_t g_save_workspace[SAT_SAVE_WORKSPACE_BYTES/4u];   /* the Boot ROM backup library's, for the Ball and Force records */
-#endif
+static uint32_t g_save_workspace[SAT_SAVE_WORKSPACE_BYTES/4u];   /* the Boot ROM backup library's, for the Ball, Force and run records */
 static unsigned g_select_ball=3;   /* the select screen of Tekken Ball: the ball type whose small ball turns between the slots, else 3 */
 static uint16_t g_port_pal[2][PORT_PAL_WORDS];
 /* Every portrait is read up front: the select music plays from the same disc, and a data read stops it. */
@@ -692,11 +691,25 @@ static void result_flow(void) {
     result_music();
     if(survival) {__builtin_memcpy(line,"WINS 00",8);digits(line+5,g_arg[5],2);}
     else {__builtin_memcpy(line,"TIME 00:00",11);digits(line+5,(seconds/60u)%100u,2);digits(line+8,seconds%60u,2);}
+    /* The best results live in the internal backup (run_records.h); a missing or full backup shows this run alone. A
+     * Time Attack result is always a completed run: a loss repeats the stage. */
+    t3_run_records_t records={0};
+    (void)t3_run_save_load(&records,g_save_workspace,sizeof g_save_workspace);
+    const int new_record=survival?t3_run_records_survival(&records,g_arg[5]):t3_run_records_attack(&records,seconds,1);
+    if(new_record)(void)t3_run_save_store(&records,g_save_workspace,sizeof g_save_workspace);
+    char best[16]={0};
+    if(survival) {__builtin_memcpy(best,"BEST 000",9);digits(best+5,records.survival_wins,3);}
+    else if(records.attack_seconds) {
+        __builtin_memcpy(best,"BEST 00:00",11);
+        digits(best+5,(records.attack_seconds/60u)%100u,2);digits(best+8,records.attack_seconds%60u,2);
+    }
     for(unsigned f=0,t0=g_now;f<1800u;f=g_now-t0) {
         frame_begin(&pads);
         rect(0,296,SCREEN_W,SCREEN_H-296,CODE_BLACK);
         text(2,survival?"SURVIVAL RESULT":"TIME ATTACK RESULT",MENU_BG_W/2,330);
         text(0,line,MENU_BG_W/2,370);
+        if(best[0])text(1,best,MENU_BG_W/2,394);
+        if(new_record && ((g_now>>3)&1u))text(2,"NEW RECORD",MENU_BG_W/2,418);
         frame_end();
         if(pads.pad[0].pressed&START_BUTTONS)break;
     }
