@@ -45,3 +45,6 @@ __pycache__/
 
 # Editor config with absolute paths, written by scripts/gen_clangd.py
 /.clangd
+
+# Third-party references fetched for study (not part of the build)
+.externals/
