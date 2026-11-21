@@ -73,11 +73,17 @@ sat_result_t t3_ball_render(sat_scene_t* scene,const t3_ball_view_t* view,const 
         const int32_t z0=-8000,z1=-8000+8*0x600;
         /* the two side lines (white quads); the centre band fades in and out, which needs translucency, so main.c draws it in the
          * HUD pass */
+        /* Each line is LINE_SEGMENTS quads, not one: the painter sorts a face by its mean depth, so a single 12,288-unit quad took the
+         * depth of its middle and painted over a fighter standing at its near end (the line seemed to rise in front of the fighter
+         * when the camera came close). Short pieces carry the depth of the ground they cover. */
         for(k=0;k<2u;++k) {
             const int32_t x0=k==0?-zone-30:zone-30,x1=k==0?-zone+30:zone+30;
-            const int32_t p[4][3]={{(x0-center_x)*UNIT,1,-(z0-center_z)*UNIT},{(x1-center_x)*UNIT,1,-(z0-center_z)*UNIT},
-                                   {(x1-center_x)*UNIT,1,-(z1-center_z)*UNIT},{(x0-center_x)*UNIT,1,-(z1-center_z)*UNIT}};
-            if((st=submit(scene,p,rgb(0xFF,0xFF,0xFF),0,SAT_INDEXED_SOLID_OPAQUE))!=SAT_OK)return st;
+            for(unsigned seg=0;seg<LINE_SEGMENTS;++seg) {
+                const int32_t za=z0+(z1-z0)*(int32_t)seg/LINE_SEGMENTS,zb=z0+(z1-z0)*(int32_t)(seg+1u)/LINE_SEGMENTS;
+                const int32_t p[4][3]={{(x0-center_x)*UNIT,1,-(za-center_z)*UNIT},{(x1-center_x)*UNIT,1,-(za-center_z)*UNIT},
+                                       {(x1-center_x)*UNIT,1,-(zb-center_z)*UNIT},{(x0-center_x)*UNIT,1,-(zb-center_z)*UNIT}};
+                if((st=submit(scene,p,rgb(0xFF,0xFF,0xFF),0,SAT_INDEXED_SOLID_OPAQUE))!=SAT_OK)return st;
+            }
         }
     }
     angle[0]=b->spin[0];angle[1]=b->spin[1];angle[2]=b->spin[2];
