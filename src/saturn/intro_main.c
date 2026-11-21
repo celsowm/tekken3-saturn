@@ -42,7 +42,7 @@ static void movie_report(const char* name, sat_result_t status, const sat_movie_
     for (;;) {
         sat_pad_state_t pad = {0};
         SAT_PANIC_IF_ERROR(sat_app_frame_begin(SAT_COLOR_BLACK, SAT_COLOR_BLACK, &pad));
-        sat_hud_reset_cursor(&g_movie_hud, 8, 8);
+        sat_hud_reset_cursor(&g_movie_hud, 8, 22);
         (void)sat_hud_text(&g_movie_hud, name, 8, 4);
         (void)sat_hud_line(&g_movie_hud, "STATUS", (uint32_t)(status < 0 ? -status : status));
         (void)sat_hud_line(&g_movie_hud, "PACKETS", stats->packets_checked);
