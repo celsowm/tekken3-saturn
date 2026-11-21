@@ -3,6 +3,19 @@
 Real Saturns show speed and music faults that emulators do not; see
 [REAL_HARDWARE.md](REAL_HARDWARE.md).
 
+## V0.5.1: SAROO movie read, Tekken Ball court lines
+
+Two fixes on the V0.5 sources, no frame-rate change intended (the benchmark fight was not re-run; the fight code is untouched).
+
+- **Movies on SAROO.** LibSaturn `4eb0270e`: `take_sectors` issues one Get Then Delete Sector Data (0x63) and End Data Transfer (0x06) per
+  sector. SAROO's CD Block emulation (`.externals/SAROO`, `Firm_MCU/Saturn/saturn_cdc.c`) queues only the first sector into its 2048-word FIFO
+  at 0x63 and refills from an interrupt once the host has drained it below 256 words; the data port has no wait state or ready flag, so a fast
+  multi-sector read can take stale words while the byte count stays right. SAROO's own SH-2 firmware also reads one sector per command. Checked
+  on Mednafen (the LibSaturn logo and the Tekken intro play clean); the host test `test_cd_deadlines` asserts every 0x63 asks for one sector.
+  Not run on a SAROO: the V0.5.1 disc is the test. `T3_MOVIE_DIAGNOSTICS` (`SAROO_MOVIE_DIAGNOSTICS.md`) gives the on-screen report if it still fails.
+- **Tekken Ball court lines.** `ball_render.c` draws each white side line as four quads (`LINE_SEGMENTS`) instead of one 12,288-unit quad: the
+  painter sorts by mean depth, so the single quad painted over a fighter near the camera. Seen on the Ymir probe (`ymir_ball_flow.py`).
+
 ## V0.5: lit fighters, Tekken Ball, Practice
 
 Fighters are shaded with VDP1 Gouraud shading from the stage lighting (the default since `5ebdff7`). The release disc's

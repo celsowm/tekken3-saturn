@@ -18,6 +18,14 @@ BIOS, or use a Saturn disc loader. Keep music.bin next to music.cue. A BIOS and
 emulator are not included.
 
 WHAT IS NEW IN {version}
+- SAROO MOVIE FIX: the intro and the other movies read the disc one sector at a time. SAROO
+  feeds its data port from a small FIFO that refills between sectors, and a fast multi-sector
+  read could take stale words from it: picture noise, a half picture and hissing sound. Not yet
+  confirmed on a SAROO (the fix was checked in Mednafen only); please report.
+- TEKKEN BALL: the court's two white side lines no longer climb over the fighters when the
+  camera zooms in; they stay on the sand behind them.
+
+WHAT CAME IN V0.5
 - LIT FIGHTERS: every fighter is now shaded with VDP1 Gouraud shading from the stage
   lighting, relit as the fighter turns, in place of the flat colours of V0.4. It is
   on by default.
