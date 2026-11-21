@@ -61,6 +61,8 @@ PREFIX="$(cd "$PREFIX" && pwd)"
 
 say "Pulling LibSaturn main"
 git -C "$SDK" pull --ff-only origin main
+say "Checking the offline movie-signature regression"
+python3 "$ROOT/tests/test_movie_signature.py"
 say "Game: $(git -C "$ROOT" rev-parse --short HEAD); SDK: $(git -C "$SDK" rev-parse --short HEAD)"
 
 SDK_BUILD="${LIBSATURN_BUILD_DIR:-$SDK/build/saturn-release}"
@@ -73,7 +75,9 @@ if [[ -f "$SDK_BUILD/CMakeCache.txt" ]]; then
         -DCMAKE_TOOLCHAIN_FILE="$SDK/cmake/toolchains/sh2eb-elf.cmake" \
         -DCMAKE_BUILD_TYPE=Release
 else
-    cmake -S "$SDK" -B "$SDK_BUILD" -G Ninja \
+    GENERATOR=()
+    if command -v ninja >/dev/null; then GENERATOR=(-G Ninja); fi
+    cmake -S "$SDK" -B "$SDK_BUILD" "${GENERATOR[@]}" \
         -DCMAKE_TOOLCHAIN_FILE="$SDK/cmake/toolchains/sh2eb-elf.cmake" \
         -DCMAKE_BUILD_TYPE=Release
 fi
@@ -85,7 +89,7 @@ cmake -S "$ROOT" -B "$BUILD" -DCMAKE_PREFIX_PATH="$PREFIX" \
     -DLIBSATURN_SOURCE_DIR="$SDK" -DT3_MOVIE_DIAGNOSTICS=ON -DT3_TEST_SKIP_INTRO=OFF
 cmake --build "$BUILD" --parallel 4
 
-OUT="$ROOT/build/saroo-movie-result"
+OUT="$ROOT/build/saroo-movie-result/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT"
 REPORT="$OUT/expected-hashes.txt"
 {
@@ -127,7 +131,9 @@ for item in files:
     source = (cue.parent / item).resolve()
     if not source.is_file():
         raise SystemExit('Missing CUE dependency: ' + str(source))
-    shutil.copy2(source, out / Path(item).name)
+    target = out / item
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
 print('Local SAROO disc:', out / cue.name)
 PY
 
