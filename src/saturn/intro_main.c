@@ -60,7 +60,14 @@ static void movie_report(const char* name, sat_result_t status, const sat_movie_
         (void)sat_hud_line(&g_movie_hud, "WORK MAX US", stats->work_max_us);
         (void)sat_hud_text(&g_movie_hud, "START NEXT", 8, 202);
         SAT_PANIC_IF_ERROR(sat_app_frame_end());
-        if ((pad.pressed & SAT_PAD_START) != 0u) break;
+        if ((pad.pressed & SAT_PAD_START) != 0u) {
+            /* sat_movie_play checks HELD, not PRESSED; do not carry this START into the next clip. */
+            do {
+                SAT_PANIC_IF_ERROR(sat_wait_vblank());
+                SAT_PANIC_IF_ERROR(sat_input_poll());
+            } while (((sat_pad_held_port(0) | sat_pad_held_port(1)) & SAT_PAD_START) != 0u);
+            break;
+        }
     }
 }
 #endif
